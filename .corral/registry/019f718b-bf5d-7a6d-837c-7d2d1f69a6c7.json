@@ -1,0 +1,17 @@
+{
+  "sessionId": "019f718b-bf5d-7a6d-837c-7d2d1f69a6c7",
+  "title": "how can se tthinkin level?",
+  "label": "pi",
+  "description": "pi: terminal TUI coding agent",
+  "socket": null,
+  "spawnCommand": [
+    "pi"
+  ],
+  "resumeCommand": [
+    "pi",
+    "--session",
+    "{sessionId}"
+  ],
+  "hidden": false,
+  "lastSeen": "2026-07-17T19:27:29.761Z"
+}

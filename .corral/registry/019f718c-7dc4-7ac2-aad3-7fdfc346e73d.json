@@ -1,0 +1,17 @@
+{
+  "sessionId": "019f718c-7dc4-7ac2-aad3-7fdfc346e73d",
+  "title": "intent language",
+  "label": "pi",
+  "description": "pi: terminal TUI coding agent",
+  "socket": "/home/cornerman/projects/lips/.corral/pi-331184.sock",
+  "spawnCommand": [
+    "pi"
+  ],
+  "resumeCommand": [
+    "pi",
+    "--session",
+    "{sessionId}"
+  ],
+  "hidden": false,
+  "lastSeen": "2026-07-17T20:01:46.945Z"
+}
