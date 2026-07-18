@@ -370,3 +370,72 @@ machinery retargets beyond NixOS.
    artifacts plus Nix wiring, realized as a NixOS module on a real machine.
    The reference implementation is non-privileged; the kernel spec and
    conformance suite remain the source of truth.
+
+## 13. Milestone Ledger (done / remaining)
+
+A legible snapshot of build state so it need not be re-derived. "Done" means
+built and tested in `kernel/` on `main`; "partial" means the mechanism exists
+but the loop around it is incomplete; "missing" means specced, not built.
+
+### Done
+
+- **Kernel calculus.** `Decision`, decision base with merge-by-strength and
+  conflict-with-both-provenances, refinement to fixpoint with
+  orthogonality-by-construction and stamped provenance, demands and open
+  questions, realization to a NixOS module. Seed conformance suite pins each.
+- **Canonical stored form.** Diffable one-decision-per-line text; reader
+  round-trips renderer.
+- **Deterministic run pipeline.** resolve -> demands -> refine -> realize, with
+  the anti-MDA guard (any unmapped ground decision fails loud). Output verified
+  to parse as valid Nix.
+- **Language crystallization (the AI-free edit loop).** `generate` mints the
+  engine's front half (the language, `.lang`) as patterns; the model delivers
+  grammar only, the kernel derives meaning by deterministic template matching
+  (`crystallize`) and validates by a full run before writing anything. `run`
+  takes the loose program directly; value and instance edits flow through with
+  no model (verified offline). Escaping edits and missing language fail loud.
+- **Generate boundary plumbing.** Model call routed through `pi` print mode;
+  deduce-or-fail confidence threshold; generation record written per event.
+
+### Partial
+
+- **Deduce-or-fail via resampling.** The harness `unanimous`/`coreOf` check is
+  built and tested, but `generate` samples the model once; only the confidence
+  threshold gates admission. Missing: `--samples` wiring so a deduction must
+  recur identically across samples.
+- **Corpus pinning.** A corpus regression test exists and the generation record
+  is written, but the `generate` command does not enforce "a regenerated
+  `.lang` reproduces every pinned (loose, crystal) pair or fails showing the
+  diff."
+- **Glue.** `Glue` exists as a `Kind`, but its rigor downgrade (marked glue ->
+  property testing, visible blast radius) is not implemented.
+
+### Missing
+
+- **Engine synthesis (the central gap).** `generate` mints only the language;
+  the engine's back half (obligation-to-mechanism rules, demands, coping) is
+  hand-written Haskell (`Engine.Feed`). Until the model mints the back half as
+  data in the same decision material, lips works only for feed-shaped programs.
+  The language sketch's meta-decision base is the target shape.
+- **Live NixOS deployment.** A realized module has never been deployed on a real
+  machine (`wolf`) beside hand-written modules. The coexistence defense (one
+  Solution = one ordinary module, not all-or-nothing) is untested against a
+  running system.
+- **Language migration.** When `.lang` regenerates to a different shape, there
+  is no diff or migration path for existing programs.
+- **Multi-language composition.** The sketch composes three languages in one
+  decision base; the prototype runs one engine. Composing several
+  engines/languages in one Solution is unbuilt.
+- **Guarantee lifecycle.** The walk-through's assumption `OPEN -> GUARANTEED`
+  flow and the "verify a vocabulary once, inherit cheaply" rigor allocation
+  have no code.
+- **Heile-Welt coping.** The kernel's promise to supply stable strategies for
+  what reality cannot guarantee has no mechanism yet.
+- **`lips dev`.** Convenience wrapper (run, ask before generating). Minor.
+
+### Shortest Summary
+
+The deterministic spine and the language-crystallization loop are real and
+tested. **Engine synthesis** is the missing half that makes lips general; a
+**live NixOS deployment** is the missing proof that it survives a real system.
+Everything else is hardening or breadth on those two.
