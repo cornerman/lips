@@ -13,7 +13,7 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Test.Hspec
-import Test.QuickCheck
+import Test.QuickCheck hiding (Confidence)
 
 import Lips.Kernel.Base
 import Lips.Kernel.Decision
@@ -22,6 +22,7 @@ import Lips.Kernel.Reader
 import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
+import Lips.Generate.Harness
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -233,6 +234,33 @@ main = hspec $ do
             , "}"
             ]
       run 100 engine (needs ["feed", "ingest"]) prog `shouldBe` Right expected
+
+  describe "generate harness (spec 5: deduce-or-fail, resampling)" $ do
+    let cand s a conf = Candidate ((mk (s <> "-id") s a Stated)) (Confidence conf)
+
+    it "admit: at/above threshold accepted, below demoted to open questions" $ do
+      let (yes, qs) = admit (Confidence 0.9)
+            [cand "a" "1" 0.95, cand "b" "2" 0.5, cand "c" "3" 0.9]
+      map (\d -> case dSubject d of Subject xs -> xs) yes `shouldBe` [["a"], ["c"]]
+      map (\q -> case dSubject (oqCandidate q) of Subject xs -> xs) qs `shouldBe` [["b"]]
+
+    it "admit: a demoted candidate is phrased as a confirmable question" $
+      case admit (Confidence 0.9) [cand "currency" "EUR" 0.4] of
+        (_, [q]) -> renderOpenQuestion q `shouldBe` "I believe currency = EUR; confirm or correct."
+        other    -> expectationFailure ("expected exactly one open question, got " ++ show other)
+
+    it "unanimous: identical deductions across samples are forced" $ do
+      let s = [mk "i1" "a" "1" Stated, mk "i2" "b" "2" Stated]
+      fmap (map coreOf) (unanimous [s, s, s]) `shouldBe` Right (map coreOf s)
+
+    it "unanimous: a deduction missing from a sample is detected ambiguity" $ do
+      let s1 = [mk "i1" "a" "1" Stated, mk "i2" "b" "2" Stated]
+          s2 = [mk "i1" "a" "1" Stated]
+      unanimous [s1, s2]
+        `shouldBe` Left [Divergence (Subject ["b"], Fact, Assertion "2", Stated)]
+
+    it "unanimous: an empty batch forces nothing (fail loud)" $
+      unanimous [] `shouldBe` (Left [] :: Either [Divergence] [Decision])
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)

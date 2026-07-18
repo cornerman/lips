@@ -15,6 +15,19 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Reader` | section 2 | canonical stored form: `readBase`/`renderBase`, round-tripping diffable text |
 | `Lips.Kernel.Realize` | section 10 | projects a ground base to a NixOS module (`realize`), refusing conflicts |
 | `Lips.Kernel.Run` | section 5 | the deterministic pipeline; `RunError` is the spec's four run outcomes |
+| `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |
+
+## The AI Boundary
+
+Everything above is deterministic and model-free. `generate` is the one step
+where a model runs (spec section 5). Its *deterministic scaffolding* lives in
+`Lips.Generate.Harness`: `admit` accepts only candidates at or above a
+confidence threshold and demotes the rest to open questions carrying their
+candidate answer; `unanimous` forces only deductions that recur identically
+across resamples. The model call itself (the producer of candidates) is the
+imperative shell and is deliberately not built here: it needs network and a
+pinned model, and stubbing it would hide the boundary the whole design exists
+to make explicit.
 
 The canonical form is one decision per line,
 `id kind subject strength "assertion" [@file:line | <-ids via rule] [-- rationale]`,
