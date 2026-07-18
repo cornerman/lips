@@ -1,4 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- Arbitrary Decision is a test-only orphan; it belongs with the suite, not the
+-- library, so the orphan warning here is expected and suppressed.
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Conformance tests for the kernel calculus. Each block cites the spec
 -- invariant it pins (spec v2, sections 2 and 4). This is the seed of the
@@ -7,6 +10,7 @@ module Main (main) where
 
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
+import qualified Data.Text       as T
 
 import Test.Hspec
 import Test.QuickCheck
@@ -14,6 +18,7 @@ import Test.QuickCheck
 import Lips.Kernel.Base
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
+import Lips.Kernel.Reader
 import Lips.Kernel.Refine
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
@@ -139,3 +144,67 @@ main = hspec $ do
       let base = fromList [mk "d1" "currency" "EUR" Stated]
       map demId (openQuestions [needCurrency] base) `shouldBe` []
       complete [needCurrency] base `shouldBe` True
+
+  describe "canonical form (spec 2: reader round-trips render)" $ do
+    it "reads a well-formed line into the expected decision" $ do
+      let line = "d1 invariant account.balance stated \"sum of transactions\" @ledger:4"
+      readDecision line `shouldBe`
+        Right Decision
+          { dId        = DecisionId "d1"
+          , dSubject   = Subject ["account", "balance"]
+          , dKind      = Invariant
+          , dAssertion = Assertion "sum of transactions"
+          , dStrength  = Stated
+          , dProv      = FromSource (SourceLoc "ledger" 4)
+          , dRationale = Nothing
+          }
+
+    it "reads a derived provenance line" $ do
+      let line = "m1 meta row stated \"upsert\" <-o1,d3 via ingest"
+      (dProv <$> readDecision line) `shouldBe`
+        Right (Derived [DecisionId "o1", DecisionId "d3"] (RuleId "ingest"))
+
+    it "rejects an unknown kind (fail loud)" $
+      readDecision "d1 whatever x stated \"a\"" `shouldSatisfy` isLeft
+
+    it "skips comment and blank lines" $ do
+      let src = "# concepts\n\nd1 fact currency stated \"EUR\" @ledger:6\n"
+      (fmap (map dId . toList) (readBase src)) `shouldBe` Right [DecisionId "d1"]
+
+    it "round-trips any base: readBase . renderBase == id" $
+      property $ \ds ->
+        let b = fromList ds in readBase (renderBase b) === Right b
+
+isLeft :: Either a b -> Bool
+isLeft = either (const True) (const False)
+
+-- Generators for the round-trip property. Tokens avoid the delimiters of the
+-- canonical form; assertions deliberately include quotes and backslashes to
+-- exercise escaping.
+instance Arbitrary Decision where
+  arbitrary = do
+    i    <- safeToken
+    segs <- resize 3 (listOf1 safeToken)
+    k    <- elements [minBound .. maxBound]
+    a    <- assertionText
+    s    <- elements [minBound .. maxBound]
+    p    <- genProv
+    r    <- oneof [pure Nothing, Just <$> rationaleText]
+    pure (Decision (DecisionId i) (Subject segs) k (Assertion a) s p r)
+
+safeToken :: Gen Text
+safeToken = T.pack <$> listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "_"))
+
+assertionText :: Gen Text
+assertionText = T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ " .,\"\\/()@:!"))
+
+rationaleText :: Gen Text
+rationaleText = T.unwords <$> listOf1 safeToken
+
+genProv :: Gen Provenance
+genProv = oneof
+  [ FromSource <$> (SourceLoc <$> safeFile <*> (getNonNegative <$> arbitrary))
+  , Derived <$> listOf1 (DecisionId <$> safeToken) <*> (RuleId <$> safeToken)
+  ]
+  where
+    safeFile = T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "/._"))
