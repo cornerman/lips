@@ -191,6 +191,34 @@ a guess is the one forbidden output. This holds at three independent layers:
    is itself part of the System: a versioned, reviewable artifact, not an
    incantation.
 
+**Run absorbs edits within the language.** Generate produces a compiler for
+the crystallized language, not for one frozen program, so an edited program
+runs without AI as long as it stays inside the language. Run is a
+deterministic pipeline with four outcomes: parse rejection (a line no
+pattern reads, named precisely; the only outcome that re-enters generate),
+open question (an unmet demand, asked verbatim from the language's demand
+table; answered by adding a line, still no AI), conflict (equal-strength
+contradiction, both provenances cited; fixed in the program), or
+realization. Even interrogation is deterministic; only minting new patterns
+needs a model. The design knob is the generalization radius: how far beyond
+the literal program generate abstracts (mechanisms parameterize over
+pattern holes; concept sets stay closed). Too narrow and every edit
+regenerates; too wide and speculative language accretes. Steering decisions
+tune it.
+
+**Reasonable changes must keep working.** The radius is a contract, not
+taste: reasonable means edits that change decisions, not kinds of intent,
+and the language must be closed under three edit classes with zero AI:
+value edits (any literal to another of its type), instance edits (add,
+remove, duplicate instances of known concepts and patterns), and
+recombination (known patterns applied to known concepts in new
+combinations; enforced orthogonality is what makes this closure hold).
+Only a genuinely new pattern shape may reject into regenerate. Enforcement
+is by definition: the corpus extends to program-mutation fuzzing, where
+generate derives mutation tests over the program itself and asserts run
+survives each class. An engine whose language breaks under reasonable
+edits does not lint.
+
 **The generation event is pinned.** Whether generate succeeds, and what it
 deduces, may depend on which model runs it; that ambiguity is accepted: you
 generate once, then you go with the result. In exchange, every engine
