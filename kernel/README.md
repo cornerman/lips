@@ -25,6 +25,14 @@ authoring text, which only `generate` turns into decisions.
 `test/Spec.hs` is the seed conformance suite: every block cites the spec
 invariant it pins.
 
+`Lips.Engine.Feed` is one hand-written example engine (a real engine is what
+`generate` produces); `app/Main.hs` is the reference `lips` CLI. Together they
+run a canonical-form program to a NixOS module with no AI:
+
+    nix run . -- run examples/ledger.decisions   # prints a valid NixOS module
+
+An unmet demand instead prints the verbatim open question and exits non-zero.
+
 ## Design Choices (answering spec section 11)
 
 - **Subject** is an attribute path and serves as the merge key: decisions

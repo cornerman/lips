@@ -16,6 +16,15 @@
         default = pkgs.mkShell { packages = [ (ghc pkgs) ]; };
       });
 
+      # The reference `lips` CLI. `nix run . -- run examples/ledger.decisions`.
+      packages = forAll (pkgs: {
+        default = pkgs.runCommand "lips" { nativeBuildInputs = [ (ghc pkgs) ]; } ''
+          cp -r ${./.}/. build && cd build
+          mkdir -p "$out/bin"
+          ghc -Wall -isrc -iapp app/Main.hs -outputdir "$TMPDIR/o" -o "$out/bin/lips"
+        '';
+      });
+
       # `nix flake check` compiles the calculus with -Wall and runs the suite.
       checks = forAll (pkgs: {
         kernel-tests = pkgs.runCommand "lips-kernel-tests"
