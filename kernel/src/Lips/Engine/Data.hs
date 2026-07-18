@@ -12,12 +12,16 @@
 -- > rule:   match <kind> <subject> => <optionPath> "<rhs>" ; <optionPath> "<rhs>" ...
 -- > demand: demand <subject> "<question>"
 --
--- @\<rhs\>@ may contain the hole @\<value\>@, filled verbatim with the matched
--- decision's assertion text, or @\<value.N\>@ (1-based), filled with its Nth
--- whitespace-separated token. @\<value.N\>@ exists because the first live
--- minting run showed the model packing several values into one assertion and
--- unpacking them with Nix-level @splitString@ gymnastics; the kernel absorbs
--- that workaround as physics (Heile Welt: workarounds belong in the kernel).
+-- @\<rhs\>@ is a value in the closed grammar of 'Lips.Engine.Value' (string,
+-- list, boolean, integer; strings may carry @\<value\>@ / @\<value.N\>@ holes
+-- and @${pkgs...}@ references) -- never a Nix expression. The hole
+-- @\<value\>@ fills with the matched decision's assertion text, @\<value.N\>@
+-- (1-based) with its Nth whitespace-separated token. @\<value.N\>@ exists
+-- because the first live minting run showed the model packing several values
+-- into one assertion and unpacking them with Nix-level @splitString@
+-- gymnastics; the kernel absorbs that workaround as physics (Heile Welt:
+-- workarounds belong in the kernel) and the value grammar makes the
+-- workaround itself unrepresentable.
 --
 -- Deliberate restriction: a minted rule emits only ground ('Meta') decisions,
 -- so a minted rule set terminates in one refinement pass by construction --
@@ -38,19 +42,18 @@ module Lips.Engine.Data
 
 import           Data.Text      (Text)
 import qualified Data.Text      as T
-import qualified Data.Text.Read as TR
 
+import Lips.Engine.Value    (Value, fillValue, holeIndex, parseValue, renderValue)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand   (Demand (..))
 import Lips.Kernel.Refine   (Rule (..))
-import Lips.Lang.Pattern    (StrPart (..))
 
 -- | One ground option assignment a rule emits: the option path and the
--- right-hand side template (literal text with @\<value\>@ holes).
+-- right-hand side value (closed grammar; computation unrepresentable).
 data Emit = Emit
   { emPath :: [Text]
-  , emRhs  :: [StrPart]
+  , emRhs  :: Value
   }
   deriving (Eq, Show)
 
@@ -89,16 +92,14 @@ toRule mr =
         { dId        = DecisionId ""
         , dSubject   = Subject (emPath e)
         , dKind      = Meta
-        , dAssertion = Assertion (fill val (emRhs e))
+        , dAssertion = Assertion (fillValue (pick val) (emRhs e))
         , dStrength  = Stated
         , dProv      = FromSource (SourceLoc "" 0)
         , dRationale = Nothing
         }
-    fill val = T.concat . map (part val)
-    part _   (SLit t) = t
-    part val (SHole "value") = val
-    part val (SHole h)
-      | Just n <- valueIndex h =
+    pick val "value" = val
+    pick val h
+      | Just n <- holeIndex h =
           case drop (n - 1) (T.words val) of
             (w : _) -> w
             -- Fail fast and loud: a silent empty string would realize a wrong
@@ -127,7 +128,7 @@ renderRuleBody mr =
     <> " => "
     <> T.intercalate " ; " (map renderEmit (mrEmits mr))
   where
-    renderEmit e = T.intercalate "." (emPath e) <> " " <> quoteParts (emRhs e)
+    renderEmit e = T.intercalate "." (emPath e) <> " " <> quoteText (renderValue (emRhs e))
 
 parseRuleBody :: Text -> Text -> Either Text MapRule
 parseRuleBody rid body = do
@@ -148,21 +149,10 @@ parseRuleBody rid body = do
         (w : _ : _) -> Right (w, T.stripStart (T.drop (T.length w) (T.stripStart t)))
         _           -> Left (pre <> "emit needs '<path> \"<rhs>\"': " <> t)
       rhsRaw <- parseQuoted pre rest
-      rhs    <- traverse (checkHole pre) (parseHoleyText rhsRaw)
+      -- Parse, don't validate: the rhs becomes a typed 'Value' here, at the
+      -- only door minted engines enter; computation never gets past this line.
+      rhs    <- either (\e -> Left (pre <> e)) Right (parseValue rhsRaw)
       Right (Emit (T.splitOn "." pathTok) rhs)
-    checkHole p part@(SHole h)
-      | h == "value"               = Right part
-      | Just _ <- valueIndex h     = Right part
-      | otherwise = Left (p <> "unknown hole <" <> h <> "> (only <value> and <value.N> are defined)")
-    checkHole _ part = Right part
-
--- | @value.N@ -> N (1-based); anything else -> Nothing.
-valueIndex :: Text -> Maybe Int
-valueIndex h = do
-  numTxt <- T.stripPrefix "value." h
-  case TR.decimal numTxt of
-    Right (n, rest) | T.null rest, n >= 1 -> Just n
-    _ -> Nothing
 
 -- Demand body: @demand <subject> "<question>"@
 
@@ -184,21 +174,6 @@ parseDemandBody did body = do
 -- Shared small parsers (local copies; the sub-grammars are tiny and keeping
 -- them self-contained beats exporting Reader internals).
 
-parseHoleyText :: Text -> [StrPart]
-parseHoleyText t
-  | T.null t = []
-  | otherwise =
-      case T.breakOn "<" t of
-        (before, rest)
-          | T.null rest -> [SLit before | not (T.null before)]
-          | otherwise ->
-              let (holeBody, afterClose) = T.breakOn ">" (T.drop 1 rest)
-               in if T.null afterClose
-                    then [SLit t]
-                    else [SLit before | not (T.null before)]
-                           ++ [SHole holeBody]
-                           ++ parseHoleyText (T.drop 1 afterClose)
-
 parseQuoted :: Text -> Text -> Either Text Text
 parseQuoted pre t = case T.uncons t of
   Just ('"', rest) -> go rest T.empty
@@ -211,12 +186,6 @@ parseQuoted pre t = case T.uncons t of
         Just (c, more') -> go more' (T.snoc acc c)
         Nothing         -> Left (pre <> "dangling escape")
       Just (c, more)    -> go more (T.snoc acc c)
-
-quoteParts :: [StrPart] -> Text
-quoteParts ps = quoteText (T.concat (map r ps))
-  where
-    r (SLit t)  = t
-    r (SHole h) = "<" <> h <> ">"
 
 quoteText :: Text -> Text
 quoteText a = "\"" <> T.concatMap esc a <> "\""

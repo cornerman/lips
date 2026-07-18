@@ -23,6 +23,7 @@ import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Engine.Data
+import Lips.Engine.Value
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, ItemCandidate (..))
 import Lips.Lang.Pattern
@@ -364,7 +365,7 @@ main = hspec $ do
 
   describe "engine data (engine-synthesis plan: rules and demands as data)" $ do
     let rule = MapRule "r2" Fact ["feed", "cadence"]
-                 [ Emit ["systemd", "timers", "t", "OnCalendar"] [SLit "\"", SHole "value", SLit "\""] ]
+                 [ Emit ["systemd", "timers", "t", "OnCalendar"] (VStr [PHole "value"]) ]
 
     it "rule body round-trips" $
       parseRuleBody "r2" (renderRuleBody rule) `shouldBe` Right rule
@@ -374,12 +375,31 @@ main = hspec $ do
       parseDemandBody "q1" (renderDemandBody q) `shouldBe` Right q
 
     it "rejects an emit with an unknown hole" $
-      parseRuleBody "r" "match fact x => a.b \"<mystery>\"" `shouldSatisfy` isLeft
+      parseRuleBody "r" "match fact x => a.b \"\\\"<mystery>\\\"\"" `shouldSatisfy` isLeft
+
+    -- The design event of the first live backup run, made physics: computation
+    -- in an rhs must be structurally rejected, not prompt-discouraged.
+    it "rejects computation in an rhs (function application is not a value)" $
+      parseRuleBody "r" "match fact x => a.b \"lib.splitString \\\" \\\" <value>\"" `shouldSatisfy` isLeft
+
+    it "rejects non-pkgs interpolation inside rhs strings" $
+      parseRuleBody "r" "match fact x => a.b \"\\\"${lib.getExe pkgs.restic}\\\"\"" `shouldSatisfy` isLeft
+
+    it "accepts the closed value forms: string+pkgs-ref, list, bool, int" $ do
+      parseValue "\"${pkgs.restic}/bin/restic backup <value.1>\"" `shouldBe`
+        Right (VStr [PRef ["pkgs", "restic"], PLit "/bin/restic backup ", PHole "value.1"])
+      parseValue "[ \"timers.target\" ]" `shouldBe` Right (VList [VStr [PLit "timers.target"]])
+      parseValue "true" `shouldBe` Right (VBool True)
+      parseValue "42" `shouldBe` Right (VInt 42)
+
+    it "escapes filled program text: injection cannot leave the string" $
+      fillValue (const "a\" ; evil ${pkgs.hack}") (VStr [PHole "value"]) `shouldBe`
+        "\"a\\\" ; evil \\${pkgs.hack}\""
 
     it "<value.N> picks the Nth token of the matched assertion" $ do
       let r = MapRule "r4" Fact ["backup", "job"]
-                [ Emit ["src"] [SLit "\"", SHole "value.1", SLit "\""]
-                , Emit ["dst"] [SLit "\"", SHole "value.2", SLit "\""]
+                [ Emit ["src"] (VStr [PHole "value.1"])
+                , Emit ["dst"] (VStr [PHole "value.2"])
                 ]
           matched = (mk "d1" "unused" "/var/lib /backup" Stated) { dSubject = Subject ["backup", "job"] }
       case refine 100 [toRule r] (fromList [matched]) of
@@ -406,7 +426,7 @@ main = hspec $ do
               ]
           , edRules =
               [ MapRule "r1" Oblige ["feed", "ingest"]
-                  [ Emit ["services", "x", "enable"] [SLit "true"] ] ]
+                  [ Emit ["services", "x", "enable"] (VBool True) ] ]
           , edDemands = [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?" ]
           }
 
@@ -423,7 +443,7 @@ main = hspec $ do
   -- all crystallized and run with no model and no hand-written engine.
   describe "end-to-end feed corpus (engine as data, edit-tolerance)" $ do
     let svc seg = ["systemd", "services", "ledger-ingest"] ++ seg
-        quotedValue = [SLit "\"", SHole "value", SLit "\""]
+        quotedValue = VStr [PHole "value"]
         feedEngine = EngineData
           { edPatterns =
               [ Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "csv", TLit "files", TLit "into", THole "loc"]
@@ -435,8 +455,8 @@ main = hspec $ do
               ]
           , edRules =
               [ MapRule "r1" Oblige ["feed", "ingest"]
-                  [ Emit (svc ["enable"]) [SLit "true"]
-                  , Emit (svc ["wantedBy"]) [SLit "[ \"multi-user.target\" ]"]
+                  [ Emit (svc ["enable"]) (VBool True)
+                  , Emit (svc ["wantedBy"]) (VList [VStr [PLit "multi-user.target"]])
                   ]
               , MapRule "r2" Fact ["feed", "cadence"]
                   [ Emit ["systemd", "timers", "ledger-ingest", "timerConfig", "OnCalendar"] quotedValue ]

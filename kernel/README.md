@@ -19,6 +19,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
 | `Lips.Lang.Lang` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
 | `Lips.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |
+| `Lips.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int; holes and `${pkgs...}` refs only) -- computation and injection unrepresentable |
 | `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |
 | `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + whole-engine candidate parser (pure) |
 
@@ -29,7 +30,8 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 
 `generate` is the one step where a model runs (spec section 5). The model mints
 a whole *engine* into `<file>.lang` -- patterns (the language), rules (the
-mechanisms, as `match <kind> <subject> => <option.path> "<rhs>" ; ...`), and
+mechanisms, as `match <kind> <subject> => <option.path> "<rhs>" ; ...`, where
+`<rhs>` is a value in a closed grammar, never a Nix expression), and
 demands -- and it never states the meaning of the program. The kernel then
 crystallizes the program with that engine, validates it by a full run plus a
 Nix parse (`nix-instantiate --parse`), and only then writes `<file>.lang`, the
