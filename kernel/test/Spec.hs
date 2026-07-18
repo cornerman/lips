@@ -23,7 +23,7 @@ import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Generate.Harness
-import Lips.Generate.Reading (parseCandidates)
+import Lips.Generate.Minting (parsePatternCandidates, PatternCandidate (..))
 import Lips.Lang.Pattern
 import Lips.Lang.Crystallize
 import Lips.Lang.Lang
@@ -271,22 +271,22 @@ main = hspec $ do
     it "unanimous: an empty batch forces nothing (fail loud)" $
       unanimous [] `shouldBe` (Left [] :: Either [Divergence] [Decision])
 
-  describe "generate reading (spec 5: candidate parsing)" $ do
-    it "parses a confidence-prefixed canonical line into a candidate" $ do
-      let (errs, cs) = parseCandidates "0.95 d1 fact currency stated \"EUR\" @program:1"
+  describe "generate minting (crystallization plan: pattern candidates)" $ do
+    it "parses a confidence-prefixed pattern line into a candidate" $ do
+      let (errs, cs) = parsePatternCandidates
+            "0.95 p1 the bank drops files into <loc> => fact feed.source stated \"<loc>\""
       errs `shouldBe` []
-      map candConfidence cs `shouldBe` [Confidence 0.95]
-      map (dId . candDecision) cs `shouldBe` [DecisionId "d1"]
+      map pcConfidence cs `shouldBe` [Confidence 0.95]
 
     it "skips fences and comments, collects malformed lines as errors" $ do
       let reply = T.unlines
             [ "```", "# note", ""
-            , "0.9 d1 oblige feed.ingest stated \"rows\" @program:2"
-            , "2.0 d2 fact x stated \"y\" @program:3"   -- confidence out of range
+            , "0.9 p1 every bank row becomes one <e> => oblige feed.ingest stated \"<e>\""
+            , "2.0 p2 x => fact y stated \"z\""   -- confidence out of range
             , "```"
             ]
-          (errs, cs) = parseCandidates reply
-      map (dId . candDecision) cs `shouldBe` [DecisionId "d1"]
+          (errs, cs) = parsePatternCandidates reply
+      length cs `shouldBe` 1
       length errs `shouldBe` 1
 
   describe "pattern matching (crystallization plan: normalization, holes)" $ do

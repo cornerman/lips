@@ -12,6 +12,7 @@
 module Lips.Kernel.Run
   ( RunError (..)
   , run
+  , runBase
   ) where
 
 import           Data.Bifunctor  (first)
@@ -45,7 +46,14 @@ data RunError
 -- demands). The budget bounds refinement steps.
 run :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
 run budget rules demands src = do
-  base0   <- first ParseRejected (readBase src)
+  base0 <- first ParseRejected (readBase src)
+  runBase budget rules demands base0
+
+-- | The pipeline from a decision base onward (resolve, demands, refine,
+-- realize), shared by canonical @run@ and the loose path where @crystallize@
+-- produces the base. Pure in (base, engine).
+runBase :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
+runBase budget rules demands base0 = do
   winners <- first Conflicted (resolve base0)
   -- Refine the resolved winners, so overridden defaults never realize.
   let base1 = fromList (Map.elems winners)

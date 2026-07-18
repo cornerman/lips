@@ -12,6 +12,7 @@
 module Lips.Engine.Feed
   ( rules
   , demands
+  , vocabulary
   ) where
 
 import           Data.Text (Text)
@@ -21,6 +22,17 @@ import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Refine
+
+-- | The (kind, subject) targets this engine can refine and demands. @generate@
+-- shows this to the model so the patterns it mints land on subjects the engine
+-- actually maps. In the full system the engine is generated too and this hint
+-- is intrinsic; here the engine is hand-written, so we state its vocabulary.
+vocabulary :: [Text]
+vocabulary =
+  [ "fact feed.source     -- where files arrive (a path)"
+  , "fact feed.cadence    -- how often the feed delivers (a schedule word)"
+  , "oblige feed.ingest   -- the row-to-record obligation"
+  ]
 
 -- | The feed language's demands: an ingest needs to know where files arrive
 -- and how often. An unmet demand becomes an open question, verbatim.

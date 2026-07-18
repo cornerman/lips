@@ -17,6 +17,7 @@ module Lips.Lang.Lang
   , readLang
   , patternToDecision
   , decisionToPattern
+  , parsePatternBody
   ) where
 
 import           Data.List  (sortOn)
@@ -73,6 +74,11 @@ decisionToPattern d = do
     unAssertion (Assertion a) = a
 
 -- Body grammar: @<template> => <kind> <subject> <strength> "<assertion>"@.
+
+-- | Parse a pattern body (the sub-grammar) given its id. Exposed so @generate@
+-- can read the patterns a model mints in exactly the stored form.
+parsePatternBody :: Text -> Text -> Either Text Pattern
+parsePatternBody = parseBody
 
 renderBody :: Pattern -> Text
 renderBody p =
