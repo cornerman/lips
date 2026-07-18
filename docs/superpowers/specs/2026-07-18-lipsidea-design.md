@@ -396,6 +396,18 @@ but the loop around it is incomplete; "missing" means specced, not built.
   no model (verified offline). Escaping edits and missing language fail loud.
 - **Generate boundary plumbing.** Model call routed through `pi` print mode;
   deduce-or-fail confidence threshold; generation record written per event.
+- **Engine synthesis (was the central gap).** `generate` mints the whole
+  engine as data in one `.lang` file: patterns (front half) plus rules
+  (`match <kind> <subject> => option assignments`, with `<value>`/`<value.N>`
+  holes) and demands (back half), interpreted by generic kernel executors
+  (`Engine.Data`); the hand-written `Engine.Feed` is deleted. No domain
+  vocabulary is compiled in; the model invents subjects, and closure is
+  checked, not trusted (unmapped decision, unmet demand, uncovered line, or
+  invalid Nix -- `nix-instantiate --parse` at mint time -- each rejects the
+  engine). Proven live on two domains: the feed and a non-feed restic backup
+  job, both minted by opus, both then absorbing value edits offline.
+  Deliberate restriction: minted rules emit only ground decisions (one
+  refinement pass, no cascades until a real program needs them).
 
 ### Partial
 
@@ -412,11 +424,6 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Missing
 
-- **Engine synthesis (the central gap).** `generate` mints only the language;
-  the engine's back half (obligation-to-mechanism rules, demands, coping) is
-  hand-written Haskell (`Engine.Feed`). Until the model mints the back half as
-  data in the same decision material, lips works only for feed-shaped programs.
-  The language sketch's meta-decision base is the target shape.
 - **Live NixOS deployment.** A realized module has never been deployed on a real
   machine (`wolf`) beside hand-written modules. The coexistence defense (one
   Solution = one ordinary module, not all-or-nothing) is untested against a
@@ -435,7 +442,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Shortest Summary
 
-The deterministic spine and the language-crystallization loop are real and
-tested. **Engine synthesis** is the missing half that makes lips general; a
-**live NixOS deployment** is the missing proof that it survives a real system.
-Everything else is hardening or breadth on those two.
+The deterministic spine, the language-crystallization loop, and whole-engine
+synthesis are real and tested: lips now mints an engine for an unseen domain
+and absorbs edits offline. A **live NixOS deployment** is the missing proof
+that it survives a real system. Everything else is hardening or breadth.
