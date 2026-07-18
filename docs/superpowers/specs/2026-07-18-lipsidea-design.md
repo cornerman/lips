@@ -295,7 +295,17 @@ architecture.
 
 A Solution realizes as target-language artifacts plus Nix expressions that
 build, wire, and deploy them; the canonical application kind is a NixOS
-module. Nix is the deterministic realizer, not the logic runtime. The NixOS
+module. Nix is the deterministic realizer, not the logic runtime.
+
+Nix is chosen for completeness, not convenience: everything is definable
+declaratively with it, any language's toolchain, any package, any service
+topology, any system state. The engine's mechanism space is therefore
+unbounded by construction: whatever an engine needs to emit (a Rust service,
+a Python pipeline, a kernel tweak, a fleet of containers) is reachable as
+derivations plus module wiring. lipsidea inherits universality from Nix
+instead of building it, which is what makes "fully expressive from day one"
+hold at the realization layer, as marked glue makes it hold at the language
+layer. Completeness twice, both times deterministic. The NixOS
 module system is the architecture's twenty-year production precedent (typed,
 mergeable, per-domain vocabulary over one general substrate, zero LLM;
 Survey D verified its mechanics firsthand), and terranix proves the
