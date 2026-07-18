@@ -24,6 +24,9 @@ import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Generate.Harness
 import Lips.Generate.Reading (parseCandidates)
+import Lips.Lang.Pattern
+import Lips.Lang.Crystallize
+import Lips.Lang.Lang
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -285,6 +288,87 @@ main = hspec $ do
           (errs, cs) = parseCandidates reply
       map (dId . candDecision) cs `shouldBe` [DecisionId "d1"]
       length errs `shouldBe` 1
+
+  describe "pattern matching (crystallization plan: normalization, holes)" $ do
+    it "normalizes case and strips trailing sentence punctuation" $ do
+      normalizeToken "Files." `shouldBe` "files"
+      stripTrailingPunct "inbox/." `shouldBe` "inbox/"
+      stripTrailingPunct "inbox/" `shouldBe` "inbox/"
+
+    it "matches a template, binding a hole to the surface token" $ do
+      let tpl = [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
+      matchTemplate tpl (tokenizeLine "the bank drops files into inbox/.")
+        `shouldBe` Just (Map.fromList [("loc", "inbox/")])
+
+    it "fails to match on length or literal mismatch" $ do
+      matchTemplate [TLit "a", THole "x"] (tokenizeLine "a b c") `shouldBe` Nothing
+      matchTemplate [TLit "a", THole "x"] (tokenizeLine "z b") `shouldBe` Nothing
+
+    it "a repeated hole must bind consistently" $ do
+      let tpl = [THole "x", TLit "is", THole "x"]
+      matchTemplate tpl (tokenizeLine "foo is foo") `shouldBe` Just (Map.fromList [("x", "foo")])
+      matchTemplate tpl (tokenizeLine "foo is bar") `shouldBe` Nothing
+
+    it "applies bindings to build subject and assertion" $ do
+      let p = Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
+                Fact Stated [SLit "feed.source"] [SHole "loc"]
+      applyPattern p (Map.fromList [("loc", "inbox/")])
+        `shouldBe` (Subject ["feed", "source"], Fact, Assertion "inbox/", Stated)
+
+  describe "crystallize (crystallization plan: three outcomes)" $ do
+    let sourceP = Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
+                    Fact Stated [SLit "feed.source"] [SHole "loc"]
+        obligeP = Pattern "p2" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "one", THole "e"]
+                    Oblige Stated [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
+
+    it "a line matched by one pattern crystallizes to one decision" $ do
+      case crystallize "prog" [sourceP, obligeP] "the bank drops files into inbox/." of
+        Right b -> case toList b of
+          [d] -> (dSubject d, dAssertion d, dProv d)
+            `shouldBe` (Subject ["feed", "source"], Assertion "inbox/", FromSource (SourceLoc "prog" 1))
+          ds  -> expectationFailure ("expected one decision, got " ++ show (length ds))
+        Left e  -> expectationFailure ("unexpected error: " ++ show e)
+
+    it "a line matched by no pattern is NoPattern (re-enters generate)" $
+      crystallize "prog" [sourceP] "something entirely unknown here"
+        `shouldSatisfy` \r -> case r of Left [NoPattern 1 _] -> True; _ -> False
+
+    it "a line matched by two patterns is Overlapping (orthogonality)" $ do
+      let a = Pattern "a" [THole "x", TLit "hour"] Fact Stated [SLit "feed.cadence"] [SHole "x"]
+          b = Pattern "b" [TLit "every", THole "y"] Fact Stated [SLit "feed.cadence"] [SHole "y"]
+      crystallize "prog" [a, b] "every hour"
+        `shouldBe` Left [Overlapping 1 ["a", "b"]]
+
+    it "skips comment and blank lines" $ do
+      let src = "# a language\n\nthe bank drops files into inbox/.\n"
+      fmap (map dId . toList) (crystallize "prog" [sourceP] src) `shouldBe` Right [DecisionId "d3"]
+
+    it "hole re-instantiation always crystallizes (edit-tolerance by construction)" $ do
+      let setP = Pattern "set" [TLit "set", THole "k", TLit "to", THole "v"]
+                   Fact Stated [SLit "cfg.", SHole "k"] [SHole "v"]
+      property $ forAll ((,) <$> safeToken <*> safeToken) $ \(k, v) ->
+        let line = T.unwords ["set", k, "to", v]
+         in case crystallize "p" [setP] line of
+              Right b -> case toList b of
+                [d] -> dSubject d == Subject ["cfg", k] && dAssertion d == Assertion v
+                _   -> False
+              Left _ -> False
+
+  describe "language storage (crystallization plan: .lang round-trip)" $ do
+    let pats =
+          [ Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
+              Fact Stated [SLit "feed.source"] [SHole "loc"]
+          , Pattern "p2" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "one", THole "e"]
+              Oblige Stated [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
+          ]
+
+    it "round-trips: readLang . renderLang == Right" $
+      readLang (renderLang pats) `shouldBe` Right pats
+
+    it "rejects a pattern whose target hole is not bound by the template" $ do
+      let bad = (patternToDecision (Pattern "p1" [THole "loc"] Fact Stated [SLit "feed.source"] [SHole "loc"]))
+                  { dAssertion = Assertion "<loc> => fact feed.source stated \"<missing>\"" }
+      decisionToPattern bad `shouldSatisfy` isLeft
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
