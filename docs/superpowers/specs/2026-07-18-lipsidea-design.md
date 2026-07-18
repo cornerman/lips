@@ -323,7 +323,9 @@ machinery retargets beyond NixOS.
   demands).
 - **Engine orthogonality check**: the concrete mechanism that flags
   overlapping engine features.
-- **Naming**: "lipsidea" is the working title.
+- ~~Naming~~: resolved. The project is **lips**: Lisp rearranged (same
+  letters, one level up) and the organ where intent leaves the human as
+  speech. Branded `lips-lang` where the bare word is taken.
 
 ## 12. Phases
 
