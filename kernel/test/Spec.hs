@@ -21,6 +21,7 @@ import Lips.Kernel.Demand
 import Lips.Kernel.Reader
 import Lips.Kernel.Realize
 import Lips.Kernel.Refine
+import Lips.Kernel.Run
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -202,6 +203,36 @@ main = hspec $ do
     it "is order-independent (deterministic output)" $
       property $ forAll (shuffle ground) $ \perm ->
         realize (fromList perm) === realize (fromList ground)
+
+  describe "run pipeline (spec 5: four outcomes)" $ do
+    -- an engine: one rule mapping any Oblige to a ground option assignment
+    let engine = [ Rule (RuleId "ingest") ((== Oblige) . dKind)
+                     (\_ -> [ (mk "x" "x" "true" Stated) { dSubject = Subject ["services", "ledger", "enable"], dKind = Meta } ]) ]
+        needs subj = [ Demand "q" ("need " <> T.intercalate "." subj) (any ((== Subject subj) . dSubject) . toList) ]
+        prog = "o1 oblige feed.ingest stated \"row->txn\" @ledger:9\n"
+
+    it "parse rejection: a malformed line re-enters generate" $
+      run 100 engine [] "this line has no quoted assertion"
+        `shouldSatisfy` \r -> case r of Left (ParseRejected _) -> True; _ -> False
+
+    it "open question: an unmet demand is surfaced verbatim" $
+      run 100 engine (needs ["currency"]) prog
+        `shouldBe` Left (OpenQuestions ["need currency"])
+
+    it "conflict: equal-strength contradiction stops the run" $
+      run 100 engine [] "d1 fact x stated \"1\" @f:1\nd2 fact x stated \"2\" @f:2\n"
+        `shouldSatisfy` \r -> case r of Left (Conflicted _) -> True; _ -> False
+
+    it "realization: a satisfied program refines and realizes to a module" $ do
+      let expected = T.unlines
+            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            , "{ config, lib, pkgs, ... }:"
+            , "{"
+            , "  # <-o1 via ingest"
+            , "  services.ledger.enable = true;"
+            , "}"
+            ]
+      run 100 engine (needs ["feed", "ingest"]) prog `shouldBe` Right expected
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
