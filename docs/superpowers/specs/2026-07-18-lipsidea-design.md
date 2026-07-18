@@ -26,6 +26,8 @@ base: the four surveys in `docs/superpowers/survey/` (cited as Survey A/B/C/D).
   rigor-downgraded.
 - **Application kind**: a platform's runnable unit. Canonical kind: a NixOS
   module.
+- **Generate**: the only AI step: building or evolving the engine for a
+  program. Running the engine is deterministic and AI-free.
 
 ## 1. Thesis
 
@@ -111,7 +113,7 @@ A small closed set of kernel-level kinds; languages refine them:
 - **Glue**: a decision whose assertion contains a computation, syntactically
   marked, blast radius visible in its type (Survey D's freeformType lesson
   inverted). Glue is simultaneously the expressiveness escape (nothing is
-  inexpressible) and the rigor boundary (Section 5).
+  inexpressible) and the rigor boundary (Section 7).
 - **Meta-decisions**: everything that defines a language and its engine:
   concepts introduced, obligation patterns, defaults (weak decisions),
   demands, mechanism mappings, coping strategies. Languages are decision
@@ -146,7 +148,42 @@ nothing above the engine can break. Discipline replaces caution:
   (Survey C: conformance and differential testing are compute-bound, not
   expertise-bound; SQLite's 590:1 and Csmith are the precedents).
 
-## 5. The Heile-Welt Contract
+## 5. The Generate/Run Loop
+
+The entire interface:
+
+    1. write program        any text; "hello" is already (probably) a valid program
+    2. lips generate        the only AI step: build/evolve the engine for this program
+    3. lips run <program>   deterministic, repeatable forever
+    4. edit program
+         engine still accepts it  ->  step 3, no AI involved
+         engine rejects it        ->  step 2, regenerate
+
+**Two-phase validity.** Generate-time is permissive: the AI must give the
+text a defined meaning or surface open questions. Run-time is strict: the
+engine's language defines exactly what it accepts. "Valid program" is a
+property of the pair (program, engine).
+
+**The language grows exactly as fast as the problem.** The program comes
+first; the language and engine crystallize around it at generate-time.
+Edits within the current language cost zero AI; the engine evolves only when
+the Solution escapes it. Day one there is no engine: the first generate over
+a one-line program produces the first one. The uber framework accretes from
+real usage, which is also the economics defense (Section 9, item 2) made
+operational.
+
+**Regeneration safety holds by definition.** The engine's test corpus
+(Section 4: tested and fuzzed by definition) is the semantic pin. A
+regenerated engine must pass the accumulated corpus before it replaces its
+predecessor. Tests are removed only when they contradict changed
+requirements, so the removed-test set IS the semantic diff a reviewer reads;
+engine internals stay free to be rewritten wildly underneath. A supposedly
+stable test that contradicts the program indicts the program, not the test.
+Assumption decisions (Section 3) live in the same fabric: they are
+re-answered against every new engine, and a downgrade of status (guaranteed
+to tested, verified to open) is a loud, reviewable event.
+
+## 6. The Heile-Welt Contract
 
 The engine promises the Solution author an intact world: a stable simulation
 in which the language's invariants simply hold, including those reality does
@@ -164,7 +201,7 @@ killer of every prior intent-level attempt (CASE, MDA, Helm, low-code);
 lipsidea makes that decay impossible at the level where it kills and routes
 the pressure to the level built to absorb it.
 
-## 6. Rigor Allocation
+## 7. Rigor Allocation
 
 The reviewer's metric is comprehension per minute; proof burden never lands
 on the Solution author. Survey C's evidence (seL4 at 50 proof lines per code
@@ -181,7 +218,7 @@ two to three weeks to learn) fixes where each rigor level is affordable:
 Assumption decisions (Section 3) are the query interface over this table:
 each answer's status names which layer's guarantee it rests on.
 
-## 7. Perfect Developer Experience, by Construction
+## 8. Perfect Developer Experience, by Construction
 
 Every minted language ships with complete derived tooling: checker,
 completion, hover documentation, formatter, views, and option search are
@@ -193,12 +230,12 @@ the decision base plus its unmet demands. AI may assist authoring, but the
 clarity is structural: what can be said, what is missing, and what conflicts
 are all derivable facts, not conventions.
 
-## 8. Failure-Mode Defenses
+## 9. Failure-Mode Defenses
 
 Survey B's ranked taxonomy, mapped to the design property that blocks each:
 
 1. **Escape-hatch decay** → workarounds unrepresentable in Solutions
-   (Section 5); glue lives inside the typed kernel; compilation is
+   (Section 6); glue lives inside the typed kernel; compilation is
    one-directional; generated output is disposable, never hand-edited.
 2. **Economics before maturity** (STEPS, Eve, Dark) → the System must serve
    one owner at small scale immediately; no adoption threshold is
@@ -223,7 +260,7 @@ obligation without a defined mechanism mapping fails compilation. The System
 grows by absorbing new obligation patterns; guessing is not in the
 architecture.
 
-## 9. Realization Target
+## 10. Realization Target
 
 A Solution realizes as target-language artifacts plus Nix expressions that
 build, wire, and deploy them; the canonical application kind is a NixOS
@@ -233,7 +270,7 @@ mergeable, per-domain vocabulary over one general substrate, zero LLM;
 Survey D verified its mechanics firsthand), and terranix proves the
 machinery retargets beyond NixOS.
 
-## 10. Open Questions
+## 11. Open Questions
 
 - **Canonical text form**: the concrete decision-per-line format, under the
   constraint that text diff approximates set diff. Owned by the sketch phase.
@@ -247,13 +284,14 @@ machinery retargets beyond NixOS.
   overlapping engine features.
 - **Naming**: "lipsidea" is the working title.
 
-## 11. Phases
+## 12. Phases
 
 1. **Design doc** (this document).
 2. **Paper walk-through**: one feature end-to-end, e.g. "bank sends duplicate
    rows": assumption thrown, answer 'open', engine evolution, new guarantee,
-   stable Solution. All refinement stages written out as decision bases.
-   This doubles as the first draft of the canonical text form.
+   stable Solution. All refinement stages written out as decision bases,
+   and the generate/run loop traced at each step. This doubles as the first
+   draft of the canonical text form.
 3. **Language sketch**: one example application spanning three languages
    (record-keeping core, ingestion pipeline, CLI) as a full decision base,
    plus the meta-decision base of one language.
