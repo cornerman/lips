@@ -433,6 +433,12 @@ main = hspec $ do
     it "round-trips the whole engine: readLang . renderLang == Right" $
       readLang (renderLang engine) `shouldBe` Right engine
 
+    it "reads a hole with glued trailing punctuation: '<when>.' binds <when>" $
+      case parsePatternBody "p9" "back up <src> every <when>. => fact backup.job stated \"<src> <when>\"" of
+        Right p -> pTemplate p `shouldBe`
+          [TLit "back", TLit "up", THole "src", TLit "every", THole "when"]
+        Left e  -> expectationFailure (T.unpack e)
+
     it "rejects a pattern whose target hole is not bound by the template" $ do
       let bad = (patternToDecision (Pattern "p1" [THole "loc"] Fact Stated [SLit "feed.source"] [SHole "loc"]))
                   { dAssertion = Assertion "<loc> => fact feed.source stated \"<missing>\"" }

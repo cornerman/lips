@@ -1,6 +1,6 @@
 {
   "sessionId": "019f718c-7dc4-7ac2-aad3-7fdfc346e73d",
-  "title": "intent language",
+  "title": "engine synthesis",
   "label": "pi",
   "description": "pi: terminal TUI coding agent",
   "socket": "/home/cornerman/projects/lips/.corral/pi-11131.sock",
@@ -13,5 +13,5 @@
     "{sessionId}"
   ],
   "hidden": false,
-  "lastSeen": "2026-07-18T15:49:55.249Z"
+  "lastSeen": "2026-07-18T19:03:32.466Z"
 }

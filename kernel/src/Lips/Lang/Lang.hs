@@ -186,8 +186,12 @@ parseBody pid body = do
 
 parseTplTok :: Text -> TplTok
 parseTplTok w
-  | Just h <- holeName w = THole h
-  | otherwise            = TLit (normalizeToken w)
+  -- Symmetric with 'tokenizeLine': trailing sentence punctuation is noise on
+  -- the template side too, so a minted "<when>." is the hole <when> (live
+  -- mints glue the line's final period onto the hole; kernel physics, not a
+  -- prompt plea).
+  | Just h <- holeName (stripTrailingPunct w) = THole h
+  | otherwise                                 = TLit (normalizeToken w)
 
 -- | Parse a holey string (literal text with @\<name\>@ holes) into parts.
 parseHoley :: Text -> [StrPart]
