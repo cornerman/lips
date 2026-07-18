@@ -409,6 +409,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   Deliberate restriction: minted rules emit only ground decisions (one
   refinement pass, no cascades until a real program needs them).
 
+- **Closed rhs value language.** A minted rule's rhs is a typed value (string
+  with holes and `${pkgs...}` refs only, list, bool, int), never Nix text:
+  computation and string injection are unrepresentable, discharging the
+  structural layer of deduce-or-fail where the prompt alone had carried it.
+
 ### Partial
 
 - **Deduce-or-fail via resampling.** The harness `unanimous`/`coreOf` check is
