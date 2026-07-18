@@ -191,6 +191,18 @@ a guess is the one forbidden output. This holds at three independent layers:
    is itself part of the System: a versioned, reviewable artifact, not an
    incantation.
 
+**The generation event is pinned.** Whether generate succeeds, and what it
+deduces, may depend on which model runs it; that ambiguity is accepted: you
+generate once, then you go with the result. In exchange, every engine
+carries its generation record, committed with it: exact model identity and
+version, the full prompts (including the operating prompt above), sampling
+parameters, and the complete inputs (program, facts, steering). With locally
+pinned weights and greedy sampling the record replays bit-for-bit; with
+hosted models it is an audit trail. Either way the trust chain is unbroken,
+because an engine's authority never derives from who generated it, only
+from the corpus and checks it passes; the record explains provenance, the
+corpus grants legitimacy.
+
 **Regeneration safety holds by definition.** The engine's test corpus
 (Section 4: tested and fuzzed by definition) is the semantic pin. A
 regenerated engine must pass the accumulated corpus before it replaces its
