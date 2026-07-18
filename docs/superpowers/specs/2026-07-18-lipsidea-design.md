@@ -172,6 +172,25 @@ a one-line program produces the first one. The uber framework accretes from
 real usage, which is also the economics defense (Section 9, item 2) made
 operational.
 
+**Generate deduces or fails.** For every decision the engine needs, generate
+either deduces it from the program and its facts, or fails, surfacing the gap
+as open questions. Failing with questions is the success mode for ambiguity;
+a guess is the one forbidden output. This holds at three independent layers:
+
+1. **Structurally**: an unmapped obligation or ambiguous reading cannot
+   compile, so a guess has no way to land silently.
+2. **In the harness**: the generator must attach a confidence to every
+   deduced decision, and the deterministic harness accepts only certainty.
+   Anything below falls short and is demoted to an open question that
+   carries the candidate answer ("I believe X; confirm or correct"), never
+   auto-applied. Deducibility can additionally be tested mechanically by
+   resampling: a deduction that is genuinely forced by the inputs comes back
+   unanimous; divergence across samples is detected ambiguity.
+3. **At the source**: the generator agent's operating prompt carries
+   deduce-or-fail as a top-priority, non-negotiable directive. That prompt
+   is itself part of the System: a versioned, reviewable artifact, not an
+   incantation.
+
 **Regeneration safety holds by definition.** The engine's test corpus
 (Section 4: tested and fuzzed by definition) is the semantic pin. A
 regenerated engine must pass the accumulated corpus before it replaces its
