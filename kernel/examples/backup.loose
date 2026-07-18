@@ -1,0 +1,2 @@
+back up /var/lib/ledger to /backup/ledger every night.
+keep 14 daily snapshots.

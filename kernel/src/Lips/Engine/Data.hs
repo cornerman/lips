@@ -13,7 +13,11 @@
 -- > demand: demand <subject> "<question>"
 --
 -- @\<rhs\>@ may contain the hole @\<value\>@, filled verbatim with the matched
--- decision's assertion text.
+-- decision's assertion text, or @\<value.N\>@ (1-based), filled with its Nth
+-- whitespace-separated token. @\<value.N\>@ exists because the first live
+-- minting run showed the model packing several values into one assertion and
+-- unpacking them with Nix-level @splitString@ gymnastics; the kernel absorbs
+-- that workaround as physics (Heile Welt: workarounds belong in the kernel).
 --
 -- Deliberate restriction: a minted rule emits only ground ('Meta') decisions,
 -- so a minted rule set terminates in one refinement pass by construction --
@@ -32,8 +36,9 @@ module Lips.Engine.Data
   , parseDemandBody
   ) where
 
-import           Data.Text (Text)
-import qualified Data.Text as T
+import           Data.Text      (Text)
+import qualified Data.Text      as T
+import qualified Data.Text.Read as TR
 
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
@@ -90,10 +95,18 @@ toRule mr =
         , dRationale = Nothing
         }
     fill val = T.concat . map (part val)
-    part _   (SLit t)      = t
+    part _   (SLit t) = t
     part val (SHole "value") = val
-    -- Any other hole name was rejected at parse time; loud if it slips through.
-    part _   (SHole h)     = error ("engine rule emit: unknown hole <" <> T.unpack h <> ">")
+    part val (SHole h)
+      | Just n <- valueIndex h =
+          case drop (n - 1) (T.words val) of
+            (w : _) -> w
+            -- Fail fast and loud: a silent empty string would realize a wrong
+            -- module. The rewrite channel has no Either, so this is an error.
+            []      -> error ("engine rule " <> T.unpack (mrId mr) <> ": <" <> T.unpack h
+                                <> "> out of range for value: " <> T.unpack val)
+      -- Any other hole name was rejected at parse time; loud if it slips through.
+      | otherwise = error ("engine rule emit: unknown hole <" <> T.unpack h <> ">")
 
 -- | Interpret a minted demand: satisfied when any decision has the subject.
 toDemand :: DemandSpec -> Demand
@@ -138,9 +151,18 @@ parseRuleBody rid body = do
       rhs    <- traverse (checkHole pre) (parseHoleyText rhsRaw)
       Right (Emit (T.splitOn "." pathTok) rhs)
     checkHole p part@(SHole h)
-      | h == "value" = Right part
-      | otherwise    = Left (p <> "unknown hole <" <> h <> "> (only <value> is defined)")
+      | h == "value"               = Right part
+      | Just _ <- valueIndex h     = Right part
+      | otherwise = Left (p <> "unknown hole <" <> h <> "> (only <value> and <value.N> are defined)")
     checkHole _ part = Right part
+
+-- | @value.N@ -> N (1-based); anything else -> Nothing.
+valueIndex :: Text -> Maybe Int
+valueIndex h = do
+  numTxt <- T.stripPrefix "value." h
+  case TR.decimal numTxt of
+    Right (n, rest) | T.null rest, n >= 1 -> Just n
+    _ -> Nothing
 
 -- Demand body: @demand <subject> "<question>"@
 

@@ -376,6 +376,17 @@ main = hspec $ do
     it "rejects an emit with an unknown hole" $
       parseRuleBody "r" "match fact x => a.b \"<mystery>\"" `shouldSatisfy` isLeft
 
+    it "<value.N> picks the Nth token of the matched assertion" $ do
+      let r = MapRule "r4" Fact ["backup", "job"]
+                [ Emit ["src"] [SLit "\"", SHole "value.1", SLit "\""]
+                , Emit ["dst"] [SLit "\"", SHole "value.2", SLit "\""]
+                ]
+          matched = (mk "d1" "unused" "/var/lib /backup" Stated) { dSubject = Subject ["backup", "job"] }
+      case refine 100 [toRule r] (fromList [matched]) of
+        Right b -> [ (dSubject d, dAssertion d) | d <- toList b ] `shouldMatchList`
+          [ (Subject ["src"], Assertion "\"/var/lib\""), (Subject ["dst"], Assertion "\"/backup\"") ]
+        Left e -> expectationFailure ("unexpected refine error: " ++ show e)
+
     it "an interpreted rule fires on its (kind, subject) and fills <value>" $ do
       let matched = (mk "d2" "unused" "hourly" Stated) { dSubject = Subject ["feed", "cadence"] }
       case refine 100 [toRule rule] (fromList [matched]) of

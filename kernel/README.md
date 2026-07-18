@@ -17,9 +17,10 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Run` | section 5 | the deterministic pipeline; `RunError` is the spec's four run outcomes |
 | `Lips.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
 | `Lips.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
-| `Lips.Lang.Lang` | section 5 | the `.lang` stored form: patterns as `meta` decisions, round-tripping |
+| `Lips.Lang.Lang` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
+| `Lips.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |
 | `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |
-| `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + pattern-candidate parser (pure) |
+| `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + whole-engine candidate parser (pure) |
 
 ## The Loop
 
@@ -27,13 +28,17 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
     lips run examples/feed.loose                 # deterministic: crystallize -> refine -> realize (no AI)
 
 `generate` is the one step where a model runs (spec section 5). The model mints
-a *language* (a set of patterns in `<file>.lang`); it never states the meaning
-of the program. The kernel then crystallizes the program with that language,
-validates it by a full run, and only then writes `<file>.lang`, the crystal
-witness `<file>.decisions`, and a `<file>.generation` audit record. It routes
-the model call through `pi` in print mode (`pi -p -nt --no-session --model
-...`); the default model is `anthropic/claude-opus-4-8`, overridable as the
-first argument.
+a whole *engine* into `<file>.lang` -- patterns (the language), rules (the
+mechanisms, as `match <kind> <subject> => <option.path> "<rhs>" ; ...`), and
+demands -- and it never states the meaning of the program. The kernel then
+crystallizes the program with that engine, validates it by a full run plus a
+Nix parse (`nix-instantiate --parse`), and only then writes `<file>.lang`, the
+crystal witness `<file>.decisions`, and a `<file>.generation` audit record. It
+routes the model call through `pi` in print mode (`pi -p -nt --no-session
+--model ...`); the default model is `anthropic/claude-opus-4-8`, overridable
+as the first argument. No domain vocabulary is compiled in: the model invents
+the subjects, and closure is checked (unmapped decision, unmet demand,
+uncovered line, or invalid Nix each rejects the engine), not trusted.
 
 `run` takes the loose program directly and crystallizes it with `<file>.lang`,
 with no model. Edits that stay within the language (changing a value or
@@ -57,10 +62,16 @@ text. The boundary is explicit in the code:
   end to end; nothing is written unless the whole loop succeeds.
 - The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`).
 
-This milestone crystallizes the *front half* of the engine (the language). The
-*back half* (obligation-to-mechanism rules, demands) stays hand-written;
-engines like `Lips.Engine.Feed` are written by hand for now. Making rules data
-too is the engine-synthesis milestone.
+The whole engine is data: patterns (front half) and rules + demands (back
+half) all live in `<file>.lang` and are interpreted by generic kernel
+executors (`Lips.Engine.Data`). Nothing problem-specific is compiled into the
+kernel; there is no hand-written engine anymore. Minted rules emit only ground
+(`Meta`) decisions, so a minted engine terminates in one refinement pass by
+construction (cascades stay a hand-written-`Rule` capability until a real
+program needs them minted). An emit's `<value>` hole takes the matched
+decision's assertion verbatim; `<value.N>` takes its Nth whitespace token --
+kernel physics absorbed from the first live run, where the model otherwise
+unpacked packed values with Nix `splitString` gymnastics.
 
 `.decisions` is no longer a source artifact: it is the cached crystal, derived
 from the loose text plus `.lang`, safe to delete. The only irrecoverable
@@ -75,15 +86,15 @@ authoring text, which only `generate` turns into decisions.
 `test/Spec.hs` is the seed conformance suite: every block cites the spec
 invariant it pins.
 
-`Lips.Engine.Feed` is one hand-written example engine (a real engine is what
-`generate` produces); `app/Main.hs` is the reference `lips` CLI. Together they
-crystallize a loose program to a NixOS module with no AI:
+`app/Main.hs` is the reference `lips` CLI. With a minted engine beside the
+program, it crystallizes a loose program to a NixOS module with no AI:
 
     nix run . -- run examples/feed.loose         # crystallize + realize, no AI
+    nix run . -- run examples/backup.loose       # a second, non-feed domain
 
-This reads `examples/feed.loose` and `examples/feed.loose.lang`. An unmet
-demand, an escaping line, or a missing language instead fails loud and names
-`generate` as the remedy.
+This reads the program and its `<file>.lang`. An unmet demand, an escaping
+line, or a missing language instead fails loud and names `generate` as the
+remedy.
 
 ## Design Choices (answering spec section 11)
 

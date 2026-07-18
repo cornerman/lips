@@ -1,3 +1,9 @@
 p1 meta lang.pattern.p1 stated "the bank drops csv files into <loc> => fact feed.source stated \"<loc>\"" @lang:0
-p2 meta lang.pattern.p2 stated "the bank delivers new files every <schedule> => fact feed.cadence stated \"<schedule>\"" @lang:0
-p3 meta lang.pattern.p3 stated "every bank row becomes exactly one <record> => oblige feed.ingest stated \"<record>\"" @lang:0
+p2 meta lang.pattern.p2 stated "the bank delivers new files every <period> => fact feed.schedule stated \"<period>\"" @lang:0
+p3 meta lang.pattern.p3 stated "every bank row becomes exactly one <unit> => invariant feed.mapping stated \"<unit>\"" @lang:0
+q1 meta engine.demand.q1 stated "demand feed.source \"where do the files arrive?\"" @lang:0
+q2 meta engine.demand.q2 stated "demand feed.schedule \"how often are files delivered?\"" @lang:0
+q3 meta engine.demand.q3 stated "demand feed.mapping \"what does each row become?\"" @lang:0
+r1 meta engine.rule.r1 stated "match fact feed.source => systemd.services.ingest.environment.INBOX \"\\\"<value>\\\"\"" @lang:0
+r2 meta engine.rule.r2 stated "match fact feed.schedule => systemd.timers.ingest.timerConfig.OnCalendar \"\\\"<value>\\\"\" ; systemd.timers.ingest.wantedBy \"[ \\\"timers.target\\\" ]\"" @lang:0
+r3 meta engine.rule.r3 stated "match invariant feed.mapping => systemd.services.ingest.environment.ROW_UNIT \"\\\"<value>\\\"\"" @lang:0
