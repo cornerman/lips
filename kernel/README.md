@@ -13,6 +13,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Refine` | section 2.4, 4 | refinement to fixpoint, orthogonality (`Overlap`), stamped provenance |
 | `Lips.Kernel.Demand` | section 2.5 | demands and open questions, completeness |
 | `Lips.Kernel.Reader` | section 2 | canonical stored form: `readBase`/`renderBase`, round-tripping diffable text |
+| `Lips.Kernel.Realize` | section 10 | projects a ground base to a NixOS module (`realize`), refusing conflicts |
 
 The canonical form is one decision per line,
 `id kind subject strength "assertion" [@file:line | <-ids via rule] [-- rationale]`,

@@ -19,6 +19,7 @@ import Lips.Kernel.Base
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader
+import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
@@ -174,6 +175,33 @@ main = hspec $ do
     it "round-trips any base: readBase . renderBase == id" $
       property $ \ds ->
         let b = fromList ds in readBase (renderBase b) === Right b
+
+  describe "realization (spec 10: base -> NixOS module)" $ do
+    let ground =
+          [ (mk "g1" "services" "true" Stated) { dSubject = Subject ["services", "ledger", "enable"], dProv = Derived [DecisionId "m31"] (RuleId "ingest") }
+          , (mk "g2" "timer" "\"daily\"" Stated) { dSubject = Subject ["systemd", "timers", "ledger", "timerConfig", "OnCalendar"], dProv = FromSource (SourceLoc "ledger" 2) }
+          ]
+
+    it "emits a valid module with sorted, provenance-tagged assignments" $ do
+      let expected = T.unlines
+            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            , "{ config, lib, pkgs, ... }:"
+            , "{"
+            , "  # <-m31 via ingest"
+            , "  services.ledger.enable = true;"
+            , "  # ledger:2"
+            , "  systemd.timers.ledger.timerConfig.OnCalendar = \"daily\";"
+            , "}"
+            ]
+      realize (fromList ground) `shouldBe` Right expected
+
+    it "refuses to realize a base with a conflict" $ do
+      let clash = [mk "a" "x" "true" Stated, mk "b" "x" "false" Stated]
+      realize (fromList clash) `shouldSatisfy` isLeft
+
+    it "is order-independent (deterministic output)" $
+      property $ forAll (shuffle ground) $ \perm ->
+        realize (fromList perm) === realize (fromList ground)
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
