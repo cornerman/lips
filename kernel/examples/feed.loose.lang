@@ -1,0 +1,3 @@
+p1 meta lang.pattern.p1 stated "the bank drops csv files into <loc> => fact feed.source stated \"<loc>\"" @lang:0
+p2 meta lang.pattern.p2 stated "the bank delivers new files every <schedule> => fact feed.cadence stated \"<schedule>\"" @lang:0
+p3 meta lang.pattern.p3 stated "every bank row becomes exactly one <record> => oblige feed.ingest stated \"<record>\"" @lang:0

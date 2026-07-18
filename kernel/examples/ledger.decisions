@@ -1,7 +1,0 @@
-# An example lips program in canonical stored form: the ledger's bank feed.
-# This is what a crystallized program looks like as decisions, one per line.
-# `lips run examples/ledger.decisions` realizes it to a NixOS module, no AI.
-
-f1 fact feed.source stated "inbox/" @ledger:7
-f2 fact feed.cadence stated "hourly" @ledger:7
-o1 oblige feed.ingest stated "every bank row becomes exactly one transaction" @ledger:9

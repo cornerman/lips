@@ -22,6 +22,7 @@ import Lips.Kernel.Reader
 import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
+import qualified Lips.Engine.Feed as Feed
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parsePatternCandidates, PatternCandidate (..))
 import Lips.Lang.Pattern
@@ -369,6 +370,51 @@ main = hspec $ do
       let bad = (patternToDecision (Pattern "p1" [THole "loc"] Fact Stated [SLit "feed.source"] [SHole "loc"]))
                   { dAssertion = Assertion "<loc> => fact feed.source stated \"<missing>\"" }
       decisionToPattern bad `shouldSatisfy` isLeft
+
+  -- Corpus pin (crystallization plan step 6): a fixed feed language, the loose
+  -- program, and edits of it, all crystallized and run with no model. This is
+  -- the edit-tolerance contract made concrete: value edits flow through.
+  describe "end-to-end feed corpus (crystallization plan: edit-tolerance)" $ do
+    let langText = T.unlines
+          [ "p1 meta lang.pattern.p1 stated \"the bank drops csv files into <loc> => fact feed.source stated \\\"<loc>\\\"\" @lang:0"
+          , "p2 meta lang.pattern.p2 stated \"the bank delivers new files every <schedule> => fact feed.cadence stated \\\"<schedule>\\\"\" @lang:0"
+          , "p3 meta lang.pattern.p3 stated \"every bank row becomes exactly one <record> => oblige feed.ingest stated \\\"<record>\\\"\" @lang:0"
+          ]
+        loose loc sched = T.unlines
+          [ "the bank drops csv files into " <> loc <> "."
+          , "the bank delivers new files every " <> sched <> "."
+          , "every bank row becomes exactly one transaction."
+          ]
+        runLoose loc sched = do
+          pats <- either (Left . show) Right (readLang langText)
+          base <- either (Left . show) Right (crystallize "feed" pats (loose loc sched))
+          either (Left . show) Right (runBase 10000 Feed.rules Feed.demands base)
+        moduleWith inbox oncal = T.unlines
+          [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+          , "{ config, lib, pkgs, ... }:"
+          , "{"
+          , "  # <-d3 via map-ingest"
+          , "  systemd.services.ledger-ingest.enable = true;"
+          , "  # <-d1 via map-source"
+          , "  systemd.services.ledger-ingest.environment.LEDGER_INBOX = \"" <> inbox <> "\";"
+          , "  # <-d3 via map-ingest"
+          , "  systemd.services.ledger-ingest.wantedBy = [ \"multi-user.target\" ];"
+          , "  # <-d2 via map-cadence"
+          , "  systemd.timers.ledger-ingest.timerConfig.OnCalendar = \"" <> oncal <> "\";"
+          , "}"
+          ]
+
+    it "the language round-trips through storage" $
+      (readLang langText >>= Right . renderLang) `shouldSatisfy` isRight
+
+    it "crystallizes and realizes the original program (no model)" $
+      runLoose "inbox/" "hour" `shouldBe` Right (moduleWith "inbox/" "hour")
+
+    it "absorbs value edits with no model (edit-tolerance by construction)" $
+      runLoose "dropzone/" "day" `shouldBe` Right (moduleWith "dropzone/" "day")
+
+isRight :: Either a b -> Bool
+isRight = either (const False) (const True)
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)

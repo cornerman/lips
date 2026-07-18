@@ -15,38 +15,56 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Reader` | section 2 | canonical stored form: `readBase`/`renderBase`, round-tripping diffable text |
 | `Lips.Kernel.Realize` | section 10 | projects a ground base to a NixOS module (`realize`), refusing conflicts |
 | `Lips.Kernel.Run` | section 5 | the deterministic pipeline; `RunError` is the spec's four run outcomes |
+| `Lips.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
+| `Lips.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
+| `Lips.Lang.Lang` | section 5 | the `.lang` stored form: patterns as `meta` decisions, round-tripping |
 | `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |
-| `Lips.Generate.Reading` | section 5 | the reading half of `generate`: system prompt + candidate parser (pure) |
+| `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + pattern-candidate parser (pure) |
 
 ## The Loop
 
-    lips generate [model] examples/feed.loose   # AI step: loose text -> feed.loose.decisions (+ open questions)
-    lips run examples/feed.loose.decisions       # deterministic: decisions -> NixOS module
+    lips generate [model] examples/feed.loose   # AI step: mints feed.loose.lang, validates by a full run
+    lips run examples/feed.loose                 # deterministic: crystallize -> refine -> realize (no AI)
 
-`generate` is the one step where a model runs (spec section 5). It routes the
-model call through `pi` in print mode (`pi -p -nt --no-session --model ...`),
-so pi is the model gateway and handles provider auth; the default model is
-`anthropic/claude-opus-4-8`, overridable as the first argument. Each run writes
-a `<file>.generation` audit record (model, prompt, input, raw reply).
+`generate` is the one step where a model runs (spec section 5). The model mints
+a *language* (a set of patterns in `<file>.lang`); it never states the meaning
+of the program. The kernel then crystallizes the program with that language,
+validates it by a full run, and only then writes `<file>.lang`, the crystal
+witness `<file>.decisions`, and a `<file>.generation` audit record. It routes
+the model call through `pi` in print mode (`pi -p -nt --no-session --model
+...`); the default model is `anthropic/claude-opus-4-8`, overridable as the
+first argument.
 
-## The AI Boundary
+`run` takes the loose program directly and crystallizes it with `<file>.lang`,
+with no model. Edits that stay within the language (changing a value or
+instance a hole binds) flow through unchanged; an edit that escapes the
+language fails loud and names `generate` as the remedy.
+
+## The AI Boundary (the inversion)
 
 Only the model call inside `generate` is non-deterministic; everything else is
-pure. The boundary is kept explicit in the code:
+pure. The model delivers *grammar*, never *meaning*: it mints patterns, and the
+kernel derives the program's decisions from them by deterministic template
+matching. AI may invent grammar; only the kernel assigns meaning to the program
+text. The boundary is explicit in the code:
 
-- `Lips.Generate.Reading` holds the *pure* reading logic: the system prompt (a
+- `Lips.Generate.Minting` holds the *pure* minting logic: the system prompt (a
   versioned artifact, spec section 5 layer 3) and the parser that turns the
-  model's confidence-prefixed lines into candidates.
-- `Lips.Generate.Harness` disposes of candidates deterministically: `admit`
-  accepts only those at or above the confidence threshold (0.7) and demotes the
-  rest to open questions carrying their candidate answer; `unanimous` forces
-  only deductions that recur identically across resamples.
+  model's confidence-prefixed pattern lines into candidates.
+- `generate` refuses to write a language it is unsure of: any pattern below the
+  confidence threshold (0.7) aborts the write (deduce-or-fail). The minted
+  language is then validated by crystallizing the actual program and running it
+  end to end; nothing is written unless the whole loop succeeds.
 - The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`).
 
-This milestone implements the *reading* half of `generate` (loose text ->
-decision base). Engine synthesis (proposing new obligation-to-mechanism
-mappings) stays hand-written; engines like `Lips.Engine.Feed` are written by
-hand for now.
+This milestone crystallizes the *front half* of the engine (the language). The
+*back half* (obligation-to-mechanism rules, demands) stays hand-written;
+engines like `Lips.Engine.Feed` are written by hand for now. Making rules data
+too is the engine-synthesis milestone.
+
+`.decisions` is no longer a source artifact: it is the cached crystal, derived
+from the loose text plus `.lang`, safe to delete. The only irrecoverable
+artifact is the loose program itself.
 
 The canonical form is one decision per line,
 `id kind subject strength "assertion" [@file:line | <-ids via rule] [-- rationale]`,
@@ -59,11 +77,13 @@ invariant it pins.
 
 `Lips.Engine.Feed` is one hand-written example engine (a real engine is what
 `generate` produces); `app/Main.hs` is the reference `lips` CLI. Together they
-run a canonical-form program to a NixOS module with no AI:
+crystallize a loose program to a NixOS module with no AI:
 
-    nix run . -- run examples/ledger.decisions   # prints a valid NixOS module
+    nix run . -- run examples/feed.loose         # crystallize + realize, no AI
 
-An unmet demand instead prints the verbatim open question and exits non-zero.
+This reads `examples/feed.loose` and `examples/feed.loose.lang`. An unmet
+demand, an escaping line, or a missing language instead fails loud and names
+`generate` as the remedy.
 
 ## Design Choices (answering spec section 11)
 
