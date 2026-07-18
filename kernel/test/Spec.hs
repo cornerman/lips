@@ -23,6 +23,7 @@ import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Generate.Harness
+import Lips.Generate.Reading (parseCandidates)
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -224,6 +225,11 @@ main = hspec $ do
       run 100 engine [] "d1 fact x stated \"1\" @f:1\nd2 fact x stated \"2\" @f:2\n"
         `shouldSatisfy` \r -> case r of Left (Conflicted _) -> True; _ -> False
 
+    it "unmapped: an obligation no rule maps fails loud (anti-MDA guard)" $
+      run 100 engine (needs ["feed", "ingest"])
+        "o1 oblige feed.ingest stated \"rows\" @l:9\nx1 invariant feed.dedup stated \"never twice\" @l:10\n"
+        `shouldSatisfy` \r -> case r of Left (Unmapped ds) -> map dSubject ds == [Subject ["feed", "dedup"]]; _ -> False
+
     it "realization: a satisfied program refines and realizes to a module" $ do
       let expected = T.unlines
             [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
@@ -261,6 +267,24 @@ main = hspec $ do
 
     it "unanimous: an empty batch forces nothing (fail loud)" $
       unanimous [] `shouldBe` (Left [] :: Either [Divergence] [Decision])
+
+  describe "generate reading (spec 5: candidate parsing)" $ do
+    it "parses a confidence-prefixed canonical line into a candidate" $ do
+      let (errs, cs) = parseCandidates "0.95 d1 fact currency stated \"EUR\" @program:1"
+      errs `shouldBe` []
+      map candConfidence cs `shouldBe` [Confidence 0.95]
+      map (dId . candDecision) cs `shouldBe` [DecisionId "d1"]
+
+    it "skips fences and comments, collects malformed lines as errors" $ do
+      let reply = T.unlines
+            [ "```", "# note", ""
+            , "0.9 d1 oblige feed.ingest stated \"rows\" @program:2"
+            , "2.0 d2 fact x stated \"y\" @program:3"   -- confidence out of range
+            , "```"
+            ]
+          (errs, cs) = parseCandidates reply
+      map (dId . candDecision) cs `shouldBe` [DecisionId "d1"]
+      length errs `shouldBe` 1
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)

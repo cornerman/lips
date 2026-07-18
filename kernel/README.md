@@ -16,18 +16,37 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Realize` | section 10 | projects a ground base to a NixOS module (`realize`), refusing conflicts |
 | `Lips.Kernel.Run` | section 5 | the deterministic pipeline; `RunError` is the spec's four run outcomes |
 | `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |
+| `Lips.Generate.Reading` | section 5 | the reading half of `generate`: system prompt + candidate parser (pure) |
+
+## The Loop
+
+    lips generate [model] examples/feed.loose   # AI step: loose text -> feed.loose.decisions (+ open questions)
+    lips run examples/feed.loose.decisions       # deterministic: decisions -> NixOS module
+
+`generate` is the one step where a model runs (spec section 5). It routes the
+model call through `pi` in print mode (`pi -p -nt --no-session --model ...`),
+so pi is the model gateway and handles provider auth; the default model is
+`anthropic/claude-opus-4-8`, overridable as the first argument. Each run writes
+a `<file>.generation` audit record (model, prompt, input, raw reply).
 
 ## The AI Boundary
 
-Everything above is deterministic and model-free. `generate` is the one step
-where a model runs (spec section 5). Its *deterministic scaffolding* lives in
-`Lips.Generate.Harness`: `admit` accepts only candidates at or above a
-confidence threshold and demotes the rest to open questions carrying their
-candidate answer; `unanimous` forces only deductions that recur identically
-across resamples. The model call itself (the producer of candidates) is the
-imperative shell and is deliberately not built here: it needs network and a
-pinned model, and stubbing it would hide the boundary the whole design exists
-to make explicit.
+Only the model call inside `generate` is non-deterministic; everything else is
+pure. The boundary is kept explicit in the code:
+
+- `Lips.Generate.Reading` holds the *pure* reading logic: the system prompt (a
+  versioned artifact, spec section 5 layer 3) and the parser that turns the
+  model's confidence-prefixed lines into candidates.
+- `Lips.Generate.Harness` disposes of candidates deterministically: `admit`
+  accepts only those at or above the confidence threshold (0.7) and demotes the
+  rest to open questions carrying their candidate answer; `unanimous` forces
+  only deductions that recur identically across resamples.
+- The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`).
+
+This milestone implements the *reading* half of `generate` (loose text ->
+decision base). Engine synthesis (proposing new obligation-to-mechanism
+mappings) stays hand-written; engines like `Lips.Engine.Feed` are written by
+hand for now.
 
 The canonical form is one decision per line,
 `id kind subject strength "assertion" [@file:line | <-ids via rule] [-- rationale]`,

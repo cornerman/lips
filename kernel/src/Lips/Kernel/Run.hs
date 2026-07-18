@@ -19,6 +19,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 
 import Lips.Kernel.Base
+import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
 import Lips.Kernel.Realize  (realize)
@@ -34,6 +35,10 @@ data RunError
     Conflicted [Conflict]
   | -- | A refinement failure: rule overlap or non-termination.
     RefineFailed RefineError
+  | -- | Ground decisions no rule mapped to a mechanism: the program escaped the
+    -- engine (spec section 3, the anti-MDA guard). Never realized as a guess;
+    -- re-enters generate so the engine grows a mapping.
+    Unmapped [Decision]
   deriving (Eq, Show)
 
 -- | Run a program (canonical-form text) against an engine (its rules and
@@ -48,4 +53,8 @@ run budget rules demands src = do
     []        -> Right ()
     questions -> Left (OpenQuestions questions)
   ground  <- first RefineFailed (refine budget rules base1)
-  first Conflicted (realize ground)
+  -- Only mapped mechanisms (kind Meta) may realize; any surviving domain
+  -- decision is an unmapped obligation and must fail loud, not emit garbage.
+  case filter ((/= Meta) . dKind) (toList ground) of
+    []      -> first Conflicted (realize ground)
+    leftovers -> Left (Unmapped leftovers)
