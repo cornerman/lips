@@ -22,16 +22,15 @@ import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hPutStrLn, stderr)
 import           System.Process     (readProcessWithExitCode)
 
-import qualified Lips.Engine.Feed      as Feed
+import           Lips.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (PatternCandidate (..), parsePatternCandidates, systemPrompt)
+import           Lips.Generate.Minting  (ItemCandidate (..), assemble, parseEngineCandidates, systemPrompt)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Run
 import           Lips.Lang.Crystallize  (CrystError (..), crystallize)
-import           Lips.Lang.Lang         (readLang, renderLang)
-import           Lips.Lang.Pattern      (Pattern)
+import           Lips.Lang.Lang         (EngineData (..), readLang, renderLang)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
 budget :: Int
@@ -72,48 +71,69 @@ runLoose file = do
       T.pack file <> " has no crystallized language (" <> T.pack langFile <> " missing)\n"
         <> "run: lips generate " <> T.pack file
     Right src -> case readLang src of
-      Left es    -> die ("corrupt language file:\n" <> T.unlines (map renderParseError es))
-      Right pats -> case crystallize file pats program of
-        Left errs -> die (renderCrystErrors errs)
-        Right base -> case runBase budget Feed.rules Feed.demands base of
-          Right nixModule -> TIO.putStr nixModule
-          Left err        -> die (renderRunError err)
+      Left es   -> die ("corrupt language file:\n" <> T.unlines (map renderParseError es))
+      Right eng -> case crystallize file (edPatterns eng) program of
+        Left errs  -> die (renderCrystErrors errs)
+        Right base ->
+          case runBase budget (map toRule (edRules eng)) (map toDemand (edDemands eng)) base of
+            Right nixModule -> TIO.putStr nixModule
+            Left err        -> die (renderRunError err)
 
--- | @generate@: the one AI step. The model mints patterns; the kernel
--- crystallizes and validates by a full run before writing anything.
+-- | @generate@: the one AI step. The model mints a whole engine (patterns,
+-- rules, demands); the kernel crystallizes the program with it and validates
+-- by a full run plus a Nix parse before writing anything.
 generate :: String -> FilePath -> IO ()
 generate model file = do
   program <- TIO.readFile file
-  reply   <- callPi model (systemPrompt Feed.vocabulary) program
-  let (errs, candidates) = parsePatternCandidates reply
+  reply   <- callPi model systemPrompt program
+  let (errs, candidates) = parseEngineCandidates reply
   mapM_ (\e -> TIO.hPutStrLn stderr ("warning: " <> e)) errs
-  -- Deduce-or-fail: refuse a language the model is unsure of.
-  let unsure = [pcPattern c | c <- candidates, let Confidence x = pcConfidence c, x < confidenceThreshold]
+  -- Deduce-or-fail: refuse an engine the model is unsure of.
+  let unsure = [c | c <- candidates, let Confidence x = icConfidence c, x < confidenceThreshold]
   case unsure of
-    (_ : _) -> die ("model is unsure of " <> tshow (length unsure) <> " pattern(s); refusing to write (deduce-or-fail)")
+    (_ : _) -> die ("model is unsure of " <> tshow (length unsure) <> " item(s); refusing to write (deduce-or-fail)")
     [] -> do
-      let pats = map pcPattern candidates
-      -- Validate the minted language against the actual program: it must
-      -- crystallize with full coverage and realize end to end. Nothing is
-      -- written unless the whole loop succeeds.
-      case validate file pats program of
-        Left problem -> die ("minted language rejected:\n" <> problem)
+      let eng = assemble (map icItem candidates)
+      -- Validate the minted engine against the actual program: it must
+      -- crystallize with full coverage, realize end to end, and the module
+      -- must parse as Nix. Nothing is written unless the whole loop succeeds.
+      case validate file eng program of
+        Left problem -> die ("minted engine rejected:\n" <> problem)
         Right (base, nixModule) -> do
-          TIO.writeFile (file <> ".lang") (renderLang pats)
-          TIO.writeFile (file <> ".decisions") (renderBase base)
-          TIO.writeFile (file <> ".generation") (record model program reply)
-          TIO.putStrLn ("wrote " <> T.pack file <> ".lang (" <> tshow (length pats) <> " patterns), verified to a module:")
-          TIO.putStr nixModule
+          nixCheck <- nixParses nixModule
+          case nixCheck of
+            Left why -> die ("minted engine rejected: realized module is not valid Nix:\n" <> why)
+            Right () -> do
+              TIO.writeFile (file <> ".lang") (renderLang eng)
+              TIO.writeFile (file <> ".decisions") (renderBase base)
+              TIO.writeFile (file <> ".generation") (record model program reply)
+              TIO.putStrLn ("wrote " <> T.pack file <> ".lang ("
+                <> tshow (length (edPatterns eng)) <> " patterns, "
+                <> tshow (length (edRules eng)) <> " rules, "
+                <> tshow (length (edDemands eng)) <> " demands), verified to a module:")
+              TIO.putStr nixModule
 
--- | Crystallize and fully run the program with a candidate language; on
--- success return the crystal and the realized module.
-validate :: FilePath -> [Pattern] -> Text -> Either Text (Base, Text)
-validate file pats program =
-  case crystallize file pats program of
+-- | Crystallize and fully run the program with a candidate engine; on success
+-- return the crystal and the realized module.
+validate :: FilePath -> EngineData -> Text -> Either Text (Base, Text)
+validate file eng program =
+  case crystallize file (edPatterns eng) program of
     Left errs  -> Left (renderCrystErrors errs)
-    Right base -> case runBase budget Feed.rules Feed.demands base of
-      Left err        -> Left (renderRunError err)
-      Right nixModule -> Right (base, nixModule)
+    Right base ->
+      case runBase budget (map toRule (edRules eng)) (map toDemand (edDemands eng)) base of
+        Left err        -> Left (renderRunError err)
+        Right nixModule -> Right (base, nixModule)
+
+-- | Check the realized module parses as Nix (closes the garbage-rhs hole at
+-- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable
+-- engine is not written (deduce-or-fail).
+nixParses :: Text -> IO (Either Text ())
+nixParses nixModule = do
+  result <- try (readProcessWithExitCode "nix-instantiate" ["--parse", "-"] (T.unpack nixModule))
+  pure $ case result of
+    Left e -> Left ("nix-instantiate unavailable: " <> tshow (e :: IOException))
+    Right (ExitSuccess, _, _)   -> Right ()
+    Right (ExitFailure _, _, e) -> Left (T.pack e)
 
 -- | Call pi in print mode as the model gateway: no tools, no session, a fixed
 -- system prompt, the program as the user prompt. pi handles provider auth.
@@ -133,7 +153,7 @@ callPi model system userPrompt = do
 record :: String -> Text -> Text -> Text
 record model program reply = T.unlines
   [ "model: " <> T.pack model
-  , "--- system prompt ---", systemPrompt Feed.vocabulary
+  , "--- system prompt ---", systemPrompt
   , "--- program (input) ---", program
   , "--- raw reply ---", reply
   ]

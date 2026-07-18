@@ -1,0 +1,214 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | The engine's back half as data (engine-synthesis plan): minted
+-- obligation-to-mechanism rules and demands, interpreted by generic kernel
+-- executors. This is what replaces hand-written engines like the former
+-- @Lips.Engine.Feed@: the model mints these as decisions in the @.lang@ file;
+-- 'toRule' and 'toDemand' interpret them; nothing problem-specific is ever
+-- compiled into the kernel.
+--
+-- Body sub-grammars (stored inside a decision's assertion):
+--
+-- > rule:   match <kind> <subject> => <optionPath> "<rhs>" ; <optionPath> "<rhs>" ...
+-- > demand: demand <subject> "<question>"
+--
+-- @\<rhs\>@ may contain the hole @\<value\>@, filled verbatim with the matched
+-- decision's assertion text.
+--
+-- Deliberate restriction: a minted rule emits only ground ('Meta') decisions,
+-- so a minted rule set terminates in one refinement pass by construction --
+-- no cascades. The kernel's general 'Rule' keeps supporting cascades for
+-- hand-written engines; minted engines earn them when a real program needs
+-- them.
+module Lips.Engine.Data
+  ( MapRule (..)
+  , Emit (..)
+  , DemandSpec (..)
+  , toRule
+  , toDemand
+  , renderRuleBody
+  , parseRuleBody
+  , renderDemandBody
+  , parseDemandBody
+  ) where
+
+import           Data.Text (Text)
+import qualified Data.Text as T
+
+import Lips.Kernel.Base     (Base, toList)
+import Lips.Kernel.Decision
+import Lips.Kernel.Demand   (Demand (..))
+import Lips.Kernel.Refine   (Rule (..))
+import Lips.Lang.Pattern    (StrPart (..))
+
+-- | One ground option assignment a rule emits: the option path and the
+-- right-hand side template (literal text with @\<value\>@ holes).
+data Emit = Emit
+  { emPath :: [Text]
+  , emRhs  :: [StrPart]
+  }
+  deriving (Eq, Show)
+
+-- | A minted obligation-to-mechanism rule: matches one (kind, subject), emits
+-- ground option assignments.
+data MapRule = MapRule
+  { mrId      :: Text
+  , mrKind    :: Kind
+  , mrSubject :: [Text]
+  , mrEmits   :: [Emit]
+  }
+  deriving (Eq, Show)
+
+-- | A minted demand: the base must contain a decision with this subject.
+data DemandSpec = DemandSpec
+  { dsId       :: Text
+  , dsSubject  :: [Text]
+  , dsQuestion :: Text
+  }
+  deriving (Eq, Show)
+
+-- | Interpret a minted rule with the kernel's generic refinement machinery.
+-- The emitted decisions are 'Meta' (mapped mechanisms); ids and provenance are
+-- stamped by the refiner, so only subject and assertion matter here.
+toRule :: MapRule -> Rule
+toRule mr =
+  Rule
+    { rId      = RuleId (mrId mr)
+    , rMatches = \d -> dKind d == mrKind mr && dSubject d == Subject (mrSubject mr)
+    , rRewrite = \d -> map (emitDecision (assertionText d)) (mrEmits mr)
+    }
+  where
+    assertionText d = case dAssertion d of Assertion a -> a
+    emitDecision val e =
+      Decision
+        { dId        = DecisionId ""
+        , dSubject   = Subject (emPath e)
+        , dKind      = Meta
+        , dAssertion = Assertion (fill val (emRhs e))
+        , dStrength  = Stated
+        , dProv      = FromSource (SourceLoc "" 0)
+        , dRationale = Nothing
+        }
+    fill val = T.concat . map (part val)
+    part _   (SLit t)      = t
+    part val (SHole "value") = val
+    -- Any other hole name was rejected at parse time; loud if it slips through.
+    part _   (SHole h)     = error ("engine rule emit: unknown hole <" <> T.unpack h <> ">")
+
+-- | Interpret a minted demand: satisfied when any decision has the subject.
+toDemand :: DemandSpec -> Demand
+toDemand ds =
+  Demand
+    { demId        = dsId ds
+    , demQuestion  = dsQuestion ds
+    , demSatisfied = hasSubject (dsSubject ds)
+    }
+  where
+    hasSubject segs base = any ((== Subject segs) . dSubject) (toList (base :: Base))
+
+-- Rule body: @match <kind> <subject> => <path> "<rhs>" ; <path> "<rhs>" ...@
+
+renderRuleBody :: MapRule -> Text
+renderRuleBody mr =
+  "match " <> kindText (mrKind mr) <> " " <> T.intercalate "." (mrSubject mr)
+    <> " => "
+    <> T.intercalate " ; " (map renderEmit (mrEmits mr))
+  where
+    renderEmit e = T.intercalate "." (emPath e) <> " " <> quoteParts (emRhs e)
+
+parseRuleBody :: Text -> Text -> Either Text MapRule
+parseRuleBody rid body = do
+  afterMatch <- note (pre <> "expected 'match '") (T.stripPrefix "match " body)
+  let (matchPart, arrowPart) = T.breakOn " => " afterMatch
+  emitsPart <- if T.null arrowPart then Left (pre <> "missing =>") else Right (T.drop 4 arrowPart)
+  (kind, subj) <- case T.words matchPart of
+    [k, s] -> (,) <$> parseKindTok pre k <*> pure (T.splitOn "." s)
+    _      -> Left (pre <> "match needs '<kind> <subject>'")
+  emits <- mapM (parseEmit . T.strip) (T.splitOn " ; " emitsPart)
+  if null emits
+    then Left (pre <> "rule emits nothing")
+    else Right (MapRule rid kind subj emits)
+  where
+    pre = "rule " <> rid <> ": "
+    parseEmit t = do
+      (pathTok, rest) <- case T.words t of
+        (w : _ : _) -> Right (w, T.stripStart (T.drop (T.length w) (T.stripStart t)))
+        _           -> Left (pre <> "emit needs '<path> \"<rhs>\"': " <> t)
+      rhsRaw <- parseQuoted pre rest
+      rhs    <- traverse (checkHole pre) (parseHoleyText rhsRaw)
+      Right (Emit (T.splitOn "." pathTok) rhs)
+    checkHole p part@(SHole h)
+      | h == "value" = Right part
+      | otherwise    = Left (p <> "unknown hole <" <> h <> "> (only <value> is defined)")
+    checkHole _ part = Right part
+
+-- Demand body: @demand <subject> "<question>"@
+
+renderDemandBody :: DemandSpec -> Text
+renderDemandBody ds =
+  "demand " <> T.intercalate "." (dsSubject ds) <> " " <> quoteText (dsQuestion ds)
+
+parseDemandBody :: Text -> Text -> Either Text DemandSpec
+parseDemandBody did body = do
+  afterKw <- note (pre <> "expected 'demand '") (T.stripPrefix "demand " body)
+  (subjTok, rest) <- case T.words afterKw of
+    (w : _) -> Right (w, T.stripStart (T.drop (T.length w) (T.stripStart afterKw)))
+    []      -> Left (pre <> "demand needs '<subject> \"<question>\"'")
+  q <- parseQuoted pre rest
+  Right (DemandSpec did (T.splitOn "." subjTok) q)
+  where
+    pre = "demand " <> did <> ": "
+
+-- Shared small parsers (local copies; the sub-grammars are tiny and keeping
+-- them self-contained beats exporting Reader internals).
+
+parseHoleyText :: Text -> [StrPart]
+parseHoleyText t
+  | T.null t = []
+  | otherwise =
+      case T.breakOn "<" t of
+        (before, rest)
+          | T.null rest -> [SLit before | not (T.null before)]
+          | otherwise ->
+              let (holeBody, afterClose) = T.breakOn ">" (T.drop 1 rest)
+               in if T.null afterClose
+                    then [SLit t]
+                    else [SLit before | not (T.null before)]
+                           ++ [SHole holeBody]
+                           ++ parseHoleyText (T.drop 1 afterClose)
+
+parseQuoted :: Text -> Text -> Either Text Text
+parseQuoted pre t = case T.uncons t of
+  Just ('"', rest) -> go rest T.empty
+  _                -> Left (pre <> "expected quoted string")
+  where
+    go s acc = case T.uncons s of
+      Nothing           -> Left (pre <> "unterminated string")
+      Just ('"', _)     -> Right acc
+      Just ('\\', more) -> case T.uncons more of
+        Just (c, more') -> go more' (T.snoc acc c)
+        Nothing         -> Left (pre <> "dangling escape")
+      Just (c, more)    -> go more (T.snoc acc c)
+
+quoteParts :: [StrPart] -> Text
+quoteParts ps = quoteText (T.concat (map r ps))
+  where
+    r (SLit t)  = t
+    r (SHole h) = "<" <> h <> ">"
+
+quoteText :: Text -> Text
+quoteText a = "\"" <> T.concatMap esc a <> "\""
+  where
+    esc '"'  = "\\\""
+    esc '\\' = "\\\\"
+    esc c    = T.singleton c
+
+parseKindTok :: Text -> Text -> Either Text Kind
+parseKindTok pre w =
+  note (pre <> "unknown kind " <> w) (lookup w [(kindText k, k) | k <- [minBound .. maxBound]])
+
+kindText :: Kind -> Text
+kindText = T.toLower . T.pack . show
+
+note :: Text -> Maybe a -> Either Text a
+note e = maybe (Left e) Right

@@ -22,9 +22,9 @@ import Lips.Kernel.Reader
 import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
-import qualified Lips.Engine.Feed as Feed
+import Lips.Engine.Data
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parsePatternCandidates, PatternCandidate (..))
+import Lips.Generate.Minting (parseEngineCandidates, assemble, ItemCandidate (..))
 import Lips.Lang.Pattern
 import Lips.Lang.Crystallize
 import Lips.Lang.Lang
@@ -272,23 +272,30 @@ main = hspec $ do
     it "unanimous: an empty batch forces nothing (fail loud)" $
       unanimous [] `shouldBe` (Left [] :: Either [Divergence] [Decision])
 
-  describe "generate minting (crystallization plan: pattern candidates)" $ do
-    it "parses a confidence-prefixed pattern line into a candidate" $ do
-      let (errs, cs) = parsePatternCandidates
-            "0.95 p1 the bank drops files into <loc> => fact feed.source stated \"<loc>\""
+  describe "generate minting (engine-synthesis plan: whole-engine candidates)" $ do
+    it "parses the three item forms and assembles an engine" $ do
+      let reply = T.unlines
+            [ "0.95 p1 the bank drops files into <loc> => fact feed.source stated \"<loc>\""
+            , "0.9 r1 match fact feed.source => systemd.services.i.environment.INBOX \"\\\"<value>\\\"\""
+            , "0.85 q1 demand feed.source \"where do the files arrive?\""
+            ]
+          (errs, cs) = parseEngineCandidates reply
       errs `shouldBe` []
-      map pcConfidence cs `shouldBe` [Confidence 0.95]
+      map icConfidence cs `shouldBe` map Confidence [0.95, 0.9, 0.85]
+      let eng = assemble (map icItem cs)
+      (length (edPatterns eng), length (edRules eng), length (edDemands eng)) `shouldBe` (1, 1, 1)
 
     it "skips fences and comments, collects malformed lines as errors" $ do
       let reply = T.unlines
             [ "```", "# note", ""
             , "0.9 p1 every bank row becomes one <e> => oblige feed.ingest stated \"<e>\""
             , "2.0 p2 x => fact y stated \"z\""   -- confidence out of range
+            , "0.9 r9 match fact feed.x => a.b \"<mystery>\""  -- unknown emit hole
             , "```"
             ]
-          (errs, cs) = parsePatternCandidates reply
+          (errs, cs) = parseEngineCandidates reply
       length cs `shouldBe` 1
-      length errs `shouldBe` 1
+      length errs `shouldBe` 2
 
   describe "pattern matching (crystallization plan: normalization, holes)" $ do
     it "normalizes case and strips trailing sentence punctuation" $ do
@@ -355,66 +362,123 @@ main = hspec $ do
                 _   -> False
               Left _ -> False
 
-  describe "language storage (crystallization plan: .lang round-trip)" $ do
-    let pats =
-          [ Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
-              Fact Stated [SLit "feed.source"] [SHole "loc"]
-          , Pattern "p2" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "one", THole "e"]
-              Oblige Stated [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
-          ]
+  describe "engine data (engine-synthesis plan: rules and demands as data)" $ do
+    let rule = MapRule "r2" Fact ["feed", "cadence"]
+                 [ Emit ["systemd", "timers", "t", "OnCalendar"] [SLit "\"", SHole "value", SLit "\""] ]
 
-    it "round-trips: readLang . renderLang == Right" $
-      readLang (renderLang pats) `shouldBe` Right pats
+    it "rule body round-trips" $
+      parseRuleBody "r2" (renderRuleBody rule) `shouldBe` Right rule
+
+    it "demand body round-trips" $ do
+      let q = DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
+      parseDemandBody "q1" (renderDemandBody q) `shouldBe` Right q
+
+    it "rejects an emit with an unknown hole" $
+      parseRuleBody "r" "match fact x => a.b \"<mystery>\"" `shouldSatisfy` isLeft
+
+    it "an interpreted rule fires on its (kind, subject) and fills <value>" $ do
+      let matched = (mk "d2" "unused" "hourly" Stated) { dSubject = Subject ["feed", "cadence"] }
+      case refine 100 [toRule rule] (fromList [matched]) of
+        Right b -> case toList b of
+          [d] -> (dSubject d, dKind d, dAssertion d) `shouldBe`
+                   (Subject ["systemd", "timers", "t", "OnCalendar"], Meta, Assertion "\"hourly\"")
+          ds  -> expectationFailure ("expected one emitted decision, got " ++ show (length ds))
+        Left e -> expectationFailure ("unexpected refine error: " ++ show e)
+
+  describe "language storage (crystallization plan: .lang round-trip)" $ do
+    let engine = EngineData
+          { edPatterns =
+              [ Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
+                  Fact Stated [SLit "feed.source"] [SHole "loc"]
+              , Pattern "p2" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "one", THole "e"]
+                  Oblige Stated [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
+              ]
+          , edRules =
+              [ MapRule "r1" Oblige ["feed", "ingest"]
+                  [ Emit ["services", "x", "enable"] [SLit "true"] ] ]
+          , edDemands = [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?" ]
+          }
+
+    it "round-trips the whole engine: readLang . renderLang == Right" $
+      readLang (renderLang engine) `shouldBe` Right engine
 
     it "rejects a pattern whose target hole is not bound by the template" $ do
       let bad = (patternToDecision (Pattern "p1" [THole "loc"] Fact Stated [SLit "feed.source"] [SHole "loc"]))
                   { dAssertion = Assertion "<loc> => fact feed.source stated \"<missing>\"" }
       decisionToPattern bad `shouldSatisfy` isLeft
 
-  -- Corpus pin (crystallization plan step 6): a fixed feed language, the loose
-  -- program, and edits of it, all crystallized and run with no model. This is
-  -- the edit-tolerance contract made concrete: value edits flow through.
-  describe "end-to-end feed corpus (crystallization plan: edit-tolerance)" $ do
-    let langText = T.unlines
-          [ "p1 meta lang.pattern.p1 stated \"the bank drops csv files into <loc> => fact feed.source stated \\\"<loc>\\\"\" @lang:0"
-          , "p2 meta lang.pattern.p2 stated \"the bank delivers new files every <schedule> => fact feed.cadence stated \\\"<schedule>\\\"\" @lang:0"
-          , "p3 meta lang.pattern.p3 stated \"every bank row becomes exactly one <record> => oblige feed.ingest stated \\\"<record>\\\"\" @lang:0"
-          ]
+  -- Corpus pin (crystallization + engine-synthesis plans): a whole feed engine
+  -- as data (patterns, rules, demands), the loose program, and edits of it,
+  -- all crystallized and run with no model and no hand-written engine.
+  describe "end-to-end feed corpus (engine as data, edit-tolerance)" $ do
+    let svc seg = ["systemd", "services", "ledger-ingest"] ++ seg
+        quotedValue = [SLit "\"", SHole "value", SLit "\""]
+        feedEngine = EngineData
+          { edPatterns =
+              [ Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "csv", TLit "files", TLit "into", THole "loc"]
+                  Fact Stated [SLit "feed.source"] [SHole "loc"]
+              , Pattern "p2" [TLit "the", TLit "bank", TLit "delivers", TLit "new", TLit "files", TLit "every", THole "sched"]
+                  Fact Stated [SLit "feed.cadence"] [SHole "sched"]
+              , Pattern "p3" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "exactly", TLit "one", THole "rec"]
+                  Oblige Stated [SLit "feed.ingest"] [SHole "rec"]
+              ]
+          , edRules =
+              [ MapRule "r1" Oblige ["feed", "ingest"]
+                  [ Emit (svc ["enable"]) [SLit "true"]
+                  , Emit (svc ["wantedBy"]) [SLit "[ \"multi-user.target\" ]"]
+                  ]
+              , MapRule "r2" Fact ["feed", "cadence"]
+                  [ Emit ["systemd", "timers", "ledger-ingest", "timerConfig", "OnCalendar"] quotedValue ]
+              , MapRule "r3" Fact ["feed", "source"]
+                  [ Emit (svc ["environment", "LEDGER_INBOX"]) quotedValue ]
+              ]
+          , edDemands =
+              [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
+              , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
+              ]
+          }
         loose loc sched = T.unlines
           [ "the bank drops csv files into " <> loc <> "."
           , "the bank delivers new files every " <> sched <> "."
           , "every bank row becomes exactly one transaction."
           ]
         runLoose loc sched = do
-          pats <- either (Left . show) Right (readLang langText)
-          base <- either (Left . show) Right (crystallize "feed" pats (loose loc sched))
-          either (Left . show) Right (runBase 10000 Feed.rules Feed.demands base)
+          -- through storage deliberately: the on-disk form is what run uses
+          eng  <- either (Left . show) Right (readLang (renderLang feedEngine))
+          base <- either (Left . show) Right (crystallize "feed" (edPatterns eng) (loose loc sched))
+          either (Left . show) Right
+            (runBase 10000 (map toRule (edRules eng)) (map toDemand (edDemands eng)) base)
         moduleWith inbox oncal = T.unlines
           [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
           , "{ config, lib, pkgs, ... }:"
           , "{"
-          , "  # <-d3 via map-ingest"
+          , "  # <-d3 via r1"
           , "  systemd.services.ledger-ingest.enable = true;"
-          , "  # <-d1 via map-source"
+          , "  # <-d1 via r3"
           , "  systemd.services.ledger-ingest.environment.LEDGER_INBOX = \"" <> inbox <> "\";"
-          , "  # <-d3 via map-ingest"
+          , "  # <-d3 via r1"
           , "  systemd.services.ledger-ingest.wantedBy = [ \"multi-user.target\" ];"
-          , "  # <-d2 via map-cadence"
+          , "  # <-d2 via r2"
           , "  systemd.timers.ledger-ingest.timerConfig.OnCalendar = \"" <> oncal <> "\";"
           , "}"
           ]
 
-    it "the language round-trips through storage" $
-      (readLang langText >>= Right . renderLang) `shouldSatisfy` isRight
-
-    it "crystallizes and realizes the original program (no model)" $
+    it "crystallizes and realizes the original program (no model, no hand-written engine)" $
       runLoose "inbox/" "hour" `shouldBe` Right (moduleWith "inbox/" "hour")
 
     it "absorbs value edits with no model (edit-tolerance by construction)" $
       runLoose "dropzone/" "day" `shouldBe` Right (moduleWith "dropzone/" "day")
 
-isRight :: Either a b -> Bool
-isRight = either (const False) (const True)
+    it "an unmet minted demand is an open question" $ do
+      let noSource = T.unlines
+            [ "the bank delivers new files every hour."
+            , "every bank row becomes exactly one transaction."
+            ]
+      case crystallize "feed" (edPatterns feedEngine) noSource of
+        Left e -> expectationFailure ("unexpected crystallize error: " ++ show e)
+        Right base ->
+          runBase 10000 (map toRule (edRules feedEngine)) (map toDemand (edDemands feedEngine)) base
+            `shouldBe` Left (OpenQuestions ["where do the files arrive?"])
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
