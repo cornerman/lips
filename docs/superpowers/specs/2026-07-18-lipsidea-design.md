@@ -434,6 +434,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
   values verbatim. The coexistence defense (one Solution = one ordinary
   importable module) is now a machine-checked guarantee, not a demo.
 
+- **Two-tier module layout.** Inside `kernel/src/Lips/`, the tree names the
+  tier: `Kernel/` is deterministic physics and holds all substrate, including
+  `Kernel/Engine/` (the engine *format* and generic interpreter plus the
+  closed value language) and `Kernel/Lang/` (crystallization: patterns and
+  template matching). `Generate/` is the sole non-deterministic tier, the AI
+  boundary. So there are two real tiers, not four peers. There is no
+  per-problem engine *code*: an engine is data (`.lang`); the only
+  engine-related code is the domain-blind interpreter in `Kernel/Engine/`.
+  (`Kernel.Lang.Lang` is a cosmetic doubled name, the `.lang` store module;
+  harmless, not yet renamed.)
+
 - **Repository layout and tooling.** `kernel/` is the pure deliverable (the
   calculus reference implementation `src/`, the CLI `app/`, the conformance
   suite `test/`, and its module-map README). Everything not deliverable sits
@@ -455,12 +466,34 @@ but the loop around it is incomplete; "missing" means specced, not built.
   built and tested, and the confidence threshold is now a CLI flag, but
   `generate` still samples the model once. Missing: `--samples` wiring so a
   deduction must recur identically across samples.
-- **Corpus pinning.** A corpus regression test exists and the generation record
-  is written, but the `generate` command does not enforce "a regenerated
-  `.lang` reproduces every pinned (loose, crystal) pair or fails showing the
-  diff."
+- **Behavioral gate on regeneration** (corrected understanding). The naive gate
+  "a regenerated `.lang` must reproduce the pinned realized output" is
+  **invalid**: it compares Nix *text*, so it would freeze the engine's
+  mechanism forever and fire on every benign model variation (the restic
+  drift, raw systemd -> stock `services.restic.backups.*`, changed all the
+  text yet kept the behavior). The valid gate compares *observable behavior*,
+  which is exactly what `vm-smoke` asserts (timer live, ExecStart path,
+  retention, credentials file) and what survived that drift. A broken
+  behavioral pair is a decision surface, not an automatic error: either the
+  new engine regressed (reject) or the change is intended (deliberately
+  re-bless the assertions, and that edit is the semantic changelog). Note a
+  cross-program corpus does not typecheck today because engines are
+  per-problem (`feed.loose.lang` and `backup.loose.lang` are independent); so
+  for now the gate collapses to "each program's own behavioral test still
+  passes." The real, narrow work: generalize the single hand-written
+  `vm-smoke` into a per-program behavioral check that `generate` runs
+  automatically before accepting a new engine. It is "auto-run the behavioral
+  test on regen," not "diff the realized Nix."
 - **Glue.** `Glue` exists as a `Kind`, but its rigor downgrade (marked glue ->
-  property testing, visible blast radius) is not implemented.
+  property testing, visible blast radius) is not implemented. This is the wall
+  behind the expressiveness frontier: the closed rhs value language forbids
+  computation by construction (which is what makes injection unrepresentable),
+  so an engine can *reference* a prebuilt package (`${pkgs.cudaPackages...}`,
+  `${pkgs.someGuiApp}`) but cannot inline a bespoke build (compiling a CUDA
+  kernel, a custom derivation). Concretely: GPU/GUI domains are reachable now
+  for prebuilt stacks (they are just more NixOS options, bools, lists, and
+  package refs, all of which the value language expresses), but domains
+  needing real Nix computation are blocked until marked glue is built.
 
 ### Missing
 
@@ -476,7 +509,13 @@ but the loop around it is incomplete; "missing" means specced, not built.
   flow and the "verify a vocabulary once, inherit cheaply" rigor allocation
   have no code.
 - **Heile-Welt coping.** The kernel's promise to supply stable strategies for
-  what reality cannot guarantee has no mechanism yet.
+  what reality cannot guarantee has no mechanism yet. The determinism boundary
+  is at the *config* line: the kernel deterministically emits correct NixOS
+  configuration, but cannot guarantee the world cooperates (a GPU is present,
+  the driver loads, a display is attached). Such reality mismatches surface at
+  `nixos-rebuild`/runtime, not as a kernel property, and headless VM checks
+  cannot assert them (no GPU/display in CI), leaving the behavioral corpus
+  thinner for those domains.
 - **`lips dev`.** Convenience wrapper (run, ask before generating). Minor.
 
 ### Shortest Summary
