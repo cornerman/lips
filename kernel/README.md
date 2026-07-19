@@ -15,6 +15,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Reader` | section 2 | canonical stored form: `readBase`/`renderBase`, round-tripping diffable text |
 | `Lips.Kernel.Realize` | section 10 | projects a ground base to a NixOS module (`realize`), refusing conflicts |
 | `Lips.Kernel.Run` | section 5 | the deterministic pipeline; `RunError` is the spec's four run outcomes |
+| `Lips.Kernel.Expect` | ledger 13 | the `.expect` behavioral contract: relational option-value assertions, parsed/rendered/judged (pure) |
 | `Lips.Kernel.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
 | `Lips.Kernel.Lang.Lang` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
@@ -26,8 +27,9 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 
 ## The Loop
 
-    lips generate [model] examples/feed.loose   # AI step: mints feed.loose.lang, validates by a full run
+    lips generate [model] examples/feed.loose   # AI step: mints feed.loose.lang + feed.loose.expect, validates by a full run
     lips run examples/feed.loose                 # deterministic: crystallize -> refine -> realize (no AI)
+    lips check examples/feed.loose               # deterministic: the committed .expect contract must hold (no AI)
     # (paths are relative to the repo root, where examples/ lives)
 
 `generate` is the one step where a model runs (spec section 5). The model mints

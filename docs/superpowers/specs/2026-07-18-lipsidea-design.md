@@ -434,6 +434,21 @@ but the loop around it is incomplete; "missing" means specced, not built.
   values verbatim. The coexistence defense (one Solution = one ordinary
   importable module) is now a machine-checked guarantee, not a demo.
 
+- **Behavioral gate on regeneration.** Each program carries a committed
+  `<program>.expect` contract: relational assertions binding a NixOS option
+  path to a program value (`expect <option.path> from <subject>[#n]`), judged
+  by containment against the module evaluated with `nix eval` (self-contained,
+  offline; the full module system and runtime truth stay with `vm-smoke`).
+  `generate` mints the assertions alongside the engine and refuses an engine
+  whose realized module violates the contract; on regeneration the *committed*
+  contract governs (the stable spec), on first generation the minted one
+  bootstraps it. A violation is the decision surface: fix the regression, or
+  delete `.expect` and regenerate to re-bless. The binding is relational, not
+  a frozen literal, so a legitimate value edit moves both sides together
+  (edit-tolerance) while a drift that relocates or drops the value trips the
+  gate. `lips check <program>` runs it deterministically; `just check-expect`
+  guards every example. `Lips.Kernel.Expect` holds the pure core.
+
 - **Two-tier module layout.** Inside `kernel/src/Lips/`, the tree names the
   tier: `Kernel/` is deterministic physics and holds all substrate, including
   `Kernel/Engine/` (the engine *format* and generic interpreter plus the
@@ -466,24 +481,14 @@ but the loop around it is incomplete; "missing" means specced, not built.
   built and tested, and the confidence threshold is now a CLI flag, but
   `generate` still samples the model once. Missing: `--samples` wiring so a
   deduction must recur identically across samples.
-- **Behavioral gate on regeneration** (corrected understanding). The naive gate
-  "a regenerated `.lang` must reproduce the pinned realized output" is
-  **invalid**: it compares Nix *text*, so it would freeze the engine's
-  mechanism forever and fire on every benign model variation (the restic
-  drift, raw systemd -> stock `services.restic.backups.*`, changed all the
-  text yet kept the behavior). The valid gate compares *observable behavior*,
-  which is exactly what `vm-smoke` asserts (timer live, ExecStart path,
-  retention, credentials file) and what survived that drift. A broken
-  behavioral pair is a decision surface, not an automatic error: either the
-  new engine regressed (reject) or the change is intended (deliberately
-  re-bless the assertions, and that edit is the semantic changelog). Note a
-  cross-program corpus does not typecheck today because engines are
-  per-problem (`feed.loose.lang` and `backup.loose.lang` are independent); so
-  for now the gate collapses to "each program's own behavioral test still
-  passes." The real, narrow work: generalize the single hand-written
-  `vm-smoke` into a per-program behavioral check that `generate` runs
-  automatically before accepting a new engine. It is "auto-run the behavioral
-  test on regen," not "diff the realized Nix."
+- **Behavioral gate: remaining.** The gate (see Done) runs at `generate` and
+  via `lips check`; it is not yet enforced inside `run`, where a deterministic
+  re-check on every offline run would catch a program edit that breaks a
+  pinned relation. Assertions name concrete option paths, so a legitimate
+  mechanism swap always re-blesses (mechanism-independent assertions would
+  need the unbuilt vocabulary/ontology). A cross-program corpus still does not
+  typecheck because engines are per-problem (`feed.loose.lang` and
+  `backup.loose.lang` are independent); the gate is per-program by design.
 - **Glue.** `Glue` exists as a `Kind`, but its rigor downgrade (marked glue ->
   property testing, visible blast radius) is not implemented. This is the wall
   behind the expressiveness frontier: the closed rhs value language forbids

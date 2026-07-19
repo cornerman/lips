@@ -23,9 +23,23 @@ test:
 check:
     nix flake check -L
 
+# Behavioral contracts: every example's .expect must hold against its realized
+# module (relational option-value gate, ledger 13). Host-side (uses nix eval),
+# no KVM. This is the same check generate runs before accepting an engine.
+check-expect:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for p in examples/*.loose; do
+      nix run . -- check "$p"
+    done
+
 # Deterministic run: program + .lang -> NixOS module (no model, offline).
 run program:
     nix run . -- run "{{program}}"
+
+# Verify one program's committed behavioral contract against its realized module.
+check-program program:
+    nix run . -- check "{{program}}"
 
 # The one AI step: mint language+engine via pi, validate, write .lang/.decisions/.generation.
 generate program model="":

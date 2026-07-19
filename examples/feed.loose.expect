@@ -1,0 +1,3 @@
+a1 expect systemd.services.ingest.environment.INBOX from feed.source
+a2 expect systemd.timers.ingest.timerConfig.OnCalendar from feed.schedule
+a3 expect systemd.services.ingest.environment.RECORD_UNIT from feed.mapping

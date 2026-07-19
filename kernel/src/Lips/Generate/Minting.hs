@@ -22,6 +22,7 @@ module Lips.Generate.Minting
   , ItemCandidate (..)
   , parseEngineCandidates
   , assemble
+  , expectsOf
   ) where
 
 import           Data.Text       (Text)
@@ -30,14 +31,17 @@ import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Engine.Data      (DemandSpec, MapRule, parseDemandBody, parseRuleBody)
 import Lips.Generate.Harness (Confidence (..))
+import Lips.Kernel.Expect          (Expect, parseExpectBody)
 import Lips.Kernel.Lang.Lang        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
 
--- | One minted engine item.
+-- | One minted item: an engine part (pattern, rule, demand) or a behavioral
+-- assertion (the @.expect@ contract, a separate artifact from the engine).
 data EngineItem
   = ItemPattern Pattern
   | ItemRule MapRule
   | ItemDemand DemandSpec
+  | ItemExpect Expect
   deriving (Eq, Show)
 
 -- | An item the model proposes, with the confidence it attaches to it.
@@ -93,8 +97,18 @@ systemPrompt = T.unlines
   , "DEMANDS (ids q1, q2, ...): what any program in this language must state,"
   , "as a subject plus the question to ask when it is missing."
   , ""
+  , "EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that"
+  , "must reach the config. Form:"
+  , "  <confidence> <id> expect <option.path> from <subject>[#<n>]"
+  , "It asserts the value your patterns capture into <subject> (or its nth"
+  , "whitespace token, #n, 1-based) appears at NixOS option <option.path> in"
+  , "the realized module. Name the SAME option paths your rules assign. Emit"
+  , "one expect for every distinct program value a rule carries into an option,"
+  , "so realization and configurability are pinned."
+  , ""
   , "The kernel verifies: every line crystallizes, every decision is mapped,"
-  , "every demand is met, and the result parses as a NixOS module."
+  , "every demand is met, the result parses as a NixOS module, and every"
+  , "expect holds against the evaluated module."
   , ""
   , "Example input line:"
   , "  the bank drops csv files into inbox/."
@@ -102,6 +116,7 @@ systemPrompt = T.unlines
   , "  0.96 p1 the bank drops csv files into <loc> => fact feed.source stated \"<loc>\""
   , "  0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX \"\\\"<value>\\\"\""
   , "  0.9 q1 demand feed.source \"where do the files arrive?\""
+  , "  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source"
   ]
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
@@ -115,7 +130,8 @@ parseEngineCandidates reply =
   where
     ignorable t = T.null t || "#" `T.isPrefixOf` t || "```" `T.isPrefixOf` t
 
--- | Group parsed items into an engine.
+-- | Group parsed items into an engine (the @.lang@ artifact). Expects are not
+-- part of the engine; see 'expectsOf'.
 assemble :: [EngineItem] -> EngineData
 assemble items =
   EngineData
@@ -123,6 +139,10 @@ assemble items =
     , edRules    = [r | ItemRule r <- items]
     , edDemands  = [q | ItemDemand q <- items]
     }
+
+-- | The minted behavioral contract (the @.expect@ artifact).
+expectsOf :: [EngineItem] -> [Expect]
+expectsOf items = [e | ItemExpect e <- items]
 
 parseLine :: Text -> Either Text ItemCandidate
 parseLine line = do
@@ -135,7 +155,9 @@ parseLine line = do
       then ItemRule <$> located (parseRuleBody idTok body)
       else if "demand " `T.isPrefixOf` body
         then ItemDemand <$> located (parseDemandBody idTok body)
-        else ItemPattern <$> located (parsePatternBody idTok body)
+        else if "expect " `T.isPrefixOf` body
+          then ItemExpect <$> located (parseExpectBody idTok body)
+          else ItemPattern <$> located (parsePatternBody idTok body)
   Right (ItemCandidate item (Confidence conf))
   where
     located = either (\e -> Left (e <> " in: " <> line)) Right

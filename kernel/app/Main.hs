@@ -19,16 +19,17 @@ import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getArgs, getProgName)
 import           System.Exit        (ExitCode (..), exitFailure)
-import           System.IO          (hPutStrLn, stderr)
+import           System.IO          (hClose, hPutStrLn, openTempFile, stderr)
 import           System.Process     (readProcessWithExitCode)
 import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (ItemCandidate (..), assemble, parseEngineCandidates, systemPrompt)
+import           Lips.Generate.Minting  (ItemCandidate (..), assemble, expectsOf, parseEngineCandidates, systemPrompt)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
+import           Lips.Kernel.Expect     (Expect, checkValues, evalExpr, expectedValue, readExpect, renderExpect)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), crystallize)
@@ -54,6 +55,7 @@ main = do
   args <- getArgs
   case args of
     ["run", file]        -> runLoose file
+    ["check", file]      -> checkLoose file
     ("generate" : rest)  -> case parseGenerate rest of
       Just (conf, model, file) -> generate conf model file
       Nothing                  -> usage >> exitFailure
@@ -80,25 +82,54 @@ usage = do
   name <- getProgName
   hPutStrLn stderr ("usage: " <> name <> " generate [--confidence <0..1>] [model] <program-file>")
   hPutStrLn stderr ("       " <> name <> " run <program-file>")
+  hPutStrLn stderr ("       " <> name <> " check <program-file>")
 
 -- | @run@: crystallize the loose program with its language, then realize.
 runLoose :: FilePath -> IO ()
 runLoose file = do
   program <- TIO.readFile file
+  eng     <- loadLangOrDie file
+  case validate file eng program of
+    Left problem      -> die problem
+    Right (_, nixMod) -> TIO.putStr nixMod
+
+-- | @check@: verify the program's committed behavioral contract holds against
+-- its realized module, deterministically (no AI). This is the offline guardian
+-- of the @.expect@ spec; @generate@ runs the same check before accepting an
+-- engine, and the flake check shells this per example.
+checkLoose :: FilePath -> IO ()
+checkLoose file = do
+  program <- TIO.readFile file
+  eng     <- loadLangOrDie file
+  expSrc  <- tryRead (file <> ".expect")
+  case expSrc of
+    Nothing  -> die (T.pack file <> " has no behavioral contract ("
+                     <> T.pack file <> ".expect missing); nothing to check")
+    Just src -> case readExpect src of
+      Left es       -> die ("corrupt .expect:\n" <> T.unlines (map renderParseError es))
+      Right expects -> case validate file eng program of
+        Left problem       -> die problem
+        Right (base, nixMod) -> do
+          res <- runExpects expects base nixMod
+          case res of
+            Right () -> TIO.putStrLn (T.pack file <> ": "
+                          <> tshow (length expects) <> " behavioral assertion(s) hold")
+            Left fs  -> die ("behavioral contract violated:\n" <> T.unlines fs)
+
+-- | Load and parse a program's @.lang@, or fail loud naming @generate@.
+loadLangOrDie :: FilePath -> IO EngineData
+loadLangOrDie file = do
   let langFile = file <> ".lang"
-  langSrc <- try (TIO.readFile langFile) :: IO (Either IOException Text)
-  case langSrc of
-    Left _ -> die $
-      T.pack file <> " has no crystallized language (" <> T.pack langFile <> " missing)\n"
-        <> "run: lips generate " <> T.pack file
-    Right src -> case readLang src of
-      Left es   -> die ("corrupt language file:\n" <> T.unlines (map renderParseError es))
-      Right eng -> case crystallize file (edPatterns eng) program of
-        Left errs  -> die (renderCrystErrors errs)
-        Right base ->
-          case runBase budget (map toRule (edRules eng)) (map toDemand (edDemands eng)) base of
-            Right nixModule -> TIO.putStr nixModule
-            Left err        -> die (renderRunError err)
+  msrc <- tryRead langFile
+  case msrc of
+    Nothing  -> die (T.pack file <> " has no crystallized language (" <> T.pack langFile
+                     <> " missing)\nrun: lips generate " <> T.pack file)
+    Just src -> case readLang src of
+      Left es  -> die ("corrupt language file:\n" <> T.unlines (map renderParseError es))
+      Right eng -> pure eng
+
+tryRead :: FilePath -> IO (Maybe Text)
+tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either IOException Text))
 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
@@ -125,18 +156,42 @@ generate confidence model file = do
           case nixCheck of
             Left why -> die ("minted engine rejected: realized module is not valid Nix:\n" <> why)
             Right () -> do
-              -- The record is written first-class and every engine line is
-              -- stamped with its content id: line -> event, checkable by
-              -- re-hashing the .generation file.
-              let rec = record (T.pack model) confidence systemPrompt program reply
-              TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
-              TIO.writeFile (file <> ".decisions") (renderBase base)
-              TIO.writeFile (file <> ".generation") rec
-              TIO.putStrLn ("wrote " <> T.pack file <> ".lang ("
-                <> tshow (length (edPatterns eng)) <> " patterns, "
-                <> tshow (length (edRules eng)) <> " rules, "
-                <> tshow (length (edDemands eng)) <> " demands), verified to a module:")
-              TIO.putStr nixModule
+              -- Behavioral gate: the realized module must satisfy the
+              -- contract. On regeneration the COMMITTED contract governs (the
+              -- stable spec regeneration may not silently break); on first
+              -- generation the minted assertions bootstrap it.
+              let minted = expectsOf (map icItem candidates)
+              committed <- tryRead (file <> ".expect")
+              let contract = maybe (Right minted) readExpect committed
+                  src      = maybe "minted" (const "committed") committed
+              case contract of
+                Left es -> die ("corrupt " <> T.pack file <> ".expect:\n"
+                                <> T.unlines (map renderParseError es))
+                Right expects -> do
+                  gate <- runExpects expects base nixModule
+                  case gate of
+                    Left fs -> die ("minted engine rejected: behavioral contract (" <> src
+                      <> ") violated:\n" <> T.unlines fs
+                      <> "\n(regression -> fix; or intended change -> delete "
+                      <> T.pack file <> ".expect and regenerate to re-bless)")
+                    Right () -> do
+                      -- The record is written first-class and every engine line
+                      -- is stamped with its content id: line -> event, checkable
+                      -- by re-hashing the .generation file.
+                      let rec = record (T.pack model) confidence systemPrompt program reply
+                      TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
+                      TIO.writeFile (file <> ".decisions") (renderBase base)
+                      TIO.writeFile (file <> ".generation") rec
+                      -- Bootstrap the contract on first generation only; keep
+                      -- the committed spec stable across regenerations.
+                      maybe (TIO.writeFile (file <> ".expect") (renderExpect minted))
+                            (const (pure ())) committed
+                      TIO.putStrLn ("wrote " <> T.pack file <> ".lang ("
+                        <> tshow (length (edPatterns eng)) <> " patterns, "
+                        <> tshow (length (edRules eng)) <> " rules, "
+                        <> tshow (length (edDemands eng)) <> " demands, "
+                        <> tshow (length expects) <> " assertions [" <> src <> "]), verified:")
+                      TIO.putStr nixModule
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.
@@ -174,7 +229,34 @@ callPi model system userPrompt = do
       hPutStrLn stderr ("pi failed (exit " <> show c <> "):\n" <> err)
       exitFailure
 
-die :: Text -> IO ()
+-- | Evaluate the realized module with @nix@ and judge a contract against it.
+-- One eval reads every asserted option; the pure comparison lives in
+-- 'Lips.Kernel.Expect'. An empty contract passes trivially.
+runExpects :: [Expect] -> Base -> Text -> IO (Either [Text] ())
+runExpects []      _    _         = pure (Right ())
+runExpects expects base nixModule =
+  case traverse (expectedValue base) expects of
+    Left e    -> pure (Left ["cannot ground assertion in program: " <> e])
+    Right pvs -> do
+      (tmp, h) <- openTempFile "/tmp" "lips-module.nix"
+      TIO.hPutStr h nixModule
+      hClose h
+      let expr = evalExpr tmp expects
+      res <- try (readProcessWithExitCode "nix"
+                    ["eval", "--raw", "--impure", "--expr", T.unpack expr] "")
+      pure $ case res of
+        Left e -> Left ["nix eval unavailable: " <> tshow (e :: IOException)]
+        Right (ExitSuccess, out, _) ->
+          let evaled = T.splitOn "\n" (T.pack out)
+           in if length evaled /= length expects
+                then Left ["expect: eval returned " <> tshow (length evaled)
+                           <> " values for " <> tshow (length expects) <> " assertions"]
+                else case checkValues expects (zip pvs evaled) of
+                       [] -> Right ()
+                       fs -> Left fs
+        Right (ExitFailure _, _, err) -> Left ["nix eval failed:\n" <> T.pack err]
+
+die :: Text -> IO a
 die msg = TIO.hPutStrLn stderr msg >> exitFailure
 
 renderCrystErrors :: [CrystError] -> Text

@@ -25,7 +25,8 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, ItemCandidate (..))
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, ItemCandidate (..))
+import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
@@ -280,12 +281,14 @@ main = hspec $ do
             [ "0.95 p1 the bank drops files into <loc> => fact feed.source stated \"<loc>\""
             , "0.9 r1 match fact feed.source => systemd.services.i.environment.INBOX \"\\\"<value>\\\"\""
             , "0.85 q1 demand feed.source \"where do the files arrive?\""
+            , "0.95 a1 expect systemd.services.i.environment.INBOX from feed.source"
             ]
           (errs, cs) = parseEngineCandidates reply
       errs `shouldBe` []
-      map icConfidence cs `shouldBe` map Confidence [0.95, 0.9, 0.85]
+      map icConfidence cs `shouldBe` map Confidence [0.95, 0.9, 0.85, 0.95]
       let eng = assemble (map icItem cs)
       (length (edPatterns eng), length (edRules eng), length (edDemands eng)) `shouldBe` (1, 1, 1)
+      length (expectsOf (map icItem cs)) `shouldBe` 1
 
     it "skips fences and comments, collects malformed lines as errors" $ do
       let reply = T.unlines
@@ -298,6 +301,31 @@ main = hspec $ do
           (errs, cs) = parseEngineCandidates reply
       length cs `shouldBe` 1
       length errs `shouldBe` 2
+
+  describe "behavioral contract (ledger 13: .expect relational gate)" $ do
+    let dec subj a = Decision (DecisionId "d") (Subject (T.splitOn "." subj)) Fact
+                       (Assertion a) Stated (FromSource (SourceLoc "p" 1)) Nothing
+        base = fromList [ dec "backup.job" "/var/lib/ledger /backup/ledger daily" ]
+        opt  = Subject ["backup", "job"]
+
+    it "parse/render round-trips" $ do
+      let src = "a1 expect services.restic.backups.ledger.repository from backup.job#2\n"
+      (renderExpect <$> readExpect src) `shouldBe` Right src
+
+    it "resolves the whole assertion and the nth token" $ do
+      expectedValue base (Expect "a" ["o"] opt Nothing)  `shouldBe` Right "/var/lib/ledger /backup/ledger daily"
+      expectedValue base (Expect "a" ["o"] opt (Just 2)) `shouldBe` Right "/backup/ledger"
+
+    it "fails loud on an out-of-range token or a missing subject" $ do
+      expectedValue base (Expect "a" ["o"] opt (Just 9))              `shouldSatisfy` isLeft
+      expectedValue base (Expect "a" ["o"] (Subject ["no","x"]) Nothing) `shouldSatisfy` isLeft
+
+    it "containment: the program value must appear in the evaluated option" $ do
+      let e = Expect "a1" ["p"] opt (Just 2)
+      checkValues [e] [("/backup/ledger", "\"/backup/ledger\"")] `shouldBe` []          -- exact
+      checkValues [e] [("hour", "\"hourly\"")]                   `shouldBe` []          -- substring
+      length (checkValues [e] [("/backup/ledger", "\"/fixed/repo\"")]) `shouldBe` 1     -- value dropped
+      length (checkValues [e] [("/backup/ledger", "null")])           `shouldBe` 1     -- option relocated
 
   describe "pattern matching (crystallization plan: normalization, holes)" $ do
     it "normalizes case and strips trailing sentence punctuation" $ do
