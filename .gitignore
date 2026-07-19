@@ -1,0 +1,7 @@
+# corral agent runtime (sockets, pids) — never part of the flake tree.
+.corral/
+# direnv's nix profile.
+.direnv/
+result
+# derived crystal cache; reproduced by `lips run`, never source.
+*.decisions

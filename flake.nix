@@ -1,5 +1,5 @@
 {
-  description = "lips kernel: the decision calculus (reference implementation)";
+  description = "lips: intent as a decision base, realized deterministically as a NixOS module";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -18,10 +18,11 @@
         default = pkgs.mkShell { packages = [ (ghc pkgs) pkgs.just ]; };
       });
 
-      # The reference `lips` CLI. `nix run . -- run examples/ledger.decisions`.
+      # The reference `lips` CLI, built from the deliverable in kernel/.
+      # `nix run . -- run examples/backup.loose`.
       packages = forAll (pkgs: {
         default = pkgs.runCommand "lips" { nativeBuildInputs = [ (ghc pkgs) ]; } ''
-          cp -r ${./.}/. build && cd build
+          cp -r ${./kernel}/. build && cd build
           mkdir -p "$out/bin"
           ghc -Wall -isrc -iapp app/Main.hs -outputdir "$TMPDIR/o" -o "$out/bin/lips"
         '';
@@ -31,7 +32,7 @@
       checks = forAll (pkgs: {
         kernel-tests = pkgs.runCommand "lips-kernel-tests"
           { nativeBuildInputs = [ (ghc pkgs) ]; } ''
-          cp -r ${./.}/. build && cd build
+          cp -r ${./kernel}/. build && cd build
           ghc -Wall -isrc -itest test/Spec.hs -outputdir "$TMPDIR/o" -o "$TMPDIR/spec"
           "$TMPDIR/spec"
           touch "$out"

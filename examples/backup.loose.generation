@@ -1,4 +1,5 @@
 model: anthropic/claude-opus-4-8
+confidence-threshold: 0.7
 --- system prompt ---
 You crystallize a loose program into a lips ENGINE: patterns (the
 language), rules (the mechanisms), and demands (completeness). You never
@@ -61,10 +62,10 @@ credentials come from /etc/ledger-backup.env.
 0.95 p1 back up <source> to <dest> <schedule>. => oblige backup.job stated "<source> <dest> <schedule>"
 0.93 p2 keep <count> daily snapshots. => invariant backup.retention stated "<count>"
 0.94 p3 credentials come from <path>. => fact backup.credentials stated "<path>"
-0.92 r1 match oblige backup.job => services.restic.backups.ledger.paths "[ \"<value.1>\" ]" ; services.restic.backups.ledger.repository "\"<value.2>\"" ; services.restic.backups.ledger.timerConfig.OnCalendar "\"<value.3>\""
-0.9 r2 match invariant backup.retention => services.restic.backups.ledger.pruneOpts "[ \"--keep-daily <value>\" ]"
-0.92 r3 match fact backup.credentials => services.restic.backups.ledger.environmentFile "\"<value>\""
-0.88 q1 demand backup.job "what should be backed up, where to, and how often?"
-0.86 q2 demand backup.retention "how many daily snapshots should be kept?"
-0.85 q3 demand backup.credentials "where do the backup credentials come from?"
+0.9 r1 match oblige backup.job => systemd.services.ledger-backup.script "\"rsync -a --delete <value.1>/ <value.2>/\"" ; systemd.services.ledger-backup.startAt "\"<value.3>\"" ; systemd.services.ledger-backup.serviceConfig.Type "\"oneshot\""
+0.85 r2 match invariant backup.retention => systemd.services.ledger-backup.environment.KEEP "\"<value>\""
+0.9 r3 match fact backup.credentials => systemd.services.ledger-backup.serviceConfig.EnvironmentFile "\"<value>\""
+0.9 q1 demand backup.job "what should be backed up, and to where and when?"
+0.88 q2 demand backup.retention "how many snapshots should be kept?"
+0.87 q3 demand backup.credentials "where do the backup credentials come from?"
 

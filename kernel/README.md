@@ -28,6 +28,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 
     lips generate [model] examples/feed.loose   # AI step: mints feed.loose.lang, validates by a full run
     lips run examples/feed.loose                 # deterministic: crystallize -> refine -> realize (no AI)
+    # (paths are relative to the repo root, where examples/ lives)
 
 `generate` is the one step where a model runs (spec section 5). The model mints
 a whole *engine* into `<file>.lang` -- patterns (the language), rules (the
@@ -91,7 +92,8 @@ authoring text, which only `generate` turns into decisions.
 invariant it pins.
 
 `app/Main.hs` is the reference `lips` CLI. With a minted engine beside the
-program, it crystallizes a loose program to a NixOS module with no AI:
+program, it crystallizes a loose program to a NixOS module with no AI (run from
+the repo root, where the flake and `examples/` live):
 
     nix run . -- run examples/feed.loose         # crystallize + realize, no AI
     nix run . -- run examples/backup.loose       # a second, non-feed domain
@@ -116,8 +118,10 @@ remedy.
 
 ## Running the Suite
 
-    nix flake check          # compiles with -Wall and runs the suite
-    nix develop              # then: ghc -Wall -isrc -itest test/Spec.hs -o /tmp/spec && /tmp/spec
+From the repo root (the flake lives there, not in `kernel/`):
+
+    nix flake check          # compiles with -Wall and runs the suite (+ VM smoke)
+    nix develop              # then: cd kernel && ghc -Wall -isrc -itest test/Spec.hs -o /tmp/spec && /tmp/spec
 
 Offline (network-restricted) note: the flake pulls nixpkgs from GitHub. Where
 that is blocked but a nixpkgs checkout is already in the store, build the same

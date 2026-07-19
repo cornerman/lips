@@ -28,12 +28,12 @@ the model, and `run` still works, bit-identical, forever.
 Tools come from the flake. With direnv, `direnv allow` once and `ghc` + `just`
 are on your path; otherwise prefix commands with `nix develop -c`.
 
-    just                                  # list commands
-    just run kernel/examples/backup.loose # loose text -> NixOS module (offline)
-    just test                             # conformance suite
-    just check                            # suite + boot the realized module in a VM
+    just                            # list commands
+    just run examples/backup.loose  # loose text -> NixOS module (offline)
+    just test                       # conformance suite
+    just check                      # suite + boot the realized module in a VM
 
-The example program (`kernel/examples/backup.loose`) is three lines:
+The example program (`examples/backup.loose`) is three lines:
 
     back up /var/lib/ledger to /backup/ledger daily.
     keep 14 daily snapshots.
@@ -64,9 +64,12 @@ regenerate. That is the whole design.
 
 ## Layout
 
-- `kernel/` — the reference implementation (Haskell) and its `README.md` with
-  the module map. This is the deliverable: the decision calculus plus its
-  conformance suite.
+- `kernel/` — the deliverable: the decision calculus (Haskell reference
+  implementation) plus its conformance suite. See `kernel/README.md` for the
+  module map.
+- `examples/` — demonstration programs (loose text plus their minted `.lang`),
+  not part of the deliverable.
 - `docs/superpowers/specs/` — the design doc (start with
   `2026-07-18-lipsidea-design.md`), the plans, and the surveys behind them.
+- `flake.nix` — build, dev shell, and checks (conformance suite + VM smoke).
 - `justfile` — every command; `just` lists them.

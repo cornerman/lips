@@ -1,8 +1,10 @@
-# lips — command index. Everything runs against the reference implementation
-# in kernel/; recipes are thin wrappers over nix so nothing is installed
-# globally.
+# lips — command index. The deliverable (calculus + suite) lives in kernel/;
+# examples/ holds demonstration programs; the flake ties them together.
+# Recipes are thin wrappers over nix so nothing is installed globally.
 
-kernel := justfile_directory() / "kernel"
+# Recipes run from the justfile directory (repo root), where the flake lives.
+# Using "." (not "path:.") keeps nix on git semantics, so untracked runtime
+# dirs like .corral stay out of the flake tree.
 
 # List available recipes.
 default:
@@ -10,39 +12,39 @@ default:
 
 # Build the lips binary (nix package) and print its path.
 build:
-    nix build "path:{{kernel}}" --print-out-paths
+    nix build . --print-out-paths
 
 # Run the conformance suite (fast: compiles Spec.hs in the dev shell).
 test:
-    cd {{kernel}} && nix develop -c ghc -Wall -isrc -itest test/Spec.hs \
-      -outputdir /tmp/lips-build -o /tmp/lips-spec && /tmp/lips-spec
+    nix develop -c bash -c 'cd kernel && ghc -Wall -isrc -itest test/Spec.hs \
+      -outputdir /tmp/lips-build -o /tmp/lips-spec && /tmp/lips-spec'
 
 # Full verification: conformance suite + VM boot of the realized module.
 check:
-    cd {{kernel}} && nix flake check -L
+    nix flake check -L
 
 # Deterministic run: program + .lang -> NixOS module (no model, offline).
 run program:
-    nix run "path:{{kernel}}" -- run "{{program}}"
+    nix run . -- run "{{program}}"
 
 # The one AI step: mint language+engine via pi, validate, write .lang/.decisions/.generation.
 generate program model="":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -n "{{model}}" ]; then
-      nix run "path:{{kernel}}" -- generate "{{model}}" "{{program}}"
+      nix run . -- generate "{{model}}" "{{program}}"
     else
-      nix run "path:{{kernel}}" -- generate "{{program}}"
+      nix run . -- generate "{{program}}"
     fi
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
 vm-smoke:
-    cd {{kernel}} && nix build .#checks.x86_64-linux.vm-smoke -L
+    nix build .#checks.x86_64-linux.vm-smoke -L
 
-# Drop into the dev shell (ghc with hspec/QuickCheck on PATH).
+# Drop into the dev shell (ghc with hspec/QuickCheck + just on PATH).
 shell:
-    cd {{kernel}} && nix develop
+    nix develop
 
-# Remove local build artifacts (kernel outputs live in /tmp and the store).
+# Remove local build artifacts (nix outputs live in /tmp and the store).
 clean:
-    rm -rf /tmp/lips-build /tmp/lips-spec {{kernel}}/result
+    rm -rf /tmp/lips-build /tmp/lips-spec result
