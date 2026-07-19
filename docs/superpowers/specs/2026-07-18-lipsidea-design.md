@@ -414,6 +414,13 @@ but the loop around it is incomplete; "missing" means specced, not built.
   computation and string injection are unrepresentable, discharging the
   structural layer of deduce-or-fail where the prompt alone had carried it.
 
+- **Realization smoke test (VM).** A permanent flake check
+  (`checks.vm-smoke`): the committed backup Solution is realized
+  deterministically (no model) and the module boots in a NixOS VM beside stock
+  modules; the minted timer is live and the service carries the program's
+  values verbatim. The coexistence defense (one Solution = one ordinary
+  importable module) is now a machine-checked guarantee, not a demo.
+
 ### Partial
 
 - **Deduce-or-fail via resampling.** The harness `unanimous`/`coreOf` check is
@@ -429,10 +436,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Missing
 
-- **Live NixOS deployment.** A realized module has never been deployed on a real
-  machine (`wolf`) beside hand-written modules. The coexistence defense (one
-  Solution = one ordinary module, not all-or-nothing) is untested against a
-  running system.
+- **Live host deployment.** The VM smoke test proves the module class; wiring
+  one realized module into `~/nixos` on `wolf` is now reduced to "import one
+  file" and remains optional symbolism.
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
 - **Multi-language composition.** The sketch composes three languages in one
