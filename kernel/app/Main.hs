@@ -25,6 +25,7 @@ import           System.Process     (readProcessWithExitCode)
 import           Lips.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (ItemCandidate (..), assemble, parseEngineCandidates, systemPrompt)
+import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
@@ -104,9 +105,13 @@ generate model file = do
           case nixCheck of
             Left why -> die ("minted engine rejected: realized module is not valid Nix:\n" <> why)
             Right () -> do
-              TIO.writeFile (file <> ".lang") (renderLang eng)
+              -- The record is written first-class and every engine line is
+              -- stamped with its content id: line -> event, checkable by
+              -- re-hashing the .generation file.
+              let rec = record (T.pack model) systemPrompt program reply
+              TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
               TIO.writeFile (file <> ".decisions") (renderBase base)
-              TIO.writeFile (file <> ".generation") (record model program reply)
+              TIO.writeFile (file <> ".generation") rec
               TIO.putStrLn ("wrote " <> T.pack file <> ".lang ("
                 <> tshow (length (edPatterns eng)) <> " patterns, "
                 <> tshow (length (edRules eng)) <> " rules, "
@@ -149,15 +154,6 @@ callPi model system userPrompt = do
       hPutStrLn stderr ("pi failed (exit " <> show c <> "):\n" <> err)
       exitFailure
 
--- | The auditable record of a generation event (spec section 5).
-record :: String -> Text -> Text -> Text
-record model program reply = T.unlines
-  [ "model: " <> T.pack model
-  , "--- system prompt ---", systemPrompt
-  , "--- program (input) ---", program
-  , "--- raw reply ---", reply
-  ]
-
 die :: Text -> IO ()
 die msg = TIO.hPutStrLn stderr msg >> exitFailure
 
@@ -196,6 +192,7 @@ showProv :: Decision -> Text
 showProv d = case dProv d of
   FromSource (SourceLoc f n) -> f <> ":" <> tshow n
   Derived ids (RuleId r)     -> "<-" <> T.intercalate "," [i | DecisionId i <- ids] <> " via " <> r
+  FromGeneration gid         -> "gen:" <> gid
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show

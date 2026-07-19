@@ -1,6 +1,9 @@
-p1 meta lang.pattern.p1 stated "back up <src> to <dst> every night => fact backup.job stated \"<src> <dst>\"" @lang:0
-p2 meta lang.pattern.p2 stated "keep <count> daily snapshots => fact backup.retention stated \"<count>\"" @lang:0
-q1 meta engine.demand.q1 stated "demand backup.job \"what should be backed up and where should it go?\"" @lang:0
-q2 meta engine.demand.q2 stated "demand backup.retention \"how many daily snapshots should be kept?\"" @lang:0
-r1 meta engine.rule.r1 stated "match fact backup.job => systemd.services.ledger-backup.serviceConfig.Type \"\\\"oneshot\\\"\" ; systemd.services.ledger-backup.environment.RESTIC_REPOSITORY \"\\\"<value.2>\\\"\" ; systemd.services.ledger-backup.serviceConfig.EnvironmentFile \"\\\"/etc/ledger-backup.env\\\"\" ; systemd.services.ledger-backup.serviceConfig.ExecStart \"\\\"${pkgs.restic}/bin/restic backup <value.1>\\\"\" ; systemd.timers.ledger-backup.wantedBy \"[ \\\"timers.target\\\" ]\" ; systemd.timers.ledger-backup.timerConfig.OnCalendar \"\\\"daily\\\"\" ; systemd.timers.ledger-backup.timerConfig.Persistent \"true\"" @lang:0
-r2 meta engine.rule.r2 stated "match fact backup.retention => systemd.services.ledger-backup.serviceConfig.ExecStartPost \"\\\"${pkgs.restic}/bin/restic forget --keep-daily <value> --prune\\\"\"" @lang:0
+p1 meta lang.pattern.p1 stated "back up <source> to <dest> <schedule> => oblige backup.job stated \"<source> <dest> <schedule>\"" @gen:d5eb594c07fc434f
+p2 meta lang.pattern.p2 stated "keep <count> daily snapshots => invariant backup.retention stated \"<count>\"" @gen:d5eb594c07fc434f
+p3 meta lang.pattern.p3 stated "credentials come from <path> => fact backup.credentials stated \"<path>\"" @gen:d5eb594c07fc434f
+q1 meta engine.demand.q1 stated "demand backup.job \"what should be backed up, where to, and how often?\"" @gen:d5eb594c07fc434f
+q2 meta engine.demand.q2 stated "demand backup.retention \"how many daily snapshots should be kept?\"" @gen:d5eb594c07fc434f
+q3 meta engine.demand.q3 stated "demand backup.credentials \"where do the backup credentials come from?\"" @gen:d5eb594c07fc434f
+r1 meta engine.rule.r1 stated "match oblige backup.job => services.restic.backups.ledger.paths \"[ \\\"<value.1>\\\" ]\" ; services.restic.backups.ledger.repository \"\\\"<value.2>\\\"\" ; services.restic.backups.ledger.timerConfig.OnCalendar \"\\\"<value.3>\\\"\"" @gen:d5eb594c07fc434f
+r2 meta engine.rule.r2 stated "match invariant backup.retention => services.restic.backups.ledger.pruneOpts \"[ \\\"--keep-daily <value>\\\" ]\"" @gen:d5eb594c07fc434f
+r3 meta engine.rule.r3 stated "match fact backup.credentials => services.restic.backups.ledger.environmentFile \"\\\"<value>\\\"\"" @gen:d5eb594c07fc434f

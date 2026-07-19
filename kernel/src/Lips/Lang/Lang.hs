@@ -48,12 +48,17 @@ data EngineData = EngineData
   deriving (Eq, Show)
 
 -- | Render an engine to canonical @.lang@ text, each group ordered by id.
-renderLang :: EngineData -> Text
-renderLang ed =
-  renderBase . fromList $
+-- Every line carries the given provenance -- for minted engines the
+-- generation-event stamp ('FromGeneration'), so each engine decision names
+-- the pinned event that produced it.
+renderLang :: Provenance -> EngineData -> Text
+renderLang prov ed =
+  renderBase . fromList . map stamp $
     map patternToDecision (sortOn pId (edPatterns ed))
       ++ map ruleToDecision (sortOn mrId (edRules ed))
       ++ map demandToDecision (sortOn dsId (edDemands ed))
+  where
+    stamp d = d { dProv = prov }
 
 -- | Read an engine from @.lang@ text. Reuses the kernel reader for the
 -- decision envelope, then parses each group's body sub-grammar. Decisions

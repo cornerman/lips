@@ -59,3 +59,4 @@ provComment :: Provenance -> Text
 provComment (FromSource (SourceLoc f n)) = f <> ":" <> T.pack (show n)
 provComment (Derived ids (RuleId r)) =
   "<-" <> T.intercalate "," [i | DecisionId i <- ids] <> " via " <> r
+provComment (FromGeneration gid) = "gen:" <> gid

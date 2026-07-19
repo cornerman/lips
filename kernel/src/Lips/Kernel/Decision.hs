@@ -55,10 +55,13 @@ data SourceLoc = SourceLoc
 -- | Every decision knows its origin. Derived decisions link to the decisions
 -- and the rule that produced them, so any chain is walkable to the metal
 -- (spec section 2, provenance). The refiner stamps this; rule authors cannot
--- forge or omit it.
+-- forge or omit it. Minted engine decisions carry 'FromGeneration': the
+-- content id ('Lips.Generate.Record.genId') of the pinned generation event
+-- that produced them, mechanically checkable against the @.generation@ file.
 data Provenance
   = FromSource SourceLoc
   | Derived [DecisionId] RuleId
+  | FromGeneration Text
   deriving (Eq, Ord, Show)
 
 -- | The closed set of kernel kinds (spec section 3). The kernel does not use

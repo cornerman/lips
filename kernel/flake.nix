@@ -62,13 +62,28 @@
             };
             testScript = ''
               machine.wait_for_unit("multi-user.target")
-              # The minted timer is live in a booted system.
-              machine.wait_for_unit("ledger-backup.timer")
-              # The minted service carries the program's values, verbatim.
+              # The minted timer is live in a booted system (unit names come
+              # from the stock restic module the engine targets).
+              machine.wait_for_unit("restic-backups-ledger.timer")
+              # Every program line is witnessed in the booted system:
+              # line 1 (destination, cadence)
               machine.succeed(
-                  "systemctl cat ledger-backup.service | grep -F 'restic backup /var/lib/ledger'"
+                  "systemctl cat restic-backups-ledger.service | grep -F 'RESTIC_REPOSITORY=/backup/ledger'"
               )
-              machine.succeed("systemctl cat ledger-backup.timer | grep -F 'OnCalendar=daily'")
+              machine.succeed(
+                  "systemctl cat restic-backups-ledger.timer | grep -F 'OnCalendar=daily'"
+              )
+              # line 1 (source; the restic module routes paths through a
+              # staticPaths store file that pre-start cats into the includes)
+              machine.succeed("grep -lF '/var/lib/ledger' /nix/store/*-staticPaths")
+              # line 2 (retention)
+              machine.succeed(
+                  "systemctl cat restic-backups-ledger.service | grep -F -- '--keep-daily 14'"
+              )
+              # line 3 (credentials)
+              machine.succeed(
+                  "systemctl cat restic-backups-ledger.service | grep -F 'EnvironmentFile=/etc/ledger-backup.env'"
+              )
             '';
           };
       });

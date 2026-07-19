@@ -130,6 +130,11 @@ breakRationale t =
 
 parseProvenance :: Text -> Either Text Provenance
 parseProvenance t
+  -- @gen: is checked before the generic @file:line form, so "gen" is a
+  -- reserved source-file name in the canonical text (a fair trade for a
+  -- self-describing stamp).
+  | Just gid <- T.stripPrefix "@gen:" t =
+      if T.null gid then Left ("empty generation id: " <> t) else Right (FromGeneration gid)
   | Just rest <- T.stripPrefix "@" t =
       case T.splitOn ":" rest of
         [f, n] | Just ln <- readInt n -> Right (FromSource (SourceLoc f ln))
@@ -180,6 +185,7 @@ renderProv :: Provenance -> Text
 renderProv (FromSource (SourceLoc f n)) = "@" <> f <> ":" <> T.pack (show n)
 renderProv (Derived ids (RuleId r)) =
   "<-" <> T.intercalate "," [i | DecisionId i <- ids] <> " via " <> r
+renderProv (FromGeneration gid) = "@gen:" <> gid
 
 kindTable :: [(Text, Kind)]
 kindTable = [(kindText k, k) | k <- [minBound .. maxBound]]

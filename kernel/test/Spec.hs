@@ -26,6 +26,7 @@ import Lips.Engine.Data
 import Lips.Engine.Value
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, ItemCandidate (..))
+import Lips.Generate.Record (genId, record)
 import Lips.Lang.Pattern
 import Lips.Lang.Crystallize
 import Lips.Lang.Lang
@@ -431,7 +432,19 @@ main = hspec $ do
           }
 
     it "round-trips the whole engine: readLang . renderLang == Right" $
-      readLang (renderLang engine) `shouldBe` Right engine
+      readLang (renderLang (FromGeneration "cafe0123") engine) `shouldBe` Right engine
+
+    it "stamps every .lang line with the generation event" $
+      let stamped = renderLang (FromGeneration "cafe0123") engine
+       in [ l | l <- T.lines stamped, not (T.null l), not ("@gen:cafe0123" `T.isSuffixOf` l) ]
+            `shouldBe` []
+
+    it "generation ids are deterministic and content-sensitive" $ do
+      let r  = record "m" "sp" "prog" "reply"
+          r' = record "m" "sp" "prog" "reply2"
+      genId r `shouldBe` genId r
+      genId r `shouldNotBe` genId r'
+      T.length (genId r) `shouldBe` 16
 
     it "reads a hole with glued trailing punctuation: '<when>.' binds <when>" $
       case parsePatternBody "p9" "back up <src> every <when>. => fact backup.job stated \"<src> <when>\"" of
@@ -481,7 +494,7 @@ main = hspec $ do
           ]
         runLoose loc sched = do
           -- through storage deliberately: the on-disk form is what run uses
-          eng  <- either (Left . show) Right (readLang (renderLang feedEngine))
+          eng  <- either (Left . show) Right (readLang (renderLang (FromGeneration "feedcafe") feedEngine))
           base <- either (Left . show) Right (crystallize "feed" (edPatterns eng) (loose loc sched))
           either (Left . show) Right
             (runBase 10000 (map toRule (edRules eng)) (map toDemand (edDemands eng)) base)
@@ -547,6 +560,10 @@ genProv :: Gen Provenance
 genProv = oneof
   [ FromSource <$> (SourceLoc <$> safeFile <*> (getNonNegative <$> arbitrary))
   , Derived <$> listOf1 (DecisionId <$> safeToken) <*> (RuleId <$> safeToken)
+  , FromGeneration <$> hexId
   ]
   where
-    safeFile = T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "/._"))
+    -- "gen" is the reserved source name behind the @gen: stamp, so the
+    -- generator must not mint it as a file.
+    safeFile = suchThat (T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "/._"))) (/= "gen")
+    hexId = T.pack <$> listOf1 (elements (['a' .. 'f'] ++ ['0' .. '9']))

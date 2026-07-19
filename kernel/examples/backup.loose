@@ -1,2 +1,3 @@
-back up /var/lib/ledger to /backup/ledger every night.
+back up /var/lib/ledger to /backup/ledger daily.
 keep 14 daily snapshots.
+credentials come from /etc/ledger-backup.env.
