@@ -12,8 +12,10 @@
       ghc = pkgs: pkgs.haskellPackages.ghcWithPackages (p: [ p.hspec p.QuickCheck ]);
     in
     {
+      # Everything a developer needs: the compiler for the suite, and just
+      # as the command index (see justfile at the repo root).
       devShells = forAll (pkgs: {
-        default = pkgs.mkShell { packages = [ (ghc pkgs) ]; };
+        default = pkgs.mkShell { packages = [ (ghc pkgs) pkgs.just ]; };
       });
 
       # The reference `lips` CLI. `nix run . -- run examples/ledger.decisions`.
