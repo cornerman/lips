@@ -28,10 +28,10 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
-import Lips.Engine.Data      (DemandSpec, MapRule, parseDemandBody, parseRuleBody)
+import Lips.Kernel.Engine.Data      (DemandSpec, MapRule, parseDemandBody, parseRuleBody)
 import Lips.Generate.Harness (Confidence (..))
-import Lips.Lang.Lang        (EngineData (..), parsePatternBody)
-import Lips.Lang.Pattern     (Pattern)
+import Lips.Kernel.Lang.Lang        (EngineData (..), parsePatternBody)
+import Lips.Kernel.Lang.Pattern     (Pattern)
 
 -- | One minted engine item.
 data EngineItem

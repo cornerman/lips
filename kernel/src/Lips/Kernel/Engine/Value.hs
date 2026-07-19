@@ -20,7 +20,7 @@
 -- Filling holes escapes the inserted program text (quotes, backslashes, and
 -- @${@), so a program value can never break out of the Nix string it lands
 -- in: injection is unrepresentable as well.
-module Lips.Engine.Value
+module Lips.Kernel.Engine.Value
   ( Value (..)
   , Piece (..)
   , parseValue

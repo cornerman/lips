@@ -20,7 +20,7 @@
 -- Line identity: a decision's id is its 1-based source line (@d\<n\>@) and its
 -- provenance is that line, so any decision walks straight back to the text a
 -- human wrote.
-module Lips.Lang.Crystallize
+module Lips.Kernel.Lang.Crystallize
   ( CrystError (..)
   , crystallize
   ) where
@@ -31,7 +31,7 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Base     (Base, fromList)
 import Lips.Kernel.Decision
-import Lips.Lang.Pattern
+import Lips.Kernel.Lang.Pattern
 
 -- | A crystallization failure, anchored to the 1-based loose line.
 data CrystError

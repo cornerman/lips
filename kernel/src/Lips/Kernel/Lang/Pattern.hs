@@ -20,7 +20,7 @@
 -- holes may appear only in subject and assertion, never replacing a template
 -- literal's meaning. These keep matching total and closure-under-hole-edits a
 -- property by construction. Multi-token holes and morphology are future work.
-module Lips.Lang.Pattern
+module Lips.Kernel.Lang.Pattern
   ( TplTok (..)
   , StrPart (..)
   , Pattern (..)

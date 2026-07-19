@@ -23,7 +23,7 @@ import           System.IO          (hPutStrLn, stderr)
 import           System.Process     (readProcessWithExitCode)
 import           Text.Read          (readMaybe)
 
-import           Lips.Engine.Data       (toDemand, toRule)
+import           Lips.Kernel.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (ItemCandidate (..), assemble, parseEngineCandidates, systemPrompt)
 import           Lips.Generate.Record   (genId, record)
@@ -31,8 +31,8 @@ import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Run
-import           Lips.Lang.Crystallize  (CrystError (..), crystallize)
-import           Lips.Lang.Lang         (EngineData (..), readLang, renderLang)
+import           Lips.Kernel.Lang.Crystallize  (CrystError (..), crystallize)
+import           Lips.Kernel.Lang.Lang         (EngineData (..), readLang, renderLang)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
 budget :: Int

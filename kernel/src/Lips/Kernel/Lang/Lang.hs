@@ -16,9 +16,9 @@
 -- Holes are written @\<name\>@ in the template, subject, and assertion. A hole
 -- used in the subject or assertion must be bound by the template; that is
 -- checked on read, so 'applyPattern' is total. Rule and demand sub-grammars
--- live in 'Lips.Engine.Data'. The engine round-trips:
+-- live in 'Lips.Kernel.Engine.Data'. The engine round-trips:
 -- @readLang . renderLang == Right@.
-module Lips.Lang.Lang
+module Lips.Kernel.Lang.Lang
   ( EngineData (..)
   , renderLang
   , readLang
@@ -31,12 +31,12 @@ import           Data.List  (sortOn)
 import           Data.Text  (Text)
 import qualified Data.Text  as T
 
-import Lips.Engine.Data     (DemandSpec (..), MapRule (..), parseDemandBody,
+import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), parseDemandBody,
                              parseRuleBody, renderDemandBody, renderRuleBody)
 import Lips.Kernel.Base     (fromList, toList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Reader   (ParseError (..), readBase, renderBase)
-import Lips.Lang.Pattern
+import Lips.Kernel.Lang.Pattern
 
 -- | A whole minted engine: the language (front half) and the semantics (back
 -- half), as read from one @.lang@ file.

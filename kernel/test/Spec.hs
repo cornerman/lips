@@ -22,14 +22,14 @@ import Lips.Kernel.Reader
 import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
-import Lips.Engine.Data
-import Lips.Engine.Value
+import Lips.Kernel.Engine.Data
+import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, ItemCandidate (..))
 import Lips.Generate.Record (genId, record)
-import Lips.Lang.Pattern
-import Lips.Lang.Crystallize
-import Lips.Lang.Lang
+import Lips.Kernel.Lang.Pattern
+import Lips.Kernel.Lang.Crystallize
+import Lips.Kernel.Lang.Lang
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision

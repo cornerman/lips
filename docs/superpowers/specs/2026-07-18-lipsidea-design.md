@@ -403,7 +403,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   engine as data in one `.lang` file: patterns (front half) plus rules
   (`match <kind> <subject> => option assignments`, with `<value>`/`<value.N>`
   holes) and demands (back half), interpreted by generic kernel executors
-  (`Engine.Data`); the hand-written `Engine.Feed` is deleted. No domain
+  (`Kernel.Engine.Data`); the hand-written `Engine.Feed` is deleted. No domain
   vocabulary is compiled in; the model invents subjects, and closure is
   checked, not trusted (unmapped decision, unmet demand, uncovered line, or
   invalid Nix -- `nix-instantiate --parse` at mint time -- each rejects the

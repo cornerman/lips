@@ -3,7 +3,7 @@
 -- | The engine's back half as data (engine-synthesis plan): minted
 -- obligation-to-mechanism rules and demands, interpreted by generic kernel
 -- executors. This is what replaces hand-written engines like the former
--- @Lips.Engine.Feed@: the model mints these as decisions in the @.lang@ file;
+-- @Lips.Kernel.Engine.Feed@: the model mints these as decisions in the @.lang@ file;
 -- 'toRule' and 'toDemand' interpret them; nothing problem-specific is ever
 -- compiled into the kernel.
 --
@@ -12,7 +12,7 @@
 -- > rule:   match <kind> <subject> => <optionPath> "<rhs>" ; <optionPath> "<rhs>" ...
 -- > demand: demand <subject> "<question>"
 --
--- @\<rhs\>@ is a value in the closed grammar of 'Lips.Engine.Value' (string,
+-- @\<rhs\>@ is a value in the closed grammar of 'Lips.Kernel.Engine.Value' (string,
 -- list, boolean, integer; strings may carry @\<value\>@ / @\<value.N\>@ holes
 -- and @${pkgs...}@ references) -- never a Nix expression. The hole
 -- @\<value\>@ fills with the matched decision's assertion text, @\<value.N\>@
@@ -28,7 +28,7 @@
 -- no cascades. The kernel's general 'Rule' keeps supporting cascades for
 -- hand-written engines; minted engines earn them when a real program needs
 -- them.
-module Lips.Engine.Data
+module Lips.Kernel.Engine.Data
   ( MapRule (..)
   , Emit (..)
   , DemandSpec (..)
@@ -43,7 +43,7 @@ module Lips.Engine.Data
 import           Data.Text      (Text)
 import qualified Data.Text      as T
 
-import Lips.Engine.Value    (Value, fillValue, holeIndex, parseValue, renderValue)
+import Lips.Kernel.Engine.Value    (Value, fillValue, holeIndex, parseValue, renderValue)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand   (Demand (..))

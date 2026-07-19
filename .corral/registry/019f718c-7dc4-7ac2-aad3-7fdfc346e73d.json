@@ -3,7 +3,7 @@
   "title": "engine synthesis",
   "label": "pi",
   "description": "pi: terminal TUI coding agent",
-  "socket": "/home/cornerman/projects/lips/.corral/pi-8142.sock",
+  "socket": "/home/cornerman/projects/lips/.corral/pi-7993.sock",
   "spawnCommand": [
     "pi"
   ],
@@ -13,5 +13,6 @@
     "{sessionId}"
   ],
   "hidden": false,
-  "lastSeen": "2026-07-19T06:36:57.207Z"
+  "model": "anthropic/claude-opus-4-8",
+  "lastSeen": "2026-07-19T21:30:23.518Z"
 }
