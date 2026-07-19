@@ -395,7 +395,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   takes the loose program directly; value and instance edits flow through with
   no model (verified offline). Escaping edits and missing language fail loud.
 - **Generate boundary plumbing.** Model call routed through `pi` print mode;
-  deduce-or-fail confidence threshold; generation record written per event.
+  deduce-or-fail confidence threshold, exposed as `lips generate
+  [--confidence <0..1>] [model] <program>` (default 0.7, pinned into the
+  generation record so it enters the event id); generation record written per
+  event.
 - **Engine synthesis (was the central gap).** `generate` mints the whole
   engine as data in one `.lang` file: patterns (front half) plus rules
   (`match <kind> <subject> => option assignments`, with `<value>`/`<value.N>`
@@ -431,12 +434,27 @@ but the loop around it is incomplete; "missing" means specced, not built.
   values verbatim. The coexistence defense (one Solution = one ordinary
   importable module) is now a machine-checked guarantee, not a demo.
 
+- **Repository layout and tooling.** `kernel/` is the pure deliverable (the
+  calculus reference implementation `src/`, the CLI `app/`, the conformance
+  suite `test/`, and its module-map README). Everything not deliverable sits
+  above it: `examples/` (demonstration programs plus their minted `.lang` and
+  `.generation`), `docs/`, the root `README.md` (developer entry point: the
+  loop, try-it, what-is-the-program), the `flake.nix` (build / dev shell with
+  ghc+just / checks), and the `justfile` (command index: build, test, check,
+  run, generate, vm-smoke, shell, clean). `.envrc` enters the dev shell via
+  direnv. The flake lives at the root, not in `kernel/`, because a flake
+  cannot reference a sibling `examples/` and because it is project
+  infrastructure, not part of the deliverable. Recipes use `.` (git flake
+  semantics) so untracked runtime dirs stay out of the flake tree.
+  `.gitignore` covers `.direnv/`, `result`, `*.decisions` (the crystal cache
+  is derived, never source).
+
 ### Partial
 
 - **Deduce-or-fail via resampling.** The harness `unanimous`/`coreOf` check is
-  built and tested, but `generate` samples the model once; only the confidence
-  threshold gates admission. Missing: `--samples` wiring so a deduction must
-  recur identically across samples.
+  built and tested, and the confidence threshold is now a CLI flag, but
+  `generate` still samples the model once. Missing: `--samples` wiring so a
+  deduction must recur identically across samples.
 - **Corpus pinning.** A corpus regression test exists and the generation record
   is written, but the `generate` command does not enforce "a regenerated
   `.lang` reproduces every pinned (loose, crystal) pair or fails showing the
@@ -460,6 +478,15 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Heile-Welt coping.** The kernel's promise to supply stable strategies for
   what reality cannot guarantee has no mechanism yet.
 - **`lips dev`.** Convenience wrapper (run, ask before generating). Minor.
+
+### Open Environment Loop
+
+- A message is out to the `~/nixos` agent to add `.corral/` (corral's
+  per-directory runtime socket dir) to the user-global git excludes file, so
+  no project needs to ignore it locally. Pending the operator's approval and
+  the agent's reply (which should return the excludes-file path). The local
+  `.gitignore` entry for `.corral/` was already dropped in anticipation; no
+  functional risk meanwhile, since recipes use git flake semantics.
 
 ### Shortest Summary
 
