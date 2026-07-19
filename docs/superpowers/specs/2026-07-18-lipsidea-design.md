@@ -409,6 +409,16 @@ but the loop around it is incomplete; "missing" means specced, not built.
   Deliberate restriction: minted rules emit only ground decisions (one
   refinement pass, no cascades until a real program needs them).
 
+- **Generation-event provenance.** Every minted engine line is stamped
+  `@gen:<id>`, the content id of its `.generation` record; records are
+  committed beside the engine (no longer gitignored) and the stamp is
+  mechanically checkable by re-hashing the record. Regenerating the examples
+  under this scheme surfaced live drift (the model switched to the stock
+  restic module and exposed two decisions the old engine had smuggled:
+  credentials location and a literal schedule), which moved into the program
+  — backup.loose is now three lines and every line is witnessed by the VM
+  smoke test.
+
 - **Closed rhs value language.** A minted rule's rhs is a typed value (string
   with holes and `${pkgs...}` refs only, list, bool, int), never Nix text:
   computation and string injection are unrepresentable, discharging the
