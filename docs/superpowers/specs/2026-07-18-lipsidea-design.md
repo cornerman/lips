@@ -479,15 +479,6 @@ but the loop around it is incomplete; "missing" means specced, not built.
   what reality cannot guarantee has no mechanism yet.
 - **`lips dev`.** Convenience wrapper (run, ask before generating). Minor.
 
-### Open Environment Loop
-
-- A message is out to the `~/nixos` agent to add `.corral/` (corral's
-  per-directory runtime socket dir) to the user-global git excludes file, so
-  no project needs to ignore it locally. Pending the operator's approval and
-  the agent's reply (which should return the excludes-file path). The local
-  `.gitignore` entry for `.corral/` was already dropped in anticipation; no
-  functional risk meanwhile, since recipes use git flake semantics.
-
 ### Shortest Summary
 
 The deterministic spine, the language-crystallization loop, and whole-engine
