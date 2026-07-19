@@ -60,7 +60,8 @@ text. The boundary is explicit in the code:
   versioned artifact, spec section 5 layer 3) and the parser that turns the
   model's confidence-prefixed pattern lines into candidates.
 - `generate` refuses to write a language it is unsure of: any pattern below the
-  confidence threshold (0.7) aborts the write (deduce-or-fail). The minted
+  confidence threshold (default 0.7, overridable with `--confidence <0..1>` and
+  pinned into the generation record) aborts the write (deduce-or-fail). The minted
   language is then validated by crystallizing the actual program and running it
   end to end; nothing is written unless the whole loop succeeds.
 - The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`).

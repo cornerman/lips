@@ -28,9 +28,15 @@ import           Data.Word          (Word64)
 -- said, self-contained (the system prompt is embedded, not referenced, so the
 -- record stays honest even after the prompt artifact evolves). Stored as
 -- @\<file\>.generation@, committed beside the engine.
-record :: Text -> Text -> Text -> Text -> Text
-record model sysPrompt program reply = T.unlines
+--
+-- The confidence threshold is part of the event: it co-determines what was
+-- admitted (deduce-or-fail), so a record that omitted it would not pin the
+-- event. It therefore also enters 'genId', so re-running with a different
+-- threshold yields a different id.
+record :: Text -> Double -> Text -> Text -> Text -> Text
+record model confidence sysPrompt program reply = T.unlines
   [ "model: " <> model
+  , "confidence-threshold: " <> T.pack (show confidence)
   , "--- system prompt ---", sysPrompt
   , "--- program (input) ---", program
   , "--- raw reply ---", reply

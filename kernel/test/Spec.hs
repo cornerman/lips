@@ -440,10 +440,13 @@ main = hspec $ do
             `shouldBe` []
 
     it "generation ids are deterministic and content-sensitive" $ do
-      let r  = record "m" "sp" "prog" "reply"
-          r' = record "m" "sp" "prog" "reply2"
+      let r  = record "m" 0.7 "sp" "prog" "reply"
+          r' = record "m" 0.7 "sp" "prog" "reply2"
+          rc = record "m" 0.5 "sp" "prog" "reply"
       genId r `shouldBe` genId r
       genId r `shouldNotBe` genId r'
+      -- the confidence threshold is pinned: changing it changes the id
+      genId r `shouldNotBe` genId rc
       T.length (genId r) `shouldBe` 16
 
     it "reads a hole with glued trailing punctuation: '<when>.' binds <when>" $

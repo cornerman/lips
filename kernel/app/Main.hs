@@ -21,6 +21,7 @@ import           System.Environment (getArgs, getProgName)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hPutStrLn, stderr)
 import           System.Process     (readProcessWithExitCode)
+import           Text.Read          (readMaybe)
 
 import           Lips.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
@@ -43,22 +44,41 @@ defaultModel = "anthropic/claude-opus-4-8"
 
 -- | A minted language is admitted only if every pattern is at least this
 -- certain; otherwise generate fails loud (deduce-or-fail), writing nothing.
-confidenceThreshold :: Double
-confidenceThreshold = 0.7
+-- Overridable per invocation with @--confidence@; the chosen value is pinned
+-- into the generation record.
+defaultConfidence :: Double
+defaultConfidence = 0.7
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["run", file]             -> runLoose file
-    ["generate", file]        -> generate defaultModel file
-    ["generate", model, file] -> generate model file
-    _                         -> usage >> exitFailure
+    ["run", file]        -> runLoose file
+    ("generate" : rest)  -> case parseGenerate rest of
+      Just (conf, model, file) -> generate conf model file
+      Nothing                  -> usage >> exitFailure
+    _                    -> usage >> exitFailure
+
+-- | Parse @generate@ arguments: an optional @--confidence <0..1>@ flag in any
+-- position, then @[model] <program-file>@. A malformed or out-of-range
+-- threshold, or the wrong number of positionals, fails loud (returns Nothing).
+parseGenerate :: [String] -> Maybe (Double, String, FilePath)
+parseGenerate = go Nothing []
+  where
+    go _ pos ("--confidence" : v : rest)
+      | Just c <- readMaybe v, c >= 0, c <= 1 = go (Just c) pos rest
+      | otherwise                             = Nothing
+    go _ _ ["--confidence"]      = Nothing
+    go conf pos (a : rest)       = go conf (pos ++ [a]) rest
+    go conf pos []               = finish (maybe defaultConfidence id conf) pos
+    finish c [file]        = Just (c, defaultModel, file)
+    finish c [model, file] = Just (c, model, file)
+    finish _ _             = Nothing
 
 usage :: IO ()
 usage = do
   name <- getProgName
-  hPutStrLn stderr ("usage: " <> name <> " generate [model] <program-file>")
+  hPutStrLn stderr ("usage: " <> name <> " generate [--confidence <0..1>] [model] <program-file>")
   hPutStrLn stderr ("       " <> name <> " run <program-file>")
 
 -- | @run@: crystallize the loose program with its language, then realize.
@@ -83,14 +103,14 @@ runLoose file = do
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: String -> FilePath -> IO ()
-generate model file = do
+generate :: Double -> String -> FilePath -> IO ()
+generate confidence model file = do
   program <- TIO.readFile file
   reply   <- callPi model systemPrompt program
   let (errs, candidates) = parseEngineCandidates reply
   mapM_ (\e -> TIO.hPutStrLn stderr ("warning: " <> e)) errs
   -- Deduce-or-fail: refuse an engine the model is unsure of.
-  let unsure = [c | c <- candidates, let Confidence x = icConfidence c, x < confidenceThreshold]
+  let unsure = [c | c <- candidates, let Confidence x = icConfidence c, x < confidence]
   case unsure of
     (_ : _) -> die ("model is unsure of " <> tshow (length unsure) <> " item(s); refusing to write (deduce-or-fail)")
     [] -> do
@@ -108,7 +128,7 @@ generate model file = do
               -- The record is written first-class and every engine line is
               -- stamped with its content id: line -> event, checkable by
               -- re-hashing the .generation file.
-              let rec = record (T.pack model) systemPrompt program reply
+              let rec = record (T.pack model) confidence systemPrompt program reply
               TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
               TIO.writeFile (file <> ".decisions") (renderBase base)
               TIO.writeFile (file <> ".generation") rec
