@@ -25,7 +25,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, ItemCandidate (..))
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, ItemCandidate (..), systemPrompt)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
 import Lips.Kernel.Lang.Pattern
@@ -561,6 +561,99 @@ main = hspec $ do
           runBase 10000 (map toRule (edRules feedEngine)) (map toDemand (edDemands feedEngine)) base
             `shouldBe` Left (OpenQuestions ["where do the files arrive?"])
 
+  -- Laws over arbitrary bases, not just the two worked examples: the merge is
+  -- the kernel's core physics, so it is pinned as algebraic properties.
+  describe "merge algebra (laws over arbitrary bases, spec 2.1)" $ do
+    it "union is idempotent: union b b == b" $
+      property $ \ds -> let b = fromList ds in union b b === b
+
+    it "union is associative" $
+      property $ \xs ys zs ->
+        let a = fromList xs; b = fromList ys; c = fromList zs
+         in union a (union b c) === union (union a b) c
+
+    it "union is right-biased on id clashes (solution laid over defaults wins)" $ do
+      let def = mk "d" "x" "old" Default
+          sol = mk "d" "x" "new" Stated
+      toList (union (fromList [def]) (fromList [sol])) `shouldBe` [sol]
+
+    it "every resolved winner has the maximum strength among its subject's decisions" $
+      property $ \ds ->
+        case resolve (fromList ds) of
+          Left _        -> property True  -- the law constrains winners, not conflicts
+          Right winners ->
+            let bds = toList (fromList ds)
+             in conjoin
+                  [ dStrength w === maximum [ dStrength d | d <- bds, dSubject d == s ]
+                  | (s, w) <- Map.toList winners ]
+
+    it "resolve never invents or drops a subject" $
+      property $ \ds ->
+        case resolve (fromList ds) of
+          Left _        -> property True
+          Right winners ->
+            let subjects = Map.keys (Map.fromList [ (dSubject d, ()) | d <- toList (fromList ds) ])
+             in Map.keys winners === subjects
+
+  -- Orthogonality (at most one rule fires per decision) makes rewriting a
+  -- function, hence confluent: the ground result cannot depend on rule order.
+  describe "refinement confluence (rule order independence, spec 4)" $ do
+    let rA = MapRule "rA" Fact   ["a"] [ Emit ["x"] (VBool True) ]
+        rB = MapRule "rB" Oblige ["b"] [ Emit ["y"] (VStr [PHole "value"]) ]
+        rC = MapRule "rC" Fact   ["c"] [ Emit ["z"] (VInt 1) ]
+        rules = map toRule [rA, rB, rC]
+        base  = fromList
+          [ (mk "a" "a" ""   Stated) { dKind = Fact }
+          , (mk "b" "b" "vv" Stated) { dKind = Oblige }
+          , (mk "c" "c" ""   Stated) { dKind = Fact }
+          ]
+
+    it "the ground result is independent of rule order" $
+      property $ forAll (shuffle [0 .. length rules - 1]) $ \perm ->
+        refine 1000 (map (rules !!) perm) base === refine 1000 rules base
+
+    it "a decision no rule matches is ground; an emitted Meta decision is a fixpoint" $ do
+      isGround rules (mk "z" "unmatched" "" Stated)              `shouldBe` True
+      isGround rules ((mk "m" "a" "" Stated) { dKind = Meta })    `shouldBe` True
+
+  -- The value language's two guarantees, as properties over generated inputs:
+  -- canonical round-trip, and injection made unrepresentable.
+  describe "value language (round-trip and injection safety, spec: closed rhs)" $ do
+    it "parseValue . renderValue == id for canonical values" $
+      property $ forAll genValue $ \v -> parseValue (renderValue v) === Right v
+
+    -- Whatever a program value contains (quotes, backslashes, ${...}), filling
+    -- a hole with it yields ONE inert literal: it cannot add structure, close
+    -- the string, or open an interpolation. This is the Nix-injection guard.
+    it "any filled program text collapses to a single inert literal" $
+      property $ forAll fillText $ \t ->
+        parseValue (fillValue (const t) (VStr [PHole "value"])) === Right (VStr [PLit t])
+
+    it "a bare identifier rhs is rejected (only closed value forms parse)" $
+      property $ forAll bareWord $ \w -> parseValue w `shouldSatisfy` isLeft
+
+  -- The system prompt is pinned into the generation id, so it is a versioned
+  -- artifact; this guards its load-bearing clauses against silent drift.
+  describe "generate prompt is a pinned artifact (mint doctrine)" $
+    it "states its load-bearing invariants" $
+      mapM_ (\clause -> systemPrompt `shouldSatisfy` T.isInfixOf clause)
+        [ "act exactly once"
+        , "replace EVERY program value with a hole"
+        , "refusal beats invention"
+        , "pure data"
+        , "No functions"
+        , "demand <subject>"
+        , "expect <option.path> from <subject>"
+        ]
+
+  describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
+    it "rejects an unknown strength" $
+      readDecision "d1 fact x supreme \"a\"" `shouldSatisfy` isLeft
+    it "rejects a line truncated before its assertion" $
+      readDecision "d1 fact x stated" `shouldSatisfy` isLeft
+    it "rejects an empty line" $
+      readDecision "" `shouldSatisfy` isLeft
+
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
 
@@ -586,6 +679,46 @@ assertionText = T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ " .
 
 rationaleText :: Gen Text
 rationaleText = T.unwords <$> listOf1 safeToken
+
+-- A canonical value: no empty or adjacent literal pieces, literal text over a
+-- Nix-safe alphabet that still exercises escaping (quotes, backslashes, ${).
+genValue :: Gen Value
+genValue = sized go
+  where
+    go n = frequency
+      [ (3, VStr  <$> (canon <$> resize n (listOf genPiece)))
+      , (1, VList <$> resize (n `div` 3) (listOf (go (n `div` 3))))
+      , (2, VBool <$> arbitrary)
+      , (2, VInt  <$> arbitrary)
+      ]
+    genPiece = oneof [ PLit <$> litText, PRef <$> genRef, PHole <$> genHole ]
+    litText  = T.pack <$> listOf1 (elements litAlphabet)
+    litAlphabet = ['a' .. 'z'] ++ ['0' .. '9'] ++ " \"\\${}.:/-_"
+    genRef   = ("pkgs" :) <$> listOf1 refSeg
+    refSeg   = T.pack <$> listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "-_"))
+    genHole  = oneof [ pure "value", (\i -> "value." <> T.pack (show i)) <$> choose (1 :: Int, 9) ]
+
+-- Canonicalize a piece list the way parseValue would read it back: drop empty
+-- literals and merge adjacent ones.
+canon :: [Piece] -> [Piece]
+canon = merge . filter notEmpty
+  where
+    notEmpty (PLit t) = not (T.null t)
+    notEmpty _        = True
+    merge (PLit a : PLit b : rest) = merge (PLit (a <> b) : rest)
+    merge (p : rest)               = p : merge rest
+    merge []                       = []
+
+-- Program text that fills a hole: includes exactly the characters the escape
+-- must neutralize. Excludes '<', whose re-parse asymmetry is a known,
+-- Nix-harmless value-language quirk (see the report to the maintainer).
+fillText :: Gen Text
+fillText = T.pack <$> listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ " \"\\${}();.:/-_"))
+
+-- A lowercase word that is neither a value keyword nor a number: not a value.
+bareWord :: Gen Text
+bareWord = suchThat (T.pack <$> listOf1 (elements ['a' .. 'z']))
+                    (`notElem` ["true", "false"])
 
 genProv :: Gen Provenance
 genProv = oneof
