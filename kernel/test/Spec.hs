@@ -654,6 +654,73 @@ main = hspec $ do
     it "rejects an empty line" $
       readDecision "" `shouldSatisfy` isLeft
 
+  -- The spec 5 edit-tolerance contract, as fuzzing: a program built from a
+  -- language's own templates, with holes filled by arbitrary tokens, stays in
+  -- the language and realizes. Edits are re-instantiations of holes; closure
+  -- is a theorem of the crystallizer, exercised here over generated programs.
+  describe "edit-tolerance fuzzing (spec 5: closure under edits)" $ do
+    let p1t = [TLit "the", TLit "bank", TLit "drops", TLit "csv", TLit "files", TLit "into", THole "loc"]
+        p2t = [TLit "the", TLit "bank", TLit "delivers", TLit "new", TLit "files", TLit "every", THole "sched"]
+        p3t = [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "exactly", TLit "one", THole "rec"]
+        pats =
+          [ Pattern "p1" p1t Fact   Stated [SLit "feed.source"]  [SHole "loc"]
+          , Pattern "p2" p2t Fact   Stated [SLit "feed.cadence"] [SHole "sched"]
+          , Pattern "p3" p3t Oblige Stated [SLit "feed.ingest"]  [SHole "rec"]
+          ]
+        svc seg = ["systemd", "services", "ledger-ingest"] ++ seg
+        rules =
+          [ MapRule "r1" Oblige ["feed", "ingest"]
+              [ Emit (svc ["enable"]) (VBool True) ]
+          , MapRule "r2" Fact ["feed", "cadence"]
+              [ Emit ["systemd", "timers", "ledger-ingest", "timerConfig", "OnCalendar"] (VStr [PHole "value"]) ]
+          , MapRule "r3" Fact ["feed", "source"]
+              [ Emit (svc ["environment", "LEDGER_INBOX"]) (VStr [PHole "value"]) ]
+          ]
+        demands =
+          [ DemandSpec "q1" ["feed", "source"]  "where do the files arrive?"
+          , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
+          ]
+        -- reconstruct a surface line from a template, filling its single hole
+        surface toks fill = T.unwords [ case t of TLit l -> l; THole _ -> fill | t <- toks ]
+        runProg prog = do
+          base <- either (Left . show) Right (crystallize "feed" pats prog)
+          either (Left . show) Right
+            (runBase 10000 (map toRule rules) (map toDemand demands) base)
+        -- the realized module minus provenance comments: the semantic content,
+        -- which is what edits must preserve (comments track ids, not meaning)
+        opts = filter (not . ("#" `T.isPrefixOf`) . T.stripStart) . T.lines
+        tok  = safeToken
+        anyLine = do
+          t   <- tok
+          tpl <- elements [p1t, p2t, p3t]
+          dot <- elements ["", "."]
+          pure (surface tpl t <> dot)
+
+    it "crystallize accepts any in-language program (never NoPattern/Overlapping)" $
+      property $ forAll (listOf1 anyLine) $ \ls ->
+        case crystallize "feed" pats (T.unlines ls) of
+          Right _ -> True
+          Left _  -> False
+
+    it "value edits realize: arbitrary source/cadence tokens build a module carrying them" $
+      property $ forAll ((,) <$> tok <*> tok) $ \(loc, sched) ->
+        case runProg (T.unlines [surface p1t loc, surface p2t sched]) of
+          Right m -> loc `T.isInfixOf` m .&&. sched `T.isInfixOf` m
+          Left e  -> counterexample e False
+
+    it "recombination: reordering lines preserves the option assignments" $
+      property $ forAll ((,,) <$> tok <*> tok <*> tok) $ \(loc, sched, rec) ->
+        let ls = [surface p1t loc, surface p2t sched, surface p3t rec]
+         in forAll (shuffle [0 .. length ls - 1]) $ \perm ->
+              fmap opts (runProg (T.unlines (map (ls !!) perm)))
+                === fmap opts (runProg (T.unlines ls))
+
+    it "instance edit: duplicating an identical line changes nothing (agreement)" $
+      property $ forAll ((,) <$> tok <*> tok) $ \(loc, sched) ->
+        let orig = [surface p1t loc, surface p2t sched]
+            dup  = orig ++ [surface p1t loc]
+         in fmap opts (runProg (T.unlines dup)) === fmap opts (runProg (T.unlines orig))
+
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
 
