@@ -567,13 +567,18 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Grammar completeness (complete by construction).** The kernel must refuse a
   program only for deduce-or-fail, a computation need (-> glue), or reality
   (Heile-Welt) -- never for a missing grammar case. Each closed grammar is
-  designed complete over its domain: the value grammar = the Nix value algebra
-  minus computation (every scalar as literal and as a type-checked hole), the
-  template grammar = a small complete token-capture algebra (single/multi/
-  quoted-span holes + one-level block). Order: value completeness, then
-  template completeness, then glue (the one documented incompleteness). First
-  driver: the nginx gap report (int-typed port; quoted-span + bullet routes).
-  Full design in `2026-07-20-completeness-plan.md`.
+  designed complete over its domain. Order: value completeness, then template
+  completeness, then glue. First driver: the nginx gap report. Full design in
+  `2026-07-20-completeness-plan.md`.
+  - Value completeness: DONE (8ffd70d). `Value` now covers the Nix value
+    algebra minus computation -- string, list, bool, int, float, path, null --
+    and a typed hole `<value:int|bool|float|path>` (and `<value.N:...>`) fills
+    a non-string option from a program token, coerced and fail-loud, injection
+    still closed. Deferred: `VAttr` literal (nested attrsets are expressible as
+    deeper option paths). Unblocks the int-typed port.
+  - Template completeness: TODO. Multi-token / quoted-span holes + one-level
+    block (bullet lists). The nginx routes line needs these.
+  - Glue: TODO. The one documented incompleteness (computation).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
 - **Multi-language composition.** The sketch composes three languages in one
