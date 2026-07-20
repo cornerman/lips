@@ -468,7 +468,14 @@ but the loop around it is incomplete; "missing" means specced, not built.
   loop, try-it, what-is-the-program), the `flake.nix` (build / dev shell with
   ghc+just / checks), and the `justfile` (command index: build, test, check,
   run, generate, vm-smoke, shell, clean). `.envrc` enters the dev shell via
-  direnv. The flake lives at the root, not in `kernel/`, because a flake
+  direnv. The root `README.md` is the developer entry point (try-it, the
+  generate/run/check loop, artifact table + flow diagram, traceability);
+  `AGENTS.md` (symlinked `CLAUDE.md`) carries what agents need beyond it:
+  exact terminology, the six invariants (run never calls a model;
+  deduce-or-fail; illegal states unrepresentable; workarounds become kernel
+  physics; `.expect` gates regeneration; `@gen` stamps re-hash), and working
+  conventions (worktrees, TDD, ff-merge, ledger upkeep, flake sees only
+  git-tracked files, `pi` gateway deliberately outside the dev shell). The flake lives at the root, not in `kernel/`, because a flake
   cannot reference a sibling `examples/` and because it is project
   infrastructure, not part of the deliverable. Recipes use `.` (git flake
   semantics) so untracked runtime dirs stay out of the flake tree.
