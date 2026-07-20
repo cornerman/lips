@@ -12,6 +12,8 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
+import Control.Exception (evaluate)
+
 import Test.Hspec
 import Test.QuickCheck hiding (Confidence)
 
@@ -414,6 +416,38 @@ main = hspec $ do
     it "rejects non-pkgs interpolation inside rhs strings" $
       parseRuleBody "r" "match fact x => a.b \"\\\"${lib.getExe pkgs.restic}\\\"\"" `shouldSatisfy` isLeft
 
+    it "parses the full value algebra: null, float, path, and typed holes" $ do
+      parseValue "null"            `shouldBe` Right VNull
+      parseValue "3.14"            `shouldBe` Right (VFloat 3.14)
+      parseValue "/var/lib/ledger" `shouldBe` Right (VPath "/var/lib/ledger")
+      parseValue "<value:int>"     `shouldBe` Right (VHole HInt "value")
+      parseValue "<value.2:path>"  `shouldBe` Right (VHole HPath "value.2")
+
+    it "rejects an untyped bare hole and an unknown hole type" $ do
+      parseValue "<value>"         `shouldSatisfy` isLeft
+      parseValue "<value:widget>"  `shouldSatisfy` isLeft
+
+    it "an integer-typed option is filled as an INTEGER from a program value (nginx port gap)" $ do
+      let r = MapRule "r" Fact ["server", "port"]
+                [ Emit ["services", "nginx", "defaultHTTPListenPort"] (VHole HInt "value") ]
+          matched = (mk "d" "unused" "8080" Stated) { dSubject = Subject ["server", "port"] }
+      case refine 100 [toRule r] (fromList [matched]) of
+        Right b -> case toList b of
+          [d] -> (dSubject d, dAssertion d) `shouldBe`
+                   (Subject ["services", "nginx", "defaultHTTPListenPort"], Assertion "8080")
+          ds  -> expectationFailure ("expected one emitted decision, got " ++ show (length ds))
+        Left e -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "a path hole emits an unquoted path; a bool hole emits a keyword" $ do
+      fillValue (const "/etc/ssl/cert.pem") (VHole HPath "value") `shouldBe` "/etc/ssl/cert.pem"
+      fillValue (const "true")              (VHole HBool "value") `shouldBe` "true"
+
+    it "a typed hole fails loud when the program value is the wrong type" $ do
+      evaluate (T.length (fillValue (const "not-a-number") (VHole HInt "value")))
+        `shouldThrow` anyErrorCall
+      evaluate (T.length (fillValue (const "has space") (VHole HPath "value")))
+        `shouldThrow` anyErrorCall
+
     it "accepts the closed value forms: string+pkgs-ref, list, bool, int" $ do
       parseValue "\"${pkgs.restic}/bin/restic backup <value.1>\"" `shouldBe`
         Right (VStr [PRef ["pkgs", "restic"], PLit "/bin/restic backup ", PHole "value.1"])
@@ -642,6 +676,7 @@ main = hspec $ do
         , "refusal beats invention"
         , "pure data"
         , "No functions"
+        , "<value:int>"
         , "demand <subject>"
         , "expect <option.path> from <subject>"
         ]
@@ -757,7 +792,15 @@ genValue = sized go
       , (1, VList <$> resize (n `div` 3) (listOf (go (n `div` 3))))
       , (2, VBool <$> arbitrary)
       , (2, VInt  <$> arbitrary)
+      , (1, pure VNull)
+      , (1, VFloat <$> elements [0.0, 1.5, 3.14, -2.5, 100.0, 0.25])
+      , (1, VPath  <$> genPath)
+      , (2, VHole  <$> elements [HInt, HBool, HFloat, HPath] <*> genHole)
       ]
+    genPath = do
+      pre  <- elements ["/", "./", "../"]
+      segs <- listOf1 (T.pack <$> listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "_-")))
+      pure (pre <> T.intercalate "/" segs)
     genPiece = oneof [ PLit <$> litText, PRef <$> genRef, PHole <$> genHole ]
     litText  = T.pack <$> listOf1 (elements litAlphabet)
     litAlphabet = ['a' .. 'z'] ++ ['0' .. '9'] ++ " \"\\${}.:/-_"
