@@ -576,8 +576,15 @@ but the loop around it is incomplete; "missing" means specced, not built.
     a non-string option from a program token, coerced and fail-loud, injection
     still closed. Deferred: `VAttr` literal (nested attrsets are expressible as
     deeper option paths). Unblocks the int-typed port.
-  - Template completeness: TODO. Multi-token / quoted-span holes + one-level
-    block (bullet lists). The nginx routes line needs these.
+  - Template completeness: DONE for the nginx case (d4c4468). The tokenizer is
+    quote-aware: a `"..."` span is one token whose surface is its inner text
+    (quotes dropped, spaces kept), so a normal hole captures a quoted value,
+    and a template `"<body>"` reads as a capturing hole. Bullets need no block
+    machinery: `-` is just a literal token, and each item stays a distinct
+    decision by putting its own value (the path) in the subject. Deferred:
+    unquoted multi-token holes (bind several words up to a literal) and true
+    parent-child block aggregation (a decision that owns a list); neither is
+    needed yet.
   - Glue: TODO. The one documented incompleteness (computation).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
