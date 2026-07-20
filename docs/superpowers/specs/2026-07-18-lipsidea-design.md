@@ -564,6 +564,16 @@ but the loop around it is incomplete; "missing" means specced, not built.
   reopen the hole the value grammar closed and let workarounds bypass kernel
   growth). In-tree Haskell modules behind the one suite until a second
   consumer exists (YAGNI on loadability).
+- **Grammar completeness (complete by construction).** The kernel must refuse a
+  program only for deduce-or-fail, a computation need (-> glue), or reality
+  (Heile-Welt) -- never for a missing grammar case. Each closed grammar is
+  designed complete over its domain: the value grammar = the Nix value algebra
+  minus computation (every scalar as literal and as a type-checked hole), the
+  template grammar = a small complete token-capture algebra (single/multi/
+  quoted-span holes + one-level block). Order: value completeness, then
+  template completeness, then glue (the one documented incompleteness). First
+  driver: the nginx gap report (int-typed port; quoted-span + bullet routes).
+  Full design in `2026-07-20-completeness-plan.md`.
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
 - **Multi-language composition.** The sketch composes three languages in one
@@ -593,6 +603,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   otherwise injects ambient AGENTS.md/CLAUDE.md (global + walking up from
   cwd) -- unpinned inputs that entered neither the record nor `genId` (bug,
   fixed 7a1b313).
+- **Completeness by construction.** Closed grammars are made complete over
+  their domains, not grown feature by feature: the value grammar targets the
+  whole Nix value algebra minus computation, the template grammar a small
+  complete capture algebra. Computation is the single deliberate hole, routed
+  to glue. A missing grammar case is a kernel bug, not an acceptable refusal.
 - **Expressiveness gaps route through three doors, never a plugin API.**
   Per-problem computation -> marked glue (in the Solution, visible blast
   radius); mechanism reach -> nixpkgs/flakes (an engine emitting the options
