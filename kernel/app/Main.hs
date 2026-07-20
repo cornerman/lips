@@ -221,7 +221,10 @@ callPi :: String -> Text -> Text -> IO Text
 callPi model system userPrompt = do
   (code, out, err) <-
     readProcessWithExitCode "pi"
-      [ "-p", "-nt", "--no-session", "--model", model, "--system-prompt", T.unpack system ]
+      -- -nc: the mint must be hermetic. pi otherwise injects ambient AGENTS.md/CLAUDE.md
+      -- context files (global + walking up from cwd) - inputs that would steer generation
+      -- without entering the .generation record or the genId hash.
+      [ "-p", "-nt", "-nc", "--no-session", "--model", model, "--system-prompt", T.unpack system ]
       (T.unpack userPrompt)
   case code of
     ExitSuccess   -> pure (T.pack out)
