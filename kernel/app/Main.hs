@@ -143,7 +143,17 @@ generate confidence model file = do
   -- Deduce-or-fail: refuse an engine the model is unsure of.
   let unsure = [c | c <- candidates, let Confidence x = icConfidence c, x < confidence]
   case unsure of
-    (_ : _) -> die ("model is unsure of " <> tshow (length unsure) <> " item(s); refusing to write (deduce-or-fail)")
+    (_ : _) -> do
+      -- Make the refusal diagnosable: echo each hedged item verbatim with its
+      -- confidence against the threshold, so the operator sees WHICH items the
+      -- model was unsure of, not merely how many.
+      mapM_
+        (\c -> let Confidence x = icConfidence c
+               in TIO.hPutStrLn stderr
+                    ("unsure (confidence " <> tshow x <> " < threshold "
+                     <> tshow confidence <> "): " <> icLine c))
+        unsure
+      die ("model is unsure of " <> tshow (length unsure) <> " item(s); refusing to write (deduce-or-fail)")
     [] -> do
       let eng = assemble (map icItem candidates)
       -- Validate the minted engine against the actual program: it must

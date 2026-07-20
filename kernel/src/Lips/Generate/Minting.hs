@@ -45,9 +45,12 @@ data EngineItem
   deriving (Eq, Show)
 
 -- | An item the model proposes, with the confidence it attaches to it.
+-- @icLine@ retains the raw minted line verbatim (@<confidence> <id> <body>@)
+-- so the deduce-or-fail refusal can echo exactly what the model emitted.
 data ItemCandidate = ItemCandidate
   { icItem       :: EngineItem
   , icConfidence :: Confidence
+  , icLine       :: Text
   }
   deriving (Eq, Show)
 
@@ -182,7 +185,7 @@ parseLine line = do
         else if "expect " `T.isPrefixOf` body
           then ItemExpect <$> located (parseExpectBody idTok body)
           else ItemPattern <$> located (parsePatternBody idTok body)
-  Right (ItemCandidate item (Confidence conf))
+  Right (ItemCandidate item (Confidence conf) line)
   where
     located = either (\e -> Left (e <> " in: " <> line)) Right
 
