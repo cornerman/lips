@@ -512,6 +512,58 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
+- **Artifacts (minted programs + build pipeline).** The other half of
+  "realization = artifacts + Nix wiring": generate mints named source texts
+  (a Rust main.rs, a Haskell file) at the pinned generation event; run wraps
+  them deterministically in Nix build recipes (writeText +
+  buildRustPackage/...); the value language gains one reference form,
+  `${artifact.<name>}` (a name, not a computation, same physics as
+  `${pkgs...}`). This is where marked glue lands: model-authored computation,
+  visibly downgraded rigor, covered by the behavioral gate (artifact builds;
+  VM asserts it runs). Docker locally via dockerTools (just another
+  derivation); pushing in CI crosses the Heile-Welt boundary (registry state,
+  secrets) and lands later as coping, not kernel physics. Invariant preserved:
+  the model writes source only at generate; run never invents a byte.
+- **`lips up` (activation verb).** `run` stays the pure printer. `up`
+  instantiates locally: wrap the realized module into a nixosSystem and boot
+  it as a QEMU VM (machinery exists in vm-smoke), or a `nix develop` shell for
+  shell-shaped Solutions. Local VM = the Heile-Welt simulation of the target
+  machine. Small; recommended before artifacts.
+- **Direction files (designed, not implemented).** Owner taste for the mint:
+  repo-wide `lips.direction` + per-program `<name>.loose.direction`, plain
+  text, concatenated into the minting prompt. Sharp boundary: the program
+  states what must be true; direction states what to prefer (mechanism taste:
+  restic vs rsync, no docker, secrets via env files). Direction never carries
+  obligations -- anything that must hold belongs in the program (a decision)
+  or `.expect` (an assertion); the prompt states this rule to the model.
+  Pinned for free: direction enters the system prompt, which the `.generation`
+  record embeds verbatim, so it enters `genId`. `run`/`check` never see it.
+  Also softens mechanism churn across regenerations (same taste, stable
+  mechanisms). Implementation: thread through `Minting.systemPrompt` +
+  `callPi`; Record unchanged.
+- **Gap report (`<program>.gap`).** When generate refuses because physics is
+  missing (deduce-or-fail on an inexpressible need), the refusal must be a
+  shippable artifact, not a mood: refused lines, the missing capability
+  (which extension point: value form, emission type, realization target), a
+  minimal reproducing program, model + prompt fingerprint. A compiler bug
+  report for the kernel, machine-readable, pinned. Cheap; do soon.
+- **Kernel modules (shared verified capabilities).** Successor of the
+  vocabulary milestone under a better name: loadable units OF the guarantee
+  regime, not plugins around it. A module extends closed grammars at declared
+  algebraic extension points (new value form like `${secret.<name>}`, new
+  emission type, new realization target), never hooks internals; ships its
+  own conformance tests + properties in suite format, and loading is gated on
+  them (untested = refused, loud); orthogonality by construction (two modules
+  claiming one extension point = conflict); versioned + content-hashed, and a
+  `.lang` declares the capabilities it uses, keeping the trust chain
+  (program -> engine -> modules -> kernel core) mechanically checkable. Trust
+  gradient: kernel core (tiny, universal) -> modules (domain-general, same
+  rigor) -> engines (per-problem, data) -> glue (marked low-rigor pocket).
+  Permanently forbidden: per-problem code and unchecked surface; a classic
+  plugin API is refused on principle (largest possible interface; would
+  reopen the hole the value grammar closed and let workarounds bypass kernel
+  growth). In-tree Haskell modules behind the one suite until a second
+  consumer exists (YAGNI on loadability).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
 - **Multi-language composition.** The sketch composes three languages in one
@@ -529,6 +581,37 @@ but the loop around it is incomplete; "missing" means specced, not built.
   cannot assert them (no GPU/display in CI), leaving the behavioral corpus
   thinner for those domains.
 - **`lips dev`.** Convenience wrapper (run, ask before generating). Minor.
+
+### Doctrine (settled by discussion, no code implied)
+
+- **Three explicit instruction channels, none ambient.** AGENTS.md instructs
+  agents working on the repo; `Minting.systemPrompt` instructs the mint
+  (mint-relevant truths promoted from AGENTS.md: act-once so every value
+  becomes a hole, engine is pure data with no code escape, refusal beats
+  invention, no value-grammar workarounds); `.direction` files carry owner
+  taste per program. The mint is hermetic: `callPi` passes `-nc` because pi
+  otherwise injects ambient AGENTS.md/CLAUDE.md (global + walking up from
+  cwd) -- unpinned inputs that entered neither the record nor `genId` (bug,
+  fixed 7a1b313).
+- **Expressiveness gaps route through three doors, never a plugin API.**
+  Per-problem computation -> marked glue (in the Solution, visible blast
+  radius); mechanism reach -> nixpkgs/flakes (an engine emitting the options
+  of an existing module IS the plugin, maintained elsewhere); substrate
+  expressiveness -> kernel physics (tested, permanent, conformance-suited),
+  optionally packaged as a kernel module.
+- **Cross-repo escalation (using lips outside the lips repo).** generate
+  refuses -> gap report travels upstream -> kernel grows under the suite ->
+  downstream bumps its flake input and regenerates (committed `.expect`
+  gates). Interim unblocks, in dignity order: restate within current physics
+  (backup.loose gained its credentials line this way); hand-write the missing
+  piece as an ordinary NixOS module BESIDE the lips one (the coexistence
+  defense used as intended); local kernel-module overlay under the same
+  rigor gate.
+- **Forking is safe by design.** lips is defined by the calculus + conformance
+  suite, not the repo; the reference implementation is non-privileged. A fork
+  that keeps the suite green IS lips (`inputs.lips.url = github:you/lips`);
+  fork-as-overlay (patch + tests, rebased, upstreamed, then deleted) is the
+  sanctioned fast path; only editing the suite itself mints a dialect.
 
 ### Shortest Summary
 
