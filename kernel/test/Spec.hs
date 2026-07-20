@@ -355,6 +355,18 @@ main = hspec $ do
       applyPattern p (Map.fromList [("loc", "inbox/")])
         `shouldBe` (Subject ["feed", "source"], Fact, Assertion "inbox/", Stated)
 
+    it "lexes a quoted value as one token, dropping the quotes (gap 2)" $
+      tokenizeLine "returns text \"hello world\"" `shouldBe`
+        [("returns", "returns"), ("text", "text"), ("hello world", "hello world")]
+
+    it "a hole captures a quoted value, spaces preserved" $
+      matchTemplate [TLit "text", THole "body"] (tokenizeLine "text \"hello world\"")
+        `shouldBe` Just (Map.fromList [("body", "hello world")])
+
+    it "a bullet is a literal token; the item value binds a hole" $
+      matchTemplate [TLit "-", THole "path"] (tokenizeLine "- /hello")
+        `shouldBe` Just (Map.fromList [("path", "/hello")])
+
   describe "crystallize (crystallization plan: three outcomes)" $ do
     let sourceP = Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
                     Fact Stated [SLit "feed.source"] [SHole "loc"]
@@ -393,6 +405,16 @@ main = hspec $ do
                 [d] -> dSubject d == Subject ["cfg", k] && dAssertion d == Assertion v
                 _   -> False
               Left _ -> False
+
+    it "captures a quoted multi-word value into a bulleted route (gap 2)" $ do
+      let routeP = Pattern "pr" [TLit "-", THole "path", TLit "returns", TLit "text", THole "body"]
+                     Fact Stated [SLit "route.", SHole "path"] [SHole "body"]
+      case crystallize "prog" [routeP] "- /hello returns text \"hello world\"" of
+        Right b -> case toList b of
+          [d] -> (dSubject d, dAssertion d) `shouldBe`
+                   (Subject ["route", "/hello"], Assertion "hello world")
+          ds  -> expectationFailure ("expected one decision, got " ++ show (length ds))
+        Left e -> expectationFailure ("unexpected crystallize error: " ++ show e)
 
   describe "engine data (engine-synthesis plan: rules and demands as data)" $ do
     let rule = MapRule "r2" Fact ["feed", "cadence"]
@@ -515,6 +537,12 @@ main = hspec $ do
       case parsePatternBody "p9" "back up <src> every <when>. => fact backup.job stated \"<src> <when>\"" of
         Right p -> pTemplate p `shouldBe`
           [TLit "back", TLit "up", THole "src", TLit "every", THole "when"]
+        Left e  -> expectationFailure (T.unpack e)
+
+    it "reads a quoted hole \"<body>\" in a template as a capturing hole (gap 2)" $
+      case parsePatternBody "pr" "- <path> returns text \"<body>\" => fact route.text stated \"<path> <body>\"" of
+        Right p -> pTemplate p `shouldBe`
+          [TLit "-", THole "path", TLit "returns", TLit "text", THole "body"]
         Left e  -> expectationFailure (T.unpack e)
 
     it "rejects a pattern whose target hole is not bound by the template" $ do

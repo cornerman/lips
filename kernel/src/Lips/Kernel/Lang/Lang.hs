@@ -163,7 +163,7 @@ parseBody pid body = do
   rest0 <- if T.null afterArrow
              then Left ("pattern " <> pid <> ": missing =>")
              else Right (T.drop 4 afterArrow)
-  let template = map parseTplTok (T.words tplStr)
+  let template = map parseTplTok (lexTokens tplStr)
   (kindTok, r1) <- firstToken rest0 ("pattern " <> pid <> ": missing kind")
   (subjTok, r2) <- firstToken r1 ("pattern " <> pid <> ": missing subject")
   (strTok,  r3) <- firstToken r2 ("pattern " <> pid <> ": missing strength")
@@ -191,6 +191,11 @@ parseBody pid body = do
 
 parseTplTok :: Text -> TplTok
 parseTplTok w
+  -- A quoted span in the template: "<body>" captures a quoted value (its
+  -- inner text, spaces and all); a fixed "literal" matches a quoted token.
+  -- Symmetric with 'tokenizeLine', which lexes a quoted line value as one
+  -- token, so the two line up.
+  | Just inner <- unquote w = maybe (TLit (T.toLower inner)) THole (holeName inner)
   -- Symmetric with 'tokenizeLine': trailing sentence punctuation is noise on
   -- the template side too, so a minted "<when>." is the hole <when> (live
   -- mints glue the line's final period onto the hole; kernel physics, not a

@@ -26,12 +26,15 @@ module Lips.Kernel.Lang.Pattern
   , Pattern (..)
   , normalizeToken
   , stripTrailingPunct
+  , lexTokens
+  , unquote
   , tokenizeLine
   , matchTemplate
   , applyPattern
   , holesOf
   ) where
 
+import           Data.Char       (isSpace)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -77,11 +80,40 @@ stripTrailingPunct = T.dropWhileEnd (`elem` (".,;:!?" :: String))
 normalizeToken :: Text -> Text
 normalizeToken = T.toLower . stripTrailingPunct
 
--- | Tokenize a loose line into (surface, normalized) pairs. The surface form
--- (trailing punctuation removed) is what a hole captures; the normalized form
--- is what a literal template token is compared against.
+-- | Whitespace-split a line, but keep a double-quoted @"..."@ span as ONE
+-- token (quotes included), so a quoted value may contain spaces. Shared by the
+-- line tokenizer and the template parser, so quoting is treated identically on
+-- both sides: a quoted hole @"<body>"@ in a template and a quoted value in a
+-- line lex to single tokens that line up.
+lexTokens :: Text -> [Text]
+lexTokens = go . T.stripStart
+  where
+    go t
+      | T.null t       = []
+      | T.head t == '"' =
+          let (inner, after) = T.breakOn "\"" (T.tail t)
+           in ("\"" <> inner <> "\"") : go (T.stripStart (T.drop 1 after))
+      | otherwise =
+          let (w, rest) = T.break isSpace t
+           in w : go (T.stripStart rest)
+
+-- | If a token is a @"..."@ quoted span, its inner text; else Nothing.
+unquote :: Text -> Maybe Text
+unquote w
+  | T.length w >= 2, T.head w == '"', T.last w == '"' = Just (T.init (T.drop 1 w))
+  | otherwise = Nothing
+
+-- | Tokenize a loose line into (surface, normalized) pairs. A quoted span is
+-- one token whose surface is its inner text (quotes stripped, verbatim, so a
+-- captured value keeps its case and spaces); a bare word strips trailing
+-- sentence punctuation, and its normalized form is what a literal template
+-- token is compared against.
 tokenizeLine :: Text -> [(Text, Text)]
-tokenizeLine = map (\w -> (stripTrailingPunct w, normalizeToken w)) . T.words
+tokenizeLine = map tok . lexTokens
+  where
+    tok w = case unquote w of
+      Just inner -> (inner, T.toLower inner)
+      Nothing    -> (stripTrailingPunct w, normalizeToken w)
 
 -- | Match a template against a tokenized line. Succeeds only on equal length
 -- (single-token holes): each literal must equal the normalized token, each hole
