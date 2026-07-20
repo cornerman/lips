@@ -524,11 +524,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
   derivation); pushing in CI crosses the Heile-Welt boundary (registry state,
   secrets) and lands later as coping, not kernel physics. Invariant preserved:
   the model writes source only at generate; run never invents a byte.
-- **`lips up` (activation verb).** `run` stays the pure printer. `up`
-  instantiates locally: wrap the realized module into a nixosSystem and boot
-  it as a QEMU VM (machinery exists in vm-smoke), or a `nix develop` shell for
-  shell-shaped Solutions. Local VM = the Heile-Welt simulation of the target
-  machine. Small; recommended before artifacts.
+- **Activation verb: DONE, as the `print`/`run` split.** The CLI now separates
+  emitting from running (superseding the planned `lips up`): `lips print
+  <program>` is the pure deterministic printer (crystallize -> realize ->
+  module text on stdout); `lips run <program>` realizes and then literally runs
+  it by wrapping the module in a nixosSystem and booting a headless local QEMU
+  VM (impure, via ambient `<nixpkgs>` and the stock qemu-vm module; the host is
+  never mutated -- the VM is the Heile-Welt simulation of the target machine).
+  Note: the design's "generate/run loop" prose uses "run" for the deterministic
+  realize step, which is now the `print` command; `run` is the activation verb.
+  A `nix develop` shell for shell-shaped Solutions remains possible later.
+  Host deployment stays a separate, explicit, privileged step.
 - **Direction files (designed, not implemented).** Owner taste for the mint:
   repo-wide `lips.direction` + per-program `<name>.loose.direction`, plain
   text, concatenated into the minting prompt. Sharp boundary: the program

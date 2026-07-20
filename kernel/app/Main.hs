@@ -7,10 +7,14 @@
 --     program with it and validates by a full run; only then are the language
 --     (@\<program\>.lang@), the crystal witness (@\<program\>.decisions@), and
 --     the generation record written.
---   * @lips run \<program\>@ takes the loose program directly. It crystallizes
---     it with @\<program\>.lang@ and realizes it to a NixOS module,
---     deterministically, with no AI. If the language is missing, or the program
---     escaped it, run fails loud and names @generate@ as the remedy.
+--   * @lips print \<program\>@ takes the loose program directly. It
+--     crystallizes it with @\<program\>.lang@ and realizes it to a NixOS
+--     module text on stdout, deterministically, with no AI. If the language is
+--     missing, or the program escaped it, it fails loud and names @generate@.
+--   * @lips run \<program\>@ goes one step further and literally runs the
+--     realized module: it wraps it in a NixOS system and boots it as a local
+--     QEMU VM (a Heile-Welt simulation of the target machine; the host is
+--     never mutated). Host deployment stays a separate, explicit step.
 module Main (main) where
 
 import           Control.Exception  (IOException, try)
@@ -20,7 +24,7 @@ import qualified Data.Text.IO       as TIO
 import           System.Environment (getArgs, getProgName)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hClose, hPutStrLn, openTempFile, stderr)
-import           System.Process     (readProcessWithExitCode)
+import           System.Process     (callCommand, readProcessWithExitCode)
 import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (toDemand, toRule)
@@ -54,7 +58,8 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["run", file]        -> runLoose file
+    ["print", file]      -> printLoose file
+    ["run", file]        -> runVm file
     ["check", file]      -> checkLoose file
     ("generate" : rest)  -> case parseGenerate rest of
       Just (conf, model, file) -> generate conf model file
@@ -81,17 +86,74 @@ usage :: IO ()
 usage = do
   name <- getProgName
   hPutStrLn stderr ("usage: " <> name <> " generate [--confidence <0..1>] [model] <program-file>")
-  hPutStrLn stderr ("       " <> name <> " run <program-file>")
+  hPutStrLn stderr ("       " <> name <> " print <program-file>   (emit the realized NixOS module)")
+  hPutStrLn stderr ("       " <> name <> " run <program-file>     (boot it as a local NixOS VM)")
   hPutStrLn stderr ("       " <> name <> " check <program-file>")
 
--- | @run@: crystallize the loose program with its language, then realize.
-runLoose :: FilePath -> IO ()
-runLoose file = do
+-- | @print@: crystallize the loose program with its language, realize it, and
+-- write the NixOS module text to stdout. Pure and deterministic (no AI).
+printLoose :: FilePath -> IO ()
+printLoose file = do
   program <- TIO.readFile file
   eng     <- loadLangOrDie file
   case validate file eng program of
     Left problem      -> die problem
     Right (_, nixMod) -> TIO.putStr nixMod
+
+-- | @run@: realize the program, then literally run it -- wrap the module in a
+-- NixOS system and boot it as a local QEMU VM. The realization is the same
+-- deterministic tail as @print@; only the booting is impure (it uses the
+-- ambient @<nixpkgs>@, a Heile-Welt softness noted in the design). The host is
+-- never touched; the VM is a throwaway simulation.
+runVm :: FilePath -> IO ()
+runVm file = do
+  program <- TIO.readFile file
+  eng     <- loadLangOrDie file
+  case validate file eng program of
+    Left problem      -> die problem
+    Right (_, nixMod) -> bootVm nixMod
+
+bootVm :: Text -> IO ()
+bootVm nixMod = do
+  (tmp, h) <- openTempFile "/tmp" "lips-module.nix"
+  TIO.hPutStr h nixMod
+  hClose h
+  TIO.hPutStrLn stderr "lips: building a local NixOS VM from the realized module..."
+  built <- try (readProcessWithExitCode "nix"
+                  [ "build", "--impure", "--no-link", "--print-out-paths"
+                  , "--expr", T.unpack (vmExpr tmp) ] "")
+  case built of
+    Left e -> die ("nix unavailable: " <> tshow (e :: IOException))
+    Right (ExitFailure _, _, err) ->
+      die ("could not build the VM:\n" <> T.pack err
+            <> "\n(the run simulation needs nixpkgs; use `nix run . -- run <program>` "
+            <> "or set NIX_PATH to a nixpkgs)")
+    Right (ExitSuccess, out, _) -> do
+      let outPath = T.unpack (T.strip (T.pack out))
+      TIO.hPutStrLn stderr "lips: booting the VM (quit QEMU with Ctrl-a x)..."
+      -- The qemu-vm module names the boot script run-<host>-vm; glob it so the
+      -- hostname is not hard-coded. The shell inherits stdio for the console.
+      callCommand (outPath <> "/bin/run-*-vm")
+
+-- | An impure Nix expression that turns a realized module (at @modPath@) into a
+-- bootable, headless local VM via the stock qemu-vm module.
+vmExpr :: FilePath -> Text
+vmExpr modPath = T.pack $ unlines
+  [ "let"
+  , "  system = builtins.currentSystem;"
+  , "  nixpkgs = <nixpkgs>;"
+  , "  cfg = import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
+  , "    inherit system;"
+  , "    modules = ["
+  , "      (nixpkgs + \"/nixos/modules/virtualisation/qemu-vm.nix\")"
+  , "      " <> modPath
+  , "      { system.stateVersion = \"24.11\";"
+  , "        virtualisation.graphics = false;"
+  , "        users.users.root.password = \"\"; }"
+  , "    ];"
+  , "  };"
+  , "in cfg.config.system.build.vm"
+  ]
 
 -- | @check@: verify the program's committed behavioral contract holds against
 -- its realized module, deterministically (no AI). This is the offline guardian

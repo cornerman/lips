@@ -28,7 +28,8 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 ## The Loop
 
     lips generate [model] examples/feed.loose   # AI step: mints feed.loose.lang + feed.loose.expect, validates by a full run
-    lips run examples/feed.loose                 # deterministic: crystallize -> refine -> realize (no AI)
+    lips print examples/feed.loose               # deterministic: crystallize -> refine -> realize -> module text (no AI)
+    lips run examples/feed.loose                 # deterministic realize, then boot it as a local NixOS VM (needs KVM)
     lips check examples/feed.loose               # deterministic: the committed .expect contract must hold (no AI)
     # (paths are relative to the repo root, where examples/ lives)
 
@@ -97,8 +98,8 @@ invariant it pins.
 program, it crystallizes a loose program to a NixOS module with no AI (run from
 the repo root, where the flake and `examples/` live):
 
-    nix run . -- run examples/feed.loose         # crystallize + realize, no AI
-    nix run . -- run examples/backup.loose       # a second, non-feed domain
+    nix run . -- print examples/feed.loose       # crystallize + realize -> module text, no AI
+    nix run . -- print examples/backup.loose     # a second, non-feed domain
 
 This reads the program and its `<file>.lang`. An unmet demand, an escaping
 line, or a missing language instead fails loud and names `generate` as the

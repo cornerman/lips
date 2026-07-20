@@ -19,7 +19,7 @@
       });
 
       # The reference `lips` CLI, built from the deliverable in kernel/.
-      # `nix run . -- run examples/backup.loose`.
+      # `nix run . -- print examples/backup.loose`.
       packages = forAll (pkgs: {
         default = pkgs.runCommand "lips" { nativeBuildInputs = [ (ghc pkgs) ]; } ''
           cp -r ${./kernel}/. build && cd build
@@ -53,7 +53,7 @@
             realized = pkgs.runCommand "lips-backup-module.nix" { } ''
               cp ${./examples/backup.loose} backup.loose
               cp ${./examples/backup.loose.lang} backup.loose.lang
-              ${lips}/bin/lips run backup.loose > "$out"
+              ${lips}/bin/lips print backup.loose > "$out"
             '';
           in
           pkgs.testers.runNixOSTest {

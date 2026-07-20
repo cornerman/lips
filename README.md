@@ -13,9 +13,10 @@ deterministic.
 With direnv, `direnv allow` once; otherwise prefix commands with
 `nix develop -c`.
 
-    just run examples/backup.loose  # loose text -> NixOS module (offline)
-    just generate path/to/my.loose  # mint a language for your own program (AI, needs pi)
-    just test                       # conformance suite
+    just print examples/backup.loose  # loose text -> NixOS module text (offline)
+    just run   examples/backup.loose  # ... and boot it as a local NixOS VM (needs KVM)
+    just generate path/to/my.loose    # mint a language for your own program (AI, needs pi)
+    just test                         # conformance suite
 
 The whole source of the example is `examples/backup.loose`:
 
@@ -23,8 +24,9 @@ The whole source of the example is `examples/backup.loose`:
     keep 14 daily snapshots.
     credentials come from /etc/ledger-backup.env.
 
-Edit a path or the count and `just run` again: the change flows through with
-no AI.
+Edit a path or the count and `just print` again: the change flows through with
+no AI. `just run` goes further and boots the realized module in a throwaway
+local VM (the host is never touched); host deployment stays a separate step.
 
 ## How It Works
 
@@ -33,9 +35,10 @@ problem: patterns that read your lines, rules that map them to NixOS options,
 and tests that pin your values. lips verifies the engine builds your program
 and the tests hold, else it writes nothing.
 
-**Run, forever (no AI).** The engine compiles your text to a NixOS module,
+**Print, forever (no AI).** The engine compiles your text to a NixOS module,
 offline, bit-identical. A line the engine cannot read fails loud and points
-back to `generate`; lips never guesses.
+back to `generate`; lips never guesses. `run` takes that module one step
+further and literally boots it as a local VM.
 
 **Regenerate, gated.** A fresh engine is accepted only if the committed tests
 still hold. To change behavior on purpose, delete `.expect` and regenerate:
