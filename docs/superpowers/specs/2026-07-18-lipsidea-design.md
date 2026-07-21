@@ -533,10 +533,20 @@ but the loop around it is incomplete; "missing" means specced, not built.
   offline first phase (no Nix, no AI) before the `.expect` behavioral gate, so
   authoring is never blind: an unread line names `generate`, an open question
   names the missing detail, a clean program proceeds to the gate. This is the
-  CLI-first rung of the comprehension-per-minute promise. Missing: a language
-  server (the same pure `Diagnosis` surfaced as live squiggles/completion in an
-  editor, parameterized by `.lang`) and completion snippets derived from the
-  pattern templates. The structured `Diagnosis` is the reuse seam for both.
+  CLI-first rung of the comprehension-per-minute promise.
+
+  The language-server rung also landed: `lips lsp` (`Lsp/Server.hs`, a minimal
+  stdio JSON-RPC server; `Lsp/Derive.hs`, its pure core) gives completion and
+  live diagnostics in any editor. It is domain-blind and needs no per-language
+  setup: one process serves every lips program from the `<file>.lang` beside
+  it -- completion items are the language's pattern templates as snippets
+  (holes become numbered tab-stops), diagnostics are the same `diagnose`
+  output surfaced as squiggles (an unread line is an error, an open question a
+  warning). Client glue for neovim/vim/vscode/helix is in `editors/`. `Derive`
+  is pure (no aeson, kernel-clean); only the server shell uses aeson, confined
+  like `Generate.PiJson`. Remaining polish: hover and go-to for a line's
+  produced subject, as-you-type completion tuning, and percent-decoding of
+  `file://` URIs (paths with spaces/non-ASCII are not handled yet).
 - **Deduce-or-fail via resampling.** The harness `unanimous`/`coreOf` check is
   built and tested, and the confidence threshold is now a CLI flag, but
   `generate` still samples the model once. Missing: `--samples` wiring so a
