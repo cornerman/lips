@@ -535,6 +535,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   realize step, which is now the `print` command; `run` is the activation verb.
   A `nix develop` shell for shell-shaped Solutions remains possible later.
   Host deployment stays a separate, explicit, privileged step.
+  Run modes considered and DEFERRED (VM-only for now): two axes exist -- (a)
+  activation backends over the same module (vm / systemd-nspawn container /
+  host nixos-rebuild), a future `--mode` flag; (b) `nix-shell`, which is not a
+  mode of running a system module but a different realization target (the
+  engine emitting `mkShell`), meaningful only for a shell-shaped Solution, so
+  it belongs with the artifacts / Solution-kinds milestone.
 - **Direction files (designed, not implemented).** Owner taste for the mint:
   repo-wide `lips.direction` + per-program `<name>.loose.direction`, plain
   text, concatenated into the minting prompt. Sharp boundary: the program
