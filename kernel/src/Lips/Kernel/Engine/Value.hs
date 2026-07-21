@@ -36,6 +36,7 @@ module Lips.Kernel.Engine.Value
   , renderValue
   , fillValue
   , holeIndex
+  , valueRefsDerivation
   ) where
 
 import           Data.Char      (isDigit, isSpace)
@@ -68,6 +69,19 @@ data Value
   | VNull
   | VHole HoleType Text -- ^ a bare typed hole, filled and coerced from a program token
   deriving (Eq, Show)
+
+-- | Does this value interpolate a package (@${pkgs...}@) or artifact
+-- (@${artifact...}@) reference anywhere? Such a value realizes to a
+-- derivation, not a program value, so a @.expect@ containment check cannot
+-- target the option it fills (the check evaluates with an empty @pkgs@ stub).
+-- Used by 'Lips.Generate.Minting.uncheckableExpects' as a structural guard.
+valueRefsDerivation :: Value -> Bool
+valueRefsDerivation (VStr ps)  = any isRef ps
+  where isRef (PRef _) = True
+        isRef (PArt _) = True
+        isRef _        = False
+valueRefsDerivation (VList vs) = any valueRefsDerivation vs
+valueRefsDerivation _          = False
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.

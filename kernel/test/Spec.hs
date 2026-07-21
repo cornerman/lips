@@ -27,7 +27,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
@@ -408,6 +408,19 @@ main = hspec $ do
       checkValues [e] [("hour", "\"hourly\"")]                   `shouldBe` []          -- substring
       length (checkValues [e] [("/backup/ledger", "\"/fixed/repo\"")]) `shouldBe` 1     -- value dropped
       length (checkValues [e] [("/backup/ledger", "null")])           `shouldBe` 1     -- option relocated
+
+    it "rejects a check on a package/artifact-referencing option (would crash eval)" $ do
+      -- Regression (kernel review): an expect naming an option a rule fills
+      -- with ${pkgs...}/${artifact...} is uncheckable (the check evals with an
+      -- empty pkgs stub) and must be flagged, not left to abort nix eval.
+      let ruleStr = MapRule "r" Fact ["svc", "name"]
+            [ Emit ["systemd","services","s","serviceConfig","ExecStart"] (VStr [PArt "srv", PLit "/bin/s"])
+            , Emit ["systemd","services","s","environment","NAME"] (VStr [PHole "value"]) ]
+          onDeriv = Expect "a1" ["systemd","services","s","serviceConfig","ExecStart"] (Subject ["svc","name"]) Nothing
+          onValue = Expect "a2" ["systemd","services","s","environment","NAME"] (Subject ["svc","name"]) Nothing
+      valueRefsDerivation (VStr [PArt "srv", PLit "/bin/s"]) `shouldBe` True
+      valueRefsDerivation (VStr [PHole "value"])            `shouldBe` False
+      map exId (uncheckableExpects [ruleStr] [onDeriv, onValue]) `shouldBe` ["a1"]
 
   describe "pattern matching (crystallization plan: normalization, holes)" $ do
     it "normalizes case and strips trailing sentence punctuation" $ do

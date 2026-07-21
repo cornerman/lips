@@ -26,15 +26,17 @@ module Lips.Generate.Minting
   , assemble
   , expectsOf
   , sourcesOf
+  , uncheckableExpects
   ) where
 
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
-import Lips.Kernel.Engine.Data      (DemandSpec, MapRule, parseDemandBody, parseRuleBody)
+import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), parseDemandBody, parseRuleBody)
+import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
-import Lips.Kernel.Expect          (Expect, parseExpectBody)
+import Lips.Kernel.Expect          (Expect (..), parseExpectBody)
 import Lips.Kernel.Lang.Lang        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
 
@@ -271,6 +273,17 @@ expectsOf items = [e | ItemExpect e <- items]
 -- | The minted artifact source files (written beside the program).
 sourcesOf :: [EngineItem] -> [SourceFile]
 sourcesOf items = [s | ItemSource s <- items]
+
+-- | The expects that name an option a rule fills with a package or artifact
+-- reference (a derivation, not a program value). A containment check against
+-- such an option is meaningless and cannot be evaluated under the check's
+-- empty @pkgs@ stub, so naming one is a mint defect. Returned so @generate@
+-- and @check@ reject it loud (deduce-or-fail) rather than crash the eval.
+uncheckableExpects :: [MapRule] -> [Expect] -> [Expect]
+uncheckableExpects rules = filter ((`elem` derivationPaths) . exPath)
+  where
+    derivationPaths =
+      [ emPath em | r <- rules, em <- mrEmits r, valueRefsDerivation (emRhs em) ]
 
 parseLine :: Text -> Either Text ItemCandidate
 parseLine line = do

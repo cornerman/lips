@@ -29,12 +29,12 @@ import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf)
+import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
-import           Lips.Kernel.Expect     (Expect, checkValues, evalExpr, expectedValue, readExpect, renderExpect)
+import           Lips.Kernel.Expect     (Expect (..), checkValues, evalExpr, expectedValue, readExpect, renderExpect)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
@@ -211,7 +211,10 @@ expectGate file eng program = do
         <> T.pack file <> ".expect is missing, written by generate).")
     Just src -> case readExpect src of
       Left es       -> die (unreadable file ".expect" es)
-      Right expects -> case validate file eng program of
+      Right expects
+        | bad@(_ : _) <- uncheckableExpects (edRules eng) expects ->
+            die (uncheckableReport file bad)
+        | otherwise -> case validate file eng program of
         Left f       -> die (printFail file f)
         Right (base, nixMod) -> do
           res <- runExpects (stageFromDisk file) expects base nixMod
@@ -323,7 +326,10 @@ generate confidence mmodel file = do
                   (T.pack file <> ".expect is unreadable, so lips can't verify against it:")
                   [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
                   ("→ fix or delete " <> T.pack file <> ".expect, then run generate again."))
-                Right expects -> do
+                Right expects
+                 | bad@(_ : _) <- uncheckableExpects (edRules eng) expects ->
+                     die (uncheckableReport file bad)
+                 | otherwise -> do
                   gate <- runExpects (\dst -> writeSources dst minted) expects base nixModule
                   case gate of
                     Left (ToolMissing e) -> die (nixMissing file "verify the output" "generate" e)
@@ -603,6 +609,17 @@ refusalReport file _threshold errs unsure = T.intercalate "\n" $
              , "→ state the missing detail in " <> T.pack file <> " and run again."
              , "  If the choice is genuinely free, lower the bar: --confidence 0.5" ]
     conf c = let Confidence x = icConfidence c in tshow x
+
+-- | A behavioral check names an option a rule fills with a package or artifact
+-- reference (a derivation, not a program value). Such a check can neither be
+-- evaluated under the check's stubs nor meaningfully satisfied, so it is
+-- rejected loud instead of crashing the eval (deduce-or-fail).
+uncheckableReport :: FilePath -> [Expect] -> Text
+uncheckableReport file bad = report
+  (T.pack file <> " checks options that hold a package or build, not a value:")
+  [ T.intercalate "." (exPath e) <> " (check " <> exId e <> ")" | e <- bad ]
+  ("→ a check must name an option carrying a value from " <> T.pack file
+    <> ". Rebuild the setup: lips generate " <> T.pack file)
 
 -- | generate built a setup but it did not hold up: wrap a diagnosis with the
 -- generate-time action (mint again; report a lips bug if it persists). Not the

@@ -117,10 +117,13 @@ expectedValue base e =
                           <> " out of range in " <> tshow a)
 
 -- | Build the @nix eval --raw@ expression that reads every asserted option out
--- of the realized module. Stubs for @config@/@lib@/@pkgs@ suffice because the
--- asserted options carry program values (never @${pkgs...}@ machinery), so the
--- forced paths do not touch the stubs. A missing path yields @null@, which
--- fails containment cleanly instead of crashing eval.
+-- of the realized module. Stubs for @config@/@lib@/@pkgs@ suffice because a
+-- checkable option carries a program value, never @${pkgs...}@\/@${artifact...}@
+-- machinery; that precondition is enforced structurally by
+-- 'Lips.Generate.Minting.uncheckableExpects' (a package\/artifact-referencing
+-- option would force the empty @pkgs@ stub and abort the eval, which
+-- @tryEval@ cannot catch for a missing attribute). A missing path yields
+-- @null@, which fails containment cleanly instead of crashing eval.
 evalExpr :: FilePath -> [Expect] -> Text
 evalExpr modPath expects = T.concat
   [ "let m = import ", T.pack modPath, "; "
