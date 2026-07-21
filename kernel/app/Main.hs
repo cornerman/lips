@@ -540,8 +540,9 @@ printFail file f = failureReport file f <> "\n\n" <> act
       _                         -> "→ rebuild the setup: lips generate " <> T.pack file
 
 refineDetail :: RefineError -> Text
-refineDetail (Overlap _ _)      = "two of its rules claim the same thing"
-refineDetail (Nonterminating _) = "its rules loop without settling"
+refineDetail (Overlap _ _)         = "two of its rules claim the same thing"
+refineDetail (Nonterminating _)    = "its rules loop without settling"
+refineDetail (RewriteFailed _ _ m) = m
 
 -- | A subject as plain words: its dotted segments spaced out, so route./hello
 -- reads as "route /hello".

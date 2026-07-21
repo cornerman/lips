@@ -251,33 +251,35 @@ escape :: Text -> Text
 escape = T.replace "${" "\\${" . T.replace "\"" "\\\"" . T.replace "\\" "\\\\"
 
 -- | Fill every hole with (a selection from) the program value and render.
--- String holes go through 'escape'; typed holes coerce the program token into
--- their type and fail loud if it does not parse (the rewrite channel has no
--- 'Either', so a bad program value is an 'error', matching out-of-range
--- @\<value.N\>@). Either way program text cannot alter the value's shape.
-fillValue :: (Text -> Text) -> Value -> Text
-fillValue pick = renderValue . fillV
+-- The @pick@ selector is itself fallible (an out-of-range @\<value.N\>@ is a
+-- 'Left'); string holes go through 'escape'; typed holes coerce the program
+-- token into their type and return 'Left' if it does not parse. So a program
+-- value that does not fit the rule surfaces as a value the caller propagates
+-- (into 'Lips.Kernel.Refine.RewriteFailed'), never a crash. Either way program
+-- text cannot alter the value's shape.
+fillValue :: (Text -> Either Text Text) -> Value -> Either Text Text
+fillValue pick = fmap renderValue . fillV
   where
-    fillV (VStr ps)    = VStr (map fillP ps)
-    fillV (VList vs)   = VList (map fillV vs)
-    fillV (VHole ht h) = coerce ht h (pick h)
-    fillV v            = v
-    fillP (PHole h) = PLit (pick h)
-    fillP p         = p
+    fillV (VStr ps)    = VStr <$> traverse fillP ps
+    fillV (VList vs)   = VList <$> traverse fillV vs
+    fillV (VHole ht h) = pick h >>= coerce ht h
+    fillV v            = Right v
+    fillP (PHole h) = PLit <$> pick h
+    fillP p         = Right p
 
     coerce HInt h tok = case TR.signed TR.decimal (T.strip tok) of
-      Right (n, r) | T.null r -> VInt n
-      _ -> holeError h "int" tok
+      Right (n, r) | T.null r -> Right (VInt n)
+      _ -> Left (holeError h "int" tok)
     coerce HFloat h tok = case TR.signed TR.double (T.strip tok) of
-      Right (d, r) | T.null r -> VFloat d
-      _ -> holeError h "float" tok
+      Right (d, r) | T.null r -> Right (VFloat d)
+      _ -> Left (holeError h "float" tok)
     coerce HBool h tok = case T.strip tok of
-      "true"  -> VBool True
-      "false" -> VBool False
-      _       -> holeError h "bool" tok
+      "true"  -> Right (VBool True)
+      "false" -> Right (VBool False)
+      _       -> Left (holeError h "bool" tok)
     coerce HPath h tok =
-      let p = T.strip tok in if validPathLit p then VPath p else holeError h "path" tok
+      let p = T.strip tok in if validPathLit p then Right (VPath p) else Left (holeError h "path" tok)
 
     holeError h ty tok =
-      error ("value hole <" <> T.unpack h <> ":" <> ty
-              <> "> got a program value that is not a " <> ty <> ": " <> T.unpack tok)
+      "value hole <" <> h <> ":" <> ty
+        <> "> got a program value that is not a " <> ty <> ": " <> tok

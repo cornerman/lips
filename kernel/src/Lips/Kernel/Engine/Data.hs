@@ -83,31 +83,34 @@ toRule mr =
   Rule
     { rId      = RuleId (mrId mr)
     , rMatches = \d -> dKind d == mrKind mr && dSubject d == Subject (mrSubject mr)
-    , rRewrite = \d -> map (emitDecision (assertionText d)) (mrEmits mr)
+    , rRewrite = \d -> traverse (emitDecision (assertionText d)) (mrEmits mr)
     }
   where
     assertionText d = case dAssertion d of Assertion a -> a
-    emitDecision val e =
-      Decision
+    emitDecision val e = do
+      -- A program value that does not fit this emit (a missing @<value.N>@
+      -- token, a wrong-typed hole) is a 'Left' the refiner turns into a loud
+      -- 'RewriteFailed', not a crash: 'print' is deterministic and edited
+      -- programs must fail through the error channel, never by exception.
+      a <- fillValue (pick val) (emRhs e)
+      Right Decision
         { dId        = DecisionId ""
         , dSubject   = Subject (emPath e)
         , dKind      = Meta
-        , dAssertion = Assertion (fillValue (pick val) (emRhs e))
+        , dAssertion = Assertion a
         , dStrength  = Stated
         , dProv      = FromSource (SourceLoc "" 0)
         , dRationale = Nothing
         }
-    pick val "value" = val
+    pick val "value" = Right val
     pick val h
       | Just n <- holeIndex h =
           case drop (n - 1) (T.words val) of
-            (w : _) -> w
-            -- Fail fast and loud: a silent empty string would realize a wrong
-            -- module. The rewrite channel has no Either, so this is an error.
-            []      -> error ("engine rule " <> T.unpack (mrId mr) <> ": <" <> T.unpack h
-                                <> "> out of range for value: " <> T.unpack val)
+            (w : _) -> Right w
+            []      -> Left ("engine rule " <> mrId mr <> ": <" <> h
+                                <> "> out of range for value: " <> val)
       -- Any other hole name was rejected at parse time; loud if it slips through.
-      | otherwise = error ("engine rule emit: unknown hole <" <> T.unpack h <> ">")
+      | otherwise = Left ("engine rule emit: unknown hole <" <> h <> ">")
 
 -- | Interpret a minted demand: satisfied when any decision has the subject.
 toDemand :: DemandSpec -> Demand

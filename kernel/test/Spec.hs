@@ -111,7 +111,7 @@ main = hspec $ do
         mechRule = Rule
           { rId      = RuleId "ingest"
           , rMatches = (== Oblige) . dKind
-          , rRewrite = \_ -> [ (mk "ignored" "row" "upsert-keyed" Stated) { dKind = Meta } ]
+          , rRewrite = \_ -> Right [ (mk "ignored" "row" "upsert-keyed" Stated) { dKind = Meta } ]
           }
 
     it "a ground base is a fixpoint (unchanged)" $ do
@@ -143,9 +143,20 @@ main = hspec $ do
       let loop = Rule
             { rId      = RuleId "loop"
             , rMatches = (== Oblige) . dKind
-            , rRewrite = \_ -> [ (mk "again" "row" "x" Stated) { dKind = Oblige } ]
+            , rRewrite = \_ -> Right [ (mk "again" "row" "x" Stated) { dKind = Oblige } ]
             }
       refine 10 [loop] (fromList [oblige]) `shouldBe` Left (Nonterminating 10)
+
+    it "a rule whose <value.N> outruns the program value fails loud, never crashes" $ do
+      -- Regression (kernel review): editing a program so a value loses a token
+      -- must fail through the error channel on the deterministic print path,
+      -- not throw a Haskell exception.
+      let r = MapRule "r" Fact ["x"]
+                [ Emit ["opt"] (VStr [PHole "value.2"]) ]
+          matched = (mk "d" "x" "only-one-word" Stated) { dSubject = Subject ["x"] }
+      case refine 100 [toRule r] (fromList [matched]) of
+        Left (RewriteFailed (DecisionId "d") (RuleId "r") _) -> pure ()
+        other -> expectationFailure ("expected RewriteFailed, got " ++ show other)
 
   describe "demands and open questions (spec 2.5)" $ do
     let hasSubject s b = any ((== Subject [s]) . dSubject) (toList b)
@@ -250,7 +261,7 @@ main = hspec $ do
   describe "run pipeline (spec 5: four outcomes)" $ do
     -- an engine: one rule mapping any Oblige to a ground option assignment
     let engine = [ Rule (RuleId "ingest") ((== Oblige) . dKind)
-                     (\_ -> [ (mk "x" "x" "true" Stated) { dSubject = Subject ["services", "ledger", "enable"], dKind = Meta } ]) ]
+                     (\_ -> Right [ (mk "x" "x" "true" Stated) { dSubject = Subject ["services", "ledger", "enable"], dKind = Meta } ]) ]
         needs subj = [ Demand "q" ("need " <> T.intercalate "." subj) (any ((== Subject subj) . dSubject) . toList) ]
         prog = "o1 oblige feed.ingest stated \"row->txn\" @ledger:9\n"
 
@@ -526,14 +537,12 @@ main = hspec $ do
         Left e -> expectationFailure ("unexpected refine error: " ++ show e)
 
     it "a path hole emits an unquoted path; a bool hole emits a keyword" $ do
-      fillValue (const "/etc/ssl/cert.pem") (VHole HPath "value") `shouldBe` "/etc/ssl/cert.pem"
-      fillValue (const "true")              (VHole HBool "value") `shouldBe` "true"
+      fillValue (const (Right "/etc/ssl/cert.pem")) (VHole HPath "value") `shouldBe` Right "/etc/ssl/cert.pem"
+      fillValue (const (Right "true"))              (VHole HBool "value") `shouldBe` Right "true"
 
-    it "a typed hole fails loud when the program value is the wrong type" $ do
-      evaluate (T.length (fillValue (const "not-a-number") (VHole HInt "value")))
-        `shouldThrow` anyErrorCall
-      evaluate (T.length (fillValue (const "has space") (VHole HPath "value")))
-        `shouldThrow` anyErrorCall
+    it "a typed hole fails with a Left (not a crash) when the program value is the wrong type" $ do
+      fillValue (const (Right "not-a-number")) (VHole HInt "value") `shouldSatisfy` isLeft
+      fillValue (const (Right "has space"))    (VHole HPath "value") `shouldSatisfy` isLeft
 
     it "accepts the closed value forms: string+pkgs-ref, list, bool, int" $ do
       parseValue "\"${pkgs.restic}/bin/restic backup <value.1>\"" `shouldBe`
@@ -543,8 +552,8 @@ main = hspec $ do
       parseValue "42" `shouldBe` Right (VInt 42)
 
     it "escapes filled program text: injection cannot leave the string" $
-      fillValue (const "a\" ; evil ${pkgs.hack}") (VStr [PHole "value"]) `shouldBe`
-        "\"a\\\" ; evil \\${pkgs.hack}\""
+      fillValue (const (Right "a\" ; evil ${pkgs.hack}")) (VStr [PHole "value"]) `shouldBe`
+        Right "\"a\\\" ; evil \\${pkgs.hack}\""
 
     it "reads and round-trips an ${artifact.<name>} reference (a name, not computation)" $ do
       parseValue "\"${artifact.myserver}/bin/myserver\"" `shouldBe`
@@ -835,7 +844,8 @@ main = hspec $ do
     -- the string, or open an interpolation. This is the Nix-injection guard.
     it "any filled program text collapses to a single inert literal" $
       property $ forAll fillText $ \t ->
-        parseValue (fillValue (const t) (VStr [PHole "value"])) === Right (VStr [PLit t])
+        (fillValue (const (Right t)) (VStr [PHole "value"]) >>= parseValue)
+          === Right (VStr [PLit t])
 
     it "a bare identifier rhs is rejected (only closed value forms parse)" $
       property $ forAll bareWord $ \w -> parseValue w `shouldSatisfy` isLeft

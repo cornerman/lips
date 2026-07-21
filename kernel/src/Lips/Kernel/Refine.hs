@@ -22,19 +22,22 @@ module Lips.Kernel.Refine
   , refine
   ) where
 
+import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Base     (Base, fromList, toList)
 import Lips.Kernel.Decision
 
 -- | A mapping from one language's engine. 'rRewrite' returns the decisions a
--- matched decision expands into; the refiner stamps their provenance, so the
--- rule need only supply subject, kind, assertion, strength, and rationale (the
--- returned ids and provenance are overwritten).
+-- matched decision expands into, or a 'Left' explaining why the match cannot
+-- be rewritten (a program value that does not fit the rule). The refiner
+-- stamps provenance on success, so the rule need only supply subject, kind,
+-- assertion, strength, and rationale (the returned ids and provenance are
+-- overwritten).
 data Rule = Rule
   { rId      :: RuleId
   , rMatches :: Decision -> Bool
-  , rRewrite :: Decision -> [Decision]
+  , rRewrite :: Decision -> Either Text [Decision]
   }
 
 data RefineError
@@ -43,6 +46,11 @@ data RefineError
     Overlap DecisionId [RuleId]
   | -- | The step budget was exceeded, signalling a non-terminating rule set.
     Nonterminating Int
+  | -- | A rule matched a decision but could not rewrite it: the program value
+    -- does not fit the rule (a missing @\<value.N\>@ token, a wrong-typed
+    -- hole). Carries the decision, the rule, and the reason, so an edit that
+    -- breaks a value fails loud on @print@ instead of crashing.
+    RewriteFailed DecisionId RuleId Text
   deriving (Eq, Show)
 
 -- | A decision is ground when no rule matches it: refinement stops there.
@@ -62,20 +70,27 @@ refine budget rules = go budget . toList
             (grounded, d : rest) ->
               -- 'span' guarantees d is non-ground, so it matches >= 1 rule.
               case filter (`rMatches` d) rules of
-                [rule] -> go (n - 1) (grounded ++ stamp rule d ++ rest)
+                [rule] -> case stamp rule d of
+                            Left e    -> Left e
+                            Right new -> go (n - 1) (grounded ++ new ++ rest)
                 []     -> error "refine: non-ground decision matched no rule"
                 many   -> Left (Overlap (dId d) (map rId many))
 
 -- | Rewrite one decision and stamp each product with a derived provenance and
 -- a fresh, deterministic id built from the parent id, the rule, and the index.
-stamp :: Rule -> Decision -> [Decision]
+-- A rewrite that cannot fit the program value becomes a loud 'RewriteFailed'.
+stamp :: Rule -> Decision -> Either RefineError [Decision]
 stamp rule parent =
-  [ child
-      { dId   = DecisionId (parentTxt <> "/" <> ruleTxt <> "#" <> T.pack (show i))
-      , dProv = Derived [dId parent] (rId rule)
-      }
-  | (i, child) <- zip [0 :: Int ..] (rRewrite rule parent)
-  ]
+  case rRewrite rule parent of
+    Left msg -> Left (RewriteFailed (dId parent) (rId rule) msg)
+    Right children ->
+      Right
+        [ child
+            { dId   = DecisionId (parentTxt <> "/" <> ruleTxt <> "#" <> T.pack (show i))
+            , dProv = Derived [dId parent] (rId rule)
+            }
+        | (i, child) <- zip [0 :: Int ..] children
+        ]
   where
     DecisionId parentTxt = dId parent
     RuleId ruleTxt = rId rule
