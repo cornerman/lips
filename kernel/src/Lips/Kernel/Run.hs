@@ -18,12 +18,13 @@ module Lips.Kernel.Run
 import           Data.Bifunctor  (first)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
+import qualified Data.Text       as T
 
 import Lips.Kernel.Base
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
-import Lips.Kernel.Realize  (realize)
+import Lips.Kernel.Realize  (RealizeError (..), realize)
 import Lips.Kernel.Refine
 
 -- | The four run outcomes other than success (spec section 5).
@@ -40,6 +41,10 @@ data RunError
     -- engine (spec section 3, the anti-MDA guard). Never realized as a guess;
     -- re-enters generate so the engine grows a mapping.
     Unmapped [Decision]
+  | -- | Realization refused a ground base for an engine defect (a dangling
+    -- @${artifact}@ reference or a malformed artifact group), each reason in
+    -- plain words. A conflict is reported as 'Conflicted', not here.
+    Unrealizable [Text]
   deriving (Eq, Show)
 
 -- | Run a program (canonical-form text) against an engine (its rules and
@@ -64,5 +69,10 @@ runBase budget rules demands base0 = do
   -- Only mapped mechanisms (kind Meta) may realize; any surviving domain
   -- decision is an unmapped obligation and must fail loud, not emit garbage.
   case filter ((/= Meta) . dKind) (toList ground) of
-    []      -> first Conflicted (realize ground)
+    []      -> case realize ground of
+                 Right nixMod          -> Right nixMod
+                 Left (RConflicts cs)  -> Left (Conflicted cs)
+                 Left (RDangling ns)   -> Left (Unrealizable
+                   ["references artifact(s) nothing builds: " <> T.intercalate ", " ns])
+                 Left (RBadArtifact n why) -> Left (Unrealizable ["artifact " <> n <> ": " <> why])
     leftovers -> Left (Unmapped leftovers)

@@ -533,6 +533,8 @@ failureReport file (FailRun err) = case err of
   Unmapped ds ->
     reportHead (T.pack file <> " asks for things its setup can't do:")
                [ loc d <> ": " <> niceSubject (dSubject d) | d <- ds ]
+  Unrealizable rs ->
+    reportHead ("the setup lips built for " <> T.pack file <> " can't be turned into a module:") rs
 
 -- | The full message for a print/run failure: the diagnosis plus the action
 -- that fits it -- edit the program (unanswered questions, a contradiction) or

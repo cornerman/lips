@@ -12,8 +12,6 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
-import Control.Exception (evaluate)
-
 import Test.Hspec
 import Test.QuickCheck hiding (Confidence)
 
@@ -254,9 +252,13 @@ main = hspec $ do
             ]
       realize (fromList arts) `shouldBe` Right expected
 
-    it "fails loud on a ${artifact.<name>} reference to an undefined artifact" $
+    it "fails loud (typed, not a crash) on a ${artifact.<name>} reference to an undefined artifact" $
       let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
-       in evaluate (T.length (either (const "") id (realize (fromList dangling)))) `shouldThrow` anyErrorCall
+       in realize (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
+
+    it "fails loud (typed) on a malformed artifact group (no builder)" $
+      let noBuilder = [ (mk "p" "x" "\"srv\"" Stated) { dSubject = Subject ["artifact","srv","args","pname"] } ]
+       in realize (fromList noBuilder) `shouldBe` Left (RBadArtifact "srv" "no builder")
 
   describe "run pipeline (spec 5: four outcomes)" $ do
     -- an engine: one rule mapping any Oblige to a ground option assignment

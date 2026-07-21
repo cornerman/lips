@@ -15,7 +15,8 @@
 -- Generated output is never hand-edited (spec section 9, item 1); the header
 -- says so.
 module Lips.Kernel.Realize
-  ( realize
+  ( RealizeError (..)
+  , realize
   ) where
 
 import           Data.Char       (isAlphaNum)
@@ -28,17 +29,32 @@ import Lips.Kernel.Base         (Base, Conflict, resolve)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue)
 
--- | Realize a base to a NixOS module, or report the conflicts that block it.
--- Deterministic: assignments are ordered by option path, so the same base
--- always yields byte-identical text.
-realize :: Base -> Either [Conflict] Text
-realize base = renderModule . Map.toList <$> resolve base
+-- | Why a ground base could not be projected to a module. Every case is an
+-- engine defect (a minted rule that emitted an ill-formed artifact group or a
+-- reference to an artifact nothing builds), surfaced as a value the caller
+-- reports, never a crash -- 'realize' is on the deterministic @print@ path.
+data RealizeError
+  = -- | Equal-strength contradictions block realization (both provenances travel).
+    RConflicts [Conflict]
+  | -- | @${artifact.<name>}@ references to artifacts no group builds.
+    RDangling [Text]
+  | -- | A malformed artifact group: the artifact name and the reason.
+    RBadArtifact Text Text
+  deriving (Eq, Show)
+
+-- | Realize a base to a NixOS module, or report why it cannot. Deterministic:
+-- assignments are ordered by option path, so the same base always yields
+-- byte-identical text.
+realize :: Base -> Either RealizeError Text
+realize base = do
+  winners <- either (Left . RConflicts) Right (resolve base)
+  renderModule (Map.toList winners)
 
 -- | An artifact group is any decision whose subject is rooted at @artifact@
 -- (@artifact.<name>.builder@, @artifact.<name>.args.<key>@). These do not
 -- become option assignments; realize gathers them into a @let@-bound
 -- derivation the module can reference as @${artifact.<name>}@.
-renderModule :: [(Subject, Decision)] -> Text
+renderModule :: [(Subject, Decision)] -> Either RealizeError Text
 renderModule winners =
   let (arts, opts) = partition (rootedAtArtifact . fst) winners
       defined  = [ n | (Subject ("artifact" : n : _), _) <- arts ]
@@ -47,16 +63,17 @@ renderModule winners =
    in if not (null dangling)
         -- Deduce-or-fail: never emit a module that references an artifact no
         -- group builds. An engine bug, so it fails loud naming the culprits.
-        then error ("dangling ${artifact.<name>} reference to undefined artifact(s): "
-                     <> T.unpack (T.intercalate ", " dangling))
-        else T.unlines $
-          [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
-          , "{ config, lib, pkgs, ... }:"
-          ]
-            ++ letBlock (artifactEntries arts)
-            ++ ["{"]
-            ++ concatMap assignment (sortOn (path . fst) opts)
-            ++ ["}"]
+        then Left (RDangling dangling)
+        else do
+          entries <- artifactEntries arts
+          Right $ T.unlines $
+            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            , "{ config, lib, pkgs, ... }:"
+            ]
+              ++ letBlock entries
+              ++ ["{"]
+              ++ concatMap assignment (sortOn (path . fst) opts)
+              ++ ["}"]
 
 -- | Every @${artifact.<name>}@ referenced inside a value's rendered text.
 artifactRefs :: Text -> [Text]
@@ -85,30 +102,36 @@ letBlock entries =
   ["let", "  artifact = {"] ++ map ("    " <>) entries ++ ["  };", "in"]
 
 -- | Render every @artifact.<name>@ group to its attrset field, in name order
--- so output is deterministic.
-artifactEntries :: [(Subject, Decision)] -> [Text]
-artifactEntries arts =
-  concatMap entry (Map.toList (Map.fromListWith (++) [(name subj, [(subj, d)]) | (subj, d) <- arts]))
+-- so output is deterministic. A group whose subject carries no @<name>@
+-- segment, or a malformed builder, is an engine defect returned as
+-- 'RBadArtifact', never a crash.
+artifactEntries :: [(Subject, Decision)] -> Either RealizeError [Text]
+artifactEntries arts = do
+  named <- traverse withName arts
+  let groups = Map.toList (Map.fromListWith (++) [(n, [sd]) | (n, sd) <- named])
+  concat <$> traverse entry groups
   where
-    name (Subject (_ : n : _)) = n
-    name (Subject _)           = error "artifact decision without a name"
-    entry (n, parts) =
-      [ n <> " = pkgs." <> builderOf n parts <> " {" ]
-        ++ [ "  " <> T.intercalate "." k <> " = " <> unAssertion (dAssertion d) <> ";"
-           | (Subject ("artifact" : _ : "args" : k), d) <- sortOn fst parts ]
-        ++ [ "};" ]
+    withName sd@(Subject ("artifact" : n : _), _) = Right (n, sd)
+    withName (Subject segs, _) =
+      Left (RBadArtifact (T.intercalate "." segs) "artifact decision has no <name> segment")
+    entry (n, parts) = do
+      b <- builderOf n parts
+      Right $
+        [ n <> " = pkgs." <> b <> " {" ]
+          ++ [ "  " <> T.intercalate "." k <> " = " <> unAssertion (dAssertion d) <> ";"
+             | (Subject ("artifact" : _ : "args" : k), d) <- sortOn fst parts ]
+          ++ [ "};" ]
 
 -- | The builder is a plain string naming a dotted path under @pkgs@; realize
 -- splices it as @pkgs.<path>@ (a function, not a string). A missing or
--- malformed builder is an engine bug, so it fails loud rather than emitting a
--- broken module.
-builderOf :: Text -> [(Subject, Decision)] -> Text
+-- malformed builder is an engine defect returned as 'RBadArtifact'.
+builderOf :: Text -> [(Subject, Decision)] -> Either RealizeError Text
 builderOf n parts =
   case [ dAssertion d | (Subject ("artifact" : _ : "builder" : _), d) <- parts ] of
     (Assertion a : _) -> case parseValue a of
-      Right (VStr [PLit p]) | validBuilderPath p -> p
-      _ -> error ("artifact " <> T.unpack n <> ": builder must be a plain string naming a pkgs path, got " <> T.unpack a)
-    [] -> error ("artifact " <> T.unpack n <> ": no builder")
+      Right (VStr [PLit p]) | validBuilderPath p -> Right p
+      _ -> Left (RBadArtifact n ("builder must be a plain string naming a pkgs path, got " <> a))
+    [] -> Left (RBadArtifact n "no builder")
   where
     validBuilderPath p = not (T.null p) && T.all (\c -> c `elem` (".-_" :: String) || isAlphaNum c) p
 
