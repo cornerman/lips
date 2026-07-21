@@ -109,11 +109,15 @@ unquote w
 -- sentence punctuation, and its normalized form is what a literal template
 -- token is compared against.
 tokenizeLine :: Text -> [(Text, Text)]
-tokenizeLine = map tok . lexTokens
+tokenizeLine = filter (not . T.null . snd) . map tok . lexTokens
   where
     tok w = case unquote w of
       Just inner -> (inner, T.toLower inner)
       Nothing    -> (stripTrailingPunct w, normalizeToken w)
+    -- A token that normalizes to empty is pure sentence punctuation (a lone
+    -- "." left when a period is glued to a quoted value). It carries no
+    -- meaning and is dropped, symmetric with the template side, so trailing
+    -- punctuation never changes the token count a match depends on.
 
 -- | Match a template against a tokenized line. Succeeds only on equal length
 -- (single-token holes): each literal must equal the normalized token, each hole

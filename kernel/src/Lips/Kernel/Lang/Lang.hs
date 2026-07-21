@@ -163,7 +163,12 @@ parseBody pid body = do
   rest0 <- if T.null afterArrow
              then Left ("pattern " <> pid <> ": missing =>")
              else Right (T.drop 4 afterArrow)
-  let template = map parseTplTok (lexTokens tplStr)
+  -- Drop empty-literal tokens (pure punctuation), symmetric with 'tokenizeLine',
+  -- so a period glued to a quoted value never survives as a phantom token that
+  -- would unbalance the match after a render/read round-trip.
+  let template = filter (not . emptyLit) (map parseTplTok (lexTokens tplStr))
+      emptyLit (TLit t) = T.null t
+      emptyLit _        = False
   (kindTok, r1) <- firstToken rest0 ("pattern " <> pid <> ": missing kind")
   (subjTok, r2) <- firstToken r1 ("pattern " <> pid <> ": missing subject")
   (strTok,  r3) <- firstToken r2 ("pattern " <> pid <> ": missing strength")

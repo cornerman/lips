@@ -208,11 +208,13 @@ generate confidence model file = do
   if not (null errs) || not (null unsure)
     then die (refusalReport file confidence errs unsure)
     else do
-      let eng = assemble (map icItem candidates)
-      -- Validate the minted engine against the actual program: it must
-      -- crystallize with full coverage, realize end to end, and the module
-      -- must parse as Nix. Nothing is written unless the whole loop succeeds.
-      case validate file eng program of
+      let eng0 = assemble (map icItem candidates)
+      -- Validate the engine EXACTLY as it will be persisted: render to .lang and
+      -- read it back, so any render/read round-trip drift is caught at mint
+      -- time, not on a later `print`. The read-back engine is what we write.
+      case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
+       Left es  -> die (validationReport file ("the minted engine does not round-trip through .lang:\n" <> T.unlines (map renderParseError es)))
+       Right eng -> case validate file eng program of
         Left problem -> die (validationReport file problem)
         Right (base, nixModule) -> do
           nixCheck <- nixParses nixModule
