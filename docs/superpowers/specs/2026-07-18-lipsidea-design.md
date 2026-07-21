@@ -523,6 +523,20 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Partial
 
+- **Editor tooling from `.lang` (first rung done).** The authoring view is a
+  pure function of (language, program): `diagnose` (`Kernel/Lang/Diagnose.hs`)
+  classifies every program line through the one shared matcher
+  (`classifyLines`, so a diagnostic never disagrees with what `run` does) --
+  matched (which pattern, which subject), unread (escapes the language), or
+  ambiguous (several patterns) -- then lists the demands left open by what the
+  program states, then coverage. `lips check` now runs this as a pure,
+  offline first phase (no Nix, no AI) before the `.expect` behavioral gate, so
+  authoring is never blind: an unread line names `generate`, an open question
+  names the missing detail, a clean program proceeds to the gate. This is the
+  CLI-first rung of the comprehension-per-minute promise. Missing: a language
+  server (the same pure `Diagnosis` surfaced as live squiggles/completion in an
+  editor, parameterized by `.lang`) and completion snippets derived from the
+  pattern templates. The structured `Diagnosis` is the reuse seam for both.
 - **Deduce-or-fail via resampling.** The harness `unanimous`/`coreOf` check is
   built and tested, and the confidence threshold is now a CLI flag, but
   `generate` still samples the model once. Missing: `--samples` wiring so a
