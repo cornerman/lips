@@ -86,7 +86,6 @@ parseGenerate = go Nothing []
 usage :: IO ()
 usage = do
   name <- T.pack <$> getProgName
-  hPutStrLn stderr banner
   TIO.hPutStr stderr $ T.unlines
     [ "lips turns a plain-English .loose program into a NixOS configuration."
     , ""
@@ -105,7 +104,7 @@ usage = do
 -- write the NixOS module text to stdout. Pure and deterministic (no AI).
 printLoose :: FilePath -> IO ()
 printLoose file = do
-  program <- TIO.readFile file
+  program <- readProgramOrDie file
   eng     <- loadLangOrDie file
   case validate file eng program of
     Left f            -> die (printFail file f)
@@ -118,7 +117,7 @@ printLoose file = do
 -- never touched; the VM is a throwaway simulation.
 runVm :: FilePath -> IO ()
 runVm file = do
-  program <- TIO.readFile file
+  program <- readProgramOrDie file
   eng     <- loadLangOrDie file
   case validate file eng program of
     Left f            -> die (printFail file f)
@@ -175,7 +174,7 @@ vmExpr modPath = T.pack $ unlines
 -- engine, and the flake check shells this per example.
 checkLoose :: FilePath -> IO ()
 checkLoose file = do
-  program <- TIO.readFile file
+  program <- readProgramOrDie file
   eng     <- loadLangOrDie file
   expSrc  <- tryRead (file <> ".expect")
   case expSrc of
@@ -213,6 +212,18 @@ loadLangOrDie file = do
       Left es  -> die (unreadable file ".lang" es)
       Right eng -> pure eng
 
+-- | Read the program file, or fail with a plain message instead of a raw
+-- exception when the path is wrong (a common typo at the shell).
+readProgramOrDie :: FilePath -> IO Text
+readProgramOrDie file = do
+  m <- tryRead file
+  case m of
+    Just t  -> pure t
+    Nothing -> die (report
+      ("lips can't read " <> T.pack file <> ".")
+      []
+      "→ check the path, or create the program file first.")
+
 tryRead :: FilePath -> IO (Maybe Text)
 tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either IOException Text))
 
@@ -221,7 +232,7 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- by a full run plus a Nix parse before writing anything.
 generate :: Double -> Maybe String -> FilePath -> IO ()
 generate confidence mmodel file = do
-  program <- TIO.readFile file
+  program <- readProgramOrDie file
   -- Optional owner taste for this program (mechanism preference, not
   -- obligations). Rides in the system prompt, so it enters the .generation
   -- record and genId; absent or blank changes nothing.
@@ -533,7 +544,7 @@ refusalReport file _threshold errs unsure = T.intercalate "\n" $
           ++ [ "  - " <> e | e <- errs ]
           ++ [ ""
              , "→ run generate again. If the same line keeps failing, it's a"
-             , "  capability lips lacks -- please report it." ]
+             , "  capability lips lacks; please report it." ]
     underspecified
       | null unsure = []
       | otherwise =
@@ -553,7 +564,7 @@ validationReport file problem = T.intercalate "\n"
   , ""
   , problem
   , ""
-  , "→ run generate again. If it keeps failing the same way, it's a lips bug --"
+  , "→ run generate again. If it keeps failing the same way, it's a lips bug;"
   , "  please report it with the text above."
   ]
 
