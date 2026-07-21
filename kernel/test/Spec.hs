@@ -215,6 +215,31 @@ main = hspec $ do
       property $ forAll (shuffle ground) $ \perm ->
         realize (fromList perm) === realize (fromList ground)
 
+    it "gathers artifact.<name> groups into a let-bound derivation" $ do
+      let arts =
+            [ (mk "b" "x" "\"rustPlatform.buildRustPackage\"" Stated) { dSubject = Subject ["artifact","myserver","builder"] }
+            , (mk "p" "x" "\"myserver\"" Stated) { dSubject = Subject ["artifact","myserver","args","pname"] }
+            , (mk "s" "x" "./ledger.artifacts/myserver" Stated) { dSubject = Subject ["artifact","myserver","args","src"] }
+            , (mk "e" "x" "\"${artifact.myserver}/bin/myserver\"" Stated) { dSubject = Subject ["systemd","services","myserver","serviceConfig","ExecStart"], dProv = FromSource (SourceLoc "app" 1) }
+            ]
+          expected = T.unlines
+            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            , "{ config, lib, pkgs, ... }:"
+            , "let"
+            , "  artifact = {"
+            , "    myserver = pkgs.rustPlatform.buildRustPackage {"
+            , "      pname = \"myserver\";"
+            , "      src = ./ledger.artifacts/myserver;"
+            , "    };"
+            , "  };"
+            , "in"
+            , "{"
+            , "  # app:1"
+            , "  systemd.services.myserver.serviceConfig.ExecStart = \"${artifact.myserver}/bin/myserver\";"
+            , "}"
+            ]
+      realize (fromList arts) `shouldBe` Right expected
+
   describe "run pipeline (spec 5: four outcomes)" $ do
     -- an engine: one rule mapping any Oblige to a ground option assignment
     let engine = [ Rule (RuleId "ingest") ((== Oblige) . dKind)
