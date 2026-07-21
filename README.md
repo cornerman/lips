@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="lips" width="380">
+</p>
+
 # lips
 
 Describe what a system should do in plain lines. lips grows a small language
