@@ -1,85 +1,110 @@
 # lips
 
-Write intent, not code. You state what a system should do in a few plain
-lines; a machine turns that into a running NixOS configuration,
-deterministically, with no AI in the loop after the first step.
+Write what a system should do, in a few plain lines. A machine turns those
+lines into a running NixOS configuration, deterministically, with no AI in the
+loop after the first step.
 
-Why: AI writes code faster than anyone can review it. lips keeps the
-human-owned artifact small enough to read, and everything below it
-deterministic.
+The reason is simple. AI now writes code faster than any human can review it.
+lips keeps the artifact you own small enough to read in full, and makes
+everything below it machine-derived and reproducible. You review intent; the
+machine handles mechanism.
 
-## Try It
+## The Idea
 
-With direnv, `direnv allow` once; otherwise prefix commands with
-`nix develop -c`.
+Writing your intent and building a language for it are the same act.
 
-    just print examples/backup.loose  # loose text -> NixOS module text (offline)
-    just run   examples/backup.loose  # ... and boot it as a local NixOS VM (needs KVM)
-    just generate path/to/my.loose    # mint a language for your own program (AI, needs pi)
-    just test                         # conformance suite
-
-The whole source of the example is `examples/backup.loose`:
+You start by writing plainly what you want:
 
     back up /var/lib/ledger to /backup/ledger daily.
     keep 14 daily snapshots.
     credentials come from /etc/ledger-backup.env.
 
-Edit a path or the count and `just print` again: the change flows through with
-no AI. `just run` goes further and boots the realized module in a throwaway
-local VM (the host is never touched); host deployment stays a separate step.
+That file is already a valid program. When you run `generate` once, a model
+reads your lines and mints a small **engine**: the grammar that reads sentences
+like yours, the rules that map them to real NixOS options, and tests that pin
+your values. In other words, the wording you chose defines a little language
+for your problem, and lips hands you the compiler for it.
 
-## How It Works
+From then on the AI is gone. `print` compiles your text to a NixOS module
+offline and bit-identical, every time. Edit a path or a number and print again;
+the change flows straight through. The language you grew stays yours to write
+in, and the compiler keeps working without a model ever running again.
 
-**Generate, once (the only AI step).** A model mints an *engine* for your
-problem: patterns that read your lines, rules that map them to NixOS options,
-and tests that pin your values. lips verifies the engine builds your program
-and the tests hold, else it writes nothing.
+A line the engine cannot read fails loudly and sends you back to `generate`.
+lips never guesses.
 
-**Print, forever (no AI).** The engine compiles your text to a NixOS module,
-offline, bit-identical. A line the engine cannot read fails loud and points
-back to `generate`; lips never guesses. `run` takes that module one step
-further and literally boots it as a local VM.
+## How You Work With It
 
-**Regenerate, gated.** A fresh engine is accepted only if the committed tests
-still hold. To change behavior on purpose, delete `.expect` and regenerate:
-that diff is the semantic changelog.
+The loop has three moves. Only the first touches a model.
+
+**Write.** State intent in plain lines. This is the only artifact you own and
+the only one you cannot regenerate. Keep it short and truthful.
+
+**Generate (once, AI).** `lips generate my.loose` mints the engine and the
+tests for your program. lips refuses to write anything unless the engine
+actually compiles your program and the tests hold, so a bad mint costs you
+nothing.
+
+**Print and run (forever, no AI).** `lips print my.loose` compiles your text to
+a NixOS module. `lips run my.loose` goes further and boots that module in a
+throwaway local VM, so you can watch it work without touching your host.
+
+You then edit freely. Value and wording changes covered by your language run
+straight through `print`. You return to `generate` only when you say something
+genuinely new that the language cannot yet read, and even then regeneration is
+gated: a fresh engine is accepted only if the committed tests still hold. To
+change behavior on purpose you delete the `.expect` file and regenerate, and
+that diff is your semantic changelog.
+
+```mermaid
+flowchart LR
+    W["write<br><b>my.loose</b>"]
+    W -->|"generate<br>(AI, once)"| E["engine + tests<br>verified, or nothing"]
+    W -->|"print / run<br>(no AI, forever)"| M["NixOS module<br>+ local VM"]
+    E --> M
+    M -.->|"a line it cannot read"| W
+```
+
+## Try It
+
+With direnv, run `direnv allow` once. Otherwise prefix each command with
+`nix develop -c`.
+
+    just print examples/backup.loose   # loose text -> NixOS module (offline)
+    just run   examples/backup.loose   # ... and boot it as a local VM (needs KVM)
+    just generate path/to/my.loose     # mint a language for your own program (AI, needs pi)
+    just test                          # conformance suite
+
+Open `examples/backup.loose`, change `/backup/ledger` or `14`, and run
+`just print` again. The module updates with no AI. Then add a sentence the
+language does not know and watch it fail loud, pointing you back to `generate`.
+
+## The Files
+
+For a program `my.loose`, everything else sits beside it. You own the first
+line; the machine writes the rest.
 
 | File | Author | Role | In git |
 |------|--------|------|--------|
-| `backup.loose` | you | the program | yes, the only source |
-| `backup.loose.lang` | AI, once | the engine | yes |
-| `backup.loose.expect` | AI, once | the tests | yes |
-| `backup.loose.generation` | machine | receipt of the AI call | yes |
-| `backup.loose.decisions` | machine | cache of the machine's reading | no |
+| `my.loose` | you | the program, the only real source | yes |
+| `my.loose.lang` | AI, once | the engine (grammar + rules + tests) | yes |
+| `my.loose.expect` | AI, once | behavioral tests that gate regeneration | yes |
+| `my.loose.generation` | machine | receipt of the exact AI call | yes |
+| `my.loose.decisions` | machine | the machine's reading of your program | no (cache) |
 
-```mermaid
-flowchart TD
-    H["you write<br><b>backup.loose</b>"]
-    H -->|"generate (AI, once)"| GEN{{"model mints engine + tests;<br>verified, else nothing written"}}
-    GEN --> LANG["<b>.lang</b> engine"]
-    GEN --> EXP["<b>.expect</b> tests"]
-    H -->|"run (no AI)"| RUN["compile"]
-    LANG --> RUN
-    RUN --> MOD["NixOS module"]
-    H -->|"check (no AI)"| CHK["tests hold?"]
-    EXP --> CHK
-    CHK -->|no| GEN
-```
+Everything the machine writes is traceable. Each `.lang` line ends in
+`@gen:<fingerprint>`, the hash of the AI call recorded in `.generation`. And
+`.decisions` shows how the machine read you, one precise statement per line, so
+you can check "did it understand me?" before trusting the output.
 
-Everything the machine writes is traceable: each `.lang` line ends in
-`@gen:<fingerprint>`, the hash of the exact AI call recorded in
-`.generation`. And `.decisions` shows the machine's reading of your program,
-one precise statement per line you wrote; read it to verify "did it
-understand me?".
-
-If the machine burned down, the `.loose` file is the only thing you could not
-regenerate. That is the whole design.
+If everything burned down, the `.loose` file is the only thing you could not
+recreate. That is the whole point.
 
 ## Layout
 
-- `kernel/` — the deliverable: decision calculus + conformance suite
-  (module map: `kernel/README.md`).
-- `examples/` — demonstration programs with their minted artifacts.
-- `docs/superpowers/specs/` — design doc
-  (`2026-07-18-lipsidea-design.md`; milestone ledger in section 13).
-- `justfile` — all commands; `just` lists them.
+- `kernel/` is the deliverable: the decision calculus and its conformance
+  suite. Module map in `kernel/README.md`.
+- `examples/` holds demonstration programs with their minted engines.
+- `docs/superpowers/specs/` holds the design doc,
+  `2026-07-18-lipsidea-design.md`, whose section 13 tracks milestones.
+- `justfile` lists every command. Run `just` to see them.
