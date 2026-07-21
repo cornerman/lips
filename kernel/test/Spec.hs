@@ -481,6 +481,15 @@ main = hspec $ do
       fillValue (const "a\" ; evil ${pkgs.hack}") (VStr [PHole "value"]) `shouldBe`
         "\"a\\\" ; evil \\${pkgs.hack}\""
 
+    it "reads and round-trips an ${artifact.<name>} reference (a name, not computation)" $ do
+      parseValue "\"${artifact.myserver}/bin/myserver\"" `shouldBe`
+        Right (VStr [PArt "myserver", PLit "/bin/myserver"])
+      fmap renderValue (parseValue "\"${artifact.myserver}/bin/myserver\"")
+        `shouldBe` Right "\"${artifact.myserver}/bin/myserver\""
+
+    it "rejects a malformed artifact reference" $
+      parseValue "\"${artifact.bad name}\"" `shouldSatisfy` isLeft
+
     it "<value.N> picks the Nth token of the matched assertion" $ do
       let r = MapRule "r4" Fact ["backup", "job"]
                 [ Emit ["src"] (VStr [PHole "value.1"])

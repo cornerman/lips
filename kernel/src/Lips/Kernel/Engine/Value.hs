@@ -44,8 +44,11 @@ import qualified Data.Text      as T
 import qualified Data.Text.Read as TR
 
 -- | One piece of a string value. 'PRef' is a @${pkgs.<dotted-path>}@ package
--- reference; 'PHole' is @\<value\>@ or @\<value.N\>@ (a string hole).
-data Piece = PLit Text | PRef [Text] | PHole Text
+-- reference; 'PArt' is a @${artifact.<name>}@ reference to a program-derived
+-- artifact (resolved by realize to its @let@-bound build); 'PHole' is
+-- @\<value\>@ or @\<value.N\>@ (a string hole). All three are names, not
+-- computation.
+data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text
   deriving (Eq, Show)
 
 -- | The type a bare (non-string) hole coerces its program token into. String
@@ -182,10 +185,11 @@ pString = go [] T.empty
       Just ('$', more)
         | Just body <- T.stripPrefix "{" more -> do
             let (inside, after) = T.breakOn "}" body
-            ref <- pkgsRef inside
             if T.null after
               then Left "unterminated ${...} in string"
-              else go (PRef ref : flush acc pieces) T.empty (T.drop 1 after)
+              else do
+                p <- interp inside
+                go (p : flush acc pieces) T.empty (T.drop 1 after)
       Just ('<', more) -> do
         let (hole, after) = T.breakOn ">" more
         if T.null after
@@ -197,17 +201,30 @@ pString = go [] T.empty
       Just (c, more) -> go pieces (T.snoc acc c) more
     flush acc pieces = if T.null acc then pieces else PLit acc : pieces
 
--- | The one interpolation allowed: a dotted path rooted at @pkgs@. A name,
--- not a computation: spaces, parentheses, or operators do not parse.
+-- | The interpolations allowed inside a string, both names not computation: a
+-- @${pkgs.<path>}@ package reference, or a @${artifact.<name>}@ reference to a
+-- program-derived build. Spaces, parentheses, or operators do not parse.
+interp :: Text -> Either Text Piece
+interp inside
+  | Just name <- T.stripPrefix "artifact." inside =
+      if okSeg name
+        then Right (PArt name)
+        else Left ("bad ${artifact.<name>} reference (name must be an identifier): ${" <> inside <> "}")
+  | otherwise = PRef <$> pkgsRef inside
+
+-- | A single identifier segment: non-empty, letters\/digits\/@-@\/@_@ only.
+okSeg :: Text -> Bool
+okSeg s = not (T.null s) && T.all (\c -> c `elem` ("-_" :: String) || isDigit c || isAlpha c) s
+  where isAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+-- | The dotted path rooted at @pkgs@ for a package reference.
 pkgsRef :: Text -> Either Text [Text]
 pkgsRef inside =
   let segs = T.splitOn "." inside
-      okSeg s = not (T.null s) && T.all (\c -> c `elem` ("-_" :: String) || isDigit c || isAlpha c) s
-      isAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
    in case segs of
         ("pkgs" : more) | not (null more), all okSeg more -> Right segs
         _ ->
-          Left ("only ${pkgs.<path>} interpolation is allowed (a package reference, not computation): ${"
+          Left ("only ${pkgs.<path>} or ${artifact.<name>} interpolation is allowed (a reference, not computation): ${"
                   <> inside <> "}")
 
 -- | Canonical text of a value; the exact Nix expression realize will splice.
@@ -225,6 +242,7 @@ renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
   where
     piece (PLit t)  = escape t
     piece (PRef r)  = "${" <> T.intercalate "." r <> "}"
+    piece (PArt n)  = "${artifact." <> n <> "}"
     piece (PHole h) = "<" <> h <> ">"
 
 -- | Escape text destined for the inside of a Nix string: quotes, backslashes,
