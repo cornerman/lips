@@ -89,9 +89,11 @@ systemPrompt = T.unlines
   , "something is inexpressible, give it low confidence so the kernel is"
   , "extended instead."
   , ""
-  , "Output ONLY lines of these three forms, no prose, no code fences:"
+  , "Output ONLY lines of these forms, no prose, no code fences. Every line"
+  , "names its kind with a leading keyword (pattern|match|demand|expect), so a"
+  , "pattern template may itself begin with any word:"
   , ""
-  , "  <confidence> <id> <template> => <kind> <subject> <strength> \"<assertion>\""
+  , "  <confidence> <id> pattern <template> => <kind> <subject> <strength> \"<assertion>\""
   , "  <confidence> <id> match <kind> <subject> => <option.path> \"<rhs>\" ; <option.path> \"<rhs>\""
   , "  <confidence> <id> demand <subject> \"<question>\""
   , ""
@@ -179,7 +181,7 @@ systemPrompt = T.unlines
   , "Example input line:"
   , "  the bank drops csv files into inbox/."
   , "Example output lines:"
-  , "  0.96 p1 the bank drops csv files into <loc> => fact feed.source stated \"<loc>\""
+  , "  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source stated \"<loc>\""
   , "  0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX \"\\\"<value>\\\"\""
   , "  0.9 q1 demand feed.source \"where do the files arrive?\""
   , "  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source"
@@ -276,17 +278,23 @@ parseLine line = do
   (idTok, body0) <- firstToken r1 ("no id after confidence: " <> line)
   conf <- parseConfidence confTok
   let body = T.strip body0
-  item <-
-    if "match " `T.isPrefixOf` body
-      then ItemRule <$> located (parseRuleBody idTok body)
-      else if "demand " `T.isPrefixOf` body
-        then ItemDemand <$> located (parseDemandBody idTok body)
-        else if "expect " `T.isPrefixOf` body
-          then ItemExpect <$> located (parseExpectBody idTok body)
-          else ItemPattern <$> located (parsePatternBody idTok body)
+  -- Every item is keyword-led (pattern/match/demand/expect), so the item kind
+  -- is read, never guessed. A pattern's template may then begin with any
+  -- domain word ("match the invoice ...") without being mistaken for a rule;
+  -- and an unrecognized body fails loud instead of silently becoming a
+  -- malformed pattern.
+  item <- case firstWord body of
+    "pattern" -> ItemPattern <$> located (parsePatternBody idTok (afterKeyword body))
+    "match"   -> ItemRule    <$> located (parseRuleBody   idTok body)
+    "demand"  -> ItemDemand  <$> located (parseDemandBody idTok body)
+    "expect"  -> ItemExpect  <$> located (parseExpectBody idTok body)
+    other     -> Left ("unknown item kind '" <> other
+                        <> "' (want pattern|match|demand|expect) in: " <> line)
   Right (ItemCandidate item (Confidence conf) line)
   where
     located = either (\e -> Left (e <> " in: " <> line)) Right
+    firstWord t = case T.words t of { (w : _) -> w; [] -> "" }
+    afterKeyword = T.stripStart . T.drop (T.length ("pattern" :: Text)) . T.stripStart
 
 firstToken :: Text -> Text -> Either Text (Text, Text)
 firstToken t err =

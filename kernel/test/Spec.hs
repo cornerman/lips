@@ -27,7 +27,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
@@ -323,7 +323,7 @@ main = hspec $ do
   describe "generate minting (engine-synthesis plan: whole-engine candidates)" $ do
     it "parses the three item forms and assembles an engine" $ do
       let reply = T.unlines
-            [ "0.95 p1 the bank drops files into <loc> => fact feed.source stated \"<loc>\""
+            [ "0.95 p1 pattern the bank drops files into <loc> => fact feed.source stated \"<loc>\""
             , "0.9 r1 match fact feed.source => systemd.services.i.environment.INBOX \"\\\"<value>\\\"\""
             , "0.85 q1 demand feed.source \"where do the files arrive?\""
             , "0.95 a1 expect systemd.services.i.environment.INBOX from feed.source"
@@ -335,11 +335,22 @@ main = hspec $ do
       (length (edPatterns eng), length (edRules eng), length (edDemands eng)) `shouldBe` (1, 1, 1)
       length (expectsOf (map icItem cs)) `shouldBe` 1
 
+    it "a pattern template may begin with a dispatch keyword (no collision)" $ do
+      -- Regression (kernel review): a loose line starting with a domain word
+      -- like "match" must mint as a pattern, not be misrouted to the rule
+      -- parser. The leading 'pattern' keyword makes the kind explicit.
+      let reply = "0.95 p1 pattern match <a> to <b> => fact link.p stated \"<a> <b>\""
+          (errs, cs) = parseEngineCandidates reply
+      errs `shouldBe` []
+      case map icItem cs of
+        [ItemPattern _] -> pure ()
+        other           -> expectationFailure ("expected one pattern, got " ++ show other)
+
     it "skips fences and comments, collects malformed lines as errors" $ do
       let reply = T.unlines
             [ "```", "# note", ""
-            , "0.9 p1 every bank row becomes one <e> => oblige feed.ingest stated \"<e>\""
-            , "2.0 p2 x => fact y stated \"z\""   -- confidence out of range
+            , "0.9 p1 pattern every bank row becomes one <e> => oblige feed.ingest stated \"<e>\""
+            , "2.0 p2 pattern x => fact y stated \"z\""   -- confidence out of range
             , "0.9 r9 match fact feed.x => a.b \"<mystery>\""  -- unknown emit hole
             , "```"
             ]
