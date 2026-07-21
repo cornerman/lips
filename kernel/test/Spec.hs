@@ -33,6 +33,7 @@ import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
+import Lips.Kernel.Lang.Diagnose
 import Lips.Kernel.Lang.Lang
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
@@ -703,6 +704,49 @@ main = hspec $ do
         Right base ->
           runBase 10000 (map toRule (edRules feedEngine)) (map toDemand (edDemands feedEngine)) base
             `shouldBe` Left (OpenQuestions ["where do the files arrive?"])
+
+  -- Authoring diagnostics: the pure (language, program) view a human/editor
+  -- reads (editor-tooling milestone, first rung). One shared matcher with
+  -- crystallize, so a diagnostic never disagrees with what run would do.
+  describe "diagnose (authoring view over .lang, pure)" $ do
+    let eng = EngineData
+          { edPatterns =
+              [ Pattern "p1" [TLit "the", TLit "bank", TLit "drops", TLit "csv", TLit "files", TLit "into", THole "loc"]
+                  Fact Stated [SLit "feed.source"] [SHole "loc"]
+              , Pattern "p2" [TLit "the", TLit "bank", TLit "delivers", TLit "new", TLit "files", TLit "every", THole "sched"]
+                  Fact Stated [SLit "feed.cadence"] [SHole "sched"]
+              ]
+          , edRules = []
+          , edDemands =
+              [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
+              , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
+              ]
+          }
+
+    it "reports a matched line with the pattern it used and the decision it yields" $ do
+      let d = diagnose "f" eng "the bank drops csv files into inbox/."
+      diagMatched d `shouldBe` 1
+      diagTotal d `shouldBe` 1
+      case diagLines d of
+        [Matched 1 _ "p1" dec] -> dSubject dec `shouldBe` Subject ["feed", "source"]
+        other                  -> expectationFailure ("unexpected: " ++ show other)
+
+    it "flags a line that escapes the language as Unmatched" $ do
+      let d = diagnose "f" eng "encrypt everything at rest."
+      diagMatched d `shouldBe` 0
+      case diagLines d of
+        [Unmatched 1 _] -> pure ()
+        other           -> expectationFailure ("unexpected: " ++ show other)
+
+    it "lists demands left open by what the program states" $ do
+      -- only the source is stated, so the cadence demand stays open
+      let d = diagnose "f" eng "the bank drops csv files into inbox/."
+      diagOpen d `shouldBe` ["how often does the feed deliver?"]
+
+    it "skips blank and comment lines in the coverage count" $ do
+      let d = diagnose "f" eng "# a note\n\nthe bank drops csv files into inbox/."
+      diagTotal d `shouldBe` 1
+      diagMatched d `shouldBe` 1
 
   -- Laws over arbitrary bases, not just the two worked examples: the merge is
   -- the kernel's core physics, so it is pinned as algebraic properties.

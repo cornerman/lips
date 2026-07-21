@@ -22,6 +22,8 @@
 -- human wrote.
 module Lips.Kernel.Lang.Crystallize
   ( CrystError (..)
+  , LineOutcome (..)
+  , classifyLines
   , crystallize
   ) where
 
@@ -41,25 +43,49 @@ data CrystError
     Overlapping Int [Text]
   deriving (Eq, Show)
 
+-- | The outcome of matching one loose line against the language: what a human
+-- (or an editor) needs to see per line. 'crystallize' folds these into a base
+-- or a list of errors; diagnostics render them directly.
+data LineOutcome
+  = -- | Exactly one pattern matched: line no, source text, the pattern id it
+    -- matched, and the decision it produces.
+    Matched Int Text Text Decision
+  | -- | No pattern matched: the line escapes the language.
+    Unmatched Int Text
+  | -- | Several patterns matched (orthogonality violation), all named.
+    Ambiguous Int Text [Text]
+  deriving (Eq, Show)
+
+-- | Classify every non-skipped loose line against the language. The single
+-- matcher shared by 'crystallize' and diagnostics, so the two never diverge.
+classifyLines :: FilePath -> [Pattern] -> Text -> [LineOutcome]
+classifyLines file patterns src =
+  let numbered   = zip [1 ..] (T.lines src)
+      candidates = [(n, t) | (n, l) <- numbered, let t = T.strip l, not (skip t)]
+   in map (uncurry classify) candidates
+  where
+    skip t = T.null t || "#" `T.isPrefixOf` t
+    classify n t =
+      let toks = tokenizeLine t
+       in case [(p, binds) | p <- patterns, Just binds <- [matchTemplate (pTemplate p) toks]] of
+            []            -> Unmatched n t
+            [(p, binds)]  -> Matched n t (pId p) (decisionAt file n p binds)
+            many          -> Ambiguous n t [pId p | (p, _) <- many]
+
 -- | Crystallize a loose program against a language. Comment (@#@) and blank
 -- lines are ignored. Collects every line error, so one report names all gaps.
 crystallize :: FilePath -> [Pattern] -> Text -> Either [CrystError] Base
 crystallize file patterns src =
-  let numbered   = zip [1 ..] (T.lines src)
-      candidates = [(n, t) | (n, l) <- numbered, let t = T.strip l, not (skip t)]
-      results    = map (uncurry readLine) candidates
-      errs       = [e | Left e <- results]
-      ds         = [d | Right d <- results]
+  let outcomes = classifyLines file patterns src
+      errs     = [toErr o | o <- outcomes, isErr o]
+      ds       = [d | Matched _ _ _ d <- outcomes]
    in if null errs then Right (fromList ds) else Left errs
   where
-    skip t = T.null t || "#" `T.isPrefixOf` t
-
-    readLine n t =
-      let toks = tokenizeLine t
-       in case [(p, binds) | p <- patterns, Just binds <- [matchTemplate (pTemplate p) toks]] of
-            []            -> Left (NoPattern n t)
-            [(p, binds)]  -> Right (decisionAt file n p binds)
-            many          -> Left (Overlapping n [pId p | (p, _) <- many])
+    isErr Matched{}   = False
+    isErr _           = True
+    toErr (Unmatched n t)     = NoPattern n t
+    toErr (Ambiguous n _ ids) = Overlapping n ids
+    toErr Matched{}           = error "crystallize: Matched is not an error"
 
 -- | Build the decision a matched pattern produces at a given line.
 decisionAt :: FilePath -> Int -> Pattern -> Bindings -> Decision

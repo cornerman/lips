@@ -23,7 +23,7 @@ import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getArgs, getProgName)
 import           System.Exit        (ExitCode (..), exitFailure)
-import           System.IO          (stderr)
+import           System.IO          (hFlush, stderr, stdout)
 import           System.Process     (callCommand, readProcessWithExitCode)
 import           Text.Read          (readMaybe)
 
@@ -38,7 +38,8 @@ import           Lips.Kernel.Expect     (Expect, checkValues, evalExpr, expected
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
-import           Lips.Kernel.Lang.Crystallize  (CrystError (..), crystallize)
+import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
+import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Lang         (EngineData (..), readLang, renderLang)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -176,12 +177,36 @@ checkLoose :: FilePath -> IO ()
 checkLoose file = do
   program <- readProgramOrDie file
   eng     <- loadLangOrDie file
-  expSrc  <- tryRead (file <> ".expect")
+  -- First phase, pure and offline: how the program sits in its language.
+  -- Always shown, so authoring is never blind; the behavioral gate runs only
+  -- once the program crystallizes cleanly and completely.
+  let d = diagnose file eng program
+  TIO.putStrLn (renderDiagnosis file d)
+  hFlush stdout  -- so the report lands before any stderr failure below
+  if any escapes (diagLines d)
+    then die (report
+           (T.pack file <> " has lines its language cannot read yet.")
+           []
+           ("→ grow the language: lips generate " <> T.pack file))
+    else if not (null (diagOpen d))
+      then die (report
+             (T.pack file <> " is incomplete while these questions stay open.")
+             []
+             "→ answer them by stating the detail in the program.")
+      else expectGate file eng program
+  where
+    escapes Matched{} = False
+    escapes _         = True
+
+-- | The behavioral gate: the committed @.expect@ contract against the realized
+-- module. Reached only after diagnostics confirm the program crystallizes.
+expectGate :: FilePath -> EngineData -> Text -> IO ()
+expectGate file eng program = do
+  expSrc <- tryRead (file <> ".expect")
   case expSrc of
-    Nothing  -> die (report
-      (T.pack file <> " has nothing to check yet (" <> T.pack file <> ".expect is missing).")
-      []
-      ("→ create it: lips generate " <> T.pack file))
+    Nothing  -> TIO.putStrLn
+      (T.pack file <> ": crystallizes cleanly; no behavioral contract yet ("
+        <> T.pack file <> ".expect is missing, written by generate).")
     Just src -> case readExpect src of
       Left es       -> die (unreadable file ".expect" es)
       Right expects -> case validate file eng program of
@@ -197,6 +222,27 @@ checkLoose file = do
               (T.pack file <> " no longer produces what it promised:")
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
+
+-- | Render the authoring diagnosis: a coverage headline, one line per program
+-- line (matched to which pattern and subject, or unread, or ambiguous), then
+-- the open questions. Pure view over 'diagnose'; a future editor paints the
+-- same outcomes as squiggles.
+renderDiagnosis :: FilePath -> Diagnosis -> Text
+renderDiagnosis file d = T.intercalate "\n" (headline : map row (diagLines d) ++ openBlock)
+  where
+    headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
+                 <> tshow (diagTotal d) <> " lines crystallize."
+    row (Matched n _ pid dec) =
+      "  line " <> tshow n <> "  ok        " <> pid <> "  " <> subjectPath (dSubject dec)
+    row (Unmatched n t) =
+      "  line " <> tshow n <> "  no match  \"" <> t <> "\""
+    row (Ambiguous n _ ids) =
+      "  line " <> tshow n <> "  ambiguous " <> T.intercalate "," ids
+    openBlock
+      | null (diagOpen d) = []
+      | otherwise = "" : ("open questions (" <> tshow (length (diagOpen d)) <> "):")
+                       : ["  - " <> q | q <- diagOpen d]
+    subjectPath (Subject segs) = T.intercalate "." segs
 
 -- | Load and parse a program's @.lang@, or fail loud naming @generate@.
 loadLangOrDie :: FilePath -> IO EngineData
@@ -253,7 +299,7 @@ generate confidence mmodel file = do
       case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
        Left es  -> die (validationReport file ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
        Right eng -> case validate file eng program of
-        Left f -> die (validationReport file (diagnose file f))
+        Left f -> die (validationReport file (failureReport file f))
         Right (base, nixModule) -> do
           nixCheck <- nixParses nixModule
           case nixCheck of
@@ -457,13 +503,13 @@ data Failure = FailRead [CrystError] | FailRun RunError
 
 -- | What went wrong and where, in plain words, with no action line (the caller
 -- appends the action, which depends on the command).
-diagnose :: FilePath -> Failure -> Text
-diagnose file (FailRead errs) =
+failureReport :: FilePath -> Failure -> Text
+failureReport file (FailRead errs) =
   reportHead (T.pack file <> " has lines its setup doesn't handle:") (map crystDetail errs)
   where
     crystDetail (NoPattern n t)   = "line " <> tshow n <> ": " <> t
     crystDetail (Overlapping n _) = "line " <> tshow n <> ": the setup reads this line more than one way"
-diagnose file (FailRun err) = case err of
+failureReport file (FailRun err) = case err of
   ParseRejected es ->
     reportHead (T.pack file <> " has lines that couldn't be read:")
                [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
@@ -484,7 +530,7 @@ diagnose file (FailRun err) = case err of
 -- that fits it -- edit the program (unanswered questions, a contradiction) or
 -- rebuild the setup (everything else).
 printFail :: FilePath -> Failure -> Text
-printFail file f = diagnose file f <> "\n\n" <> act
+printFail file f = failureReport file f <> "\n\n" <> act
   where
     act = case f of
       FailRun (OpenQuestions _) -> "→ answer each in " <> T.pack file <> ", then run again."
