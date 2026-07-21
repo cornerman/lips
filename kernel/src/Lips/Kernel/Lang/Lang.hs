@@ -159,10 +159,8 @@ quoteParts ps = "\"" <> T.concatMap esc (renderParts ps) <> "\""
 
 parseBody :: Text -> Text -> Either Text Pattern
 parseBody pid body = do
-  let (tplStr, afterArrow) = T.breakOn " => " body
-  rest0 <- if T.null afterArrow
-             then Left ("pattern " <> pid <> ": missing =>")
-             else Right (T.drop 4 afterArrow)
+  (tplStr, rest0) <- maybe (Left ("pattern " <> pid <> ": missing =>")) Right
+                       (splitOnSeparator body)
   -- Drop empty-literal tokens (pure punctuation), symmetric with 'tokenizeLine',
   -- so a period glued to a quoted value never survives as a phantom token that
   -- would unbalance the match after a render/read round-trip.
@@ -193,6 +191,25 @@ parseBody pid body = do
   if null loose
     then Right p
     else Left ("pattern " <> pid <> ": target holes not bound by template: " <> T.intercalate "," loose)
+
+-- The pattern body is @<template> => <decision>@, but a template may itself
+-- contain @=>@ (route arrows, lambdas and mappings are common domain syntax).
+-- The decision grammar (@<kind> <subject> <strength> "<assertion>"@) never
+-- contains @ => @ outside its quoted assertion, so the meta-separator is always
+-- the LAST @ => @ lying outside quotes. Splitting there lets a template use
+-- @=>@ freely: the kernel's own delimiter must not forbid a surface form.
+splitOnSeparator :: Text -> Maybe (Text, Text)
+splitOnSeparator body =
+  case [ (b, T.drop 4 a) | (b, a) <- T.breakOnAll " => " body, even (unescapedQuotes b) ] of
+    [] -> Nothing
+    xs -> Just (last xs)
+  where
+    unescapedQuotes t = go (T.unpack t) (0 :: Int)
+      where
+        go []                n = n
+        go ('\\' : _ : cs)   n = go cs n
+        go ('"' : cs)        n = go cs (n + 1)
+        go (_ : cs)          n = go cs n
 
 parseTplTok :: Text -> TplTok
 parseTplTok w

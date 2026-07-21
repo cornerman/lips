@@ -617,6 +617,15 @@ main = hspec $ do
           [TLit "-", THole "path", TLit "returns", TLit "text", THole "body"]
         Left e  -> expectationFailure (T.unpack e)
 
+    it "splits on the LAST unquoted => so a template may itself contain => (route arrow)" $
+      case parsePatternBody "pr2" "- <path> => status <code> \"<body>\" => fact route.<path> stated \"<path> <code> <body>\"" of
+        Right p -> do
+          pTemplate p `shouldBe`
+            [TLit "-", THole "path", TLit "=>", TLit "status", THole "code", THole "body"]
+          pKind p `shouldBe` Fact
+          pSubject p `shouldBe` [SLit "route.", SHole "path"]
+        Left e  -> expectationFailure (T.unpack e)
+
     it "rejects a pattern whose target hole is not bound by the template" $ do
       let bad = (patternToDecision (Pattern "p1" [THole "loc"] Fact Stated [SLit "feed.source"] [SHole "loc"]))
                   { dAssertion = Assertion "<loc> => fact feed.source stated \"<missing>\"" }
