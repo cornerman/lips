@@ -399,6 +399,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
   [--confidence <0..1>] [model] <program>` (default 0.7, pinned into the
   generation record so it enters the event id); generation record written per
   event.
+- **Generate failure feedback (info-only, no dialogue).** When `generate`
+  cannot write an engine it prints a classified, plain-language report to the
+  command output -- the one channel the user reads -- with what went wrong and
+  what to do, no jargon, no files. Two causes: lines lips could not read (a
+  kernel/engine mechanism may be missing -> report them) and items the model
+  could not derive (the program underspecifies them -> state the detail in the
+  program). No clarification dialogue: the program is the sole source of truth,
+  so the remedy is always to edit the program, never to answer a question.
+  Rejected/shelved: an `ask` channel (would be a dialogue), autofix (a possible
+  future opt-in mode; skipped to stay simple, and it needs no persisted file),
+  and a `.gap` artifact (kept to on-screen only).
 - **Engine synthesis (was the central gap).** `generate` mints the whole
   engine as data in one `.lang` file: patterns (front half) plus rules
   (`match <kind> <subject> => option assignments`, with `<value>`/`<value.N>`
@@ -618,6 +629,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Doctrine (settled by discussion, no code implied)
 
+- **The mint prompt stays domain-blind; the program is the only truth.**
+  `Minting.systemPrompt` is System-tier: it carries general mint doctrine
+  (act-once, holes for every value, closed value grammar, orthogonality,
+  deduce-or-fail), never per-problem knowledge. A domain convention baked into
+  it (an `HTTP TEXT ROUTES` block hardcoding nginx status/content-type
+  defaults) was caught as overfitting and a truth-outside-the-program leak, and
+  reverted. Per-problem realization knowledge belongs in the minted engine
+  (`.lang`) for that program, or -- if it recurs -- in a kernel module with its
+  own tests, never in the prompt. Since value + template completeness landed,
+  the model can express such realizations (e.g. nginx `locations.<p>.return`)
+  from the program itself.
 - **Three explicit instruction channels, none ambient.** AGENTS.md instructs
   agents working on the repo; `Minting.systemPrompt` instructs the mint
   (mint-relevant truths promoted from AGENTS.md: act-once so every value
