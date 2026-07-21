@@ -80,6 +80,13 @@ Open `examples/backup.loose`, change `/backup/ledger` or `14`, and run
 `just print` again. The module updates with no AI. Then add a sentence the
 language does not know and watch it fail loud, pointing you back to `generate`.
 
+Sometimes intent needs a program written, not just a package configured.
+`examples/hello-server.loose` asks for a small HTTP server; its engine builds
+that server from generated Go source (a Nix `buildGoModule` derivation) and
+runs it as a service. The source is a committed, reviewable file beside the
+program; the build and run stay deterministic and offline. The `artifact-vm`
+flake check compiles it and boots the service in a VM.
+
 ## The Files
 
 For a program `my.loose`, everything else sits beside it. You own the first
