@@ -521,7 +521,25 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `.gitignore` covers `.direnv/`, `result`, `*.decisions` (the crystal cache
   is derived, never source).
 
-### Partial
+- **Fail-loud hardening (kernel review, 2026-07-22).** A pass over the kernel
+  and generate tiers closed every reachable crash and silent-drop, so the
+  deterministic paths always fail through a typed channel. (1) Rule rewrite is
+  fallible: a value hole that outruns its program value (a `<value.N>` past the
+  token count, a wrong-typed hole) is `RewriteFailed`, not an `error`, so an
+  edit that shortens a value fails loud on `print`. (2) Every minted item is
+  keyword-led (`pattern|match|demand|expect`); a pattern template may begin
+  with any domain word without being misdispatched, and an unknown item form is
+  rejected. (3) A `.expect` naming an option a rule fills with a package or
+  artifact reference is rejected (`uncheckableExpects`), since such an option
+  is a derivation the stubbed check eval cannot force (and `tryEval` does not
+  catch a missing attribute). (4) `readLang` reads in one line-aware pass:
+  unrecognized engine lines fail loud (no silent drop) and body errors name
+  their real source line. (5) `realize` returns a typed `RealizeError`
+  (dangling `${artifact}` reference, malformed artifact group), surfaced as the
+  `Unrealizable` run outcome, never a crash. (6) The unused resampling harness
+  (`unanimous`/`admit`/`coreOf`) was removed as speculative: `generate` samples
+  once, and `Confidence` is all that remains of that module. The conformance
+  suite is `-Wall` clean and no test uses `shouldThrow` any more.
 
 - **Editor tooling from `.lang` (first rung done).** The authoring view is a
   pure function of (language, program): `diagnose` (`Kernel/Lang/Diagnose.hs`)
@@ -547,10 +565,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   like `Generate.PiJson`. Remaining polish: hover and go-to for a line's
   produced subject, as-you-type completion tuning, and percent-decoding of
   `file://` URIs (paths with spaces/non-ASCII are not handled yet).
-- **Deduce-or-fail via resampling.** The harness `unanimous`/`coreOf` check is
-  built and tested, and the confidence threshold is now a CLI flag, but
-  `generate` still samples the model once. Missing: `--samples` wiring so a
-  deduction must recur identically across samples.
+
+### Partial
 - **Behavioral gate: remaining.** The gate (see Done) runs at `generate` and
   via `lips check`; it is not yet enforced inside `run`, where a deterministic
   re-check on every offline run would catch a program edit that breaks a
