@@ -27,7 +27,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, ItemCandidate (..), SourceFile (..), systemPrompt)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
 import Lips.Kernel.Lang.Pattern
@@ -778,6 +778,24 @@ main = hspec $ do
         , "<value:int>"
         , "demand <subject>"
         , "expect <option.path> from <subject>"
+        ]
+
+  -- The optional per-program .direction file steers mint taste. It must ride
+  -- on top of the fixed prompt (so it enters genId) and carry the guard that
+  -- keeps it advisory, never an obligation channel.
+  describe "direction file (optional mint taste)" $ do
+    it "absent or blank direction leaves the prompt untouched" $ do
+      promptWithDirection Nothing `shouldBe` systemPrompt
+      promptWithDirection (Just "   \n  ") `shouldBe` systemPrompt
+    it "present direction is appended verbatim atop the fixed prompt" $ do
+      let p = promptWithDirection (Just "prefer restic, no docker")
+      systemPrompt `shouldSatisfy` (`T.isInfixOf` p)
+      p `shouldSatisfy` T.isInfixOf "prefer restic, no docker"
+    it "states the advisory-not-obligation guard when direction is present" $ do
+      let p = promptWithDirection (Just "prefer systemd timers")
+      mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
+        [ "PREFERENCE, not requirement"
+        , "never let it override a value the program states"
         ]
 
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do

@@ -57,6 +57,13 @@ gated: a fresh engine is accepted only if the committed tests still hold. To
 change behavior on purpose you delete the `.expect` file and regenerate, and
 that diff is your semantic changelog.
 
+**Steer the mint (optional).** To express taste about *how* the engine gets
+built, put a plain-text `my.loose.direction` file beside your program: "prefer
+restic over rsync", "no docker", "secrets via env files". It shapes generate
+only, and stays advisory: preferences about mechanism, never requirements.
+Anything that *must* hold belongs in the program or its tests, not here. The
+file is optional; absent, nothing changes.
+
 ```mermaid
 flowchart LR
     W["write<br><b>my.loose</b>"]
@@ -97,6 +104,7 @@ line; the machine writes the rest.
 | `my.loose` | you | the program, the only real source | yes |
 | `my.loose.lang` | AI, once | the engine (grammar + rules + tests) | yes |
 | `my.loose.expect` | AI, once | behavioral tests that gate regeneration | yes |
+| `my.loose.direction` | you | optional taste steering the mint | yes, if you want it |
 | `my.loose.generation` | machine | receipt of the exact AI call | yes |
 | `my.loose.decisions` | machine | the machine's reading of your program | no (cache) |
 

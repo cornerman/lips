@@ -29,7 +29,7 @@ import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, sourcesOf, systemPrompt)
+import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
@@ -200,7 +200,12 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 generate :: Double -> String -> FilePath -> IO ()
 generate confidence model file = do
   program <- TIO.readFile file
-  reply   <- callPi model systemPrompt program
+  -- Optional owner taste for this program (mechanism preference, not
+  -- obligations). Rides in the system prompt, so it enters the .generation
+  -- record and genId; absent or blank changes nothing.
+  direction <- tryRead (file <> ".direction")
+  let prompt = promptWithDirection direction
+  reply   <- callPi model prompt program
   let (errs, candidates) = parseEngineCandidates reply
       -- Deduce-or-fail: the program is the only source of truth, so an item the
       -- model cannot confidently derive means the program underspecifies it.
@@ -246,7 +251,7 @@ generate confidence model file = do
                       -- The record is written first-class and every engine line
                       -- is stamped with its content id: line -> event, checkable
                       -- by re-hashing the .generation file.
-                      let rec = record (T.pack model) confidence systemPrompt program reply
+                      let rec = record (T.pack model) confidence prompt program reply
                       TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
                       TIO.writeFile (file <> ".decisions") (renderBase base)
                       TIO.writeFile (file <> ".generation") rec

@@ -576,18 +576,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
   mode of running a system module but a different realization target (the
   engine emitting `mkShell`), meaningful only for a shell-shaped Solution, so
   it belongs with the artifacts / Solution-kinds milestone.
-- **Direction files (designed, not implemented).** Owner taste for the mint:
-  repo-wide `lips.direction` + per-program `<name>.loose.direction`, plain
-  text, concatenated into the minting prompt. Sharp boundary: the program
-  states what must be true; direction states what to prefer (mechanism taste:
-  restic vs rsync, no docker, secrets via env files). Direction never carries
-  obligations -- anything that must hold belongs in the program (a decision)
-  or `.expect` (an assertion); the prompt states this rule to the model.
-  Pinned for free: direction enters the system prompt, which the `.generation`
-  record embeds verbatim, so it enters `genId`. `run`/`check` never see it.
-  Also softens mechanism churn across regenerations (same taste, stable
-  mechanisms). Implementation: thread through `Minting.systemPrompt` +
-  `callPi`; Record unchanged.
+- **Direction file (done).** Optional owner taste for the mint: per-program
+  `<program>.direction`, plain text, appended to the minting prompt when
+  present. Sharp boundary: the program states what must be true; direction
+  states what to prefer (mechanism taste: restic vs rsync, no docker, secrets
+  via env files). Direction never carries obligations -- anything that must
+  hold belongs in the program (a decision) or `.expect` (an assertion); the
+  appended guard states this rule to the model ("PREFERENCE, not requirement;
+  never override a value the program states"). Pinned for free: direction
+  enters the system prompt, which the `.generation` record embeds verbatim, so
+  it enters `genId`. `print`/`run`/`check` never see it. Also softens mechanism
+  churn across regenerations (same taste, stable mechanisms). Pure composition
+  in `Minting.promptWithDirection`; `generate` reads `<program>.direction` and
+  passes the composed prompt to both `callPi` and `record`; `Record` unchanged.
+  A repo-wide direction file was rejected (ambiguous search root, comes from
+  nowhere); ambient `AGENTS.md` is deliberately excluded (the mint is hermetic
+  via `pi -nc`), so this per-program file is the sole owner-taste channel.
 - **Gap report (`<program>.gap`).** When generate refuses because physics is
   missing (deduce-or-fail on an inexpressible need), the refusal must be a
   shippable artifact, not a mood: refused lines, the missing capability

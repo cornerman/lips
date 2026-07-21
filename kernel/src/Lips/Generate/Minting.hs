@@ -18,6 +18,7 @@
 -- forms (pattern, @match@ rule, @demand@).
 module Lips.Generate.Minting
   ( systemPrompt
+  , promptWithDirection
   , EngineItem (..)
   , SourceFile (..)
   , ItemCandidate (..)
@@ -183,6 +184,32 @@ systemPrompt = T.unlines
   , "  0.9 q1 demand feed.source \"where do the files arrive?\""
   , "  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source"
   ]
+
+-- | Compose the effective mint prompt: the fixed domain-blind physics, plus
+-- (when present) the owner's per-program DIRECTION. Direction is mechanism
+-- taste that steers /how/ the engine is minted (which package, which shape),
+-- never /what/ must hold; the appended rule tells the model to treat it as
+-- preference only, so an obligation cannot enter through this channel.
+-- Because direction rides inside the system prompt, it is pinned into the
+-- @.generation@ record and the @genId@ hash for free, and @run@\/@check@ never
+-- see it. A blank direction file is ignored (no channel, no drift).
+promptWithDirection :: Maybe Text -> Text
+promptWithDirection md = case md of
+  Just d | not (T.null (T.strip d)) ->
+    systemPrompt <> T.unlines
+      [ ""
+      , "DIRECTION (the owner's taste for THIS program; optional, advisory)."
+      , "The text below is PREFERENCE, not requirement. It says how to prefer"
+      , "building the engine: mechanism choices only (which package, which"
+      , "shape). It never states what must be true. Anything that MUST hold"
+      , "lives in the program or its expects, so do not read an obligation out"
+      , "of it, and never let it override a value the program states. When it"
+      , "does not apply, ignore it."
+      , "--- begin direction ---"
+      , T.strip d
+      , "--- end direction ---"
+      ]
+  _ -> systemPrompt
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
 -- Single-item lines parse individually; a @source@ block spans multiple lines
