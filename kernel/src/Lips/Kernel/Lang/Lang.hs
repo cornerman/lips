@@ -33,9 +33,9 @@ import qualified Data.Text  as T
 
 import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), parseDemandBody,
                              parseRuleBody, renderDemandBody, renderRuleBody)
-import Lips.Kernel.Base     (fromList, toList)
+import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
-import Lips.Kernel.Reader   (ParseError (..), readBase, renderBase)
+import Lips.Kernel.Reader   (ParseError (..), readDecision, renderBase)
 import Lips.Kernel.Lang.Pattern
 
 -- | A whole minted engine: the language (front half) and the semantics (back
@@ -60,35 +60,48 @@ renderLang prov ed =
   where
     stamp d = d { dProv = prov }
 
--- | Read an engine from @.lang@ text. Reuses the kernel reader for the
--- decision envelope, then parses each group's body sub-grammar. Decisions
--- outside the three groups are ignored, so a @.lang@ file may carry other
--- meta decisions later without breaking this reader.
-readLang :: Text -> Either [ParseError] EngineData
-readLang src = do
-  base <- readBase src
-  let ds = toList base
-      patR = [ decisionToPattern d | d <- ds, isGroup ["lang", "pattern"] d ]
-      rulR = [ bodyOf parseRuleBody d | d <- ds, isGroup ["engine", "rule"] d ]
-      demR = [ bodyOf parseDemandBody d | d <- ds, isGroup ["engine", "demand"] d ]
-      errs = [ ParseError 0 e | Left e <- patR ] ++ [ ParseError 0 e | Left e <- rulR ]
-               ++ [ ParseError 0 e | Left e <- demR ]
-  if null errs
-    then Right EngineData
-           { edPatterns = sortOn pId [p | Right p <- patR]
-           , edRules    = sortOn mrId [r | Right r <- rulR]
-           , edDemands  = sortOn dsId [q | Right q <- demR]
-           }
-    else Left errs
-  where
-    -- isGroup guarantees exactly (prefix + id) segments, so this is total.
-    bodyOf parse d = case (dSubject d, dAssertion d) of
-      (Subject [_, _, i], Assertion a) -> parse i a
-      (Subject segs, _) -> Left ("malformed group subject: " <> T.intercalate "." segs)
+-- | One classified engine line: which group a @.lang@ decision belongs to.
+data EngLine = ELPat Pattern | ELRule MapRule | ELDem DemandSpec
 
-isGroup :: [Text] -> Decision -> Bool
-isGroup prefix d = case dSubject d of
-  Subject segs -> prefix == take (length prefix) segs && length segs == length prefix + 1
+-- | Read an engine from @.lang@ text in one line-aware pass, so every error
+-- (envelope or body sub-grammar) names its real source line, not line 0.
+-- Every non-blank, non-comment line must be a recognized engine decision
+-- (@lang.pattern.*@, @engine.rule.*@, @engine.demand.*@); anything else fails
+-- loud rather than being silently dropped -- a corrupted or mistyped @.lang@
+-- must not lose a rule quietly (deduce-or-fail).
+readLang :: Text -> Either [ParseError] EngineData
+readLang src =
+  let cands   = [ (n, t) | (n, l) <- zip [1 ..] (T.lines src)
+                         , let t = T.strip l, not (skip t) ]
+      results = map (uncurry readEngineLine) cands
+      errs    = [ e | Left e <- results ]
+      oks     = [ x | Right x <- results ]
+   in if null errs
+        then Right EngineData
+               { edPatterns = sortOn pId  [p | ELPat p  <- oks]
+               , edRules    = sortOn mrId [r | ELRule r <- oks]
+               , edDemands  = sortOn dsId [q | ELDem q  <- oks]
+               }
+        else Left errs
+  where
+    skip t = T.null t || "#" `T.isPrefixOf` t
+    -- Read the decision envelope (re-stamping its line), then classify and
+    -- parse the group body -- both errors anchored to the real line n.
+    readEngineLine n t = do
+      d <- either (\pe -> Left pe { peLine = n }) Right (readDecision t)
+      classify n d
+
+classify :: Int -> Decision -> Either ParseError EngLine
+classify n d = case dSubject d of
+  Subject ["lang", "pattern", i]   -> tag ELPat  (parsePatternBody i body)
+  Subject ["engine", "rule", i]    -> tag ELRule (parseRuleBody   i body)
+  Subject ["engine", "demand", i]  -> tag ELDem  (parseDemandBody i body)
+  Subject segs -> Left (ParseError n
+    ("unrecognized engine line (subject " <> T.intercalate "." segs
+      <> "): a .lang carries only lang.pattern.*, engine.rule.*, engine.demand.*"))
+  where
+    body = case dAssertion d of Assertion a -> a
+    tag f = either (Left . ParseError n) (Right . f)
 
 -- | Turn a rule into its canonical @meta@ decision.
 ruleToDecision :: MapRule -> Decision

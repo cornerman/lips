@@ -625,6 +625,23 @@ main = hspec $ do
     it "round-trips the whole engine: readLang . renderLang == Right" $
       readLang (renderLang (FromGeneration "cafe0123") engine) `shouldBe` Right engine
 
+    it "rejects an unrecognized engine line loudly (never silently dropped)" $ do
+      -- Regression (kernel review): a mistyped group subject must fail, not be
+      -- quietly ignored (which would lose a rule and mislead a later run).
+      let bad = "r1 meta engine.rulez.r1 stated \"match oblige a => b.c \\\"true\\\"\" @gen:x\n"
+      readLang bad `shouldSatisfy` isLeft
+
+    it "anchors a body parse error to its real source line, not line 0" $ do
+      -- Regression (kernel review): readLang lost the line number for body
+      -- sub-grammar errors. Line 2 here carries a malformed rule body.
+      let src = T.unlines
+            [ "p1 meta lang.pattern.p1 stated \"x => fact y stated \\\"z\\\"\" @gen:x"
+            , "r1 meta engine.rule.r1 stated \"not-a-rule-body\" @gen:x"
+            ]
+      case readLang src of
+        Left es -> map peLine es `shouldBe` [2]
+        Right _ -> expectationFailure "expected a body parse error"
+
     it "stamps every .lang line with the generation event" $
       let stamped = renderLang (FromGeneration "cafe0123") engine
        in [ l | l <- T.lines stamped, not (T.null l), not ("@gen:cafe0123" `T.isSuffixOf` l) ]
