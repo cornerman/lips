@@ -3,3 +3,5 @@
 result
 # derived crystal cache; reproduced by `lips run`, never source.
 *.decisions
+editors/vscode/node_modules/
+editors/vscode/*.vsix
