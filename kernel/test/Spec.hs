@@ -27,7 +27,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, ItemCandidate (..), systemPrompt)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, ItemCandidate (..), SourceFile (..), systemPrompt)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
 import Lips.Kernel.Lang.Pattern
@@ -332,6 +332,32 @@ main = hspec $ do
           (errs, cs) = parseEngineCandidates reply
       length cs `shouldBe` 1
       length errs `shouldBe` 2
+
+    it "collects a multi-line source block verbatim (artifacts plan)" $ do
+      let reply = T.unlines
+            [ "0.95 r1 match oblige srv.run => artifact.srv.builder \"\\\"writeShellApplication\\\"\""
+            , "0.9 s1 source srv src/main.rs <<<lips"
+            , "fn main() {"
+            , "    # not a comment: real content"
+            , ""
+            , "    println!(\"hi\");"
+            , "}"
+            , "lips>>>"
+            , "0.95 a1 expect systemd.services.srv.serviceConfig.ExecStart from srv.run"
+            ]
+          (errs, cs) = parseEngineCandidates reply
+      errs `shouldBe` []
+      case sourcesOf (map icItem cs) of
+        [SourceFile a p c] -> do
+          (a, p) `shouldBe` ("srv", "src/main.rs")
+          c `shouldBe` "fn main() {\n    # not a comment: real content\n\n    println!(\"hi\");\n}"
+        _ -> expectationFailure "expected exactly one source file"
+      length cs `shouldBe` 3
+
+    it "reports an unterminated source block" $ do
+      let reply = T.unlines [ "0.9 s1 source srv main.rs <<<lips", "content with no closer" ]
+          (errs, _) = parseEngineCandidates reply
+      length errs `shouldBe` 1
 
   describe "behavioral contract (ledger 13: .expect relational gate)" $ do
     let dec subj a = Decision (DecisionId "d") (Subject (T.splitOn "." subj)) Fact

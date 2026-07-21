@@ -19,10 +19,12 @@
 module Lips.Generate.Minting
   ( systemPrompt
   , EngineItem (..)
+  , SourceFile (..)
   , ItemCandidate (..)
   , parseEngineCandidates
   , assemble
   , expectsOf
+  , sourcesOf
   ) where
 
 import           Data.Text       (Text)
@@ -35,13 +37,26 @@ import Lips.Kernel.Expect          (Expect, parseExpectBody)
 import Lips.Kernel.Lang.Lang        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
 
--- | One minted item: an engine part (pattern, rule, demand) or a behavioral
--- assertion (the @.expect@ contract, a separate artifact from the engine).
+-- | A generated source file for an artifact: its artifact name, the relative
+-- path within the artifact's source tree, and the verbatim content. Written to
+-- @<program>.artifacts/<name>/<path>@ and staged at @./artifacts/<name>@ for
+-- the build (artifacts plan, option 1).
+data SourceFile = SourceFile
+  { sfArtifact :: Text
+  , sfPath     :: Text
+  , sfContent  :: Text
+  }
+  deriving (Eq, Show)
+
+-- | One minted item: an engine part (pattern, rule, demand), a behavioral
+-- assertion (the @.expect@ contract), or a generated source file (an artifact's
+-- source, a separate committed file, not part of the engine).
 data EngineItem
   = ItemPattern Pattern
   | ItemRule MapRule
   | ItemDemand DemandSpec
   | ItemExpect Expect
+  | ItemSource SourceFile
   deriving (Eq, Show)
 
 -- | An item the model proposes, with the confidence it attaches to it.
@@ -121,6 +136,29 @@ systemPrompt = T.unlines
   , "looks like services.nginx.defaultHTTPListenPort \"<value:int>\". Realize"
   , "work as systemd services and timers or other NixOS options."
   , ""
+  , "ARTIFACTS (only when the program needs a program BUILT FROM SOURCE, e.g. a"
+  , "server you must write): a rule may emit an artifact group under the subject"
+  , "root artifact.<name>: a builder and its arguments. The builder is a nixpkgs"
+  , "builder path (a name, not code), e.g. rustPlatform.buildRustPackage or"
+  , "buildGoModule. Example emits inside a rule:"
+  , "  artifact.<name>.builder \"\\\"rustPlatform.buildRustPackage\\\"\" ;"
+  , "  artifact.<name>.args.pname \"\\\"<name>\\\"\" ;"
+  , "  artifact.<name>.args.version \"\\\"0.1.0\\\"\" ;"
+  , "  artifact.<name>.args.src ./artifacts/<name> ;"
+  , "  artifact.<name>.args.cargoHash \"\\\"<sha256>\\\"\""
+  , "The source tree is staged at ./artifacts/<name>, so args.src is that exact"
+  , "path. Provide each source file with a source block (a heredoc); the path is"
+  , "relative to the artifact's source root:"
+  , "  <confidence> <id> source <name> <relpath> <<<lips"
+  , "  ...verbatim file content..."
+  , "  lips>>>"
+  , "Reference the built artifact in an option with ${artifact.<name>}, e.g."
+  , "  systemd.services.<name>.serviceConfig.ExecStart"
+  , "    \"\\\"${artifact.<name>}/bin/<name>\\\"\""
+  , "Prefer configuring a PREBUILT ${pkgs.<name>} package; mint an artifact only"
+  , "when the program itself must be written. Keep source self-contained (no"
+  , "external dependency fetch) unless the program clearly requires it."
+  , ""
   , "DEMANDS (ids q1, q2, ...): what any program in this language must state,"
   , "as a subject plus the question to ask when it is missing."
   , ""
@@ -147,15 +185,45 @@ systemPrompt = T.unlines
   ]
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
--- Blank lines, comments, and stray fences are ignored so a chatty model still
--- parses.
+-- Single-item lines parse individually; a @source@ block spans multiple lines
+-- (a heredoc between @<<<lips@ and a closing @lips>>>@) so generated source can
+-- contain anything. Outside a block, blank\/comment\/fence lines are ignored.
 parseEngineCandidates :: Text -> ([Text], [ItemCandidate])
-parseEngineCandidates reply =
-  let ls = filter (not . ignorable) (map T.strip (T.lines reply))
-      results = map parseLine ls
-   in ([e | Left e <- results], [c | Right c <- results])
+parseEngineCandidates reply = go (T.lines reply) [] []
   where
+    go [] errs cands = (reverse errs, reverse cands)
+    go (l : ls) errs cands
+      | Just prefix <- sourceHeader l =
+          let (content, rest) = break (\x -> T.strip x == closeMarker) ls
+           in case rest of
+                [] -> go [] (("unterminated source block (missing " <> closeMarker <> "): " <> T.strip l) : errs) cands
+                (_ : rest') -> case mkSource prefix (T.strip l) (T.intercalate "\n" content) of
+                  Left e  -> go rest' (e : errs) cands
+                  Right c -> go rest' errs (c : cands)
+      | ignorable (T.strip l) = go ls errs cands
+      | otherwise = case parseLine (T.strip l) of
+          Left e  -> go ls (e : errs) cands
+          Right c -> go ls errs (c : cands)
     ignorable t = T.null t || "#" `T.isPrefixOf` t || "```" `T.isPrefixOf` t
+
+closeMarker :: Text
+closeMarker = "lips>>>"
+
+-- | A source-block header ends with the open marker @<<<lips@; return the
+-- prefix before it (@<confidence> <id> source <name> <relpath>@) to parse.
+sourceHeader :: Text -> Maybe Text
+sourceHeader l = T.stripSuffix "<<<lips" (T.stripEnd (T.strip l))
+
+-- | Parse a source-block header prefix and pair it with its collected content.
+mkSource :: Text -> Text -> Text -> Either Text ItemCandidate
+mkSource prefix rawHeader content = do
+  (confTok, r1) <- firstToken prefix ("empty source header: " <> rawHeader)
+  (_idTok, r2)  <- firstToken r1 ("no id in source header: " <> rawHeader)
+  conf          <- parseConfidence confTok
+  case T.words r2 of
+    ["source", name, relpath] ->
+      Right (ItemCandidate (ItemSource (SourceFile name relpath content)) (Confidence conf) rawHeader)
+    _ -> Left ("source header must be '<confidence> <id> source <name> <relpath> <<<lips': " <> rawHeader)
 
 -- | Group parsed items into an engine (the @.lang@ artifact). Expects are not
 -- part of the engine; see 'expectsOf'.
@@ -170,6 +238,10 @@ assemble items =
 -- | The minted behavioral contract (the @.expect@ artifact).
 expectsOf :: [EngineItem] -> [Expect]
 expectsOf items = [e | ItemExpect e <- items]
+
+-- | The minted artifact source files (written beside the program).
+sourcesOf :: [EngineItem] -> [SourceFile]
+sourcesOf items = [s | ItemSource s <- items]
 
 parseLine :: Text -> Either Text ItemCandidate
 parseLine line = do
