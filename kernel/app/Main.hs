@@ -23,13 +23,13 @@ import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getArgs, getProgName)
 import           System.Exit        (ExitCode (..), exitFailure)
-import           System.IO          (hClose, hPutStrLn, openTempFile, stderr)
+import           System.IO          (hPutStrLn, stderr)
 import           System.Process     (callCommand, readProcessWithExitCode)
 import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (ItemCandidate (..), assemble, expectsOf, parseEngineCandidates, systemPrompt)
+import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, sourcesOf, systemPrompt)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
@@ -111,13 +111,14 @@ runVm file = do
   eng     <- loadLangOrDie file
   case validate file eng program of
     Left problem      -> die problem
-    Right (_, nixMod) -> bootVm nixMod
+    Right (_, nixMod) -> bootVm (stageFromDisk file) nixMod
 
-bootVm :: Text -> IO ()
-bootVm nixMod = do
-  (tmp, h) <- openTempFile "/tmp" "lips-module.nix"
-  TIO.hPutStr h nixMod
-  hClose h
+bootVm :: (FilePath -> IO ()) -> Text -> IO ()
+bootVm stage nixMod = do
+  dir <- mkTempDir
+  let tmp = dir <> "/module.nix"
+  TIO.writeFile tmp nixMod
+  stage (dir <> "/artifacts")
   TIO.hPutStrLn stderr "lips: building a local NixOS VM from the realized module..."
   built <- try (readProcessWithExitCode "nix"
                   [ "build", "--impure", "--no-link", "--print-out-paths"
@@ -172,7 +173,7 @@ checkLoose file = do
       Right expects -> case validate file eng program of
         Left problem       -> die problem
         Right (base, nixMod) -> do
-          res <- runExpects expects base nixMod
+          res <- runExpects (stageFromDisk file) expects base nixMod
           case res of
             Right () -> TIO.putStrLn (T.pack file <> ": "
                           <> tshow (length expects) <> " behavioral assertion(s) hold")
@@ -218,19 +219,22 @@ generate confidence model file = do
           case nixCheck of
             Left why -> die (validationReport file ("the realized module is not valid Nix:\n" <> why))
             Right () -> do
+              -- Sources are minted in memory; stage them (not yet on disk) so
+              -- the behavioral gate can evaluate the artifact derivations.
+              let minted = sourcesOf (map icItem candidates)
               -- Behavioral gate: the realized module must satisfy the
               -- contract. On regeneration the COMMITTED contract governs (the
               -- stable spec regeneration may not silently break); on first
               -- generation the minted assertions bootstrap it.
-              let minted = expectsOf (map icItem candidates)
+              let mintedExpects = expectsOf (map icItem candidates)
               committed <- tryRead (file <> ".expect")
-              let contract = maybe (Right minted) readExpect committed
+              let contract = maybe (Right mintedExpects) readExpect committed
                   src      = maybe "minted" (const "committed") committed
               case contract of
                 Left es -> die ("corrupt " <> T.pack file <> ".expect:\n"
                                 <> T.unlines (map renderParseError es))
                 Right expects -> do
-                  gate <- runExpects expects base nixModule
+                  gate <- runExpects (\dst -> writeSources dst minted) expects base nixModule
                   case gate of
                     Left fs -> die ("minted engine rejected: behavioral contract (" <> src
                       <> ") violated:\n" <> T.unlines fs
@@ -244,9 +248,11 @@ generate confidence model file = do
                       TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
                       TIO.writeFile (file <> ".decisions") (renderBase base)
                       TIO.writeFile (file <> ".generation") rec
+                      -- Persist minted source only now that the whole loop held.
+                      writeSources (file <> ".artifacts") minted
                       -- Bootstrap the contract on first generation only; keep
                       -- the committed spec stable across regenerations.
-                      maybe (TIO.writeFile (file <> ".expect") (renderExpect minted))
+                      maybe (TIO.writeFile (file <> ".expect") (renderExpect mintedExpects))
                             (const (pure ())) committed
                       TIO.putStrLn ("wrote " <> T.pack file <> ".lang ("
                         <> tshow (length (edPatterns eng)) <> " patterns, "
@@ -297,15 +303,16 @@ callPi model system userPrompt = do
 -- | Evaluate the realized module with @nix@ and judge a contract against it.
 -- One eval reads every asserted option; the pure comparison lives in
 -- 'Lips.Kernel.Expect'. An empty contract passes trivially.
-runExpects :: [Expect] -> Base -> Text -> IO (Either [Text] ())
-runExpects []      _    _         = pure (Right ())
-runExpects expects base nixModule =
+runExpects :: (FilePath -> IO ()) -> [Expect] -> Base -> Text -> IO (Either [Text] ())
+runExpects _     []      _    _         = pure (Right ())
+runExpects stage expects base nixModule =
   case traverse (expectedValue base) expects of
     Left e    -> pure (Left ["cannot ground assertion in program: " <> e])
     Right pvs -> do
-      (tmp, h) <- openTempFile "/tmp" "lips-module.nix"
-      TIO.hPutStr h nixModule
-      hClose h
+      dir <- mkTempDir
+      let tmp = dir <> "/module.nix"
+      TIO.writeFile tmp nixModule
+      stage (dir <> "/artifacts")
       let expr = evalExpr tmp expects
       res <- try (readProcessWithExitCode "nix"
                     ["eval", "--raw", "--impure", "--expr", T.unpack expr] "")
@@ -323,6 +330,40 @@ runExpects expects base nixModule =
 
 die :: Text -> IO a
 die msg = TIO.hPutStrLn stderr msg >> exitFailure
+
+-- | A fresh temporary directory. lips writes a module and its staged
+-- @artifacts/@ tree here so a relative @src = ./artifacts/<name>@ resolves at
+-- evaluation. (Left in place, matching the module temp files elsewhere.)
+mkTempDir :: IO FilePath
+mkTempDir = do
+  (_, out, _) <- readProcessWithExitCode "mktemp" ["-d", "/tmp/lips-XXXXXX"] ""
+  pure (T.unpack (T.strip (T.pack out)))
+
+-- | Write minted source files under @<root>/<artifact>/<relpath>@. Used to
+-- persist to @<program>.artifacts@ and to stage into a temp module dir.
+writeSources :: FilePath -> [SourceFile] -> IO ()
+writeSources root = mapM_ one
+  where
+    one sf = do
+      let p = root <> "/" <> T.unpack (sfArtifact sf) <> "/" <> T.unpack (sfPath sf)
+      callCommand ("mkdir -p " <> shq (parentDir p))
+      TIO.writeFile p (sfContent sf)
+
+-- | Stage a program's committed @<file>.artifacts@ tree into @dst@ (the temp
+-- module's @artifacts/@). A no-op when the program has no artifacts.
+stageFromDisk :: FilePath -> FilePath -> IO ()
+stageFromDisk file dst = do
+  _ <- (try (readProcessWithExitCode "cp" ["-rT", file <> ".artifacts", dst] "")
+          :: IO (Either IOException (ExitCode, String, String)))
+  pure ()
+
+-- | The directory part of a path (everything up to and including the last @/@).
+parentDir :: FilePath -> FilePath
+parentDir = T.unpack . fst . T.breakOnEnd "/" . T.pack
+
+-- | Minimal single-quote shell escaping for a path passed to @mkdir -p@.
+shq :: FilePath -> String
+shq s = "'" <> concatMap (\c -> if c == '\'' then "'\\''" else [c]) s <> "'"
 
 -- | The one channel the user reads is this command's output. When generate
 -- cannot write an engine, say what went wrong and what to do now -- no
