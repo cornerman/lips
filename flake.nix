@@ -89,6 +89,42 @@
               )
             '';
           };
+
+        # The artifacts proof (artifacts plan; ledger section 13): a Solution
+        # whose realization BUILDS a program from generated source and runs it.
+        # The committed hello-server example realizes to a module that
+        # let-binds a buildGoModule derivation over the committed Go source and
+        # wires ${artifact.httpserver} into a systemd service. This pins the
+        # whole chain -- generated source -> Nix build -> service -> booted and
+        # answering -- as a permanent check. No AI in this derivation.
+        artifact-vm =
+          let
+            lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+            # Realize into a DIRECTORY: the module plus its source tree, so the
+            # module's relative `src = ./artifacts/<name>` resolves at import.
+            realized = pkgs.runCommand "lips-hello-module" { } ''
+              cp ${./examples/hello-server.loose} hello.loose
+              cp ${./examples/hello-server.loose.lang} hello.loose.lang
+              mkdir -p "$out/artifacts"
+              ${lips}/bin/lips print hello.loose > "$out/module.nix"
+              cp -r ${./examples/hello-server.loose.artifacts}/. "$out/artifacts/"
+            '';
+          in
+          pkgs.testers.runNixOSTest {
+            name = "lips-artifact-service-answers";
+            nodes.machine = { pkgs, ... }: {
+              imports = [ "${realized}/module.nix" ];
+              environment.systemPackages = [ pkgs.curl ];
+            };
+            testScript = ''
+              machine.wait_for_unit("multi-user.target")
+              # The service built from generated Go source is up and listening.
+              machine.wait_for_unit("hello.service")
+              machine.wait_for_open_port(8080)
+              # It answers with the program's text (the built artifact runs).
+              machine.succeed("curl -s http://localhost:8080/ | grep -F 'hello from lips'")
+            '';
+          };
       });
     };
 }
