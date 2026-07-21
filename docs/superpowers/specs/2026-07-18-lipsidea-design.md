@@ -379,6 +379,25 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Artifacts (program-derived source, built and run in the config).** A
+  Solution whose realization *builds a program from generated source* and runs
+  it, distinct from glue. Complete by inheritance from nixpkgs: a builder is a
+  *name* (`rustPlatform.buildRustPackage`, `buildGoModule`, ...), never an
+  enumerated case, so any language works with zero kernel change. An artifact
+  is a subject-path group (`artifact.<name>.builder`, `artifact.<name>.args.*`);
+  realize gathers each group into a `let artifact = { <name> = pkgs.<builder>
+  { <args> }; }` block, referenced by the `${artifact.<name>}` value piece
+  (a name, injection-closed; a dangling reference fails loud). Generated source
+  lives in committed sibling files under `<program>.artifacts/<name>/`, staged
+  at `./artifacts/<name>` beside the realized module for evaluation and boot
+  (option 1 of the plan). `generate` mints the engine plus source (a heredoc
+  `source` block), and validates the ROUND-TRIPPED engine plus the behavioral
+  gate before writing anything; the AI touches only generate. Proven live end
+  to end and pinned as the `artifact-vm` flake check:
+  `examples/hello-server.loose` -> opus mints a Go engine + `main.go` ->
+  realize -> `buildGoModule` compiles it offline -> the `hello` service boots
+  in a VM and answers `curl :8080` with the program's text. Full design in
+  `2026-07-21-artifacts-plan.md`.
 - **Kernel calculus.** `Decision`, decision base with merge-by-strength and
   conflict-with-both-provenances, refinement to fixpoint with
   orthogonality-by-construction and stamped provenance, demands and open
@@ -526,32 +545,20 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
-- **Artifacts (program-derived source, built and run in the config).** A
-  first-class realization path, and explicitly *not* glue. A Solution can
-  require a real program (an HTTP server, say); the artifact is *derived from
-  the program* exactly as the engine and the module are, built by a Nix
-  derivation, and wired into a service. The program stays the single source of
-  truth; the artifact is one more derived thing hanging off it. Shape:
-  `generate` (AI, once) mints the artifact definition alongside the engine and
-  tests, all pinned and fingerprinted; `print`/`run` (no AI) realize the
-  program into a module that builds the artifact
-  (`writeText`/`writeShellScriptBin`/`buildGoModule`/...) and runs it
-  (`systemd.services.<name>.ExecStart = ${artifact.<name>}`). The value
-  language gains one reference form, `${artifact.<name>}` (a name, same physics
-  as `${pkgs...}`), and realize grows the ability to emit a build definition
-  (a `let`-bound derivation), not only flat option assignments. Invariants
-  hold: AI runs only at generate; build and run stay deterministic and offline;
-  the artifact source is pinned like the engine, with its `@gen` stamp; the
-  behavioral gate covers it (artifact builds, VM asserts the service runs).
-  Design fork to pin when built: the engine realizes artifact source
-  deterministically from decisions (source templates with holes, so value edits
-  flow through) versus generate baking a fixed source blob. The templated path
-  is the one consistent with edit-tolerance -- value edits flow, a shape change
-  re-enters generate, the same two-phase story as the engine itself -- so it is
-  the leaning. Not a separate "runnable binary" kind: installing a package or
-  binary is ordinary config (`environment.systemPackages`). Docker locally via
-  dockerTools is just another derivation; pushing to a registry in CI crosses
-  the Heile-Welt boundary and lands later as coping, not kernel physics.
+- **Artifacts: deferred pieces.** The core landed (see Done). Still open:
+  artifact source is a fixed blob baked at generate (not templated with holes),
+  so a value that must appear *inside* the compiled program needs regeneration
+  rather than flowing through `print`; dependency-fetching builders (a
+  `cargoHash`/`vendorHash` over fetched crates) move the fetch to generate and
+  are untried (the proven path is no-dependency source, e.g. Go stdlib with
+  `vendorHash = null`); container/registry push stays Heile-Welt coping. A
+  build needing *arbitrary* Nix (custom overlays, hand-built derivation graphs)
+  remains glue, deferred.
+- **Multi-token tail holes.** A template hole binds one token (or one quoted
+  span); there is no "tokens N onward" slice. A live mint that joined a port
+  and a multi-word message into one subject could not cleanly extract the tail
+  and fell back to the whole value. Sibling-subject patterns avoid it; a tail
+  hole is future value/template-completeness work.
 - **Activation verb: DONE, as the `print`/`run` split.** The CLI now separates
   emitting from running (superseding the planned `lips up`): `lips print
   <program>` is the pure deterministic printer (crystallize -> realize ->
