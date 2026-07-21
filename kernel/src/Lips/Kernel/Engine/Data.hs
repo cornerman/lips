@@ -145,13 +145,21 @@ parseRuleBody rid body = do
   where
     pre = "rule " <> rid <> ": "
     parseEmit t = do
-      (pathTok, rest) <- case T.words t of
+      (pathTok, rest0) <- case T.words t of
         (w : _ : _) -> Right (w, T.stripStart (T.drop (T.length w) (T.stripStart t)))
-        _           -> Left (pre <> "emit needs '<path> \"<rhs>\"': " <> t)
-      rhsRaw <- parseQuoted pre rest
+        _           -> Left (pre <> "emit needs '<path> <rhs>': " <> t)
+      let rest = T.stripStart rest0
       -- Parse, don't validate: the rhs becomes a typed 'Value' here, at the
       -- only door minted engines enter; computation never gets past this line.
-      rhs    <- either (\e -> Left (pre <> e)) Right (parseValue rhsRaw)
+      -- Accept either a transport-quoted rhs (the canonical stored form, used
+      -- for strings and lists) or a BARE value (null, a path, a number, a
+      -- bool, a typed hole) as models naturally write them. The renderer
+      -- always emits the quoted form, so stored engines stay canonical.
+      rhs <- case T.uncons rest of
+        Just ('"', _) -> do
+          inner <- parseQuoted pre rest
+          either (\e -> Left (pre <> e)) Right (parseValue inner)
+        _ -> either (\e -> Left (pre <> e)) Right (parseValue rest)
       Right (Emit (T.splitOn "." pathTok) rhs)
 
 -- Demand body: @demand <subject> "<question>"@

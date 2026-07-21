@@ -1,0 +1,12 @@
+p1 meta lang.pattern.p1 stated "serve http on port <port> => fact http.port stated \"<port>\"" @gen:c9c35813fa8547a5
+p2 meta lang.pattern.p2 stated "respond to every request with the text <body>  => fact response.text stated \"<body>\"" @gen:c9c35813fa8547a5
+p3 meta lang.pattern.p3 stated "write the server in <lang> using only the standard library with no external dependencies => steer server.language stated \"<lang>\"" @gen:c9c35813fa8547a5
+p4 meta lang.pattern.p4 stated "run it as a systemd service named <name> => fact service.name stated \"<name>\"" @gen:c9c35813fa8547a5
+q1 meta engine.demand.q1 stated "demand http.port \"which port should the server listen on?\"" @gen:c9c35813fa8547a5
+q2 meta engine.demand.q2 stated "demand response.text \"what text should the server respond with to every request?\"" @gen:c9c35813fa8547a5
+q3 meta engine.demand.q3 stated "demand service.name \"what should the systemd service be named?\"" @gen:c9c35813fa8547a5
+q4 meta engine.demand.q4 stated "demand server.language \"in which language should the server be written, and which builder realizes it?\"" @gen:c9c35813fa8547a5
+r1 meta engine.rule.r1 stated "match fact http.port => systemd.services.hello.environment.PORT \"\\\"<value>\\\"\"" @gen:c9c35813fa8547a5
+r2 meta engine.rule.r2 stated "match fact response.text => systemd.services.hello.environment.RESPONSE \"\\\"<value>\\\"\"" @gen:c9c35813fa8547a5
+r3 meta engine.rule.r3 stated "match steer server.language => artifact.httpserver.builder \"\\\"buildGoModule\\\"\" ; artifact.httpserver.args.pname \"\\\"httpserver\\\"\" ; artifact.httpserver.args.version \"\\\"0.1.0\\\"\" ; artifact.httpserver.args.src \"./artifacts/httpserver\" ; artifact.httpserver.args.vendorHash \"null\"" @gen:c9c35813fa8547a5
+r4 meta engine.rule.r4 stated "match fact service.name => systemd.services.hello.serviceConfig.ExecStart \"\\\"${artifact.httpserver}/bin/httpserver\\\"\" ; systemd.services.hello.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\" ; systemd.services.hello.serviceConfig.DynamicUser \"true\" ; systemd.services.hello.wantedBy \"[ \\\"multi-user.target\\\" ]\" ; systemd.services.hello.after \"[ \\\"network.target\\\" ]\"" @gen:c9c35813fa8547a5

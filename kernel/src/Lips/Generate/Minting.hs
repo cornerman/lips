@@ -144,7 +144,7 @@ systemPrompt = T.unlines
   , "  artifact.<name>.builder \"\\\"rustPlatform.buildRustPackage\\\"\" ;"
   , "  artifact.<name>.args.pname \"\\\"<name>\\\"\" ;"
   , "  artifact.<name>.args.version \"\\\"0.1.0\\\"\" ;"
-  , "  artifact.<name>.args.src ./artifacts/<name> ;"
+  , "  artifact.<name>.args.src \"./artifacts/<name>\" ;"
   , "  artifact.<name>.args.cargoHash \"\\\"<sha256>\\\"\""
   , "The source tree is staged at ./artifacts/<name>, so args.src is that exact"
   , "path. Provide each source file with a source block (a heredoc); the path is"

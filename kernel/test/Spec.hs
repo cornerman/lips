@@ -493,6 +493,13 @@ main = hspec $ do
     it "rejects non-pkgs interpolation inside rhs strings" $
       parseRuleBody "r" "match fact x => a.b \"\\\"${lib.getExe pkgs.restic}\\\"\"" `shouldSatisfy` isLeft
 
+    -- Models write non-string values bare (null, a path); the parser accepts
+    -- both the bare and the transport-quoted form (artifacts live run).
+    it "accepts a bare non-string rhs (null, path) as well as quoted" $ do
+      parseRuleBody "r" "match steer x => a.vendorHash null ; a.src ./artifacts/x"
+        `shouldBe` Right (MapRule "r" Steer ["x"]
+          [ Emit ["a", "vendorHash"] VNull, Emit ["a", "src"] (VPath "./artifacts/x") ])
+
     it "parses the full value algebra: null, float, path, and typed holes" $ do
       parseValue "null"            `shouldBe` Right VNull
       parseValue "3.14"            `shouldBe` Right (VFloat 3.14)

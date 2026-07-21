@@ -1,0 +1,4 @@
+serve http on port 8080.
+respond to every request with the text "hello from lips".
+write the server in go, using only the standard library with no external dependencies.
+run it as a systemd service named hello.
