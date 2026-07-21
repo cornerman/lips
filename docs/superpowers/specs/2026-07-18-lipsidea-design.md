@@ -554,6 +554,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
+- **Home-manager realization target.** A home-manager module and a NixOS module
+  share one shape: `realize` already emits a domain-blind
+  `{ config, lib, pkgs, ... }: { <path> = <value>; }`, so an engine that mints
+  home-manager option paths (`programs.*`, `systemd.user.services.*`,
+  `home.*`) yields a valid home-manager module today with zero kernel change
+  (the "kernel knows nothing" law: the module form is universal, only the
+  namespace differs). What is missing is a second realization *target*, not
+  kernel work: (a) the run/check harness assumes NixOS (`nixosSystem` +
+  qemu-vm boot; NixOS option eval), whereas home-manager evaluates through
+  `homeManagerConfiguration` and activates by `home-manager switch` (no
+  "boot"); (b) the target must enter generate as a pinned input (like the
+  direction file), since the mint prompt is domain-blind and nothing currently
+  tells the model which namespace to target; (c) the `.expect` gate and VM
+  smoke need the parallel home-manager eval entry point. Same axis as the
+  deferred run-modes/Solution-kinds work. Good fit for `wolf` (NixOS *and*
+  home-manager), where a per-user Solution (a user timer, a configured program)
+  lands in home-manager naturally.
 - **Artifacts: deferred pieces.** The core landed (see Done). Still open:
   artifact source is a fixed blob baked at generate (not templated with holes),
   so a value that must appear *inside* the compiled program needs regeneration
