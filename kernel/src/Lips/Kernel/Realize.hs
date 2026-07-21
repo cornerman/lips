@@ -18,6 +18,7 @@ module Lips.Kernel.Realize
   ( realize
   ) where
 
+import           Data.Char       (isAlphaNum)
 import           Data.List       (partition, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -40,14 +41,35 @@ realize base = renderModule . Map.toList <$> resolve base
 renderModule :: [(Subject, Decision)] -> Text
 renderModule winners =
   let (arts, opts) = partition (rootedAtArtifact . fst) winners
-   in T.unlines $
-        [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
-        , "{ config, lib, pkgs, ... }:"
-        ]
-          ++ letBlock (artifactEntries arts)
-          ++ ["{"]
-          ++ concatMap assignment (sortOn (path . fst) opts)
-          ++ ["}"]
+      defined  = [ n | (Subject ("artifact" : n : _), _) <- arts ]
+      refs     = concatMap (artifactRefs . unAssertion . dAssertion . snd) opts
+      dangling = [ r | r <- refs, r `notElem` defined ]
+   in if not (null dangling)
+        -- Deduce-or-fail: never emit a module that references an artifact no
+        -- group builds. An engine bug, so it fails loud naming the culprits.
+        then error ("dangling ${artifact.<name>} reference to undefined artifact(s): "
+                     <> T.unpack (T.intercalate ", " dangling))
+        else T.unlines $
+          [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+          , "{ config, lib, pkgs, ... }:"
+          ]
+            ++ letBlock (artifactEntries arts)
+            ++ ["{"]
+            ++ concatMap assignment (sortOn (path . fst) opts)
+            ++ ["}"]
+
+-- | Every @${artifact.<name>}@ referenced inside a value's rendered text.
+artifactRefs :: Text -> [Text]
+artifactRefs = go
+  where
+    marker = "${artifact."
+    go s = case T.breakOn marker s of
+      (_, rest)
+        | T.null rest -> []
+        | otherwise ->
+            let after = T.drop (T.length marker) rest
+             in T.takeWhile isNameChar after : go after
+    isNameChar c = c `elem` ("-_" :: String) || isAlphaNum c
 
 rootedAtArtifact :: Subject -> Bool
 rootedAtArtifact (Subject ("artifact" : _)) = True
@@ -89,7 +111,6 @@ builderOf n parts =
     [] -> error ("artifact " <> T.unpack n <> ": no builder")
   where
     validBuilderPath p = not (T.null p) && T.all (\c -> c `elem` (".-_" :: String) || isAlphaNum c) p
-    isAlphaNum c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 
 unAssertion :: Assertion -> Text
 unAssertion (Assertion a) = a

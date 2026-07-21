@@ -240,6 +240,10 @@ main = hspec $ do
             ]
       realize (fromList arts) `shouldBe` Right expected
 
+    it "fails loud on a ${artifact.<name>} reference to an undefined artifact" $
+      let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
+       in evaluate (T.length (either (const "") id (realize (fromList dangling)))) `shouldThrow` anyErrorCall
+
   describe "run pipeline (spec 5: four outcomes)" $ do
     -- an engine: one rule mapping any Oblige to a ground option assignment
     let engine = [ Rule (RuleId "ingest") ((== Oblige) . dKind)
