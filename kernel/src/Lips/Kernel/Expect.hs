@@ -143,10 +143,10 @@ checkValues :: [Expect] -> [(Text, Text)] -> [Text]
 checkValues es pairs =
   [ fail' e pv ev | (e, (pv, ev)) <- zip es pairs, not (pv `T.isInfixOf` ev) ]
   where
+    -- Plain, author-facing: name the NixOS option and the mismatch, no internal
+    -- assertion id. The caller (CLI) indents and frames it.
     fail' e pv ev =
-      "  " <> exId e <> ": option " <> dotted (exPath e)
-        <> " should carry " <> tshow pv <> " (from " <> renderFrom e
-        <> "), but evaluates to " <> ev
+      dotted (exPath e) <> ": should contain " <> pv <> ", but is " <> ev
 
 firstToken :: Text -> Maybe (Text, Text)
 firstToken t = case T.words t of

@@ -7,9 +7,10 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
-      # The kernel needs only base, containers, text; hspec + QuickCheck drive
-      # the conformance suite (spec section 12).
-      ghc = pkgs: pkgs.haskellPackages.ghcWithPackages (p: [ p.hspec p.QuickCheck ]);
+      # The kernel needs only base, containers, text; the Generate tier adds
+      # aeson (parsing pi's json event stream); hspec + QuickCheck drive the
+      # conformance suite (spec section 12).
+      ghc = pkgs: pkgs.haskellPackages.ghcWithPackages (p: [ p.hspec p.QuickCheck p.aeson ]);
     in
     {
       # Everything a developer needs: the compiler for the suite, and just

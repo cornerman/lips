@@ -41,9 +41,12 @@ demands -- and it never states the meaning of the program. The kernel then
 crystallizes the program with that engine, validates it by a full run plus a
 Nix parse (`nix-instantiate --parse`), and only then writes `<file>.lang`, the
 crystal witness `<file>.decisions`, and a `<file>.generation` audit record. It
-routes the model call through `pi` in print mode (`pi -p -nt --no-session
---model ...`); the default model is `anthropic/claude-opus-4-8`, overridable
-as the first argument. No domain vocabulary is compiled in: the model invents
+routes the model call through `pi` in json print mode (`pi -p -nt -nc
+--no-session --mode json`); lips bakes in no model, so by default `--model` is
+omitted and pi's own configured default applies. A model may be given as the
+optional first argument. Either way lips reads the model pi actually used back
+out of the json stream and records it in `.generation`, so provenance stays
+concrete without a vendor model in the deliverable. No domain vocabulary is compiled in: the model invents
 the subjects, and closure is checked (unmapped decision, unmet demand,
 uncovered line, or invalid Nix each rejects the engine), not trusted.
 

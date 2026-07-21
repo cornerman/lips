@@ -28,6 +28,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
+import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
 import Lips.Kernel.Lang.Pattern
@@ -797,6 +798,21 @@ main = hspec $ do
         [ "PREFERENCE, not requirement"
         , "never let it override a value the program states"
         ]
+
+  -- The model is not baked into lips: generate omits --model so pi's own
+  -- default applies, then reads the model back from the json stream to keep
+  -- .generation concrete. This pins that extraction.
+  describe "pi json stream parsing (model read-back)" $ do
+    let stream = T.unlines
+          [ "{\"type\":\"message_start\",\"message\":{\"role\":\"assistant\",\"content\":[],\"model\":\"anthropic/claude-opus-4-8\"}}"
+          , "{\"type\":\"agent_end\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"line one\\nline two\"}],\"model\":\"anthropic/claude-opus-4-8\"}]}"
+          ]
+    it "recovers the assistant reply from agent_end" $
+      prReply (parsePiReply stream) `shouldBe` "line one\nline two"
+    it "recovers the model pi actually used" $
+      prModel (parsePiReply stream) `shouldBe` "anthropic/claude-opus-4-8"
+    it "empty stream yields empty fields (caller fails loud)" $
+      parsePiReply "" `shouldBe` PiReply "" ""
 
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $

@@ -418,6 +418,15 @@ but the loop around it is incomplete; "missing" means specced, not built.
   [--confidence <0..1>] [model] <program>` (default 0.7, pinned into the
   generation record so it enters the event id); generation record written per
   event.
+- **No model baked in.** lips picks no default model: `[model]` is optional and
+  when omitted `--model` is not passed, so pi's own configured default applies
+  (the model is an environment choice, not a fact of the deliverable). The call
+  uses `pi --mode json`; the model pi actually used is read back from the event
+  stream and recorded in `.generation`, so provenance and `genId` stay concrete
+  without a vendor model in the source. Parsing lives in
+  `Lips.Generate.PiJson` (the sole `aeson` user, in the Generate tier; the
+  kernel stays base+containers+text). A repo-wide default or reading pi's config
+  were rejected: omit-and-read-back is the narrowest mechanism.
 - **Generate failure feedback (info-only, no dialogue).** When `generate`
   cannot write an engine it prints a classified, plain-language report to the
   command output -- the one channel the user reads -- with what went wrong and

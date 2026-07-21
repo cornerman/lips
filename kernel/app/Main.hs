@@ -23,18 +23,20 @@ import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getArgs, getProgName)
 import           System.Exit        (ExitCode (..), exitFailure)
-import           System.IO          (hPutStrLn, stderr)
+import           System.IO          (stderr)
 import           System.Process     (callCommand, readProcessWithExitCode)
 import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf)
+import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Expect, checkValues, evalExpr, expectedValue, readExpect, renderExpect)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
+import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), crystallize)
 import           Lips.Kernel.Lang.Lang         (EngineData (..), readLang, renderLang)
@@ -42,10 +44,6 @@ import           Lips.Kernel.Lang.Lang         (EngineData (..), readLang, rende
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
 budget :: Int
 budget = 10000
-
--- | Default generation model, routed through pi. Overridable with a second arg.
-defaultModel :: String
-defaultModel = "anthropic/claude-opus-4-8"
 
 -- | A minted language is admitted only if every pattern is at least this
 -- certain; otherwise generate fails loud (deduce-or-fail), writing nothing.
@@ -62,14 +60,14 @@ main = do
     ["run", file]        -> runVm file
     ["check", file]      -> checkLoose file
     ("generate" : rest)  -> case parseGenerate rest of
-      Just (conf, model, file) -> generate conf model file
+      Just (conf, mmodel, file) -> generate conf mmodel file
       Nothing                  -> usage >> exitFailure
     _                    -> usage >> exitFailure
 
 -- | Parse @generate@ arguments: an optional @--confidence <0..1>@ flag in any
 -- position, then @[model] <program-file>@. A malformed or out-of-range
 -- threshold, or the wrong number of positionals, fails loud (returns Nothing).
-parseGenerate :: [String] -> Maybe (Double, String, FilePath)
+parseGenerate :: [String] -> Maybe (Double, Maybe String, FilePath)
 parseGenerate = go Nothing []
   where
     go _ pos ("--confidence" : v : rest)
@@ -78,17 +76,30 @@ parseGenerate = go Nothing []
     go _ _ ["--confidence"]      = Nothing
     go conf pos (a : rest)       = go conf (pos ++ [a]) rest
     go conf pos []               = finish (maybe defaultConfidence id conf) pos
-    finish c [file]        = Just (c, defaultModel, file)
-    finish c [model, file] = Just (c, model, file)
+    -- No model given: omit --model so pi's own configured default applies;
+    -- the model pi reports is read back and recorded. An explicit model still
+    -- works as the optional first positional.
+    finish c [file]        = Just (c, Nothing, file)
+    finish c [model, file] = Just (c, Just model, file)
     finish _ _             = Nothing
 
 usage :: IO ()
 usage = do
-  name <- getProgName
-  hPutStrLn stderr ("usage: " <> name <> " generate [--confidence <0..1>] [model] <program-file>")
-  hPutStrLn stderr ("       " <> name <> " print <program-file>   (emit the realized NixOS module)")
-  hPutStrLn stderr ("       " <> name <> " run <program-file>     (boot it as a local NixOS VM)")
-  hPutStrLn stderr ("       " <> name <> " check <program-file>")
+  name <- T.pack <$> getProgName
+  hPutStrLn stderr banner
+  TIO.hPutStr stderr $ T.unlines
+    [ "lips turns a plain-English .loose program into a NixOS configuration."
+    , ""
+    , "usage:"
+    , "  " <> name <> " generate [--confidence <0..1>] [model] <program.loose>"
+    , "      Build the program's setup and verify it. The one step that uses AI."
+    , "  " <> name <> " print <program.loose>"
+    , "      Show the NixOS configuration the program produces."
+    , "  " <> name <> " run <program.loose>"
+    , "      Boot that configuration as a throwaway local VM."
+    , "  " <> name <> " check <program.loose>"
+    , "      Verify the program still produces what it promised."
+    ]
 
 -- | @print@: crystallize the loose program with its language, realize it, and
 -- write the NixOS module text to stdout. Pure and deterministic (no AI).
@@ -97,7 +108,7 @@ printLoose file = do
   program <- TIO.readFile file
   eng     <- loadLangOrDie file
   case validate file eng program of
-    Left problem      -> die problem
+    Left f            -> die (printFail file f)
     Right (_, nixMod) -> TIO.putStr nixMod
 
 -- | @run@: realize the program, then literally run it -- wrap the module in a
@@ -110,28 +121,30 @@ runVm file = do
   program <- TIO.readFile file
   eng     <- loadLangOrDie file
   case validate file eng program of
-    Left problem      -> die problem
-    Right (_, nixMod) -> bootVm (stageFromDisk file) nixMod
+    Left f            -> die (printFail file f)
+    Right (_, nixMod) -> bootVm file (stageFromDisk file) nixMod
 
-bootVm :: (FilePath -> IO ()) -> Text -> IO ()
-bootVm stage nixMod = do
+bootVm :: FilePath -> (FilePath -> IO ()) -> Text -> IO ()
+bootVm file stage nixMod = do
   dir <- mkTempDir
   let tmp = dir <> "/module.nix"
   TIO.writeFile tmp nixMod
   stage (dir <> "/artifacts")
-  TIO.hPutStrLn stderr "lips: building a local NixOS VM from the realized module..."
+  TIO.hPutStrLn stderr "building a local NixOS VM from your configuration..."
   built <- try (readProcessWithExitCode "nix"
                   [ "build", "--impure", "--no-link", "--print-out-paths"
                   , "--expr", T.unpack (vmExpr tmp) ] "")
   case built of
-    Left e -> die ("nix unavailable: " <> tshow (e :: IOException))
+    Left e -> die (nixMissing file "boot the VM" "run" (tshow (e :: IOException)))
     Right (ExitFailure _, _, err) ->
-      die ("could not build the VM:\n" <> T.pack err
-            <> "\n(the run simulation needs nixpkgs; use `nix run . -- run <program>` "
-            <> "or set NIX_PATH to a nixpkgs)")
+      die (report
+        "the VM didn't build:"
+        (T.lines (T.pack err))
+        ("→ the run simulation needs nixpkgs. Try: nix run . -- run " <> T.pack file
+          <> ", or set NIX_PATH to a nixpkgs."))
     Right (ExitSuccess, out, _) -> do
       let outPath = T.unpack (T.strip (T.pack out))
-      TIO.hPutStrLn stderr "lips: booting the VM (quit QEMU with Ctrl-a x)..."
+      TIO.hPutStrLn stderr "booting the VM (quit QEMU with Ctrl-a x)..."
       -- The qemu-vm module names the boot script run-<host>-vm; glob it so the
       -- hostname is not hard-coded. The shell inherits stdio for the console.
       callCommand (outPath <> "/bin/run-*-vm")
@@ -166,18 +179,25 @@ checkLoose file = do
   eng     <- loadLangOrDie file
   expSrc  <- tryRead (file <> ".expect")
   case expSrc of
-    Nothing  -> die (T.pack file <> " has no behavioral contract ("
-                     <> T.pack file <> ".expect missing); nothing to check")
+    Nothing  -> die (report
+      (T.pack file <> " has nothing to check yet (" <> T.pack file <> ".expect is missing).")
+      []
+      ("→ create it: lips generate " <> T.pack file))
     Just src -> case readExpect src of
-      Left es       -> die ("corrupt .expect:\n" <> T.unlines (map renderParseError es))
+      Left es       -> die (unreadable file ".expect" es)
       Right expects -> case validate file eng program of
-        Left problem       -> die problem
+        Left f       -> die (printFail file f)
         Right (base, nixMod) -> do
           res <- runExpects (stageFromDisk file) expects base nixMod
           case res of
-            Right () -> TIO.putStrLn (T.pack file <> ": "
-                          <> tshow (length expects) <> " behavioral assertion(s) hold")
-            Left fs  -> die ("behavioral contract violated:\n" <> T.unlines fs)
+            Right () -> TIO.putStrLn (T.pack file <> ": all "
+                          <> tshow (length expects) <> " checks pass.")
+            Left (ToolMissing e) -> die (nixMissing file "check the program" "check" e)
+            Left (EvalFailed e)  -> die (nixEvalFailed file "check" e)
+            Left (Violations fs) -> die (report
+              (T.pack file <> " no longer produces what it promised:")
+              fs
+              ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
 
 -- | Load and parse a program's @.lang@, or fail loud naming @generate@.
 loadLangOrDie :: FilePath -> IO EngineData
@@ -185,10 +205,12 @@ loadLangOrDie file = do
   let langFile = file <> ".lang"
   msrc <- tryRead langFile
   case msrc of
-    Nothing  -> die (T.pack file <> " has no crystallized language (" <> T.pack langFile
-                     <> " missing)\nrun: lips generate " <> T.pack file)
+    Nothing  -> die (report
+      (T.pack file <> " isn't set up yet (" <> T.pack langFile <> " is missing).")
+      []
+      ("→ create it: lips generate " <> T.pack file))
     Just src -> case readLang src of
-      Left es  -> die ("corrupt language file:\n" <> T.unlines (map renderParseError es))
+      Left es  -> die (unreadable file ".lang" es)
       Right eng -> pure eng
 
 tryRead :: FilePath -> IO (Maybe Text)
@@ -197,15 +219,15 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Double -> String -> FilePath -> IO ()
-generate confidence model file = do
+generate :: Double -> Maybe String -> FilePath -> IO ()
+generate confidence mmodel file = do
   program <- TIO.readFile file
   -- Optional owner taste for this program (mechanism preference, not
   -- obligations). Rides in the system prompt, so it enters the .generation
   -- record and genId; absent or blank changes nothing.
   direction <- tryRead (file <> ".direction")
   let prompt = promptWithDirection direction
-  reply   <- callPi model prompt program
+  (reply, model) <- callPi mmodel prompt program
   let (errs, candidates) = parseEngineCandidates reply
       -- Deduce-or-fail: the program is the only source of truth, so an item the
       -- model cannot confidently derive means the program underspecifies it.
@@ -218,13 +240,14 @@ generate confidence model file = do
       -- read it back, so any render/read round-trip drift is caught at mint
       -- time, not on a later `print`. The read-back engine is what we write.
       case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
-       Left es  -> die (validationReport file ("the minted engine does not round-trip through .lang:\n" <> T.unlines (map renderParseError es)))
+       Left es  -> die (validationReport file ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
        Right eng -> case validate file eng program of
-        Left problem -> die (validationReport file problem)
+        Left f -> die (validationReport file (diagnose file f))
         Right (base, nixModule) -> do
           nixCheck <- nixParses nixModule
           case nixCheck of
-            Left why -> die (validationReport file ("the realized module is not valid Nix:\n" <> why))
+            Left (NixToolMissing e) -> die (nixMissing file "verify the output" "generate" e)
+            Left (NixInvalid why)   -> die (validationReport file ("the configuration lips produced isn't valid Nix:\n" <> why))
             Right () -> do
               -- Sources are minted in memory; stage them (not yet on disk) so
               -- the behavioral gate can evaluate the artifact derivations.
@@ -236,22 +259,26 @@ generate confidence model file = do
               let mintedExpects = expectsOf (map icItem candidates)
               committed <- tryRead (file <> ".expect")
               let contract = maybe (Right mintedExpects) readExpect committed
-                  src      = maybe "minted" (const "committed") committed
               case contract of
-                Left es -> die ("corrupt " <> T.pack file <> ".expect:\n"
-                                <> T.unlines (map renderParseError es))
+                Left es -> die (report
+                  (T.pack file <> ".expect is unreadable, so lips can't verify against it:")
+                  [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
+                  ("→ fix or delete " <> T.pack file <> ".expect, then run generate again."))
                 Right expects -> do
                   gate <- runExpects (\dst -> writeSources dst minted) expects base nixModule
                   case gate of
-                    Left fs -> die ("minted engine rejected: behavioral contract (" <> src
-                      <> ") violated:\n" <> T.unlines fs
-                      <> "\n(regression -> fix; or intended change -> delete "
-                      <> T.pack file <> ".expect and regenerate to re-bless)")
+                    Left (ToolMissing e) -> die (nixMissing file "verify the output" "generate" e)
+                    Left (EvalFailed e)  -> die (nixEvalFailed file "generate" e)
+                    Left (Violations fs) -> die (report
+                      ("lips built a setup for " <> T.pack file <> ", but it doesn't produce what the program promises:")
+                      fs
+                      ("→ run generate again. If you changed the program on purpose, delete "
+                        <> T.pack file <> ".expect first to accept the new behavior."))
                     Right () -> do
                       -- The record is written first-class and every engine line
                       -- is stamped with its content id: line -> event, checkable
                       -- by re-hashing the .generation file.
-                      let rec = record (T.pack model) confidence prompt program reply
+                      let rec = record model confidence prompt program reply
                       TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
                       TIO.writeFile (file <> ".decisions") (renderBase base)
                       TIO.writeFile (file <> ".generation") rec
@@ -261,60 +288,85 @@ generate confidence model file = do
                       -- the committed spec stable across regenerations.
                       maybe (TIO.writeFile (file <> ".expect") (renderExpect mintedExpects))
                             (const (pure ())) committed
-                      TIO.putStrLn ("wrote " <> T.pack file <> ".lang ("
-                        <> tshow (length (edPatterns eng)) <> " patterns, "
-                        <> tshow (length (edRules eng)) <> " rules, "
-                        <> tshow (length (edDemands eng)) <> " demands, "
-                        <> tshow (length expects) <> " assertions [" <> src <> "]), verified:")
+                      -- Prose to stderr so stdout stays the pipeable module.
+                      TIO.hPutStr stderr $ T.unlines
+                        [ "lips set up " <> T.pack file <> " and verified it produces a valid NixOS configuration."
+                        , ""
+                        , "→ preview it:  lips print " <> T.pack file
+                        , "→ boot it:     lips run " <> T.pack file ]
                       TIO.putStr nixModule
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.
-validate :: FilePath -> EngineData -> Text -> Either Text (Base, Text)
+validate :: FilePath -> EngineData -> Text -> Either Failure (Base, Text)
 validate file eng program =
   case crystallize file (edPatterns eng) program of
-    Left errs  -> Left (renderCrystErrors errs)
+    Left errs  -> Left (FailRead errs)
     Right base ->
       case runBase budget (map toRule (edRules eng)) (map toDemand (edDemands eng)) base of
-        Left err        -> Left (renderRunError err)
+        Left err        -> Left (FailRun err)
         Right nixModule -> Right (base, nixModule)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable
 -- engine is not written (deduce-or-fail).
-nixParses :: Text -> IO (Either Text ())
+-- | Two outcomes of the Nix parse check, kept apart so the CLI can tell the
+-- user to install nix (tool missing) rather than blame the generated setup
+-- (invalid Nix).
+data NixParse = NixToolMissing Text | NixInvalid Text
+
+nixParses :: Text -> IO (Either NixParse ())
 nixParses nixModule = do
   result <- try (readProcessWithExitCode "nix-instantiate" ["--parse", "-"] (T.unpack nixModule))
   pure $ case result of
-    Left e -> Left ("nix-instantiate unavailable: " <> tshow (e :: IOException))
+    Left e -> Left (NixToolMissing (tshow (e :: IOException)))
     Right (ExitSuccess, _, _)   -> Right ()
-    Right (ExitFailure _, _, e) -> Left (T.pack e)
+    Right (ExitFailure _, _, e) -> Left (NixInvalid (T.pack e))
 
--- | Call pi in print mode as the model gateway: no tools, no session, a fixed
--- system prompt, the program as the user prompt. pi handles provider auth.
-callPi :: String -> Text -> Text -> IO Text
-callPi model system userPrompt = do
+-- | Call pi in json print mode as the model gateway: no tools, no session, a
+-- fixed system prompt, the program as the user prompt. pi handles provider
+-- auth. lips picks no model by default: when none is given @--model@ is
+-- omitted and pi's own configured default applies. Either way the json stream
+-- reports the model actually used, which the caller records, so provenance
+-- stays concrete without a model baked into the deliverable.
+callPi :: Maybe String -> Text -> Text -> IO (Text, Text)
+callPi mmodel system userPrompt = do
   (code, out, err) <-
     readProcessWithExitCode "pi"
       -- -nc: the mint must be hermetic. pi otherwise injects ambient AGENTS.md/CLAUDE.md
       -- context files (global + walking up from cwd) - inputs that would steer generation
       -- without entering the .generation record or the genId hash.
-      [ "-p", "-nt", "-nc", "--no-session", "--model", model, "--system-prompt", T.unpack system ]
+      -- --mode json: so the model pi resolved is machine-readable in the reply.
+      ([ "-p", "-nt", "-nc", "--no-session", "--mode", "json", "--system-prompt", T.unpack system ]
+        ++ maybe [] (\m -> ["--model", m]) mmodel)
       (T.unpack userPrompt)
   case code of
-    ExitSuccess   -> pure (T.pack out)
-    ExitFailure c -> do
-      hPutStrLn stderr ("pi failed (exit " <> show c <> "):\n" <> err)
-      exitFailure
+    ExitSuccess   -> do
+      let PiReply { prReply = reply, prModel = model } = parsePiReply (T.pack out)
+      if T.null reply
+        then die (report "the AI model returned no usable reply." [] "→ run generate again.")
+        -- pi always reports the model; an empty value would break provenance.
+        else if T.null model
+          then die (report "pi didn't report which model it used, so lips can't record provenance." [] "→ update pi, then run generate again.")
+          else pure (reply, model)
+    ExitFailure c -> die (report
+      ("lips couldn't run the AI model (pi exited " <> tshow c <> "):")
+      (T.lines (T.pack err))
+      "→ check that pi is installed and authenticated, then run generate again.")
 
 -- | Evaluate the realized module with @nix@ and judge a contract against it.
 -- One eval reads every asserted option; the pure comparison lives in
 -- 'Lips.Kernel.Expect'. An empty contract passes trivially.
-runExpects :: (FilePath -> IO ()) -> [Expect] -> Base -> Text -> IO (Either [Text] ())
+-- | Three outcomes of the behavioral check, kept apart so the CLI gives the
+-- right action: install nix (tool missing), fix the environment (eval failed),
+-- or the config doesn't carry the promised values (violations).
+data ExpectFail = ToolMissing Text | EvalFailed Text | Violations [Text]
+
+runExpects :: (FilePath -> IO ()) -> [Expect] -> Base -> Text -> IO (Either ExpectFail ())
 runExpects _     []      _    _         = pure (Right ())
 runExpects stage expects base nixModule =
   case traverse (expectedValue base) expects of
-    Left e    -> pure (Left ["cannot ground assertion in program: " <> e])
+    Left e    -> pure (Left (Violations ["lips can't match a check to the program: " <> e]))
     Right pvs -> do
       dir <- mkTempDir
       let tmp = dir <> "/module.nix"
@@ -324,16 +376,16 @@ runExpects stage expects base nixModule =
       res <- try (readProcessWithExitCode "nix"
                     ["eval", "--raw", "--impure", "--expr", T.unpack expr] "")
       pure $ case res of
-        Left e -> Left ["nix eval unavailable: " <> tshow (e :: IOException)]
+        Left e -> Left (ToolMissing (tshow (e :: IOException)))
         Right (ExitSuccess, out, _) ->
           let evaled = T.splitOn "\n" (T.pack out)
            in if length evaled /= length expects
-                then Left ["expect: eval returned " <> tshow (length evaled)
-                           <> " values for " <> tshow (length expects) <> " assertions"]
+                then Left (Violations ["nix returned " <> tshow (length evaled)
+                           <> " values for " <> tshow (length expects) <> " checks"])
                 else case checkValues expects (zip pvs evaled) of
                        [] -> Right ()
-                       fs -> Left fs
-        Right (ExitFailure _, _, err) -> Left ["nix eval failed:\n" <> T.pack err]
+                       fs -> Left (Violations fs)
+        Right (ExitFailure _, _, err) -> Left (EvalFailed (T.pack err))
 
 die :: Text -> IO a
 die msg = TIO.hPutStrLn stderr msg >> exitFailure
@@ -372,85 +424,141 @@ parentDir = T.unpack . fst . T.breakOnEnd "/" . T.pack
 shq :: FilePath -> String
 shq s = "'" <> concatMap (\c -> if c == '\'' then "'\\''" else [c]) s <> "'"
 
--- | The one channel the user reads is this command's output. When generate
--- cannot write an engine, say what went wrong and what to do now -- no
--- questions, no dialogue (all truth lives in the program). Two causes here:
--- lines lips could not read (a mechanism may be missing) and items the model
--- could not derive from the program (the program underspecifies them).
-refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> Text
-refusalReport file threshold errs unsure = T.intercalate "\n" $
-  ["generate could not build an engine for " <> T.pack file <> "."]
-    ++ section grammar ++ section underspecified
+-- | The standard message skeleton: a plain headline, optional indented detail
+-- lines, and a final "→" action. Every error the CLI prints is built from it,
+-- so the product speaks with one voice.
+report :: Text -> [Text] -> Text -> Text
+report headline details action =
+  T.intercalate "\n" $ [headline] ++ detail ++ ["", action]
+  where detail = if null details then [] else "" : map ("  " <>) details
+
+-- | Same skeleton without the action line, for a diagnosis another command
+-- wraps with its own action.
+reportHead :: Text -> [Text] -> Text
+reportHead headline details =
+  T.intercalate "\n" $ [headline] ++ (if null details then [] else "" : map ("  " <>) details)
+
+-- | A validation failure kept structured (not pre-rendered) so each command
+-- picks the right next action: on print/run some are the author's to edit,
+-- others mean regenerate; generate frames all of them as a mint that did not
+-- hold up.
+data Failure = FailRead [CrystError] | FailRun RunError
+
+-- | What went wrong and where, in plain words, with no action line (the caller
+-- appends the action, which depends on the command).
+diagnose :: FilePath -> Failure -> Text
+diagnose file (FailRead errs) =
+  reportHead (T.pack file <> " has lines its setup doesn't handle:") (map crystDetail errs)
   where
-    section ls = if null ls then [] else "" : ls
+    crystDetail (NoPattern n t)   = "line " <> tshow n <> ": " <> t
+    crystDetail (Overlapping n _) = "line " <> tshow n <> ": the setup reads this line more than one way"
+diagnose file (FailRun err) = case err of
+  ParseRejected es ->
+    reportHead (T.pack file <> " has lines that couldn't be read:")
+               [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
+  OpenQuestions qs ->
+    reportHead (T.pack file <> " leaves questions its setup needs answered:") qs
+  Conflicted cs ->
+    reportHead (T.pack file <> " sets the same thing two ways:")
+               [ niceSubject (conflictSubject c) <> ": "
+                   <> loc (conflictLeft c) <> " and " <> loc (conflictRight c) | c <- cs ]
+  RefineFailed e ->
+    reportHead ("the setup lips built for " <> T.pack file <> " is broken, not your program:")
+               [refineDetail e]
+  Unmapped ds ->
+    reportHead (T.pack file <> " asks for things its setup can't do:")
+               [ loc d <> ": " <> niceSubject (dSubject d) | d <- ds ]
+
+-- | The full message for a print/run failure: the diagnosis plus the action
+-- that fits it -- edit the program (unanswered questions, a contradiction) or
+-- rebuild the setup (everything else).
+printFail :: FilePath -> Failure -> Text
+printFail file f = diagnose file f <> "\n\n" <> act
+  where
+    act = case f of
+      FailRun (OpenQuestions _) -> "→ answer each in " <> T.pack file <> ", then run again."
+      FailRun (Conflicted _)    -> "→ keep only one of those lines in " <> T.pack file <> ", then run again."
+      _                         -> "→ rebuild the setup: lips generate " <> T.pack file
+
+refineDetail :: RefineError -> Text
+refineDetail (Overlap _ _)      = "two of its rules claim the same thing"
+refineDetail (Nonterminating _) = "its rules loop without settling"
+
+-- | A subject as plain words: its dotted segments spaced out, so route./hello
+-- reads as "route /hello".
+niceSubject :: Subject -> Text
+niceSubject (Subject segs) = T.intercalate " " segs
+
+-- | Where a decision came from, in author terms: a file location, or a note
+-- that the setup computed it.
+loc :: Decision -> Text
+loc d = case dProv d of
+  FromSource (SourceLoc f n) -> f <> ":" <> tshow n
+  Derived _ _                -> "(computed by the setup)"
+  FromGeneration _           -> "(from the setup)"
+
+-- | A committed file lips can't read back (corrupted or hand-edited).
+unreadable :: FilePath -> Text -> [ParseError] -> Text
+unreadable file suffix es = report
+  (T.pack file <> suffix <> " is unreadable, so lips can't use it:")
+  [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
+  ("→ rebuild it: lips generate " <> T.pack file)
+
+-- | nix is needed but couldn't run: a missing-tool failure (install it), never
+-- the fault of the program or the generated setup.
+nixMissing :: FilePath -> Text -> Text -> Text -> Text
+nixMissing file what cmd detail = report
+  ("lips needs nix to " <> what <> ", but couldn't run it:")
+  (T.lines detail)
+  ("→ install nix, or run lips through it: nix run . -- " <> cmd <> " " <> T.pack file)
+
+-- | nix ran but evaluation failed: usually a missing nixpkgs, not the setup.
+nixEvalFailed :: FilePath -> Text -> Text -> Text
+nixEvalFailed file cmd detail = report
+  "lips couldn't evaluate the configuration to check it:"
+  (T.lines detail)
+  ("→ this usually means nixpkgs isn't available. Try: nix run . -- " <> cmd <> " " <> T.pack file)
+
+-- | generate couldn't build a setup: either lines lips couldn't read (a
+-- capability may be missing) or values the program leaves underspecified.
+refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> Text
+refusalReport file _threshold errs unsure = T.intercalate "\n" $
+  ["lips couldn't build a setup for " <> T.pack file <> "."]
+    ++ grammar ++ underspecified
+  where
     grammar
       | null errs = []
       | otherwise =
-          [ "lips could not read some lines the model produced:" ]
+          [ "", "The AI produced instructions lips couldn't read:" ]
           ++ [ "  - " <> e | e <- errs ]
-          ++ [ "what you can do: re-run generate; if the same line keeps being"
-             , "rejected, it is a capability lips is missing -- report those lines"
-             , "so the mechanism can be added, then upgrade lips and re-run." ]
+          ++ [ ""
+             , "→ run generate again. If the same line keeps failing, it's a"
+             , "  capability lips lacks -- please report it." ]
     underspecified
       | null unsure = []
       | otherwise =
-          [ "the program does not pin down these (model confidence below "
-              <> tshow threshold <> "):" ]
+          [ "", "The program doesn't pin these down (the AI wasn't confident enough):" ]
           ++ [ "  - " <> icLine c <> "   [confidence " <> conf c <> "]" | c <- unsure ]
-          ++ [ "what you can do: state the missing detail explicitly in " <> T.pack file
-             , "and re-run generate. If the value is genuinely free to choose,"
-             , "re-run with a lower --confidence to accept the model's choice." ]
+          ++ [ ""
+             , "→ state the missing detail in " <> T.pack file <> " and run again."
+             , "  If the choice is genuinely free, lower the bar: --confidence 0.5" ]
     conf c = let Confidence x = icConfidence c in tshow x
 
--- | An engine was built but failed the kernel's own validation (it crystallizes
--- but does not realize, parse, or hold its contract). Not the program's fault.
+-- | generate built a setup but it did not hold up: wrap a diagnosis with the
+-- generate-time action (mint again; report a lips bug if it persists). Not the
+-- program's fault.
 validationReport :: FilePath -> Text -> Text
 validationReport file problem = T.intercalate "\n"
-  [ "generate built an engine for " <> T.pack file <> ", but it did not hold up:"
+  [ "lips built a setup for " <> T.pack file <> ", but it didn't hold up:"
   , ""
   , problem
   , ""
-  , "what you can do: this is a problem with the generated engine, not your"
-  , "program. Re-run generate to mint a fresh one. If it keeps failing the same"
-  , "way, it is a lips bug -- report it with the message above."
+  , "→ run generate again. If it keeps failing the same way, it's a lips bug --"
+  , "  please report it with the text above."
   ]
-
-renderCrystErrors :: [CrystError] -> Text
-renderCrystErrors errs = "the program escaped its language (run: lips generate):\n"
-  <> T.unlines (map r errs)
-  where
-    r (NoPattern n t)     = "  line " <> tshow n <> ": no pattern matches: " <> t
-    r (Overlapping n ids) = "  line " <> tshow n <> ": matched by " <> T.intercalate ", " ids
 
 renderParseError :: ParseError -> Text
 renderParseError e = "  line " <> tshow (peLine e) <> ": " <> peMessage e
-
-renderRunError :: RunError -> Text
-renderRunError (ParseRejected es) =
-  "parse rejected:\n" <> T.unlines (map renderParseError es)
-renderRunError (OpenQuestions qs) =
-  "open questions (answer by adding lines, no AI needed):\n" <> T.unlines [ "  - " <> q | q <- qs ]
-renderRunError (Conflicted cs) =
-  "conflict (equal-strength contradiction):\n"
-    <> T.unlines
-         [ "  subject " <> showSubject (conflictSubject c)
-             <> ": " <> showProv (conflictLeft c) <> " vs " <> showProv (conflictRight c)
-         | c <- cs ]
-renderRunError (RefineFailed e) = "refinement failed: " <> tshow e
-renderRunError (Unmapped ds) =
-  "unmapped (the program escaped the engine; regenerate to grow a mapping):\n"
-    <> T.unlines
-         [ "  " <> showSubject (dSubject d) <> " [" <> tshow (dKind d) <> "] from " <> showProv d
-         | d <- ds ]
-
-showSubject :: Subject -> Text
-showSubject (Subject segs) = T.intercalate "." segs
-
-showProv :: Decision -> Text
-showProv d = case dProv d of
-  FromSource (SourceLoc f n) -> f <> ":" <> tshow n
-  Derived ids (RuleId r)     -> "<-" <> T.intercalate "," [i | DecisionId i <- ids] <> " via " <> r
-  FromGeneration gid         -> "gen:" <> gid
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show
