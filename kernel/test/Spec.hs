@@ -35,6 +35,7 @@ import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
 import Lips.Kernel.Lang.Lang
+import Lips.Lsp.Derive
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -747,6 +748,26 @@ main = hspec $ do
       let d = diagnose "f" eng "# a note\n\nthe bank drops csv files into inbox/."
       diagTotal d `shouldBe` 1
       diagMatched d `shouldBe` 1
+
+    it "derives one completion snippet per pattern, holes as numbered tab-stops" $
+      case completionItems (edPatterns eng) of
+        (i0 : i1 : _) -> do
+          map ciLabel [i0, i1] `shouldBe`
+            [ "the bank drops csv files into <loc>"
+            , "the bank delivers new files every <sched>" ]
+          ciSnippet i0 `shouldBe` "the bank drops csv files into ${1:loc}"
+        _ -> expectationFailure "expected two completion items"
+
+    it "derives an error diagnostic on a line that escapes the language" $ do
+      let ds = diagsOf (diagnose "f" eng "encrypt everything at rest.")
+      case [x | x <- ds, dgSeverity x == 1] of
+        (x : _) -> dgLine x `shouldBe` 0   -- 0-based line of the sole (bad) line
+        []      -> expectationFailure "expected an error diagnostic"
+
+    it "derives a warning diagnostic for each open question" $ do
+      let ds = diagsOf (diagnose "f" eng "the bank drops csv files into inbox/.")
+      map dgMessage [x | x <- ds, dgSeverity x == 2]
+        `shouldBe` ["Open question: how often does the feed deliver?"]
 
   -- Laws over arbitrary bases, not just the two worked examples: the merge is
   -- the kernel's core physics, so it is pinned as algebraic properties.

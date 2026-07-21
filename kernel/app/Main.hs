@@ -41,6 +41,7 @@ import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Lang         (EngineData (..), readLang, renderLang)
+import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
 budget :: Int
@@ -60,6 +61,7 @@ main = do
     ["print", file]      -> printLoose file
     ["run", file]        -> runVm file
     ["check", file]      -> checkLoose file
+    ["lsp"]              -> runLsp
     ("generate" : rest)  -> case parseGenerate rest of
       Just (conf, mmodel, file) -> generate conf mmodel file
       Nothing                  -> usage >> exitFailure
