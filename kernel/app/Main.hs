@@ -201,32 +201,22 @@ generate confidence model file = do
   program <- TIO.readFile file
   reply   <- callPi model systemPrompt program
   let (errs, candidates) = parseEngineCandidates reply
-  mapM_ (\e -> TIO.hPutStrLn stderr ("warning: " <> e)) errs
-  -- Deduce-or-fail: refuse an engine the model is unsure of.
-  let unsure = [c | c <- candidates, let Confidence x = icConfidence c, x < confidence]
-  case unsure of
-    (_ : _) -> do
-      -- Make the refusal diagnosable: echo each hedged item verbatim with its
-      -- confidence against the threshold, so the operator sees WHICH items the
-      -- model was unsure of, not merely how many.
-      mapM_
-        (\c -> let Confidence x = icConfidence c
-               in TIO.hPutStrLn stderr
-                    ("unsure (confidence " <> tshow x <> " < threshold "
-                     <> tshow confidence <> "): " <> icLine c))
-        unsure
-      die ("model is unsure of " <> tshow (length unsure) <> " item(s); refusing to write (deduce-or-fail)")
-    [] -> do
+      -- Deduce-or-fail: the program is the only source of truth, so an item the
+      -- model cannot confidently derive means the program underspecifies it.
+      unsure = [c | c <- candidates, let Confidence x = icConfidence c, x < confidence]
+  if not (null errs) || not (null unsure)
+    then die (refusalReport file confidence errs unsure)
+    else do
       let eng = assemble (map icItem candidates)
       -- Validate the minted engine against the actual program: it must
       -- crystallize with full coverage, realize end to end, and the module
       -- must parse as Nix. Nothing is written unless the whole loop succeeds.
       case validate file eng program of
-        Left problem -> die ("minted engine rejected:\n" <> problem)
+        Left problem -> die (validationReport file problem)
         Right (base, nixModule) -> do
           nixCheck <- nixParses nixModule
           case nixCheck of
-            Left why -> die ("minted engine rejected: realized module is not valid Nix:\n" <> why)
+            Left why -> die (validationReport file ("the realized module is not valid Nix:\n" <> why))
             Right () -> do
               -- Behavioral gate: the realized module must satisfy the
               -- contract. On regeneration the COMMITTED contract governs (the
@@ -333,6 +323,49 @@ runExpects expects base nixModule =
 
 die :: Text -> IO a
 die msg = TIO.hPutStrLn stderr msg >> exitFailure
+
+-- | The one channel the user reads is this command's output. When generate
+-- cannot write an engine, say what went wrong and what to do now -- no
+-- questions, no dialogue (all truth lives in the program). Two causes here:
+-- lines lips could not read (a mechanism may be missing) and items the model
+-- could not derive from the program (the program underspecifies them).
+refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> Text
+refusalReport file threshold errs unsure = T.intercalate "\n" $
+  ["generate could not build an engine for " <> T.pack file <> "."]
+    ++ section grammar ++ section underspecified
+  where
+    section ls = if null ls then [] else "" : ls
+    grammar
+      | null errs = []
+      | otherwise =
+          [ "lips could not read some lines the model produced:" ]
+          ++ [ "  - " <> e | e <- errs ]
+          ++ [ "what you can do: re-run generate; if the same line keeps being"
+             , "rejected, it is a capability lips is missing -- report those lines"
+             , "so the mechanism can be added, then upgrade lips and re-run." ]
+    underspecified
+      | null unsure = []
+      | otherwise =
+          [ "the program does not pin down these (model confidence below "
+              <> tshow threshold <> "):" ]
+          ++ [ "  - " <> icLine c <> "   [confidence " <> conf c <> "]" | c <- unsure ]
+          ++ [ "what you can do: state the missing detail explicitly in " <> T.pack file
+             , "and re-run generate. If the value is genuinely free to choose,"
+             , "re-run with a lower --confidence to accept the model's choice." ]
+    conf c = let Confidence x = icConfidence c in tshow x
+
+-- | An engine was built but failed the kernel's own validation (it crystallizes
+-- but does not realize, parse, or hold its contract). Not the program's fault.
+validationReport :: FilePath -> Text -> Text
+validationReport file problem = T.intercalate "\n"
+  [ "generate built an engine for " <> T.pack file <> ", but it did not hold up:"
+  , ""
+  , problem
+  , ""
+  , "what you can do: this is a problem with the generated engine, not your"
+  , "program. Re-run generate to mint a fresh one. If it keeps failing the same"
+  , "way, it is a lips bug -- report it with the message above."
+  ]
 
 renderCrystErrors :: [CrystError] -> Text
 renderCrystErrors errs = "the program escaped its language (run: lips generate):\n"
