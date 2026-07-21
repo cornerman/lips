@@ -1,13 +1,14 @@
 # lips
 
-Write what a system should do, in a few plain lines. A machine turns those
-lines into a running NixOS configuration, deterministically, with no AI in the
-loop after the first step.
+Describe what a system should do in plain lines. lips grows a small language
+around exactly those words and gives you its compiler for free; from then on it
+turns your intent into a running system deterministically, with no AI in the
+loop.
 
-The reason is simple. AI now writes code faster than any human can review it.
-lips keeps the artifact you own small enough to read in full, and makes
-everything below it machine-derived and reproducible. You review intent; the
-machine handles mechanism.
+The point is to keep what a human owns small enough to read. AI now writes code
+faster than anyone can review it, so lips shrinks the reviewed artifact to a few
+lines of meaning and makes everything the machine derives from them reproducible
+and offline.
 
 ## The Idea
 

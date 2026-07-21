@@ -513,28 +513,45 @@ but the loop around it is incomplete; "missing" means specced, not built.
   computation by construction (which is what makes injection unrepresentable),
   so an engine can *reference* a prebuilt package (`${pkgs.cudaPackages...}`,
   `${pkgs.someGuiApp}`) but cannot inline a bespoke build (compiling a CUDA
-  kernel, a custom derivation). Concretely: GPU/GUI domains are reachable now
+  kernel inline). Concretely: GPU/GUI domains are reachable now
   for prebuilt stacks (they are just more NixOS options, bools, lists, and
-  package refs, all of which the value language expresses), but domains
-  needing real Nix computation are blocked until marked glue is built.
+  package refs, all of which the value language expresses). What is blocked
+  without glue is a *computed value inside the decision layer*, not building a
+  program: building a custom program from its own source is the artifacts path
+  below, which is first-class and does not need glue. Glue and artifacts are
+  separate axes; glue is deferred as far as possible.
 
 ### Missing
 
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
-- **Artifacts (minted programs + build pipeline).** The other half of
-  "realization = artifacts + Nix wiring": generate mints named source texts
-  (a Rust main.rs, a Haskell file) at the pinned generation event; run wraps
-  them deterministically in Nix build recipes (writeText +
-  buildRustPackage/...); the value language gains one reference form,
-  `${artifact.<name>}` (a name, not a computation, same physics as
-  `${pkgs...}`). This is where marked glue lands: model-authored computation,
-  visibly downgraded rigor, covered by the behavioral gate (artifact builds;
-  VM asserts it runs). Docker locally via dockerTools (just another
-  derivation); pushing in CI crosses the Heile-Welt boundary (registry state,
-  secrets) and lands later as coping, not kernel physics. Invariant preserved:
-  the model writes source only at generate; run never invents a byte.
+- **Artifacts (program-derived source, built and run in the config).** A
+  first-class realization path, and explicitly *not* glue. A Solution can
+  require a real program (an HTTP server, say); the artifact is *derived from
+  the program* exactly as the engine and the module are, built by a Nix
+  derivation, and wired into a service. The program stays the single source of
+  truth; the artifact is one more derived thing hanging off it. Shape:
+  `generate` (AI, once) mints the artifact definition alongside the engine and
+  tests, all pinned and fingerprinted; `print`/`run` (no AI) realize the
+  program into a module that builds the artifact
+  (`writeText`/`writeShellScriptBin`/`buildGoModule`/...) and runs it
+  (`systemd.services.<name>.ExecStart = ${artifact.<name>}`). The value
+  language gains one reference form, `${artifact.<name>}` (a name, same physics
+  as `${pkgs...}`), and realize grows the ability to emit a build definition
+  (a `let`-bound derivation), not only flat option assignments. Invariants
+  hold: AI runs only at generate; build and run stay deterministic and offline;
+  the artifact source is pinned like the engine, with its `@gen` stamp; the
+  behavioral gate covers it (artifact builds, VM asserts the service runs).
+  Design fork to pin when built: the engine realizes artifact source
+  deterministically from decisions (source templates with holes, so value edits
+  flow through) versus generate baking a fixed source blob. The templated path
+  is the one consistent with edit-tolerance -- value edits flow, a shape change
+  re-enters generate, the same two-phase story as the engine itself -- so it is
+  the leaning. Not a separate "runnable binary" kind: installing a package or
+  binary is ordinary config (`environment.systemPackages`). Docker locally via
+  dockerTools is just another derivation; pushing to a registry in CI crosses
+  the Heile-Welt boundary and lands later as coping, not kernel physics.
 - **Activation verb: DONE, as the `print`/`run` split.** The CLI now separates
   emitting from running (superseding the planned `lips up`): `lips print
   <program>` is the pure deterministic printer (crystallize -> realize ->
