@@ -36,6 +36,7 @@ import           System.Exit             (exitSuccess)
 import           System.IO
 import           Text.Read               (readMaybe)
 
+import Lips.Identity              (langPath)
 import Lips.Kernel.Lang.Diagnose (diagnose)
 import Lips.Kernel.Lang.Store     (EngineData (..), readLang)
 import Lips.Lsp.Derive
@@ -158,9 +159,13 @@ changeText = parseMaybe $ withObject "p" $ \p -> do
     (c : _) -> withObject "change" (.: "text") c
     []      -> fail "no content changes"
 
+-- | Load the program's shared language, resolved by extension (a program
+-- @ledger.backup@ reads @backup.lang@ beside it), matching the CLI. Completion
+-- and diagnostics are pattern-level (front half), so no @<self>@ binding is
+-- needed here.
 loadLang :: FilePath -> IO (Maybe EngineData)
 loadLang path = do
-  msrc <- tryReadFile (path <> ".lang")
+  msrc <- tryReadFile (langPath path)
   pure $ case msrc of
     Just src -> either (const Nothing) Just (readLang src)
     Nothing  -> Nothing
