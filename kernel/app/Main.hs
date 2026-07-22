@@ -18,6 +18,7 @@
 module Main (main) where
 
 import           Control.Exception  (IOException, try)
+import           Control.Monad      (forM, forM_)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -25,17 +26,19 @@ import qualified Data.Text.IO       as TIO
 import           System.Environment (getArgs, getProgName, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, stderr, stdout)
+import           System.FilePath    (takeFileName)
 import           System.Process     (callCommand, readProcessWithExitCode)
 import           Text.Read          (readMaybe)
 
-import           Lips.Kernel.Engine.Data       (toDemand, toRule)
+import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
+import           Lips.Identity                 (artifactsPath, decisionsPath, directionPath, expectPath, generationPath, instanceName, langPath, languageName)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
-import           Lips.Kernel.Expect     (Expect (..), checkValues, evalExpr, expectedValue, readExpect, renderExpect)
+import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkValues, evalExpr, expectedValue, readExpect, renderExpect)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
@@ -66,14 +69,15 @@ main = do
     ["check", file]      -> checkLoose file
     ["lsp"]              -> runLsp
     ("generate" : rest)  -> case parseGenerate rest of
-      Just (conf, mmodel, file) -> generate conf mmodel file
-      Nothing                  -> usage >> exitFailure
+      Just (conf, mmodel, fs) -> generate conf mmodel fs
+      Nothing                 -> usage >> exitFailure
     _                    -> usage >> exitFailure
 
 -- | Parse @generate@ arguments: an optional @--confidence <0..1>@ flag in any
--- position, then @[model] <program-file>@. A malformed or out-of-range
--- threshold, or the wrong number of positionals, fails loud (returns Nothing).
-parseGenerate :: [String] -> Maybe (Double, Maybe String, FilePath)
+-- position, then @[model] <program-file>...@ -- one or more programs (all of
+-- one language, checked later). A malformed threshold or no program fails
+-- loud (returns Nothing).
+parseGenerate :: [String] -> Maybe (Double, Maybe String, [FilePath])
 parseGenerate = go Nothing []
   where
     go _ pos ("--confidence" : v : rest)
@@ -83,26 +87,31 @@ parseGenerate = go Nothing []
     go conf pos (a : rest)       = go conf (pos ++ [a]) rest
     go conf pos []               = finish (maybe defaultConfidence id conf) pos
     -- No model given: omit --model so pi's own configured default applies;
-    -- the model pi reports is read back and recorded. An explicit model still
-    -- works as the optional first positional.
-    finish c [file]        = Just (c, Nothing, file)
-    finish c [model, file] = Just (c, Just model, file)
-    finish _ _             = Nothing
+    -- the model pi reports is read back and recorded. A leading positional is
+    -- taken as the model when it looks like a model id (a @provider/id@ whose
+    -- final component has no dot) and at least one program follows; every
+    -- other positional is a program file.
+    finish _ []            = Nothing
+    finish c (a : rest)
+      | not (null rest), looksLikeModel a = Just (c, Just a, rest)
+      | otherwise                         = Just (c, Nothing, a : rest)
+    looksLikeModel s = '/' `elem` s && '.' `notElem` takeFileName s
 
 usage :: IO ()
 usage = do
   name <- T.pack <$> getProgName
   TIO.hPutStr stderr $ T.unlines
-    [ "lips turns a plain-English .loose program into a NixOS configuration."
+    [ "lips turns a plain-English <instance>.<language> program into a NixOS configuration."
     , ""
     , "usage:"
-    , "  " <> name <> " generate [--confidence <0..1>] [model] <program.loose>"
-    , "      Build the program's setup and verify it. The one step that uses AI."
-    , "  " <> name <> " print <program.loose>"
+    , "  " <> name <> " generate [--confidence <0..1>] [model] <program>..."
+    , "      Mint the language from one or more example programs and verify each."
+    , "      The one step that uses AI."
+    , "  " <> name <> " print <program>"
     , "      Show the NixOS configuration the program produces."
-    , "  " <> name <> " run <program.loose>"
+    , "  " <> name <> " run <program>"
     , "      Boot that configuration as a throwaway local VM."
-    , "  " <> name <> " check <program.loose>"
+    , "  " <> name <> " check <program>"
     , "      Verify the program still produces what it promised."
     ]
 
@@ -207,11 +216,11 @@ checkLoose file = do
 -- module. Reached only after diagnostics confirm the program crystallizes.
 expectGate :: FilePath -> EngineData -> Text -> IO ()
 expectGate file eng program = do
-  expSrc <- tryRead (file <> ".expect")
+  expSrc <- tryRead (expectPath file)
   case expSrc of
     Nothing  -> TIO.putStrLn
       (T.pack file <> ": crystallizes cleanly; no behavioral contract yet ("
-        <> T.pack file <> ".expect is missing, written by generate).")
+        <> T.pack (expectPath file) <> " is missing, written by generate).")
     Just src -> case readExpect src of
       Left es       -> die (unreadable file ".expect" es)
       Right expects
@@ -220,7 +229,9 @@ expectGate file eng program = do
         | otherwise -> case validate file eng program of
         Left f       -> die (printFail file f)
         Right (base, nixMod) -> do
-          res <- runExpects (stageFromDisk file) expects base nixMod
+          -- Bind <self> in the contract's option paths to this instance, so it
+          -- checks against the realized (already-bound) module.
+          res <- runExpects (stageFromDisk file) (map (bindSelfExpect (instanceName file)) expects) base nixMod
           case res of
             Right () -> TIO.putStrLn (T.pack file <> ": all "
                           <> tshow (length expects) <> " checks pass.")
@@ -256,7 +267,7 @@ renderDiagnosis file d = T.intercalate "\n" (headline : map row (diagLines d) ++
 -- | Load and parse a program's @.lang@, or fail loud naming @generate@.
 loadLangOrDie :: FilePath -> IO EngineData
 loadLangOrDie file = do
-  let langFile = file <> ".lang"
+  let langFile = langPath file
   msrc <- tryRead langFile
   case msrc of
     Nothing  -> die (report
@@ -285,97 +296,113 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Double -> Maybe String -> FilePath -> IO ()
-generate confidence mmodel file = do
-  program <- readProgramOrDie file
-  -- Optional owner taste for this program (mechanism preference, not
-  -- obligations). Rides in the system prompt, so it enters the .generation
-  -- record and genId; absent or blank changes nothing.
-  direction <- tryRead (file <> ".direction")
+generate :: Double -> Maybe String -> [FilePath] -> IO ()
+generate _ _ [] = usage >> exitFailure
+generate confidence mmodel files@(rep : _) = do
+  let lang = languageName rep
+  -- One language per invocation: the grammar is shared, so mixed extensions
+  -- would mean two languages. Fail loud.
+  case [ f | f <- files, languageName f /= lang ] of
+    (_ : _) -> die (report
+      "lips generate mints ONE language at a time, but these programs are not all the same language."
+      [ T.pack f <> " is ." <> T.pack (languageName f) | f <- files ]
+      ("→ generate the ." <> T.pack lang <> " programs together, other languages separately."))
+    [] -> pure ()
+  progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
+  -- Owner taste is language-level (shared); read once from the language path.
+  direction <- tryRead (directionPath rep)
   let prompt = promptWithDirection direction
-  (reply, model) <- callPi mmodel prompt program
+      -- The mint sees the whole example set at once, so the grammar generalizes
+      -- across them (anti-unification): tokens that vary between examples become
+      -- holes, tokens that agree stay literal. One program is the corpus-of-one
+      -- case. The same set is the regeneration corpus below.
+      corpus = T.intercalate "\n"
+        [ "=== program " <> T.pack (takeFileName f) <> " ===\n" <> t | (f, t) <- progs ]
+  (reply, model) <- callPi mmodel prompt corpus
   let (errs, candidates) = parseEngineCandidates reply
       -- A because-note explains a low-confidence item; keyed by shared id, it
       -- never gates the build and never enters the engine.
       notes = [(icId c, r) | c <- candidates, ItemNote r <- [icItem c]]
-      -- Deduce-or-fail: the program is the only source of truth, so an item the
-      -- model cannot confidently derive means the program underspecifies it.
+      -- Deduce-or-fail: the programs are the only source of truth, so an item
+      -- the model cannot confidently derive means they underspecify it.
       unsure = [c | c <- candidates, notNote (icItem c)
                   , let Confidence x = icConfidence c, x < confidence]
       notNote i = case i of { ItemNote _ -> False; _ -> True }
   if not (null errs) || not (null unsure)
-    then die (refusalReport file confidence errs unsure notes)
+    then die (refusalReport rep confidence errs unsure notes)
     else do
       let eng0 = assemble (map icItem candidates)
       -- Validate the engine EXACTLY as it will be persisted: render to .lang and
       -- read it back, so any render/read round-trip drift is caught at mint
       -- time, not on a later `print`. The read-back engine is what we write.
-      case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
-       Left es  -> die (validationReport file ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
-       Right eng -> assertOptionsAdmissible file eng >> case validate file eng program of
-        -- An unmet demand at generate is ambiguous by construction: the kernel is
-        -- domain-blind, so it cannot tell "the program never stated this" from
-        -- "the minted patterns failed to read a value the program does carry."
-        -- Only the author knows which. So name both remedies rather than blame
-        -- one side. (On print/run below it is unambiguous -- an unmet demand
-        -- means an edited-out line -- so that path keeps the plain "answer it".)
-        Left (FailRun (OpenQuestions qs)) -> die (demandGenerateFail file qs)
-        Left f -> die (validationReport file (failureReport file f))
+      eng <- case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
+        Left es -> die (validationReport rep ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
+        Right e -> pure e
+      assertOptionsAdmissible rep eng
+      -- Every program must crystallize, run, and parse as Nix under the shared
+      -- engine: the example set is the regeneration corpus.
+      validated <- forM progs $ \(f, t) -> case validate f eng t of
+        -- An unmet demand at generate is ambiguous by construction (the kernel
+        -- is domain-blind): name both remedies rather than blame one side.
+        Left (FailRun (OpenQuestions qs)) -> die (demandGenerateFail f qs)
+        Left ff -> die (validationReport f (failureReport f ff))
         Right (base, nixModule) -> do
           nixCheck <- nixParses nixModule
           case nixCheck of
-            Left (NixToolMissing e) -> die (nixMissing file "verify the output" "generate" e)
-            Left (NixInvalid why)   -> die (validationReport file ("the configuration lips produced isn't valid Nix:\n" <> why))
-            Right () -> do
-              -- Sources are minted in memory; stage them (not yet on disk) so
-              -- the behavioral gate can evaluate the artifact derivations.
-              let minted = sourcesOf (map icItem candidates)
-              -- Behavioral gate: the realized module must satisfy the
-              -- contract. On regeneration the COMMITTED contract governs (the
-              -- stable spec regeneration may not silently break); on first
-              -- generation the minted assertions bootstrap it.
-              let mintedExpects = expectsOf (map icItem candidates)
-              committed <- tryRead (file <> ".expect")
-              let contract = maybe (Right mintedExpects) readExpect committed
-              case contract of
-                Left es -> die (report
-                  (T.pack file <> ".expect is unreadable, so lips can't verify against it:")
-                  [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
-                  ("→ fix or delete " <> T.pack file <> ".expect, then run generate again."))
-                Right expects
-                 | bad@(_ : _) <- uncheckableExpects (edRules eng) expects ->
-                     die (uncheckableReport file bad)
-                 | otherwise -> do
-                  gate <- runExpects (\dst -> writeSources dst minted) expects base nixModule
-                  case gate of
-                    Left (ToolMissing e) -> die (nixMissing file "verify the output" "generate" e)
-                    Left (EvalFailed e)  -> die (nixEvalFailed file "generate" e)
-                    Left (Violations fs) -> die (report
-                      ("lips built a setup for " <> T.pack file <> ", but it doesn't produce what the program promises:")
-                      fs
-                      ("→ run generate again. If you changed the program on purpose, delete "
-                        <> T.pack file <> ".expect first to accept the new behavior."))
-                    Right () -> do
-                      -- The record is written first-class and every engine line
-                      -- is stamped with its content id: line -> event, checkable
-                      -- by re-hashing the .generation file.
-                      let rec = record model confidence prompt program reply
-                      TIO.writeFile (file <> ".lang") (renderLang (FromGeneration (genId rec)) eng)
-                      TIO.writeFile (file <> ".decisions") (renderBase base)
-                      TIO.writeFile (file <> ".generation") rec
-                      -- Persist minted source only now that the whole loop held.
-                      writeSources (file <> ".artifacts") minted
-                      -- Bootstrap the contract on first generation only; keep
-                      -- the committed spec stable across regenerations.
-                      maybe (TIO.writeFile (file <> ".expect") (renderExpect mintedExpects))
-                            (const (pure ())) committed
-                      -- Prose to stderr so stdout stays the pipeable module.
-                      TIO.hPutStr stderr $ T.unlines
-                        [ "lips set up " <> T.pack file <> " and verified it produces a valid NixOS configuration."
-                        , ""
-                        , "→ preview it:  lips print " <> T.pack file
-                        , "→ boot it:     lips run " <> T.pack file ]
-                      TIO.putStr nixModule
+            Left (NixToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
+            Left (NixInvalid why)   -> die (validationReport f ("the configuration lips produced isn't valid Nix:\n" <> why))
+            Right ()                -> pure (f, base, nixModule)
+      -- Sources are minted in memory; stage them (not yet on disk) so the
+      -- behavioral gate can evaluate the artifact derivations.
+      let minted = sourcesOf (map icItem candidates)
+      -- The contract is language-level. On regeneration the COMMITTED contract
+      -- governs (the stable spec regeneration may not silently break); on first
+      -- generation the minted assertions bootstrap it.
+          mintedExpects = expectsOf (map icItem candidates)
+      committed <- tryRead (expectPath rep)
+      expects <- case maybe (Right mintedExpects) readExpect committed of
+        Left es -> die (report
+          (T.pack (expectPath rep) <> " is unreadable, so lips can't verify against it:")
+          [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
+          ("→ fix or delete " <> T.pack (expectPath rep) <> ", then run generate again."))
+        Right xs -> pure xs
+      case uncheckableExpects (edRules eng) expects of
+        bad@(_ : _) -> die (uncheckableReport rep bad)
+        []          -> pure ()
+      -- The shared contract gates every program, each bound to its own <self>.
+      forM_ validated $ \(f, base, nixModule) -> do
+        gate <- runExpects (\dst -> writeSources dst minted)
+                           (map (bindSelfExpect (instanceName f)) expects) base nixModule
+        case gate of
+          Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
+          Left (EvalFailed e)  -> die (nixEvalFailed f "generate" e)
+          Left (Violations fs) -> die (report
+            ("lips built a setup for " <> T.pack f <> ", but it doesn't produce what the program promises:")
+            fs
+            ("→ run generate again. If you changed the program on purpose, delete "
+              <> T.pack (expectPath rep) <> " first to accept the new behavior."))
+          Right () -> pure ()
+      -- All held: write the shared language once, a crystal per instance. Every
+      -- engine line is stamped with the content id of the .generation record,
+      -- checkable by re-hashing it.
+      let rec = record model confidence prompt corpus reply
+      TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
+      TIO.writeFile (generationPath rep) rec
+      writeSources (artifactsPath rep) minted
+      forM_ validated $ \(f, base, _) -> TIO.writeFile (decisionsPath f) (renderBase base)
+      -- Bootstrap the contract on first generation only; keep the committed
+      -- spec stable across regenerations.
+      maybe (TIO.writeFile (expectPath rep) (renderExpect mintedExpects))
+            (const (pure ())) committed
+      -- Prose to stderr so stdout stays a pipeable module (the first program's).
+      TIO.hPutStr stderr $ T.unlines $
+        [ "lips set up ." <> T.pack lang <> " from " <> tshow (length files)
+            <> " program(s) and verified each produces a valid NixOS configuration."
+        , "" ]
+        ++ [ "→ preview:  lips print " <> T.pack f | (f, _, _) <- validated ]
+      case [ m | (f, _, m) <- validated, f == rep ] of
+        (m : _) -> TIO.putStr m
+        []      -> pure ()
 
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
 -- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
@@ -456,7 +483,10 @@ validate file eng program =
   case crystallize file (edPatterns eng) program of
     Left errs  -> Left (FailRead errs)
     Right base ->
-      case runBase budget (map toRule (edRules eng)) (map toDemand (edDemands eng)) base of
+      -- Language reuse: the shared grammar names its per-instance attrsOf key by
+      -- <self>, bound here to this program's instance name (its file basename).
+      case runBase budget (map (toRule . bindSelf (instanceName file)) (edRules eng))
+                          (map toDemand (edDemands eng)) base of
         Left err        -> Left (FailRun err)
         Right nixModule -> Right (base, nixModule)
 
@@ -565,7 +595,7 @@ writeSources root = mapM_ one
 -- module's @artifacts/@). A no-op when the program has no artifacts.
 stageFromDisk :: FilePath -> FilePath -> IO ()
 stageFromDisk file dst = do
-  _ <- (try (readProcessWithExitCode "cp" ["-rT", file <> ".artifacts", dst] "")
+  _ <- (try (readProcessWithExitCode "cp" ["-rT", artifactsPath file, dst] "")
           :: IO (Either IOException (ExitCode, String, String)))
   pure ()
 
