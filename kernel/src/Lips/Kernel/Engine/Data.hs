@@ -129,14 +129,25 @@ toRule mr =
         , dProv      = FromSource (SourceLoc "" 0)
         , dRationale = Nothing
         }
-    -- An emit-path @<name>@ segment resolves to the key the subject bound;
-    -- a name the subject never captured is an engine defect, loud not silent.
-    fillSeg caps seg = case captureName seg of
-      Nothing -> Right seg
-      Just nm -> case Map.lookup nm caps of
-        Just v  -> Right v
-        Nothing -> Left ("engine rule " <> mrId mr <> ": emit path capture <" <> nm
-                           <> "> is not bound by the subject")
+    -- An emit-path @<name>@ resolves to the key the subject bound. It may be a
+    -- whole segment OR embedded in one (a literal prefix the model composes,
+    -- e.g. an etc filename @http-routes<path>@), so every occurrence is
+    -- substituted. A name the subject never captured, or an unterminated @<@,
+    -- is an engine defect: loud, never a silent literal that would collide.
+    fillSeg caps = go
+      where
+        go s = case T.breakOn "<" s of
+          (before, rest)
+            | T.null rest -> Right before
+            | otherwise   ->
+                let (nm, after) = T.breakOn ">" (T.drop 1 rest)
+                 in if T.null after
+                      then Left ("engine rule " <> mrId mr
+                                   <> ": unterminated <capture> in emit path: " <> s)
+                      else case Map.lookup nm caps of
+                        Just v  -> (\tl -> before <> v <> tl) <$> go (T.drop 1 after)
+                        Nothing -> Left ("engine rule " <> mrId mr <> ": emit path capture <"
+                                           <> nm <> "> is not bound by the subject")
     pick val "value" = Right val
     pick val h
       | Just n <- holeIndex h =

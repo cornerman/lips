@@ -654,6 +654,28 @@ main = hspec $ do
               out `shouldSatisfy` T.isInfixOf "environment.etc.\"/hello\".text = \"200\";"
               out `shouldSatisfy` T.isInfixOf "environment.etc.\"/bye\".text = \"404\";"
 
+    -- A capture may be EMBEDDED in a segment (a literal prefix the model
+    -- composes, e.g. an etc filename http-routes<path>), not only fill a whole
+    -- segment; each route must still get a distinct key (no collision).
+    it "interpolates a <capture> embedded inside an emit-path segment" $ do
+      let r = MapRule "r" Fact ["route", "<path>", "body"]
+                [ Emit ["environment", "etc", "http-routes<path>", "text"] (VStr [PHole "value"]) ]
+          d1 = (mk "d1" "unused" "world" Stated) { dSubject = Subject ["route", "hello", "body"] }
+          d2 = (mk "d2" "unused" "nope"  Stated) { dSubject = Subject ["route", "bye", "body"] }
+      case refine 100 [toRule r] (fromList [d1, d2]) of
+        Right b -> map dSubject (toList b) `shouldMatchList`
+                     [ Subject ["environment", "etc", "http-routeshello", "text"]
+                     , Subject ["environment", "etc", "http-routesbye", "text"] ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    -- Failproof: a <name> in an emit path the subject never bound must fail
+    -- loud (RewriteFailed), never emit a literal <name> that silently collides.
+    it "fails loud on an emit-path capture the subject never bound" $ do
+      let r = MapRule "r" Fact ["route", "<path>", "body"]
+                [ Emit ["environment", "etc", "<missing>", "text"] (VStr [PHole "value"]) ]
+          d1 = (mk "d1" "unused" "world" Stated) { dSubject = Subject ["route", "hello", "body"] }
+      refine 100 [toRule r] (fromList [d1]) `shouldSatisfy` isLeft
+
     it "demand body round-trips" $ do
       let q = DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
       parseDemandBody "q1" (renderDemandBody q) `shouldBe` Right q

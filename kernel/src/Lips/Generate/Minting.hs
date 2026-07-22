@@ -201,6 +201,8 @@ systemPrompt = T.unlines
   , "CAPTURE and whose emit path repeats that <name> where the target option is"
   , "an attrsOf keyed by name:"
   , "  match fact route.<path>.status => environment.etc.<path>.text \"\\\"<value>\\\"\""
+  , "The <name> may also be EMBEDDED in a segment when the key is composed,"
+  , "e.g. environment.etc.http-routes-<path>.text -- every occurrence is filled."
   , "The capture binds each concrete key (/hello, /bye, ...) and fans the one"
   , "rule out to one distinct option slot per item, riding the target's native"
   , "attrsOf merge -- the per-item analogue of <self>. Like <self>, a <capture>"
