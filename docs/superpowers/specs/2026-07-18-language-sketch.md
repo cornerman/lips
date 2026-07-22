@@ -1,6 +1,6 @@
 # Language Sketch: One Application, Three Languages
 
-Companion to `2026-07-18-lipsidea-design.md` (spec v2), executing phase 3 of
+Companion to `DESIGN.md` (spec v2), executing phase 3 of
 its plan: a full application spanning three languages as one decision base,
 plus the meta-decision base of one language. It also resolves the item the
 walk-through carried forward: the deterministic cross-reference form.

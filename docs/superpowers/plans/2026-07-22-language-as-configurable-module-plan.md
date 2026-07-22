@@ -2,7 +2,7 @@
 
 Status: Phase 1 complete and merged to `main` (all gates green): reuse via
 `<self>`, `<instance>.<language>.lips` naming, multi-file generate. Companion
-to `2026-07-18-lipsidea-design.md`
+to `DESIGN.md`
 
 ## Progress (branch `lang-reuse`)
 

@@ -1,9 +1,9 @@
 # lips — Agent Notes
 
 Read `README.md` first (the loop, the files). Design truth lives in
-`docs/superpowers/specs/2026-07-18-lipsidea-design.md`; its section 13 is the
-milestone ledger (done / partial / missing) and must be updated when a
-milestone lands. Plans and surveys sit beside it.
+`DESIGN.md` (repo root); its section 13 is the milestone ledger (done /
+partial / missing) and must be updated when a milestone lands. Dated plans
+live in `docs/superpowers/plans/`, surveys in `docs/superpowers/survey/`.
 
 ## The Kernel Knows Nothing (read this first)
 

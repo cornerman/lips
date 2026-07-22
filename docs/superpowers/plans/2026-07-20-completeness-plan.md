@@ -1,6 +1,6 @@
 # Completeness by Construction
 
-Status: planned. Companion to `2026-07-18-lipsidea-design.md`. Resolves a class
+Status: planned. Companion to `DESIGN.md`. Resolves a class
 of gap reports (first instance: the nginx/http-server program) by making the
 kernel's closed grammars complete over their domains, so expressiveness gaps
 stop recurring one feature at a time.

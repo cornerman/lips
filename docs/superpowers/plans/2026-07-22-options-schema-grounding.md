@@ -29,7 +29,7 @@
 - Modify `kernel/app/Main.hs` — in the `generate` path, load `$LIPS_OPTIONS_JSON`, run `checkEmits`, reject on error.
 - Modify `flake.nix` — add `packages.nixosOptionsJson` (the pinned NixOS manual `optionsJSON` derivation).
 - Modify `justfile` — the `generate` and `check-expect` recipes export `LIPS_OPTIONS_JSON` from that package.
-- Modify `kernel/README.md` and `docs/superpowers/specs/2026-07-18-lipsidea-design.md` (section 13 ledger) — document the new acceptance check.
+- Modify `kernel/README.md` and `DESIGN.md` (section 13 ledger) — document the new acceptance check.
 
 Dependencies between tasks: Task 2 (`Lips.Nix.Options`) consumes Task 1's types. Task 3 (wiring) consumes Tasks 1 and 2. Task 4 (flake) is independent Nix work but Task 3's tests use a fixture, not the flake output, so Task 4 can land last. Task 5 is docs.
 
@@ -541,7 +541,7 @@ git commit -m "flake: pinned nixos option schema; justfile wires LIPS_OPTIONS_JS
 
 **Files:**
 - Modify: `kernel/README.md` (the paragraph describing what `generate` validates)
-- Modify: `docs/superpowers/specs/2026-07-18-lipsidea-design.md` (section 13 ledger)
+- Modify: `DESIGN.md` (section 13 ledger)
 
 - [ ] **Step 1: Update the kernel README**
 
@@ -559,7 +559,7 @@ Expected: PASS, `-Wall` clean.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add kernel/README.md docs/superpowers/specs/2026-07-18-lipsidea-design.md
+git add kernel/README.md DESIGN.md
 git commit -m "docs: option-schema check in generate acceptance (ledger + README)"
 ```
 

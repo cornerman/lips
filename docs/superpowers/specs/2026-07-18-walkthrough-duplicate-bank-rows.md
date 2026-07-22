@@ -1,6 +1,6 @@
 # Walk-Through: Duplicate Bank Rows
 
-Companion to `2026-07-18-lipsidea-design.md` (spec v2), executing phase 2 of
+Companion to `DESIGN.md` (spec v2), executing phase 2 of
 its plan: one feature traced end-to-end through the generate/run loop, every
 stage written as a decision base. This document doubles as the first draft of
 the canonical text form; the form's extracted rules close the document.

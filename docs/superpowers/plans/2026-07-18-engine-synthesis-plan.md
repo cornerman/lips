@@ -1,7 +1,7 @@
 # Engine Synthesis: Plan for Minting the Engine's Back Half
 
 Status: designed, ready to implement. Companion to
-`2026-07-18-lipsidea-design.md` (spec v2, section 13: the central gap) and
+`DESIGN.md` (spec v2, section 13: the central gap) and
 `2026-07-18-crystallization-plan.md`.
 
 ## Why This Matters

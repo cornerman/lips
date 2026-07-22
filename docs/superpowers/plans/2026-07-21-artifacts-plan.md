@@ -1,6 +1,6 @@
 # Artifacts: Program-Derived Builds Run in the Config
 
-Status: planned, not started. Companion to `2026-07-18-lipsidea-design.md`
+Status: planned, not started. Companion to `DESIGN.md`
 (spec v2, milestone ledger section 13, "Artifacts" under Missing). Written so
 the work resumes from this document alone.
 

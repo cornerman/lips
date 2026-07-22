@@ -401,7 +401,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   and generalize-across-programs). Proven live (opus-4-8 + KVM): the backup
   language minted from `ledger`+`photos`, feed and http migrated, all four
   programs `check` clean, `vm-smoke` and `artifact-vm` green. Full design in
-  `2026-07-22-language-as-configurable-module-plan.md`.
+  `docs/superpowers/plans/2026-07-22-language-as-configurable-module-plan.md`.
 
 - **Option-schema grounding (generate acceptance).** `generate` checks every
   minted rule's option path and value type against the pinned nixpkgs
@@ -439,7 +439,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `examples/hello-server.loose` -> opus mints a Go engine + `main.go` ->
   realize -> `buildGoModule` compiles it offline -> the `hello` service boots
   in a VM and answers `curl :8080` with the program's text. Full design in
-  `2026-07-21-artifacts-plan.md`.
+  `docs/superpowers/plans/2026-07-21-artifacts-plan.md`.
 - **Kernel calculus.** `Decision`, decision base with merge-by-strength and
   conflict-with-both-provenances, refinement to fixpoint with
   orthogonality-by-construction and stamped provenance, demands and open
@@ -765,7 +765,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   (Heile-Welt) -- never for a missing grammar case. Each closed grammar is
   designed complete over its domain. Order: value completeness, then template
   completeness, then glue. First driver: the nginx gap report. Full design in
-  `2026-07-20-completeness-plan.md`.
+  `docs/superpowers/plans/2026-07-20-completeness-plan.md`.
   - Value completeness: DONE (8ffd70d). `Value` now covers the Nix value
     algebra minus computation -- string, list, bool, int, float, path, null --
     and a typed hole `<value:int|bool|float|path>` (and `<value.N:...>`) fills

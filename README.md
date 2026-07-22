@@ -147,6 +147,6 @@ recreate. That is the whole point.
 - `kernel/` is the deliverable: the decision calculus and its conformance
   suite. Module map in `kernel/README.md`.
 - `examples/` holds demonstration programs with their minted engines.
-- `docs/superpowers/specs/` holds the design doc,
-  `2026-07-18-lipsidea-design.md`, whose section 13 tracks milestones.
+- `DESIGN.md` (repo root) is the living design doc; its section 13 tracks
+  milestones.
 - `justfile` lists every command. Run `just` to see them.

@@ -1,7 +1,7 @@
 # Crystallization: Plan for the AI-Free Edit Loop
 
 Status: designed, ready to implement. Companion to
-`2026-07-18-lipsidea-design.md` (spec v2), detailing the next prototype
+`DESIGN.md` (spec v2), detailing the next prototype
 milestone. Written so the work can be resumed from this document alone.
 
 ## Why This Matters
