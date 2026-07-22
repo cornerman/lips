@@ -137,13 +137,20 @@ systemPrompt = T.unlines
   , "inside it is a VALUE, not a Nix expression -- the kernel rejects"
   , "computation. The value forms are the Nix value algebra minus computation:"
   , "a string \\\"...\\\", a list [ ... ], true, false, null, an integer, a float,"
-  , "a path (/x or ./x), and a TYPED HOLE (below). A string rhs looks like"
-  , "\"\\\"<value>\\\"\" and a list rhs looks like \"[ \\\"timers.target\\\" ]\"."
+  , "a path (/x or ./x), a TYPED HOLE (below), and a bare ${pkgs.<name>} or"
+  , "${artifact.<name>} REFERENCE. A string rhs looks like \"\\\"<value>\\\"\" and a"
+  , "list rhs looks like \"[ \\\"timers.target\\\" ]\". A list of PACKAGES (an"
+  , "option like environment.systemPackages, or writeShellApplication's"
+  , "runtimeInputs) holds bare references, not strings:"
+  , "\"[ ${pkgs.curl} ${artifact.<name>} ]\" -- each element is a derivation."
   , "Inside Nix strings only two things beyond literal text parse: the holes"
   , "<value> (the matched decision's assertion) / <value.N> (its Nth"
   , "whitespace-separated token, 1-based; use it when a pattern's assertion"
-  , "joins several holes) and ${pkgs.<name>} package references. No functions,"
-  , "no splitString, no other ${...}. Template holes bind single tokens;"
+  , "joins several holes) and ${pkgs.<name>} package references. Outside a"
+  , "string, a bare ${pkgs.<name>} or ${artifact.<name>} is itself a value (a"
+  , "list element). No functions, no splitString, no other ${...}. Do not quote"
+  , "a package into a string when the option wants a derivation. Template holes"
+  , "bind single tokens;"
   , "punctuation like a trailing period stays outside the hole."
   , ""
   , "TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a"
@@ -305,6 +312,9 @@ parseLine line = do
   (idTok, body0) <- firstToken r1 ("no id after confidence: " <> line)
   conf <- parseConfidence confTok
   let body = T.strip body0
+      -- Name the offending item by id, not by echoing the whole raw line
+      -- (which may carry a multi-line escaped script and reads as noise).
+      located = either (\e -> Left (e <> " (item " <> idTok <> ")")) Right
   -- Every item is keyword-led (pattern/match/demand/expect), so the item kind
   -- is read, never guessed. A pattern's template may then begin with any
   -- domain word ("match the invoice ...") without being mistaken for a rule;
@@ -320,7 +330,6 @@ parseLine line = do
                         <> "' (want pattern|match|demand|expect|because) in: " <> line)
   Right (ItemCandidate item (Confidence conf) line idTok)
   where
-    located = either (\e -> Left (e <> " in: " <> line)) Right
     firstWord t = case T.words t of { (w : _) -> w; [] -> "" }
     afterKeyword = T.stripStart . T.drop (T.length ("pattern" :: Text)) . T.stripStart
 

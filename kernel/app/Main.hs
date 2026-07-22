@@ -605,11 +605,12 @@ refusalReport file _threshold errs unsure notes = T.intercalate "\n" $
     grammar
       | null errs = []
       | otherwise =
-          [ "", "The AI produced instructions lips couldn't read:" ]
+          [ "", "The AI wrote something lips can't express yet:" ]
           ++ [ "  - " <> e | e <- errs ]
           ++ [ ""
-             , "→ run generate again. If the same line keeps failing, it's a"
-             , "  capability lips lacks; please report it." ]
+             , "→ this is usually a passing hiccup: run generate again."
+             , "  If the same item keeps failing, lips is missing a capability"
+             , "  it needs here — please report the line above." ]
     underspecified
       | null unsure = []
       | otherwise =
