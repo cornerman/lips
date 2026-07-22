@@ -60,6 +60,10 @@ data EngineItem
   | ItemDemand DemandSpec
   | ItemExpect Expect
   | ItemSource SourceFile
+  -- | A plain-language reason a low-confidence item is unsure. Carries no
+  -- engine meaning (dropped by 'assemble'\/'expectsOf'\/'sourcesOf'); it only
+  -- feeds the refusal message, keyed by the id it shares with its item.
+  | ItemNote Text
   deriving (Eq, Show)
 
 -- | An item the model proposes, with the confidence it attaches to it.
@@ -69,6 +73,7 @@ data ItemCandidate = ItemCandidate
   { icItem       :: EngineItem
   , icConfidence :: Confidence
   , icLine       :: Text
+  , icId         :: Text     -- ^ the line's id token, so a note pairs to its item
   }
   deriving (Eq, Show)
 
@@ -85,14 +90,23 @@ systemPrompt = T.unlines
   , "program and the kernel re-reads it with your patterns, deterministically,"
   , "without you. So: replace EVERY program value with a hole, so edits flow"
   , "without regeneration. The engine you mint is pure data; there is no"
-  , "escape to code. Never guess: where the program underdetermines a choice"
-  , "you cannot justify, give low confidence -- refusal beats invention. Never"
-  , "work around the value grammar (no packing computation into strings); if"
-  , "something is inexpressible, give it low confidence so the kernel is"
+  , "escape to code. Never guess. Route each gap by its kind:"
+  , "  - A missing PROGRAM FACT (a value a human could write in the program and"
+  , "    a pattern could read) is not yours to invent: emit a high-confidence"
+  , "    demand asking for it, AND a pattern that will read the answer line, so"
+  , "    the human states it and re-runs. Prefer this whenever the program is"
+  , "    simply silent about something its setup needs."
+  , "  - A value you must still choose (a free default, or a build input you"
+  , "    cannot deduce) gets LOW confidence -- refusal beats invention -- and a"
+  , "    because-note naming, in one plain sentence, what the human could state"
+  , "    to pin it: <confidence> <id> because \"...\" (same id as the item)."
+  , "Never work around the value grammar (no packing computation into strings);"
+  , "if something is inexpressible, give it low confidence so the kernel is"
   , "extended instead."
   , ""
   , "Output ONLY lines of these forms, no prose, no code fences. Every line"
-  , "names its kind with a leading keyword (pattern|match|demand|expect), so a"
+  , "names its kind with a leading keyword (pattern|match|demand|expect|because),"
+  , "so a"
   , "pattern template may itself begin with any word:"
   , ""
   , "  <confidence> <id> pattern <template> => <kind> <subject> <strength> \"<assertion>\""
@@ -249,11 +263,11 @@ sourceHeader l = T.stripSuffix "<<<lips" (T.stripEnd (T.strip l))
 mkSource :: Text -> Text -> Text -> Either Text ItemCandidate
 mkSource prefix rawHeader content = do
   (confTok, r1) <- firstToken prefix ("empty source header: " <> rawHeader)
-  (_idTok, r2)  <- firstToken r1 ("no id in source header: " <> rawHeader)
+  (idTok, r2)   <- firstToken r1 ("no id in source header: " <> rawHeader)
   conf          <- parseConfidence confTok
   case T.words r2 of
     ["source", name, relpath] ->
-      Right (ItemCandidate (ItemSource (SourceFile name relpath content)) (Confidence conf) rawHeader)
+      Right (ItemCandidate (ItemSource (SourceFile name relpath content)) (Confidence conf) rawHeader idTok)
     _ -> Left ("source header must be '<confidence> <id> source <name> <relpath> <<<lips': " <> rawHeader)
 
 -- | Group parsed items into an engine (the @.lang@ artifact). Expects are not
@@ -301,13 +315,23 @@ parseLine line = do
     "match"   -> ItemRule    <$> located (parseRuleBody   idTok body)
     "demand"  -> ItemDemand  <$> located (parseDemandBody idTok body)
     "expect"  -> ItemExpect  <$> located (parseExpectBody idTok body)
+    "because" -> ItemNote    <$> located (parseNoteBody body)
     other     -> Left ("unknown item kind '" <> other
-                        <> "' (want pattern|match|demand|expect) in: " <> line)
-  Right (ItemCandidate item (Confidence conf) line)
+                        <> "' (want pattern|match|demand|expect|because) in: " <> line)
+  Right (ItemCandidate item (Confidence conf) line idTok)
   where
     located = either (\e -> Left (e <> " in: " <> line)) Right
     firstWord t = case T.words t of { (w : _) -> w; [] -> "" }
     afterKeyword = T.stripStart . T.drop (T.length ("pattern" :: Text)) . T.stripStart
+
+-- | The reason inside a @because "<reason>"@ line: the single quoted string
+-- after the keyword. Fails loud on a missing or unquoted reason.
+parseNoteBody :: Text -> Either Text Text
+parseNoteBody body =
+  let r = T.stripStart (T.drop (T.length ("because" :: Text)) (T.stripStart body))
+  in case T.stripPrefix "\"" (T.stripEnd r) >>= T.stripSuffix "\"" of
+       Just inner -> Right inner
+       Nothing    -> Left "because note must be a quoted reason: because \"...\""
 
 firstToken :: Text -> Text -> Either Text (Text, Text)
 firstToken t err =

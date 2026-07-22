@@ -359,6 +359,20 @@ main = hspec $ do
           (errs, _) = parseEngineCandidates reply
       length errs `shouldBe` 1
 
+    it "parses a because-note (reason keyed to its item's id, no engine meaning)" $ do
+      -- A because-note explains a low-confidence item; it shares that item's id
+      -- and contributes nothing to the engine (dropped by assemble).
+      let reply = T.unlines
+            [ "0.4 r1 match fact art.hash => artifact.a.args.vendorHash \"\\\"<value>\\\"\""
+            , "0.4 r1 because \"the program never states the vendor hash\""
+            ]
+          (errs, cs) = parseEngineCandidates reply
+      errs `shouldBe` []
+      [icId c | c <- cs] `shouldBe` ["r1", "r1"]
+      [r | c <- cs, ItemNote r <- [icItem c]]
+        `shouldBe` ["the program never states the vendor hash"]
+      length (edRules (assemble (map icItem cs))) `shouldBe` 1
+
   describe "behavioral contract (ledger 13: .expect relational gate)" $ do
     let dec subj a = Decision (DecisionId "d") (Subject (T.splitOn "." subj)) Fact
                        (Assertion a) Stated (FromSource (SourceLoc "p" 1)) Nothing
@@ -879,6 +893,8 @@ main = hspec $ do
         , "<value:int>"
         , "demand <subject>"
         , "expect <option.path> from <subject>"
+        , "pattern|match|demand|expect|because"
+        , "because-note"
         ]
 
   -- The optional per-program .direction file steers mint taste. It must ride
