@@ -475,9 +475,32 @@ but the loop around it is incomplete; "missing" means specced, not built.
   the output. Domain-blind: the kernel knows only that a `Concept` does not
   realize, never what "routes" are. Verified end to end on the full
   `http server + routes` program: heading absorbed, dense server line and both
-  dense route lines realized. (Rules still match exact subjects, so ADDING a
-  route instance needs regeneration; instance-reuse is the open "language as a
-  configurable module" plan.)
+  dense route lines realized. (Per-item value-keying -- several routes in ONE
+  program, each keyed by its path -- is the "value-keyed options" milestone
+  below; cross-program instance reuse is the "language as a configurable
+  module" work above.)
+- **Value-keyed options (a per-item attrsOf key from a program value).** A rule
+  subject segment written `<name>` is a capture that binds any concrete segment
+  (`route.<path>.status` matches `route./hello.status`), and the captured key
+  fills the matching `<name>` segment of the emit path
+  (`environment.etc.<path>.text`). So N sibling decisions from ONE program
+  (several routes, mounts, vhosts) fan a SINGLE rule out to N distinct option
+  slots keyed by their own value, riding the target's native `attrsOf` merge --
+  the per-item analogue of the language-level `<self>` instance key. The pattern
+  side already emits value-bearing subjects (`peSubject` holes), so the change
+  is confined to the rule side: `toRule` gains subject-family matching with
+  capture bindings and emit-path fill (`Kernel/Engine/Data.hs`), and `realize`
+  string-quotes a path segment that is not a bare Nix identifier
+  (`environment.etc."httpserver/hello".text`). Nothing else moves: a capture
+  matches only a schema `"*"` placeholder, so keying a non-`attrsOf` option is
+  rejected at generate (`UnknownOption`) -- a free correctness guard -- and the
+  value grammar, crystallize, and pattern layers are untouched. Existing
+  engines realize byte-identically (instance names stay bare). The mint prompt
+  teaches the model to key into a REAL `attrsOf` option instead of folding
+  items into one fixed option or inventing a table item kind. A capture reaches
+  the emit path only; the value still comes from `<value>`/`<value.N>`. Verified
+  end to end (crystallize -> refine -> realize): two routes fan out to two
+  path-keyed `environment.etc` entries.
 - **Generate boundary plumbing.** Model call routed through `pi` print mode;
   deduce-or-fail confidence threshold, exposed as `lips generate
   [--confidence <0..1>] [model] <program>` (default 0.7, pinned into the
