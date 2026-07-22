@@ -431,6 +431,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
   (`crystallize`) and validates by a full run before writing anything. `run`
   takes the loose program directly; value and instance edits flow through with
   no model (verified offline). Escaping edits and missing language fail loud.
+- **Multi-fact patterns (a dense line states several facts).** A pattern emits
+  one OR MORE decisions per matched line, `;`-separated in the `.lang` body
+  (mirroring the rule back half): `http server in <lang> on port <port>` fixes
+  both `server.language` and `http.port` from one line. A line matches exactly
+  one pattern, so before this a demand on the second fact of a dense line could
+  never be met -- generate then wrongly told the author to state a value the
+  program already carried. The base is keyed by decision id, so a multi-emit
+  line gives each decision a distinct `d<n>.<k>` id (a sole emit keeps the bare
+  `d<n>`, so older single-emit engines read and render byte-identically). The
+  quote-aware ` ; ` split lets an assertion contain `; `. Verified end to end:
+  the dense line crystallizes to two decisions and realizes both options.
 - **Generate boundary plumbing.** Model call routed through `pi` print mode;
   deduce-or-fail confidence threshold, exposed as `lips generate
   [--confidence <0..1>] [model] <program>` (default 0.7, pinned into the
