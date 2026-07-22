@@ -609,8 +609,12 @@ refusalReport file _threshold errs unsure = T.intercalate "\n" $
           ++ [ "  - " <> icLine c <> "   [confidence " <> conf c <> "]" | c <- unsure ]
           ++ [ ""
              , "→ state the missing detail in " <> T.pack file <> " and run again."
-             , "  If the choice is genuinely free, lower the bar: --confidence 0.5" ]
+             , "  If the choice is genuinely free, lower the bar: --confidence " <> suggestedBar ]
     conf c = let Confidence x = icConfidence c in tshow x
+    -- Suggest the lowest dropped confidence itself: the filter keeps items with
+    -- confidence >= threshold, so this bar admits every currently-unsure item
+    -- (and no lower). A constant hint could repeat the value the user just used.
+    suggestedBar = tshow (minimum [x | c <- unsure, let Confidence x = icConfidence c])
 
 -- | A behavioral check names an option a rule fills with a package or artifact
 -- reference (a derivation, not a program value). Such a check can neither be
