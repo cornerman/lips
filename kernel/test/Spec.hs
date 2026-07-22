@@ -24,6 +24,7 @@ import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
+import Lips.Kernel.OptionType
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
@@ -1032,6 +1033,50 @@ main = hspec $ do
         let orig = [surface p1t loc, surface p2t sched]
             dup  = orig ++ [surface p1t loc]
          in fmap opts (runProg (T.unlines dup)) === fmap opts (runProg (T.unlines orig))
+
+  -- Option-schema grounding (steal #1): every minted rule must fill an option
+  -- that exists in the target schema, with a value of a compatible type. The
+  -- check is domain-blind (a typed OptionSchema); the NixOS specifics live in
+  -- Lips.Nix.Options.
+  describe "option-schema check (rules vs the target's typed options)" $ do
+    let optRule rid pth rhs =
+          MapRule { mrId = rid, mrKind = Fact, mrSubject = ["s"]
+                  , mrEmits = [Emit { emPath = pth, emRhs = rhs }] }
+        schema = Map.fromList
+          [ (["services", "x", "port"], OTInt)
+          , (["services", "x", "host"], OTString) ]
+
+    it "accepts an int hole for an integer option" $
+      valueMatches OTInt (VHole HInt "value") `shouldBe` True
+    it "rejects a quoted string for an integer option" $
+      valueMatches OTInt (VStr [PHole "value"]) `shouldBe` False
+    it "accepts a string value for a string option" $
+      valueMatches OTString (VStr [PHole "value"]) `shouldBe` True
+    it "accepts a bool hole for a boolean option" $
+      valueMatches OTBool (VHole HBool "value") `shouldBe` True
+    it "checks the list element type" $ do
+      valueMatches (OTListOf OTString) (VList [VStr [PLit "x"]]) `shouldBe` True
+      valueMatches (OTListOf OTInt)    (VList [VStr [PHole "v"]]) `shouldBe` False
+    it "accepts any value for an unmodelled type (OTOther is unconstrained)" $
+      valueMatches (OTOther "submodule") (VBool True) `shouldBe` True
+
+    it "passes when every option exists and types match" $
+      checkEmits schema
+        [ optRule "r1" ["services", "x", "port"] (VHole HInt "value")
+        , optRule "r2" ["services", "x", "host"] (VStr [PHole "value"]) ]
+        `shouldBe` []
+    it "flags an unknown option" $
+      checkEmits schema [ optRule "r3" ["services", "x", "nope"] (VBool True) ]
+        `shouldBe` [ UnknownOption "r3" ["services", "x", "nope"] ]
+    it "flags a type mismatch" $
+      checkEmits schema [ optRule "r4" ["services", "x", "port"] (VStr [PHole "value"]) ]
+        `shouldBe` [ TypeMismatch "r4" ["services", "x", "port"] OTInt (VStr [PHole "value"]) ]
+    it "echoes exactly the bogus option in a mixed rule set (deduce-or-fail)" $ do
+      let sch  = Map.fromList [ (["services", "restic", "backups", "x", "paths"], OTListOf OTString) ]
+          good = optRule "r1" ["services", "restic", "backups", "x", "paths"] (VList [VStr [PHole "value"]])
+          bad  = optRule "r2" ["services", "restic", "backups", "x", "nonsuch"] (VStr [PHole "value"])
+      map renderOptionError (checkEmits sch [good, bad])
+        `shouldBe` ["rule r2: unknown NixOS option services.restic.backups.x.nonsuch"]
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
