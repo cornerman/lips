@@ -705,7 +705,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
     and a typed hole `<value:int|bool|float|path>` (and `<value.N:...>`) fills
     a non-string option from a program token, coerced and fail-loud, injection
     still closed. Deferred: `VAttr` literal (nested attrsets are expressible as
-    deeper option paths). Unblocks the int-typed port.
+    deeper option paths). Unblocks the int-typed port. Extended (da84ab3): a
+    `${pkgs.<path>}`/`${artifact.<name>}` reference is now a first-class value
+    (`VRef`), not only a string piece, so a list of derivations (an
+    `environment.systemPackages`, a `writeShellApplication` `runtimeInputs`) is
+    expressible as `[ ${pkgs.curl} ${artifact.<name>} ]`. Persistence and
+    realization diverge here for the first time: `renderValue` keeps the
+    canonical `${...}` form (so `.lang` round-trips through `parseValue`), while
+    a new `renderRealized` emits the bare `pkgs.curl`/`artifact.weather` the Nix
+    module needs (a list holds derivations, not interpolations). `realize`'s
+    `artifactRefs` became quote-aware to catch a bare `artifact.<name>` list
+    element while still ignoring the literal token inside a string.
   - Template completeness: DONE for the nginx case (d4c4468). The tokenizer is
     quote-aware: a `"..."` span is one token whose surface is its inner text
     (quotes dropped, spaces kept), so a normal hole captures a quoted value,
