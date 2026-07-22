@@ -21,7 +21,7 @@ import Lips.Kernel.Base            (fromList)
 import Lips.Kernel.Demand          (Demand (..), openQuestions)
 import Lips.Kernel.Engine.Data     (toDemand)
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..), classifyLines)
-import Lips.Kernel.Lang.Lang       (EngineData (..))
+import Lips.Kernel.Lang.Store       (EngineData (..))
 
 -- | A whole-program authoring report.
 data Diagnosis = Diagnosis

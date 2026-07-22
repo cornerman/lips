@@ -18,7 +18,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Expect` | ledger 13 | the `.expect` behavioral contract: relational option-value assertions, parsed/rendered/judged (pure) |
 | `Lips.Kernel.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
-| `Lips.Kernel.Lang.Lang` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
+| `Lips.Kernel.Lang.Store` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
 | `Lips.Kernel.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |
 | `Lips.Kernel.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int; holes and `${pkgs...}` refs only) -- computation and injection unrepresentable |
 | `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |

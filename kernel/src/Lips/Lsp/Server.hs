@@ -37,7 +37,7 @@ import           System.IO
 import           Text.Read               (readMaybe)
 
 import Lips.Kernel.Lang.Diagnose (diagnose)
-import Lips.Kernel.Lang.Lang     (EngineData (..), readLang)
+import Lips.Kernel.Lang.Store     (EngineData (..), readLang)
 import Lips.Lsp.Derive
 
 -- | A decoded JSON-RPC message: its @id@ (present on a request, absent on a

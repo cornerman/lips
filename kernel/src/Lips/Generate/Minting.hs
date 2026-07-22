@@ -37,7 +37,7 @@ import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), parseD
 import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Kernel.Expect          (Expect (..), parseExpectBody)
-import Lips.Kernel.Lang.Lang        (EngineData (..), parsePatternBody)
+import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
 
 -- | A generated source file for an artifact: its artifact name, the relative

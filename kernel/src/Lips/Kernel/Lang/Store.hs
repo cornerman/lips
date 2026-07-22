@@ -18,7 +18,7 @@
 -- checked on read, so 'applyPattern' is total. Rule and demand sub-grammars
 -- live in 'Lips.Kernel.Engine.Data'. The engine round-trips:
 -- @readLang . renderLang == Right@.
-module Lips.Kernel.Lang.Lang
+module Lips.Kernel.Lang.Store
   ( EngineData (..)
   , renderLang
   , readLang

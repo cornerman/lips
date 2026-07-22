@@ -41,7 +41,7 @@ import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
-import           Lips.Kernel.Lang.Lang         (EngineData (..), readLang, renderLang)
+import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.OptionType        (checkEmits, renderOptionError)
 import           Lips.Nix.Options              (parseNixOptionsJson)
 import           Lips.Lsp.Server               (runLsp)

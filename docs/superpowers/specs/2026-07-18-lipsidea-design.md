@@ -514,8 +514,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   boundary. So there are two real tiers, not four peers. There is no
   per-problem engine *code*: an engine is data (`.lang`); the only
   engine-related code is the domain-blind interpreter in `Kernel/Engine/`.
-  (`Kernel.Lang.Lang` is a cosmetic doubled name, the `.lang` store module;
-  harmless, not yet renamed.)
+  (The `.lang` store module is `Kernel.Lang.Store`, renamed from the earlier
+  doubled `Kernel.Lang.Lang`.)
 
 - **Repository layout and tooling.** `kernel/` is the pure deliverable (the
   calculus reference implementation `src/`, the CLI `app/`, the conformance

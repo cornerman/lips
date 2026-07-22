@@ -35,7 +35,7 @@ import Lips.Generate.Record (genId, record)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
-import Lips.Kernel.Lang.Lang
+import Lips.Kernel.Lang.Store
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 
