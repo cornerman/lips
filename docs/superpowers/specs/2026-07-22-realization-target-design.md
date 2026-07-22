@@ -52,17 +52,26 @@ Different:
   home-manager: `programs.*`, `systemd.user.services.*`, `home.packages`,
   `home.file.*`, `xdg.*`, one user's `$HOME`.
 - **Grounding schema.** NixOS grounds against the pinned nixpkgs `optionsJSON`
-  (the existing "option-schema grounding" milestone). home-manager grounds
-  against home-manager's own `optionsJSON`, a separate schema that needs
-  home-manager pinned as an input.
-- **Evaluator.** NixOS: `nixpkgs.lib.nixosSystem` over the `<nixpkgs/nixos>`
-  module set. home-manager: `home-manager.lib.homeManagerConfiguration` over
-  the home-manager module set (not in nixpkgs).
+  (`config.system.build.manual.optionsJSON`, file at
+  `share/doc/nixos/options.json`). home-manager grounds against home-manager's
+  own `optionsJSON` (flake output `packages.<system>.docs-json`, file at
+  `share/doc/home-manager/options.json`). Both are the same JSON shape
+  (`{ "option.path": { type, ... } }`, produced by `nixosOptionsDoc`), so
+  `Lips.Nix.Options.parseNixOptionsJson` parses both unchanged; only the
+  derivation that builds the schema differs per target.
 - **Run semantics.** NixOS builds `config.system.build.vm` and boots a QEMU VM;
-  there is a machine. home-manager builds `config.home.activationPackage` and
-  runs activation (`home-manager switch`); there is no machine to boot.
+  there is a machine. home-manager has no machine to boot (its runtime is a
+  per-user activation), so its `run` is eval-only (section 5).
 - **Scope and privilege.** NixOS: root, whole machine. home-manager:
   unprivileged, per-user.
+
+Notably, the `.expect` gate is **world-blind**: it applies the bare realized
+module with stubbed arguments (`config = {}; lib = {}; pkgs = {}`) and reads
+the assigned values straight from the returned attrset. It verifies that a
+program value reaches a path, never that the path is a real option in a world.
+So neither `check` nor the gate needs a world evaluator, and home-manager adds
+no eval harness. Per-world validity is established once, by grounding at
+generate (section 6).
 
 ## 4. Target as a Generate-Time, Pinned Input
 
@@ -84,39 +93,37 @@ namespace, and to ground minted paths against that world's `optionsJSON`.
   the operative record of the world; `.generation` pins the *event* that chose
   it.
 
-## 5. Target as a Check/Run Harness Selector
+## 5. Run Picks a Harness; Check Is Target-Independent
 
-`check` and `run` do not rewrite paths. The engine already committed to a world
-through its option paths; `--target` there selects only the harness and the
-grounding schema to verify against.
+`check` and `run` never rewrite paths and never re-ground (grounding lives at
+generate; re-grounding here would pull nixpkgs into their closure, breaking the
+standing invariant that nixpkgs never enters `print`/`run`/`check`).
 
-- `lips check [--target <world>] <program>` grounds every emitted option path
-  against that world's `optionsJSON`, evaluates the module through that world's
-  evaluator, and runs the `.expect` gate against it. An engine is "valid for
-  target T" iff every emitted path exists in T's schema; a mismatch fails loud.
-- `lips run [--target <world>] <program>` realizes and then runs: NixOS boots a
-  QEMU VM. home-manager has no machine to boot, so its `run` and its permanent
-  smoke check are **eval-only**: evaluate the `homeManagerConfiguration` and run
-  the same `.expect` containment gate against its `config`, no boot, no
-  activation-package build. This mirrors how `check` already works for NixOS and
-  stays hermetic. The VM proves more (units install and start at runtime), but
-  for a per-user environment that extra proof is not worth pulling home-manager
-  in as an input and adding boot time to CI. A stronger future check can reuse
-  the QEMU harness unchanged via `home-manager.users.<self> = <module>` inside a
-  NixOS VM; deferred.
-- Default: `--target` defaults to the world recorded in `.generation`, so the
-  correct world is used without the owner remembering it. Passing a mismatched
-  world is allowed and fails loud (paths absent), which is a diagnostic, not a
-  feature.
+- `lips check <program>` is target-independent. Its `.expect` gate is
+  world-blind (section 3), so the check is identical whatever world the engine
+  was minted for. No `--target` flag.
+- `lips run <program>` reads the world the engine was minted for from its
+  `.generation` record and picks a harness: `nixos` boots a QEMU VM (today's
+  behavior, unchanged); `home-manager` is **eval-only** -- realize the module
+  and run the world-blind `.expect` gate, no boot, no activation build. There is
+  no machine to boot for a per-user environment, and the world-blind gate
+  already proves the program values reach their paths. A stronger future check
+  can reuse the QEMU harness via `home-manager.users.<self> = <module>` inside a
+  NixOS VM; deferred. An optional `run --target <world>` override exists for
+  completeness but defaults to the recorded world.
 
 ## 6. Generate's Guarantee
 
 `generate` retains "a bad mint costs you nothing," now with the world known:
-crystallize every program, realize to module text, ground every path against
-the target world's schema, and run the `.expect` gate against that world's
-evaluator before writing anything. The world is a generate input, so all four
-checks are available at mint time as they are today; nothing about the
-guarantee weakens.
+crystallize every program, realize to module text, ground every emitted path
+against the target world's `optionsJSON`, and run the world-blind `.expect`
+gate before writing anything. Grounding is the sole per-world step, and it is
+where per-world validity is established: `generate --target home-manager`
+grounds against the home-manager schema, so a rule naming a NixOS-only path is
+rejected at mint time. The target world's schema is built from a pinned flake
+baked into the binary (`LIPS_NIXPKGS_FLAKE` for nixos, a new `LIPS_HM_FLAKE`
+for home-manager), overridable by `LIPS_OPTIONS_JSON`; only `generate` ever
+builds a schema, so print/run/check stay nixpkgs-free.
 
 ## 7. Integration Into `$HOME/nixos`
 
@@ -148,15 +155,22 @@ system eval/build closure. Acceptable on the owner's own machine.
 
 ## 8. Consequences and Risks
 
-- Home-manager needs a parallel harness (its own `optionsJSON` pinning,
-  `homeManagerConfiguration` eval for the `.expect` gate, activation-package
-  run in place of VM boot). This is the ledger's "home-manager realization
-  target" item and is the bulk of the build work; NixOS is already wired.
+- home-manager's only new machinery is a second grounding schema at generate
+  (its `docs-json` `optionsJSON`, pinned via `LIPS_HM_FLAKE`) and an eval-only
+  `run` branch. The `.expect` gate is world-blind, so no `homeManagerConfiguration`
+  eval harness is needed. This is far less than the ledger's original
+  "home-manager realization target" estimate.
 - The dual-label symmetry is decided against: one engine, one world, one label,
   read from the recorded target. This matches the reality that an engine's
   paths validate in exactly one world.
 - Grounding at generate is parameterized by world; the mint prompt gains a
   world-steering section derived from `--target`.
+- Generate's guarantee splits only nominally: grounding still runs at generate,
+  just against the target's schema. Nothing weakens; a bad mint still writes
+  nothing.
+- The invariant "nixpkgs never enters print/run/check" is preserved: grounding
+  stays at generate, and `run` for home-manager is eval-only (no nixpkgs
+  eval, no home-manager eval).
 
 ## 9. Out of Scope
 
