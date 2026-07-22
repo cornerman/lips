@@ -16,14 +16,23 @@
 --     with @\<hole\>@ placeholders that the captured surface forms fill.
 --
 -- Design limits, deliberate for the prototype (crystallization plan,
--- \"settled\"): holes bind a single token; a pattern yields a single decision;
--- holes may appear only in subject and assertion, never replacing a template
--- literal's meaning. These keep matching total and closure-under-hole-edits a
--- property by construction. Multi-token holes and morphology are future work.
+-- \"settled\"): holes bind a single token; holes may appear only in subject and
+-- assertion, never replacing a template literal's meaning. These keep matching
+-- total and closure-under-hole-edits a property by construction. Multi-token
+-- holes and morphology are future work.
+--
+-- A pattern yields ONE OR MORE decisions from a matched line: a single loose
+-- line often states several facts at once (\"http server in go on port 8080\"
+-- fixes both language and port), and a line matches exactly one pattern, so the
+-- pattern must emit every fact that line carries -- otherwise a demand on the
+-- second fact could never be met. Each emit is a 'PatEmit'; a one-emit pattern
+-- is the common case ('patOne').
 module Lips.Kernel.Lang.Pattern
   ( TplTok (..)
   , StrPart (..)
+  , PatEmit (..)
   , Pattern (..)
+  , patOne
   , normalizeToken
   , stripTrailingPunct
   , lexTokens
@@ -52,18 +61,30 @@ data TplTok = TLit Text | THole Text
 data StrPart = SLit Text | SHole Text
   deriving (Eq, Show)
 
--- | A crystallization pattern. Applying it to a matching loose line yields one
--- decision with this kind and strength, its subject and assertion built by
--- filling holes with captured surface tokens.
-data Pattern = Pattern
-  { pId        :: Text
-  , pTemplate  :: [TplTok]
-  , pKind      :: Kind
-  , pStrength  :: Strength
-  , pSubject   :: [StrPart] -- substituted, then split on \".\" into a path
-  , pAssertion :: [StrPart]
+-- | One decision a pattern emits: its kind and strength, plus subject and
+-- assertion as holey strings filled from the matched line's captured tokens.
+data PatEmit = PatEmit
+  { peKind      :: Kind
+  , peStrength  :: Strength
+  , peSubject   :: [StrPart] -- substituted, then split on \".\" into a path
+  , peAssertion :: [StrPart]
   }
   deriving (Eq, Show)
+
+-- | A crystallization pattern: one token template and the decisions a matching
+-- loose line produces. Each 'PatEmit' becomes one decision, its subject and
+-- assertion built by filling holes with captured surface tokens.
+data Pattern = Pattern
+  { pId       :: Text
+  , pTemplate :: [TplTok]
+  , pEmits    :: [PatEmit]
+  }
+  deriving (Eq, Show)
+
+-- | The common single-emit pattern (one loose line to one decision), spelled
+-- out so call sites and tests stay readable.
+patOne :: Text -> [TplTok] -> Kind -> Strength -> [StrPart] -> [StrPart] -> Pattern
+patOne i tpl k s subj assn = Pattern i tpl [PatEmit k s subj assn]
 
 -- | The hole names a pattern binds, in template order.
 holesOf :: Pattern -> [Text]
@@ -138,18 +159,19 @@ matchTemplate toks line
         Just prev | prev == surface -> Just binds
                   | otherwise       -> Nothing
 
--- | Apply a matched pattern's bindings to produce the decision's subject,
--- kind, assertion, and strength. Bindings are complete by construction: every
--- target hole also appears in the template (validated when a pattern is read),
--- so substitution is total.
-applyPattern :: Pattern -> Map Text Text -> (Subject, Kind, Assertion, Strength)
-applyPattern p binds =
-  ( Subject (T.splitOn "." (subst (pSubject p)))
-  , pKind p
-  , Assertion (subst (pAssertion p))
-  , pStrength p
-  )
+-- | Apply a matched pattern's bindings to produce one (subject, kind,
+-- assertion, strength) tuple per emit. Bindings are complete by construction:
+-- every target hole also appears in the template (validated when a pattern is
+-- read), so substitution is total.
+applyPattern :: Pattern -> Map Text Text -> [(Subject, Kind, Assertion, Strength)]
+applyPattern p binds = map one (pEmits p)
   where
+    one e =
+      ( Subject (T.splitOn "." (subst (peSubject e)))
+      , peKind e
+      , Assertion (subst (peAssertion e))
+      , peStrength e
+      )
     subst parts = T.concat (map fill parts)
     fill (SLit t)  = t
     fill (SHole h) = Map.findWithDefault (missing h) h binds

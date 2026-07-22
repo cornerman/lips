@@ -11,7 +11,12 @@
 --
 -- Pattern sub-grammar inside the assertion:
 --
--- > <template>  =>  <kind> <subject> <strength> "<assertion>"
+-- > <template>  =>  <kind> <subject> <strength> "<assertion>" ; <kind> <subject> <strength> "<assertion>" ...
+--
+-- A pattern emits one decision per @ ; @-separated clause (mirroring the rule
+-- back half), so one dense loose line can state several facts. A single emit
+-- renders with no @ ; @, identical to the pre-multi-emit form, so older engines
+-- still read.
 --
 -- Holes are written @\<name\>@ in the template, subject, and assertion. A hole
 -- used in the subject or assertion must be bound by the template; that is
@@ -148,10 +153,13 @@ renderBody :: Pattern -> Text
 renderBody p =
   T.unwords (map renderTplTok (pTemplate p))
     <> " => "
-    <> kindText (pKind p)
-    <> " " <> renderParts (pSubject p)
-    <> " " <> strengthText (pStrength p)
-    <> " " <> quoteParts (pAssertion p)
+    <> T.intercalate " ; " (map renderEmit (pEmits p))
+  where
+    renderEmit e =
+      kindText (peKind e)
+        <> " " <> renderParts (peSubject e)
+        <> " " <> strengthText (peStrength e)
+        <> " " <> quoteParts (peAssertion e)
 
 renderTplTok :: TplTok -> Text
 renderTplTok (TLit t)  = t
@@ -180,30 +188,25 @@ parseBody pid body = do
   let template = filter (not . emptyLit) (map parseTplTok (lexTokens tplStr))
       emptyLit (TLit t) = T.null t
       emptyLit _        = False
-  (kindTok, r1) <- firstToken rest0 ("pattern " <> pid <> ": missing kind")
-  (subjTok, r2) <- firstToken r1 ("pattern " <> pid <> ": missing subject")
-  (strTok,  r3) <- firstToken r2 ("pattern " <> pid <> ": missing strength")
-  kind <- maybe (Left ("pattern " <> pid <> ": unknown kind " <> kindTok)) Right (lookup kindTok kindTable)
-  str  <- maybe (Left ("pattern " <> pid <> ": unknown strength " <> strTok)) Right (lookup strTok strengthTable)
-  assn <- parseQuoted (T.stripStart r3)
-  let subjectParts   = parseHoley subjTok
-      assertionParts = parseHoley assn
-      p = Pattern
-            { pId = pid
-            , pTemplate = template
-            , pKind = kind
-            , pStrength = str
-            , pSubject = subjectParts
-            , pAssertion = assertionParts
-            }
+  emits <- mapM (parseEmit . T.strip) (splitEmits rest0)
+  let p = Pattern { pId = pid, pTemplate = template, pEmits = emits }
   -- Every hole in the target must be bound by the template, so 'applyPattern'
-  -- is total. Reject a pattern that would leave a hole dangling.
+  -- is total. Reject a pattern that would leave any emit's hole dangling.
   let bound = holesOf p
-      used  = [h | SHole h <- subjectParts] ++ [h | SHole h <- assertionParts]
+      used  = concat [ [h | SHole h <- peSubject e] ++ [h | SHole h <- peAssertion e] | e <- emits ]
       loose = filter (`notElem` bound) used
   if null loose
     then Right p
     else Left ("pattern " <> pid <> ": target holes not bound by template: " <> T.intercalate "," loose)
+  where
+    parseEmit t = do
+      (kindTok, r1) <- firstToken t ("pattern " <> pid <> ": missing kind")
+      (subjTok, r2) <- firstToken r1 ("pattern " <> pid <> ": missing subject")
+      (strTok,  r3) <- firstToken r2 ("pattern " <> pid <> ": missing strength")
+      kind <- maybe (Left ("pattern " <> pid <> ": unknown kind " <> kindTok)) Right (lookup kindTok kindTable)
+      str  <- maybe (Left ("pattern " <> pid <> ": unknown strength " <> strTok)) Right (lookup strTok strengthTable)
+      assn <- parseQuoted (T.stripStart r3)
+      Right (PatEmit kind str (parseHoley subjTok) (parseHoley assn))
 
 -- The pattern body is @<template> => <decision>@, but a template may itself
 -- contain @=>@ (route arrows, lambdas and mappings are common domain syntax).
@@ -216,13 +219,25 @@ splitOnSeparator body =
   case [ (b, T.drop 4 a) | (b, a) <- T.breakOnAll " => " body, even (unescapedQuotes b) ] of
     [] -> Nothing
     xs -> Just (last xs)
+
+-- | Split a pattern's emit clauses on the @ ; @ that lies OUTSIDE quotes, so an
+-- assertion may itself contain @"; "@. Leftmost-first, quote-aware; the naive
+-- @T.splitOn@ the rule body uses would mis-split such an emit.
+splitEmits :: Text -> [Text]
+splitEmits t =
+  case [ (b, T.drop 3 a) | (b, a) <- T.breakOnAll " ; " t, even (unescapedQuotes b) ] of
+    []          -> [t]
+    ((b, a) : _) -> b : splitEmits a
+
+-- | Count unescaped double quotes in a prefix, so a scan can tell whether a
+-- split point lies inside a quoted span (odd count) or outside it (even).
+unescapedQuotes :: Text -> Int
+unescapedQuotes t = go (T.unpack t) (0 :: Int)
   where
-    unescapedQuotes t = go (T.unpack t) (0 :: Int)
-      where
-        go []                n = n
-        go ('\\' : _ : cs)   n = go cs n
-        go ('"' : cs)        n = go cs (n + 1)
-        go (_ : cs)          n = go cs n
+    go []              n = n
+    go ('\\' : _ : cs) n = go cs n
+    go ('"' : cs)      n = go cs (n + 1)
+    go (_ : cs)        n = go cs n
 
 parseTplTok :: Text -> TplTok
 parseTplTok w

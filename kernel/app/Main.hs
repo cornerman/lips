@@ -240,8 +240,9 @@ renderDiagnosis file d = T.intercalate "\n" (headline : map row (diagLines d) ++
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
-    row (Matched n _ pid dec) =
-      "  line " <> tshow n <> "  ok        " <> pid <> "  " <> subjectPath (dSubject dec)
+    row (Matched n _ pid decs) =
+      "  line " <> tshow n <> "  ok        " <> pid <> "  "
+        <> T.intercalate ", " (map (subjectPath . dSubject) decs)
     row (Unmatched n t) =
       "  line " <> tshow n <> "  no match  \"" <> t <> "\""
     row (Ambiguous n _ ids) =

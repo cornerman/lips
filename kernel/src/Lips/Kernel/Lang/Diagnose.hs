@@ -28,7 +28,7 @@ data Diagnosis = Diagnosis
   { diagLines   :: [LineOutcome] -- ^ per-line, in source order
   , diagOpen    :: [Text]        -- ^ unmet demands, verbatim questions
   , diagTotal   :: Int           -- ^ non-skipped lines considered
-  , diagMatched :: Int           -- ^ how many crystallized to a decision
+  , diagMatched :: Int           -- ^ how many lines crystallized (one line may yield several decisions)
   }
   deriving (Eq, Show)
 
@@ -38,12 +38,12 @@ data Diagnosis = Diagnosis
 diagnose :: FilePath -> EngineData -> Text -> Diagnosis
 diagnose file eng src =
   let outcomes = classifyLines file (edPatterns eng) src
-      decided  = [d | Matched _ _ _ d <- outcomes]
+      decided  = [d | Matched _ _ _ dsn <- outcomes, d <- dsn]
       base     = fromList decided
       open     = map demQuestion (openQuestions (map toDemand (edDemands eng)) base)
    in Diagnosis
         { diagLines   = outcomes
         , diagOpen    = open
         , diagTotal   = length outcomes
-        , diagMatched = length decided
+        , diagMatched = length [() | Matched{} <- outcomes]
         }
