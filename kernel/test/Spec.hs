@@ -8,6 +8,7 @@
 -- conformance suite named as the source of truth in spec section 12.
 module Main (main) where
 
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -25,6 +26,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Kernel.OptionType
+import Lips.Nix.Options
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
@@ -1077,6 +1079,31 @@ main = hspec $ do
           bad  = optRule "r2" ["services", "restic", "backups", "x", "nonsuch"] (VStr [PHole "value"])
       map renderOptionError (checkEmits sch [good, bad])
         `shouldBe` ["rule r2: unknown NixOS option services.restic.backups.x.nonsuch"]
+
+  -- The NixOS-specific translation from optionsJSON's human type strings to the
+  -- generic OptionType. Lives outside the kernel; the kernel never sees this
+  -- wording.
+  describe "NixOS optionsJSON parsing (Lips.Nix.Options)" $ do
+    it "maps boolean"                $ classifyNixType "boolean" `shouldBe` OTBool
+    it "maps any integer wording"    $ classifyNixType "16 bit unsigned integer; between 0 and 65535 (both inclusive)" `shouldBe` OTInt
+    it "maps signed integer"         $ classifyNixType "signed integer" `shouldBe` OTInt
+    it "maps floating point number"  $ classifyNixType "floating point number" `shouldBe` OTFloat
+    it "maps string"                 $ classifyNixType "string" `shouldBe` OTString
+    it "maps non-empty string"       $ classifyNixType "non-empty string" `shouldBe` OTString
+    it "maps list of string"         $ classifyNixType "list of string" `shouldBe` OTListOf OTString
+    it "keeps a union unmodelled"    $ classifyNixType "null or absolute path" `shouldBe` OTOther "null or absolute path"
+    it "keeps an attrset unmodelled" $ classifyNixType "attribute set of anything" `shouldBe` OTOther "attribute set of anything"
+
+    it "parses the fixture into a typed schema" $ do
+      bytes <- BL.readFile "test/fixtures/options-mini.json"
+      case parseNixOptionsJson bytes of
+        Left e       -> expectationFailure (T.unpack e)
+        Right schema -> do
+          Map.lookup ["services", "x", "enable"]  schema `shouldBe` Just OTBool
+          Map.lookup ["services", "x", "port"]    schema `shouldBe` Just OTInt
+          Map.lookup ["services", "x", "host"]    schema `shouldBe` Just OTString
+          Map.lookup ["services", "x", "paths"]   schema `shouldBe` Just (OTListOf OTString)
+          Map.lookup ["services", "x", "envFile"] schema `shouldBe` Just (OTOther "null or absolute path")
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)

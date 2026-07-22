@@ -1,0 +1,8 @@
+{
+  "services.x.enable":   { "type": "boolean", "description": "on/off" },
+  "services.x.port":     { "type": "16 bit unsigned integer; between 0 and 65535 (both inclusive)", "description": "port" },
+  "services.x.host":     { "type": "string", "description": "host" },
+  "services.x.paths":    { "type": "list of string", "description": "paths" },
+  "services.x.envFile":  { "type": "null or absolute path", "description": "env" },
+  "services.x.settings": { "type": "attribute set of anything", "description": "free" }
+}
