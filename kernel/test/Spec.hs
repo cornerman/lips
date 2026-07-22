@@ -256,6 +256,22 @@ main = hspec $ do
       let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
        in realize (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
 
+    it "detects a bare artifact.<name> reference used as a list element" $ do
+      -- systemPackages is a list of derivations; a bare `artifact.weather`
+      -- element must be found (built, not dangling) even without ${...}.
+      let built =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","weather","builder"] }
+            , (mk "p" "x" "\"weather\"" Stated) { dSubject = Subject ["artifact","weather","args","pname"] }
+            , (mk "e" "x" "[ artifact.weather ]" Stated) { dSubject = Subject ["environment","systemPackages"] }
+            ]
+      realize (fromList built) `shouldSatisfy` isRight
+      -- a bare ref to an unbuilt artifact still fails loud
+      let dangling = [ (mk "e" "x" "[ artifact.ghost ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
+      realize (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
+      -- the literal token "artifact." inside a string is NOT a reference
+      let litText = [ (mk "e" "x" "\"see artifact.ghost docs\"" Stated) { dSubject = Subject ["environment","variables","NOTE"] } ]
+      realize (fromList litText) `shouldSatisfy` isRight
+
     it "fails loud (typed) on a malformed artifact group (no builder)" $
       let noBuilder = [ (mk "p" "x" "\"srv\"" Stated) { dSubject = Subject ["artifact","srv","args","pname"] } ]
        in realize (fromList noBuilder) `shouldBe` Left (RBadArtifact "srv" "no builder")
@@ -576,6 +592,18 @@ main = hspec $ do
 
     it "rejects a malformed artifact reference" $
       parseValue "\"${artifact.bad name}\"" `shouldSatisfy` isLeft
+
+    it "a bare ${pkgs}/${artifact} reference stands as a value (a list of derivations)" $ do
+      -- honest Nix: runtimeInputs/systemPackages are lists of packages, not
+      -- strings. The model writes ${...}; it round-trips in .lang form but
+      -- realizes bare, since a Nix list holds derivations, not interpolations.
+      parseValue "${pkgs.curl}"           `shouldBe` Right (VRef (RPkg ["pkgs", "curl"]))
+      parseValue "[ ${pkgs.curl} ]"       `shouldBe` Right (VList [VRef (RPkg ["pkgs", "curl"])])
+      parseValue "[ ${artifact.weather} ]" `shouldBe` Right (VList [VRef (RArt "weather")])
+      renderValue    (VRef (RPkg ["pkgs", "curl"]))          `shouldBe` "${pkgs.curl}"
+      renderRealized (VList [VRef (RPkg ["pkgs", "curl"])])  `shouldBe` "[ pkgs.curl ]"
+      renderRealized (VList [VRef (RArt "weather")])         `shouldBe` "[ artifact.weather ]"
+      fillValue (const (Right "x")) (VList [VRef (RArt "weather")]) `shouldBe` Right "[ artifact.weather ]"
 
     it "<value.N> picks the Nth token of the matched assertion" $ do
       let r = MapRule "r4" Fact ["backup", "job"]
@@ -1008,6 +1036,9 @@ main = hspec $ do
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
 
+isRight :: Either a b -> Bool
+isRight = either (const False) (const True)
+
 -- Generators for the round-trip property. Tokens avoid the delimiters of the
 -- canonical form; assertions deliberately include quotes and backslashes to
 -- exercise escaping.
@@ -1045,6 +1076,7 @@ genValue = sized go
       , (1, VFloat <$> elements [0.0, 1.5, 3.14, -2.5, 100.0, 0.25])
       , (1, VPath  <$> genPath)
       , (2, VHole  <$> elements [HInt, HBool, HFloat, HPath] <*> genHole)
+      , (1, VRef   <$> oneof [ RPkg . ("pkgs" :) <$> listOf1 refSeg, RArt <$> refSeg ])
       ]
     genPath = do
       pre  <- elements ["/", "./", "../"]

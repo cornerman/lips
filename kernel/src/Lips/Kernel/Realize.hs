@@ -75,17 +75,31 @@ renderModule winners =
               ++ concatMap assignment (sortOn (path . fst) opts)
               ++ ["}"]
 
--- | Every @${artifact.<name>}@ referenced inside a value's rendered text.
+-- | Artifact names a rendered value references, in either realized form: a
+-- bare @artifact.<name>@ standing as a value (a list element or top-level),
+-- or a @${artifact.<name>}@ interpolation inside a string. Quote-aware, so the
+-- literal token @artifact.@ appearing as plain text inside a string is not
+-- mistaken for a reference (only @${artifact.@ counts there).
 artifactRefs :: Text -> [Text]
-artifactRefs = go
+artifactRefs = outside
   where
-    marker = "${artifact."
-    go s = case T.breakOn marker s of
-      (_, rest)
-        | T.null rest -> []
-        | otherwise ->
-            let after = T.drop (T.length marker) rest
-             in T.takeWhile isNameChar after : go after
+    -- Outside a string a bare `artifact.<name>` is a real reference.
+    outside s = case T.uncons s of
+      Nothing        -> []
+      Just ('"', r)  -> inside r
+      Just (_, _)
+        | Just r <- T.stripPrefix "artifact." s -> name r : outside (rest r)
+        | otherwise                             -> outside (T.drop 1 s)
+    -- Inside a string only a `${artifact.<name>}` interpolation is a reference;
+    -- an escaped char is skipped so a `\"` does not end the string early.
+    inside s = case T.uncons s of
+      Nothing         -> []
+      Just ('\\', r)  -> inside (T.drop 1 r)
+      Just ('"', r)   -> outside r
+      Just ('$', r) | Just b <- T.stripPrefix "{artifact." r -> name b : inside (rest b)
+      Just (_, r)     -> inside r
+    name = T.takeWhile isNameChar
+    rest = T.dropWhile isNameChar
     isNameChar c = c `elem` ("-_" :: String) || isAlphaNum c
 
 rootedAtArtifact :: Subject -> Bool

@@ -6,10 +6,17 @@
 -- grammar, and its grammar is deliberately the Nix value algebra MINUS
 -- computation (completeness plan, Target 1):
 --
--- > value  ::= string | list | bool | int | float | path | null | typed-hole
+-- > value  ::= string | list | bool | int | float | path | null | typed-hole | ref
 -- > string ::= '"' (literal | ${pkgs.<dotted-path>} | <value> | <value.N>)* '"'
 -- > list   ::= '[' value* ']'
+-- > ref    ::= ${pkgs.<dotted-path>} | ${artifact.<name>}   -- a bare reference value
 -- > typed-hole ::= '<' ('value' | 'value.'N) ':' ('int'|'bool'|'float'|'path') '>'
+--
+-- A @ref@ names a concrete thing (a package, a program-derived build) the
+-- kernel never inspects; as a whole value it stands as a list element (a list
+-- of derivations, e.g. @systemPackages@). Written @${...}@ so it round-trips
+-- through 'parseValue' in @.lang@, but 'renderRealized' emits it bare
+-- (@pkgs.curl@) for the module, since a Nix list holds derivations.
 --
 -- Why the full algebra: every program value becomes a hole (mint doctrine),
 -- and NixOS options are typed. A string hole can only produce a Nix string, so
@@ -31,9 +38,11 @@
 module Lips.Kernel.Engine.Value
   ( Value (..)
   , Piece (..)
+  , Ref (..)
   , HoleType (..)
   , parseValue
   , renderValue
+  , renderRealized
   , fillValue
   , holeIndex
   , valueRefsDerivation
@@ -52,6 +61,15 @@ import qualified Data.Text.Read as TR
 data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text
   deriving (Eq, Show)
 
+-- | A bare reference used as a whole value (e.g. a list element), naming a
+-- concrete thing the kernel never inspects: 'RPkg' is a @pkgs.<path>@ package,
+-- 'RArt' a @${artifact.<name>}@ program-derived build. Written @${...}@ by the
+-- model and in the canonical form (so it round-trips through 'parseValue'), but
+-- 'renderRealized' emits it bare (@pkgs.curl@, @artifact.weather@) because a
+-- Nix list holds derivations, not interpolations.
+data Ref = RPkg [Text] | RArt Text
+  deriving (Eq, Show)
+
 -- | The type a bare (non-string) hole coerces its program token into. String
 -- holes need no tag: they live inside 'VStr' as 'PHole'.
 data HoleType = HInt | HBool | HFloat | HPath
@@ -68,6 +86,7 @@ data Value
   | VPath Text          -- ^ an unquoted Nix path literal (@\/x@, @.\/x@, @..\/x@)
   | VNull
   | VHole HoleType Text -- ^ a bare typed hole, filled and coerced from a program token
+  | VRef Ref            -- ^ a package\/artifact reference standing as a whole value
   deriving (Eq, Show)
 
 -- | Does this value interpolate a package (@${pkgs...}@) or artifact
@@ -81,6 +100,7 @@ valueRefsDerivation (VStr ps)  = any isRef ps
         isRef (PArt _) = True
         isRef _        = False
 valueRefsDerivation (VList vs) = any valueRefsDerivation vs
+valueRefsDerivation (VRef _)   = True
 valueRefsDerivation _          = False
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
@@ -127,6 +147,13 @@ pValue raw =
         Just ('"', rest) -> pString rest
         Just ('[', rest) -> pList (T.stripStart rest) []
         Just ('<', more) -> pTypedHole more
+        -- A ${pkgs...}/${artifact...} reference standing as a whole value (a
+        -- list element or a top-level rhs), not inside a string.
+        Just ('$', more) | Just body <- T.stripPrefix "{" more ->
+          let (inside, after) = T.breakOn "}" body
+           in if T.null after
+                then Left "unterminated ${...} reference"
+                else (\r -> (VRef r, T.drop 1 after)) <$> parseRef inside
         Just (c, _)
           | isPathStart t                        -> pPath t
           | c == '-' || isDigit c                -> pNumber t
@@ -219,12 +246,20 @@ pString = go [] T.empty
 -- @${pkgs.<path>}@ package reference, or a @${artifact.<name>}@ reference to a
 -- program-derived build. Spaces, parentheses, or operators do not parse.
 interp :: Text -> Either Text Piece
-interp inside
+interp inside = refPiece <$> parseRef inside
+  where refPiece (RPkg r) = PRef r
+        refPiece (RArt n) = PArt n
+
+-- | Parse the body of a @${...}@ into a reference, shared by string pieces and
+-- whole-value references: a @${artifact.<name>}@ build ref or a @${pkgs.<path>}@
+-- package ref. Anything else (a space, an operator) is computation, rejected.
+parseRef :: Text -> Either Text Ref
+parseRef inside
   | Just name <- T.stripPrefix "artifact." inside =
       if okSeg name
-        then Right (PArt name)
+        then Right (RArt name)
         else Left ("bad ${artifact.<name>} reference (name must be an identifier): ${" <> inside <> "}")
-  | otherwise = PRef <$> pkgsRef inside
+  | otherwise = RPkg <$> pkgsRef inside
 
 -- | A single identifier segment: non-empty, letters\/digits\/@-@\/@_@ only.
 okSeg :: Text -> Bool
@@ -251,6 +286,7 @@ renderValue (VFloat d)     = T.pack (show d)
 renderValue VNull          = "null"
 renderValue (VPath p)      = p
 renderValue (VHole ht h)   = "<" <> h <> ":" <> holeTypeText ht <> ">"
+renderValue (VRef r)       = renderRefCanon r
 renderValue (VList vs)     = "[ " <> T.unwords (map renderValue vs) <> " ]"
 renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
   where
@@ -258,6 +294,22 @@ renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
     piece (PRef r)  = "${" <> T.intercalate "." r <> "}"
     piece (PArt n)  = "${artifact." <> n <> "}"
     piece (PHole h) = "<" <> h <> ">"
+
+-- | The canonical @${...}@ form of a whole-value reference. Kept in @.lang@ so
+-- 'parseValue' reads it back unchanged (round-trip).
+renderRefCanon :: Ref -> Text
+renderRefCanon (RPkg r) = "${" <> T.intercalate "." r <> "}"
+renderRefCanon (RArt n) = "${artifact." <> n <> "}"
+
+-- | The realized Nix form: identical to 'renderValue' everywhere except a
+-- whole-value reference, which becomes a bare attribute path (@pkgs.curl@,
+-- @artifact.weather@) so it stands as a derivation in a list, not an
+-- interpolation. Used only for the emitted module, never for @.lang@.
+renderRealized :: Value -> Text
+renderRealized (VRef (RPkg r)) = T.intercalate "." r
+renderRealized (VRef (RArt n)) = "artifact." <> n
+renderRealized (VList vs)      = "[ " <> T.unwords (map renderRealized vs) <> " ]"
+renderRealized v               = renderValue v
 
 -- | Escape text destined for the inside of a Nix string: quotes, backslashes,
 -- and @${@ (which would otherwise open an interpolation -- the injection).
@@ -271,8 +323,10 @@ escape = T.replace "${" "\\${" . T.replace "\"" "\\\"" . T.replace "\\" "\\\\"
 -- value that does not fit the rule surfaces as a value the caller propagates
 -- (into 'Lips.Kernel.Refine.RewriteFailed'), never a crash. Either way program
 -- text cannot alter the value's shape.
+-- | Fill holes and render for the EMITTED module (bare references via
+-- 'renderRealized'); @.lang@ persistence uses 'renderValue' instead.
 fillValue :: (Text -> Either Text Text) -> Value -> Either Text Text
-fillValue pick = fmap renderValue . fillV
+fillValue pick = fmap renderRealized . fillV
   where
     fillV (VStr ps)    = VStr <$> traverse fillP ps
     fillV (VList vs)   = VList <$> traverse fillV vs
