@@ -566,6 +566,19 @@ but the loop around it is incomplete; "missing" means specced, not built.
   produced subject, as-you-type completion tuning, and percent-decoding of
   `file://` URIs (paths with spaces/non-ASCII are not handled yet).
 
+- **Readable generate refusals.** A refusal now names its remedy instead of
+  dumping grammar. Three coordinated moves. (1) The `--confidence` hint is
+  derived from the lowest dropped confidence, so it can no longer echo the bar
+  the user just used. (2) A `because "<reason>"` line (keyed by the same id as
+  the item it explains, `ItemNote`, dropped from the engine) lets the model
+  attach a plain-language reason to any low-confidence item; the refusal prints
+  it under the refused line. (3) The prompt routes a missing PROGRAM FACT to a
+  high-confidence `demand` (plus the pattern that reads its answer) rather than
+  a guessed value, and generate surfaces an unmet demand as the human-authored
+  question (`OpenQuestions` -> "answer each in <file>, then run generate
+  again") instead of the lips-bug wording. Guessable values (free defaults,
+  synthesized build inputs) stay low-confidence with a because-note.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) runs at `generate` and
   via `lips check`; it is not yet enforced inside `run`, where a deterministic
