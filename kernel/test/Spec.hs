@@ -37,6 +37,7 @@ import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
 import Lips.Kernel.Lang.Lang
 import Lips.Lsp.Derive
+import Lips.Lsp.Server (uriToPath)
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -838,6 +839,16 @@ main = hspec $ do
       let ds = diagsOf (diagnose "f" eng "the bank drops csv files into inbox/.")
       map dgMessage [x | x <- ds, dgSeverity x == 2]
         `shouldBe` ["Open question: how often does the feed deliver?"]
+
+  describe "lsp uri decoding (file:// scheme, percent-escapes)" $ do
+    it "strips the file:// scheme" $
+      uriToPath "file:///home/u/my.loose" `shouldBe` "/home/u/my.loose"
+    it "percent-decodes a space" $
+      uriToPath "file:///home/u/my%20file.loose" `shouldBe` "/home/u/my file.loose"
+    it "percent-decodes a multi-byte UTF-8 sequence" $
+      uriToPath "file:///home/u/caf%C3%A9.loose" `shouldBe` "/home/u/caf\233.loose"
+    it "leaves a plain path untouched" $
+      uriToPath "/home/u/my.loose" `shouldBe` "/home/u/my.loose"
 
   -- Laws over arbitrary bases, not just the two worked examples: the merge is
   -- the kernel's core physics, so it is pinned as algebraic properties.

@@ -11,25 +11,30 @@
 -- up for free) and no model, ever -- the server is pure of AI, like @run@.
 module Lips.Lsp.Server
   ( runLsp
+  , uriToPath
   ) where
 
-import           Control.Exception     (IOException, try)
-import           Data.Aeson            (FromJSON (..), Value (..), decode, encode,
-                                        object, withObject, (.!=), (.:), (.:?), (.=))
-import           Data.Aeson.Types      (parseMaybe)
-import qualified Data.ByteString       as BS
-import qualified Data.ByteString.Char8 as BC
-import qualified Data.ByteString.Lazy  as BL
+import           Control.Exception       (IOException, try)
+import           Data.Aeson              (FromJSON (..), Value (..), decode, encode,
+                                          object, withObject, (.!=), (.:), (.:?), (.=))
+import           Data.Aeson.Types        (parseMaybe)
+import qualified Data.ByteString         as BS
+import qualified Data.ByteString.Char8   as BC
+import qualified Data.ByteString.Lazy    as BL
+import           Data.Char               (digitToInt, isHexDigit)
 import           Data.IORef
-import           Data.Map.Strict       (Map)
-import qualified Data.Map.Strict       as Map
-import           Data.Maybe            (fromMaybe)
-import           Data.Text             (Text)
-import qualified Data.Text             as T
-import qualified Data.Text.IO          as TIO
-import           System.Exit           (exitSuccess)
+import           Data.Map.Strict         (Map)
+import qualified Data.Map.Strict         as Map
+import           Data.Maybe              (fromMaybe)
+import           Data.Text               (Text)
+import qualified Data.Text               as T
+import qualified Data.Text.Encoding      as TE
+import qualified Data.Text.Encoding.Error as TEE
+import qualified Data.Text.IO            as TIO
+import           Data.Word               (Word8)
+import           System.Exit             (exitSuccess)
 import           System.IO
-import           Text.Read             (readMaybe)
+import           Text.Read               (readMaybe)
 
 import Lips.Kernel.Lang.Diagnose (diagnose)
 import Lips.Kernel.Lang.Lang     (EngineData (..), readLang)
@@ -160,10 +165,24 @@ loadLang path = do
     Just src -> either (const Nothing) Just (readLang src)
     Nothing  -> Nothing
 
--- | Strip the @file://@ scheme to a path. Percent-decoding is not handled yet;
--- paths with spaces or non-ASCII will need it (a known limitation).
+-- | Strip the @file://@ scheme and percent-decode to a filesystem path. A
+-- @%XX@ escape is a UTF-8 byte, so decoding collects raw bytes (each
+-- non-escaped char re-encoded to its UTF-8 bytes) and then reads the whole
+-- sequence back as UTF-8, so paths with spaces or non-ASCII round-trip.
+-- Decoding is lenient rather than crashing the server loop on a malformed URI.
 uriToPath :: Text -> FilePath
-uriToPath uri = T.unpack (fromMaybe uri (T.stripPrefix "file://" uri))
+uriToPath uri =
+  let stripped = fromMaybe uri (T.stripPrefix "file://" uri)
+   in T.unpack (TE.decodeUtf8With TEE.lenientDecode (BS.pack (decodeBytes (T.unpack stripped))))
+
+-- | Percent-decode a URI path into raw bytes: a @%XX@ pair is one byte; any
+-- other char contributes its own UTF-8 bytes.
+decodeBytes :: String -> [Word8]
+decodeBytes [] = []
+decodeBytes ('%' : h : l : rest)
+  | isHexDigit h, isHexDigit l =
+      fromIntegral (digitToInt h * 16 + digitToInt l) : decodeBytes rest
+decodeBytes (c : rest) = BS.unpack (TE.encodeUtf8 (T.singleton c)) ++ decodeBytes rest
 
 tryReadFile :: FilePath -> IO (Maybe Text)
 tryReadFile p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either IOException Text))
