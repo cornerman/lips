@@ -73,26 +73,32 @@ main = do
       Nothing                 -> usage >> exitFailure
     _                    -> usage >> exitFailure
 
--- | Parse @generate@ arguments: an optional @--confidence <0..1>@ flag in any
--- position, then @[model] <program-file>...@ -- one or more programs (all of
--- one language, checked later). A malformed threshold or no program fails
--- loud (returns Nothing).
+-- | Parse @generate@ arguments: optional @--confidence <0..1>@ and
+-- @--model <id>@ flags in any position, then @[model] <program-file>...@ --
+-- one or more programs (all of one language, checked later). A malformed
+-- threshold, a duplicate model, or no program fails loud (returns Nothing).
 parseGenerate :: [String] -> Maybe (Double, Maybe String, [FilePath])
-parseGenerate = go Nothing []
+parseGenerate = go Nothing Nothing []
   where
-    go _ pos ("--confidence" : v : rest)
-      | Just c <- readMaybe v, c >= 0, c <= 1 = go (Just c) pos rest
-      | otherwise                             = Nothing
-    go _ _ ["--confidence"]      = Nothing
-    go conf pos (a : rest)       = go conf (pos ++ [a]) rest
-    go conf pos []               = finish (maybe defaultConfidence id conf) pos
-    -- No model given: omit --model so pi's own configured default applies;
-    -- the model pi reports is read back and recorded. A leading positional is
-    -- taken as the model when it looks like a model id (a @provider/id@ whose
-    -- final component has no dot) and at least one program follows; every
-    -- other positional is a program file.
-    finish _ []            = Nothing
-    finish c (a : rest)
+    go _conf model pos ("--confidence" : v : rest)
+      | Just c <- readMaybe v, c >= 0, c <= 1 = go (Just c) model pos rest
+      | otherwise                              = Nothing
+    go _ _ _ ["--confidence"]                   = Nothing
+    go conf Nothing pos ("--model" : v : rest)   = go conf (Just v) pos rest
+    go _ (Just _) _ ("--model" : _ : _)          = Nothing   -- duplicate --model: fail loud, not last-wins
+    go _ _ _ ["--model"]                         = Nothing
+    go conf model pos (a : rest)                 = go conf model (pos ++ [a]) rest
+    go conf model pos []                         = finish (maybe defaultConfidence id conf) model pos
+    -- --model flag wins outright: every positional is then a program file, no
+    -- heuristic needed. Without the flag, a leading positional is taken as
+    -- the model when it looks like a model id (a @provider/id@ whose final
+    -- component has no dot) and at least one program follows; every other
+    -- positional is a program file. No model at all: omit --model so pi's own
+    -- configured default applies; the model pi reports is read back and
+    -- recorded.
+    finish _ _ []                = Nothing
+    finish c (Just m) ps         = Just (c, Just m, ps)
+    finish c Nothing (a : rest)
       | not (null rest), looksLikeModel a = Just (c, Just a, rest)
       | otherwise                         = Just (c, Nothing, a : rest)
     looksLikeModel s = '/' `elem` s && '.' `notElem` takeFileName s
@@ -104,7 +110,7 @@ usage = do
     [ "lips turns a plain-English <instance>.<language> program into a NixOS configuration."
     , ""
     , "usage:"
-    , "  " <> name <> " generate [--confidence <0..1>] [model] <program>..."
+    , "  " <> name <> " generate [--confidence <0..1>] [--model <id>|model] <program>..."
     , "      Mint the language from one or more example programs and verify each."
     , "      The one step that uses AI."
     , "  " <> name <> " print <program>"
