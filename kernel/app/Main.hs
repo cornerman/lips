@@ -29,7 +29,7 @@ import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (toDemand, toRule)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
+import           Lips.Generate.Minting  (EngineItem (..), ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
@@ -291,11 +291,16 @@ generate confidence mmodel file = do
   let prompt = promptWithDirection direction
   (reply, model) <- callPi mmodel prompt program
   let (errs, candidates) = parseEngineCandidates reply
+      -- A because-note explains a low-confidence item; keyed by shared id, it
+      -- never gates the build and never enters the engine.
+      notes = [(icId c, r) | c <- candidates, ItemNote r <- [icItem c]]
       -- Deduce-or-fail: the program is the only source of truth, so an item the
       -- model cannot confidently derive means the program underspecifies it.
-      unsure = [c | c <- candidates, let Confidence x = icConfidence c, x < confidence]
+      unsure = [c | c <- candidates, notNote (icItem c)
+                  , let Confidence x = icConfidence c, x < confidence]
+      notNote i = case i of { ItemNote _ -> False; _ -> True }
   if not (null errs) || not (null unsure)
-    then die (refusalReport file confidence errs unsure)
+    then die (refusalReport file confidence errs unsure notes)
     else do
       let eng0 = assemble (map icItem candidates)
       -- Validate the engine EXACTLY as it will be persisted: render to .lang and
@@ -304,6 +309,9 @@ generate confidence mmodel file = do
       case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
        Left es  -> die (validationReport file ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
        Right eng -> case validate file eng program of
+        -- A missing program fact the engine demands is the human's to state, not
+        -- a lips bug: surface the demand questions and point back at the program.
+        Left f@(FailRun (OpenQuestions _)) -> die (printFail file f)
         Left f -> die (validationReport file (failureReport file f))
         Right (base, nixModule) -> do
           nixCheck <- nixParses nixModule
@@ -589,8 +597,8 @@ nixEvalFailed file cmd detail = report
 
 -- | generate couldn't build a setup: either lines lips couldn't read (a
 -- capability may be missing) or values the program leaves underspecified.
-refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> Text
-refusalReport file _threshold errs unsure = T.intercalate "\n" $
+refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> [(Text, Text)] -> Text
+refusalReport file _threshold errs unsure notes = T.intercalate "\n" $
   ["lips couldn't build a setup for " <> T.pack file <> "."]
     ++ grammar ++ underspecified
   where
@@ -606,7 +614,9 @@ refusalReport file _threshold errs unsure = T.intercalate "\n" $
       | null unsure = []
       | otherwise =
           [ "", "The program doesn't pin these down (the AI wasn't confident enough):" ]
-          ++ [ "  - " <> icLine c <> "   [confidence " <> conf c <> "]" | c <- unsure ]
+          ++ concat [ [ "  - " <> icLine c <> "   [confidence " <> conf c <> "]" ]
+                       ++ maybe [] (\r -> [ "      why: " <> r ]) (lookup (icId c) notes)
+                    | c <- unsure ]
           ++ [ ""
              , "→ state the missing detail in " <> T.pack file <> " and run again."
              , "  If the choice is genuinely free, lower the bar: --confidence " <> suggestedBar ]
