@@ -1,9 +1,8 @@
-# lipsidea Design (v2)
+# lips Design
 
-Status: approved concept design, second founding. v1 (git history of this
-file) organized lipsidea as a spec-language with surface syntax; v2 re-founds
-it on a decision calculus after the notation question dissolved. Evidence
-base: the four surveys in `docs/superpowers/survey/` (cited as Survey A/B/C/D).
+Status: approved concept design. lips is founded on a decision calculus.
+Evidence base: the four surveys in `docs/superpowers/survey/` (cited as
+Survey A/B/C/D).
 
 ## Terminology
 
