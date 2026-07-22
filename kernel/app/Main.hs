@@ -18,10 +18,11 @@
 module Main (main) where
 
 import           Control.Exception  (IOException, try)
+import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           System.Environment (getArgs, getProgName)
+import           System.Environment (getArgs, getProgName, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, stderr, stdout)
 import           System.Process     (callCommand, readProcessWithExitCode)
@@ -41,6 +42,8 @@ import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Lang         (EngineData (..), readLang, renderLang)
+import           Lips.Kernel.OptionType        (checkEmits, renderOptionError)
+import           Lips.Nix.Options              (parseNixOptionsJson)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -308,7 +311,7 @@ generate confidence mmodel file = do
       -- time, not on a later `print`. The read-back engine is what we write.
       case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
        Left es  -> die (validationReport file ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
-       Right eng -> case validate file eng program of
+       Right eng -> assertOptionsAdmissible file eng >> case validate file eng program of
         -- A missing program fact the engine demands is the human's to state, not
         -- a lips bug: surface the demand questions and point back at the program.
         Left f@(FailRun (OpenQuestions _)) -> die (printFail file f)
@@ -368,6 +371,38 @@ generate confidence mmodel file = do
                         , "→ preview it:  lips print " <> T.pack file
                         , "→ boot it:     lips run " <> T.pack file ]
                       TIO.putStr nixModule
+
+-- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
+-- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
+-- @LIPS_OPTIONS_JSON@ (the justfile wires it from the flake). An unset variable
+-- or an unreadable schema fails loud -- an unverifiable engine is not written.
+-- The check is domain-blind: 'checkEmits' takes a typed schema, and the NixOS
+-- specifics live in 'Lips.Nix.Options'.
+assertOptionsAdmissible :: FilePath -> EngineData -> IO ()
+assertOptionsAdmissible file eng = do
+  mp <- lookupEnv "LIPS_OPTIONS_JSON"
+  case mp of
+    Nothing -> die (report
+      "lips can't check the setup's options: the NixOS option schema isn't available."
+      ["LIPS_OPTIONS_JSON is unset."]
+      "\226\134\146 run generate through the flake: just generate <program> (it builds the schema).")
+    Just p  -> do
+      mbytes <- try (BL.readFile p) :: IO (Either IOException BL.ByteString)
+      case mbytes of
+        Left e -> die (report
+          ("lips can't read the NixOS option schema at " <> T.pack p <> ":")
+          [tshow e]
+          "\226\134\146 rebuild it: nix build .#nixosOptionsJson, then run generate again.")
+        Right bytes -> case parseNixOptionsJson bytes of
+          Left why -> die (report
+            ("lips can't parse the NixOS option schema at " <> T.pack p <> ":")
+            [why]
+            "\226\134\146 rebuild it: nix build .#nixosOptionsJson.")
+          Right schema -> case checkEmits schema (edRules eng) of
+            []   -> pure ()
+            errs -> die (validationReport file
+              ("its rules use NixOS options that don't exist or have the wrong type:\n"
+                <> T.unlines (map (("  - " <>) . renderOptionError) errs)))
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.
