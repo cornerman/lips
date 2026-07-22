@@ -770,19 +770,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
   - Glue: TODO. The one documented incompleteness (computation).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
-- **Language reuse across instances (language as a configurable module).** A
-  language is minted per program and its engine bakes one instance's identity
-  into the grammar (the frozen `services.restic.backups.ledger` key). The
-  reuse model: the extension names a shared language (`*.backup` ->
-  `backup.lang`), a language is one configurable NixOS module induced by
-  anti-unifying several example programs (their divergences become both the
-  accepted holes and the option surface), and an instance is a configuration
-  keyed by the program basename via a `<self>` value hole that fills the
-  option schema's `attrsOf` `"*"` wildcard. Multiplicity then rides Nix's
-  native module merge, not a lips corpus; `.expect`/`.generation` move to
-  language level; `generate` takes multiple programs and gates on the whole
-  example set as the regeneration corpus. One kernel change (`<self>`); the
-  rest is CLI lookup and file placement. Full design in
+- **Language reuse across instances (language as a configurable module).**
+  Built and verified on branch `lang-reuse` (not yet merged). A program is
+  named `<instance>.<language>.lips`: the uniform `.lips` marker is the editor /
+  language-server handle, the segment before it names a shared language, and
+  what precedes that is the instance (optional -- `backup.lips` is the
+  singleton shorthand). A language is one configurable NixOS module induced by
+  anti-unifying several example programs (divergences become both the accepted
+  holes and the option surface); an instance is a configuration keyed by the
+  `<self>` value hole, which the shell binds to the instance name and which
+  fills the option schema's `attrsOf` `"*"` wildcard. Multiplicity rides Nix's
+  native module merge, not a lips corpus; `.lang`/`.expect`/`.generation`/
+  `.direction` are language-level (named by the language), `.decisions` per
+  instance; `generate` takes several programs and gates the whole set as the
+  regeneration corpus. Kernel additions: `<self>` binding in rule emits and
+  expect paths, plus path-value stringifying in the expect eval; the rest is
+  shell (identity, CLI, LSP lookup) and the mint prompt. Full design in
   `2026-07-22-language-as-configurable-module-plan.md`.
 - **Multi-language composition.** The sketch composes three languages in one
   decision base; the prototype runs one engine. Composing several

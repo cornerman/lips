@@ -20,7 +20,7 @@
       });
 
       # The reference `lips` CLI, built from the deliverable in kernel/.
-      # `nix run . -- print examples/ledger.backup`.
+      # `nix run . -- print examples/ledger.backup.lips`.
       packages = forAll (pkgs: {
         default = pkgs.runCommand "lips" { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper ]; } ''
           cp -r ${./kernel}/. build && cd build
@@ -59,9 +59,9 @@
             # Deterministic tail only: crystallize + run the committed example
             # with its committed minted language. No AI in this derivation.
             realized = pkgs.runCommand "lips-backup-module.nix" { } ''
-              cp ${./examples/ledger.backup} ledger.backup
+              cp ${./examples/ledger.backup.lips} ledger.backup.lips
               cp ${./examples/backup.lang} backup.lang
-              ${lips}/bin/lips print ledger.backup > "$out"
+              ${lips}/bin/lips print ledger.backup.lips > "$out"
             '';
           in
           pkgs.testers.runNixOSTest {
@@ -111,10 +111,10 @@
             # Realize into a DIRECTORY: the module plus its source tree, so the
             # module's relative `src = ./artifacts/<name>` resolves at import.
             realized = pkgs.runCommand "lips-hello-module" { } ''
-              cp ${./examples/hello.http} hello.http
+              cp ${./examples/hello.http.lips} hello.http.lips
               cp ${./examples/http.lang} http.lang
               mkdir -p "$out/artifacts"
-              ${lips}/bin/lips print hello.http > "$out/module.nix"
+              ${lips}/bin/lips print hello.http.lips > "$out/module.nix"
               cp -r ${./examples/http.artifacts}/. "$out/artifacts/"
             '';
           in

@@ -105,14 +105,24 @@ because a configurable program takes its configuration from anywhere.
 
 ## Identity and File Layout
 
-`<basename>.<language>`: the extension names the shared language, the basename
-names the unique instance (guaranteed unique by the filesystem). `.loose` was
-dead decoration; it is replaced by the domain extension.
+`<instance>.<language>.lips`, read right to left. The uniform `.lips` marker is
+the editor / language-server handle: one extension every tool associates on
+(vim `ftdetect`, VS Code, Helix, Emacs), so tooling needs no per-language
+setup. The segment before it names the shared language; what precedes that is
+the instance. The instance is optional -- `backup.lips` is the singleton
+shorthand whose instance defaults to the language (`<self>` = `backup`).
+
+Why the trailing marker and not the bare `<instance>.<language>` (final
+extension = language): an open-ended set of domain extensions defeats editor
+association everywhere (each editor keys tooling on file extension / a declared
+language id). A uniform `.lips` restores trivial association while keeping the
+domain language one dot in. Two honest levels of "language": to the editor the
+language is *lips*; to lips the sub-language is `backup`.
 
 | level | files | committed? |
 |---|---|---|
-| Language (shared by every `*.backup`) | `backup.lang` (grammar), `backup.generation` (mint record), `backup.expect` (behavioral contract) | yes |
-| Instance (one per program) | `one.backup` (program), `one.backup.decisions` (crystal witness, derived) | program yes; `.decisions` gitignored |
+| Language (shared by every `*.<lang>.lips`) | `backup.lang` (grammar), `backup.generation` (mint record), `backup.expect` (behavioral contract), `backup.direction` (optional taste) | yes |
+| Instance (one per program) | `ledger.backup.lips` (program), `ledger.backup.lips.decisions` (crystal witness, derived) | program yes; `.decisions` gitignored |
 
 `.expect` moves to language level: today's assertion `expect
 services.restic.backups.ledger.paths from backup.job#1` is relational

@@ -1,14 +1,16 @@
 -- lips editor integration for Neovim (built-in LSP).
--- Detects .loose programs and attaches the domain-blind `lips lsp` server,
--- which serves each buffer from its neighbouring <file>.lang.
+-- Detects .lips programs and attaches the domain-blind `lips lsp` server,
+-- which serves each buffer from its neighbouring <language>.lang (resolved from
+-- the program's <instance>.<language>.lips name).
 
 -- Recognise the program extension as its own filetype.
-vim.filetype.add({ extension = { loose = "loose" } })
+vim.filetype.add({ extension = { lips = "lips" } })
 
--- Start one server per loose buffer, rooted at the file's directory (where its
--- .lang lives). vim.lsp reuses a client across buffers with the same root.
+-- Start one server per lips buffer, rooted at the file's directory (where its
+-- <language>.lang lives). vim.lsp reuses a client across buffers with the same
+-- root.
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = "loose",
+  pattern = "lips",
   callback = function(args)
     vim.lsp.start({
       name = "lips",

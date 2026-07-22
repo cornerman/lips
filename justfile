@@ -29,9 +29,10 @@ check:
 check-expect:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Explicit list: a program is <instance>.<language>, indistinguishable from
-    # its language-level sidecars (<language>.lang etc.) by glob alone.
-    for p in examples/ledger.backup examples/photos.backup examples/ingest.feed examples/hello.http; do
+    # Programs are <instance>.<language>.lips (the .lips marker is what every
+    # editor and language server associates); the sidecars (<language>.lang
+    # etc.) share a base name, so glob the programs by the .lips extension.
+    for p in examples/*.lips; do
       nix run . -- check "$p"
     done
 

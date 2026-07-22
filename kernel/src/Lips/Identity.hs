@@ -1,11 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | The filesystem naming convention for solutions (plan 2026-07-22, "language
--- as a configurable module"). A program file is @\<basename\>.\<language\>@: the
--- extension names the shared language, the basename names the unique instance.
--- So @examples/ledger.backup@ is instance @ledger@ written in language
--- @backup@, and its language artifacts live beside it named by the language
--- (@examples/backup.lang@), shared by every @*.backup@ program.
+-- as a configurable module"). A program file is
+-- @\<instance\>.\<language\>.lips@: the uniform @.lips@ marker is the editor
+-- and language-server handle (one extension every tool associates -- vim,
+-- VS Code, Emacs), the segment before it names the shared lips language, and
+-- what precedes THAT is the instance. So @examples/ledger.backup.lips@ is
+-- instance @ledger@ in language @backup@, and its language artifacts live
+-- beside it named by the language (@examples/backup.lang@), shared by every
+-- @*.backup.lips@ program.
+--
+-- The instance is optional: @backup.lips@ (just @\<language\>.lips@) is the
+-- singleton shorthand, its instance name defaulting to the language
+-- (@\<self\>@ = @backup@). Start there, add @photos.backup.lips@ later, with no
+-- re-mint.
 --
 -- This is shell-tier, not kernel calculus: it maps program paths to sidecar
 -- paths and to the @\<self\>@ binding. It is the only place that knows the
@@ -25,17 +33,27 @@ module Lips.Identity
 
 import           Data.Text       (Text)
 import qualified Data.Text       as T
-import           System.FilePath (takeBaseName, takeDirectory, takeExtension, (<.>), (</>))
+import           System.FilePath (dropExtension, takeBaseName, takeDirectory, takeExtension, takeFileName, (<.>), (</>))
 
--- | The language a program is written in: its extension without the dot.
--- @examples/ledger.backup@ -> @backup@.
+-- | The program core: the path with the @.lips@ marker stripped.
+-- @a/ledger.backup.lips@ -> @a/ledger.backup@; @a/backup.lips@ -> @a/backup@.
+core :: FilePath -> FilePath
+core = dropExtension
+
+-- | The language a program is written in: the segment just before @.lips@.
+-- @ledger.backup.lips@ -> @backup@; the shorthand @backup.lips@ -> @backup@.
 languageName :: FilePath -> String
-languageName = drop 1 . takeExtension
+languageName p = case takeExtension (core p) of
+  "" -> takeFileName (core p)   -- <language>.lips: the core basename IS the language
+  e  -> drop 1 e                -- <instance>.<language>.lips: the last core extension
 
--- | The instance name, bound to @\<self\>@ in the grammar: the file basename
--- without its language extension. @examples/ledger.backup@ -> @ledger@.
+-- | The instance name, bound to @\<self\>@ in the grammar: the segment before
+-- the language. @ledger.backup.lips@ -> @ledger@; the shorthand @backup.lips@
+-- has no separate instance, so it defaults to the language (@backup@).
 instanceName :: FilePath -> Text
-instanceName = T.pack . takeBaseName
+instanceName p = T.pack $ case takeExtension (core p) of
+  "" -> takeFileName (core p)   -- default: instance = language
+  _  -> takeBaseName (core p)   -- the basename before the language extension
 
 -- | A language-level sidecar path, named by the language and shared by every
 -- program in it: @examples/ledger.backup@ + @lang@ -> @examples/backup.lang@.

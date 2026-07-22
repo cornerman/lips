@@ -1051,18 +1051,21 @@ main = hspec $ do
     it "empty stream yields empty fields (caller fails loud)" $
       parsePiReply "" `shouldBe` PiReply "" ""
 
-  describe "solution identity (plan 2026-07-22: <basename>.<language>)" $ do
-    let prog = "examples/ledger.backup"
-    it "reads the language from the extension and the instance from the basename" $ do
+  describe "solution identity (plan 2026-07-22: <instance>.<language>.lips)" $ do
+    let prog = "examples/ledger.backup.lips"
+    it "reads the language before .lips and the instance before that" $ do
       languageName prog `shouldBe` "backup"
       instanceName prog `shouldBe` "ledger"
+    it "the <language>.lips shorthand defaults the instance to the language" $ do
+      languageName "examples/backup.lips" `shouldBe` "backup"
+      instanceName "examples/backup.lips" `shouldBe` "backup"
     it "names language-level sidecars by the language, shared across instances" $ do
       langPath       prog `shouldBe` "examples/backup.lang"
       expectPath     prog `shouldBe` "examples/backup.expect"
       generationPath prog `shouldBe` "examples/backup.generation"
-      langPath "examples/photos.backup" `shouldBe` langPath prog
+      langPath "examples/photos.backup.lips" `shouldBe` langPath prog
     it "names the crystal witness per instance (never collides)" $
-      decisionsPath prog `shouldBe` "examples/ledger.backup.decisions"
+      decisionsPath prog `shouldBe` "examples/ledger.backup.lips.decisions"
 
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $
