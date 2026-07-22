@@ -313,9 +313,13 @@ generate confidence mmodel file = do
       case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
        Left es  -> die (validationReport file ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
        Right eng -> assertOptionsAdmissible file eng >> case validate file eng program of
-        -- A missing program fact the engine demands is the human's to state, not
-        -- a lips bug: surface the demand questions and point back at the program.
-        Left f@(FailRun (OpenQuestions _)) -> die (printFail file f)
+        -- An unmet demand at generate is ambiguous by construction: the kernel is
+        -- domain-blind, so it cannot tell "the program never stated this" from
+        -- "the minted patterns failed to read a value the program does carry."
+        -- Only the author knows which. So name both remedies rather than blame
+        -- one side. (On print/run below it is unambiguous -- an unmet demand
+        -- means an edited-out line -- so that path keeps the plain "answer it".)
+        Left (FailRun (OpenQuestions qs)) -> die (demandGenerateFail file qs)
         Left f -> die (validationReport file (failureReport file f))
         Right (base, nixModule) -> do
           nixCheck <- nixParses nixModule
@@ -713,6 +717,23 @@ uncheckableReport file bad = report
   [ T.intercalate "." (exPath e) <> " (check " <> exId e <> ")" | e <- bad ]
   ("→ a check must name an option carrying a value from " <> T.pack file
     <> ". Rebuild the setup: lips generate " <> T.pack file)
+
+-- | A demand the minted engine leaves unmet at generate. Ambiguous by
+-- construction (the kernel cannot tell a silent program from patterns that
+-- misread a stated value), so it names BOTH remedies and lets the author, who
+-- alone knows which, choose. Both paths re-enter generate: a value you add
+-- still needs a fresh mint to grow a pattern that reads it.
+demandGenerateFail :: FilePath -> [Text] -> Text
+demandGenerateFail file qs = T.intercalate "\n" $
+  [ T.pack file <> ": lips built a setup but left these unanswered:" , "" ]
+    ++ [ "  " <> q | q <- qs ]
+    ++ [ ""
+       , "Either your program does not state these, or the setup lips built"
+       , "misread them. If a value is already there (e.g. \"on port 8080\"), the"
+       , "mint misfired."
+       , ""
+       , "\x2192 run generate again. If the same facts keep coming up unanswered,"
+       , "  state them in " <> T.pack file <> " or report it as a lips bug." ]
 
 -- | generate built a setup but it did not hold up: wrap a diagnosis with the
 -- generate-time action (mint again; report a lips bug if it persists). Not the
