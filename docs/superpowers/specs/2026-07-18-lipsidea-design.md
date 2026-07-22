@@ -746,9 +746,24 @@ but the loop around it is incomplete; "missing" means specced, not built.
   - Glue: TODO. The one documented incompleteness (computation).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
+- **Language reuse across instances (language as a configurable module).** A
+  language is minted per program and its engine bakes one instance's identity
+  into the grammar (the frozen `services.restic.backups.ledger` key). The
+  reuse model: the extension names a shared language (`*.backup` ->
+  `backup.lang`), a language is one configurable NixOS module induced by
+  anti-unifying several example programs (their divergences become both the
+  accepted holes and the option surface), and an instance is a configuration
+  keyed by the program basename via a `<self>` value hole that fills the
+  option schema's `attrsOf` `"*"` wildcard. Multiplicity then rides Nix's
+  native module merge, not a lips corpus; `.expect`/`.generation` move to
+  language level; `generate` takes multiple programs and gates on the whole
+  example set as the regeneration corpus. One kernel change (`<self>`); the
+  rest is CLI lookup and file placement. Full design in
+  `2026-07-22-language-as-configurable-module-plan.md`.
 - **Multi-language composition.** The sketch composes three languages in one
   decision base; the prototype runs one engine. Composing several
-  engines/languages in one Solution is unbuilt.
+  engines/languages in one Solution is unbuilt. (Dual of language reuse above:
+  many languages in one Solution, vs many instances of one language.)
 - **Guarantee lifecycle.** The walk-through's assumption `OPEN -> GUARANTEED`
   flow and the "verify a vocabulary once, inherit cheaply" rigor allocation
   have no code.
