@@ -33,6 +33,7 @@ module Lips.Kernel.Engine.Data
   , Emit (..)
   , DemandSpec (..)
   , toRule
+  , bindSelf
   , toDemand
   , renderRuleBody
   , parseRuleBody
@@ -74,6 +75,20 @@ data DemandSpec = DemandSpec
   , dsQuestion :: Text
   }
   deriving (Eq, Show)
+
+-- | Bind the reserved @\<self\>@ option-path segment to the solution's
+-- instance name (its file basename), so a shared language names its
+-- per-instance @attrsOf@ key without baking one instance into the grammar
+-- (plan 2026-07-22). The model emits @services.restic.backups.\<self\>.paths@;
+-- the option schema admits @\<self\>@ only where it declares a @"*"@ wildcard,
+-- and each solution fills it with its own name. Segments other than
+-- @\<self\>@, and every rhs value, are untouched.
+bindSelf :: Text -> MapRule -> MapRule
+bindSelf name mr = mr { mrEmits = map bindEmit (mrEmits mr) }
+  where
+    bindEmit e = e { emPath = map seg (emPath e) }
+    seg "<self>" = name
+    seg s        = s
 
 -- | Interpret a minted rule with the kernel's generic refinement machinery.
 -- The emitted decisions are 'Meta' (mapped mechanisms); ids and provenance are

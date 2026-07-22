@@ -26,6 +26,7 @@ module Lips.Kernel.Expect
   ( Expect (..)
   , renderExpect
   , readExpect
+  , bindSelfExpect
   , parseExpectBody
   , expectedValue
   , evalExpr
@@ -102,6 +103,17 @@ parseExpectBody eid body =
         Just n | n >= 1 -> Right (s, Just n)
         _              -> Left ("expect " <> eid <> ": bad token index in " <> t)
 
+-- | Bind the reserved @\<self\>@ option-path segment to the instance name, so
+-- a shared language's contract is checked against the realized module, whose
+-- @\<self\>@ is already bound the same way (plan 2026-07-22). Only the option
+-- path is affected; the source subject ('exFrom') is program-side and never
+-- carries @\<self\>@.
+bindSelfExpect :: Text -> Expect -> Expect
+bindSelfExpect name e = e { exPath = map seg (exPath e) }
+  where
+    seg "<self>" = name
+    seg s        = s
+
 -- | The value the program specifies for an assertion: the source decision's
 -- assertion, or its nth token. A missing subject or out-of-range token fails
 -- loud -- an assertion that cannot be grounded in the program is a defect.
@@ -131,7 +143,12 @@ evalExpr modPath expects = T.concat
   , "get = path: builtins.foldl' "
   , "(acc: k: if builtins.isAttrs acc && builtins.hasAttr k acc then acc.${k} else null) "
   , "cfg path; "
-  , "in builtins.concatStringsSep \"\\n\" (map (p: builtins.toJSON (get p)) [ "
+  -- A path-typed option value (environmentFile = /etc/foo) must NOT go through
+  -- toJSON: that coerces the path into the store and fails for an absolute
+  -- system file that does not exist at eval time. toString yields its literal
+  -- text without importing, and containment over strings is unchanged.
+  , "render = v: if builtins.typeOf v == \"path\" then builtins.toString v else builtins.toJSON v; "
+  , "in builtins.concatStringsSep \"\\n\" (map (p: render (get p)) [ "
   , T.intercalate " " (map nixPath expects)
   , " ])"
   ]

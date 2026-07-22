@@ -38,6 +38,7 @@ import Lips.Kernel.Lang.Diagnose
 import Lips.Kernel.Lang.Store
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
+import Lips.Identity
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -425,6 +426,10 @@ main = hspec $ do
       let src = "a1 expect services.restic.backups.ledger.repository from backup.job#2\n"
       (renderExpect <$> readExpect src) `shouldBe` Right src
 
+    it "binds <self> in the option path to the instance (contract is language-level)" $
+      bindSelfExpect "ledger" (Expect "a" ["services", "restic", "backups", "<self>", "paths"] opt Nothing)
+        `shouldBe` Expect "a" ["services", "restic", "backups", "ledger", "paths"] opt Nothing
+
     it "resolves the whole assertion and the nth token" $ do
       expectedValue base (Expect "a" ["o"] opt Nothing)  `shouldBe` Right "/var/lib/ledger /backup/ledger daily"
       expectedValue base (Expect "a" ["o"] opt (Just 2)) `shouldBe` Right "/backup/ledger"
@@ -581,6 +586,22 @@ main = hspec $ do
 
     it "rule body round-trips" $
       parseRuleBody "r2" (renderRuleBody rule) `shouldBe` Right rule
+
+    -- Language reuse (plan 2026-07-22): a shared grammar names the per-instance
+    -- attrsOf key by the reserved <self> segment, bound to the solution's file
+    -- basename, instead of baking one instance into the grammar.
+    it "binds <self> in an option path to the instance name" $ do
+      let selfRule = MapRule "r" Oblige ["backup", "job"]
+            [ Emit ["services", "restic", "backups", "<self>", "paths"] (VStr [PHole "value"]) ]
+          matched = (mk "d" "unused" "/var/lib/x" Stated)
+                      { dSubject = Subject ["backup", "job"], dKind = Oblige }
+      case refine 100 [toRule (bindSelf "ledger" selfRule)] (fromList [matched]) of
+        Right b -> map dSubject (toList b) `shouldBe`
+                     [Subject ["services", "restic", "backups", "ledger", "paths"]]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "bindSelf leaves a rule without <self> untouched" $
+      bindSelf "ledger" rule `shouldBe` rule
 
     it "demand body round-trips" $ do
       let q = DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
@@ -993,6 +1014,8 @@ main = hspec $ do
         , "expect <option.path> from <subject>"
         , "pattern|match|demand|expect|because"
         , "because-note"
+        , "reserved segment <self>"
+        , "same line-shape appearing in different programs is a SINGLE"
         ]
 
   -- The optional per-program .direction file steers mint taste. It must ride
@@ -1027,6 +1050,19 @@ main = hspec $ do
       prModel (parsePiReply stream) `shouldBe` "anthropic/claude-opus-4-8"
     it "empty stream yields empty fields (caller fails loud)" $
       parsePiReply "" `shouldBe` PiReply "" ""
+
+  describe "solution identity (plan 2026-07-22: <basename>.<language>)" $ do
+    let prog = "examples/ledger.backup"
+    it "reads the language from the extension and the instance from the basename" $ do
+      languageName prog `shouldBe` "backup"
+      instanceName prog `shouldBe` "ledger"
+    it "names language-level sidecars by the language, shared across instances" $ do
+      langPath       prog `shouldBe` "examples/backup.lang"
+      expectPath     prog `shouldBe` "examples/backup.expect"
+      generationPath prog `shouldBe` "examples/backup.generation"
+      langPath "examples/photos.backup" `shouldBe` langPath prog
+    it "names the crystal witness per instance (never collides)" $
+      decisionsPath prog `shouldBe` "examples/ledger.backup.decisions"
 
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $
