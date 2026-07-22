@@ -1,0 +1,12 @@
+p1 meta lang.pattern.p1 stated "serve http on port <port> => fact server.port stated \"<port>\"" @gen:a91d9e438ecab813
+p2 meta lang.pattern.p2 stated "respond to every request with the text <body> => fact server.response stated \"<body>\"" @gen:a91d9e438ecab813
+p3 meta lang.pattern.p3 stated "write the server in <lang> using only the standard library with no external dependencies => steer server.language stated \"<lang>\"" @gen:a91d9e438ecab813
+p4 meta lang.pattern.p4 stated "run it as a systemd service named <name> => fact server.name stated \"<name>\"" @gen:a91d9e438ecab813
+q1 meta engine.demand.q1 stated "demand server.port \"which TCP port should the server listen on?\"" @gen:a91d9e438ecab813
+q2 meta engine.demand.q2 stated "demand server.response \"what text should the server return for every request?\"" @gen:a91d9e438ecab813
+q3 meta engine.demand.q3 stated "demand server.language \"in which language and with what dependency policy should the server be built?\"" @gen:a91d9e438ecab813
+q4 meta engine.demand.q4 stated "demand server.name \"what should the systemd service be named?\"" @gen:a91d9e438ecab813
+r1 meta engine.rule.r1 stated "match fact server.port => systemd.services.<self>.environment.PORT \"\\\"<value>\\\"\"" @gen:a91d9e438ecab813
+r2 meta engine.rule.r2 stated "match fact server.response => systemd.services.<self>.environment.RESPONSE \"\\\"<value>\\\"\"" @gen:a91d9e438ecab813
+r3 meta engine.rule.r3 stated "match steer server.language => artifact.helloserver.builder \"\\\"buildGoModule\\\"\" ; artifact.helloserver.args.pname \"\\\"helloserver\\\"\" ; artifact.helloserver.args.version \"\\\"0.1.0\\\"\" ; artifact.helloserver.args.src \"./artifacts/helloserver\" ; artifact.helloserver.args.vendorHash \"null\"" @gen:a91d9e438ecab813
+r4 meta engine.rule.r4 stated "match fact server.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.ExecStart \"\\\"${artifact.helloserver}/bin/helloserver\\\"\" ; systemd.services.<self>.wantedBy \"[ \\\"multi-user.target\\\" ]\"" @gen:a91d9e438ecab813

@@ -1,0 +1,3 @@
+back up /var/lib/photos to /backup/photos weekly
+keep 8 weekly snapshots
+credentials come from /etc/photos-backup.env

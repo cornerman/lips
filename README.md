@@ -45,14 +45,21 @@ The loop has three moves. Only the first touches a model.
 **Write.** State intent in plain lines. This is the only artifact you own and
 the only one you cannot regenerate. Keep it short and truthful.
 
-**Generate (once, AI).** `lips generate my.loose` mints the engine and the
-tests for your program. lips refuses to write anything unless the engine
+A program is named `<instance>.<language>`: the extension names the language,
+the basename names this one instance of it. So `ledger.backup` is instance
+`ledger` written in language `backup`, and many programs (`ledger.backup`,
+`photos.backup`) reuse one shared `backup.lang`, each realizing to its own
+instance that compose side by side in a configuration.
+
+**Generate (once, AI).** `lips generate ledger.backup` mints the engine and the
+tests for the language. lips refuses to write anything unless the engine
 actually compiles your program and the tests hold, so a bad mint costs you
 nothing.
 
-**Print and run (forever, no AI).** `lips print my.loose` compiles your text to
-a NixOS module. `lips run my.loose` goes further and boots that module in a
-throwaway local VM, so you can watch it work without touching your host.
+**Print and run (forever, no AI).** `lips print ledger.backup` compiles your
+text to a NixOS module. `lips run ledger.backup` goes further and boots that
+module in a throwaway local VM, so you can watch it work without touching your
+host.
 
 You then edit freely. Value and wording changes covered by your language run
 straight through `print`. You return to `generate` only when you say something
@@ -62,7 +69,7 @@ change behavior on purpose you delete the `.expect` file and regenerate, and
 that diff is your semantic changelog.
 
 **Steer the mint (optional).** To express taste about *how* the engine gets
-built, put a plain-text `my.loose.direction` file beside your program: "prefer
+built, put a plain-text `backup.direction` file beside the language: "prefer
 restic over rsync", "no docker", "secrets via env files". It shapes generate
 only, and stays advisory: preferences about mechanism, never requirements.
 Anything that *must* hold belongs in the program or its tests, not here. The
@@ -70,7 +77,7 @@ file is optional; absent, nothing changes.
 
 ```mermaid
 flowchart LR
-    W["write<br><b>my.loose</b>"]
+    W["write<br><b>ledger.backup</b>"]
     W -->|"generate<br>(AI, once)"| E["engine + tests<br>verified, or nothing"]
     W -->|"print / run<br>(no AI, forever)"| M["NixOS module<br>+ local VM"]
     E --> M
@@ -82,17 +89,17 @@ flowchart LR
 With direnv, run `direnv allow` once. Otherwise prefix each command with
 `nix develop -c`.
 
-    just print examples/backup.loose   # loose text -> NixOS module (offline)
-    just run   examples/backup.loose   # ... and boot it as a local VM (needs KVM)
-    just generate path/to/my.loose     # mint a language for your own program (AI, needs pi)
-    just test                          # conformance suite
+    just print examples/ledger.backup   # loose text -> NixOS module (offline)
+    just run   examples/ledger.backup   # ... and boot it as a local VM (needs KVM)
+    just generate path/to/my.backup     # mint a language for your own program (AI, needs pi)
+    just test                           # conformance suite
 
-Open `examples/backup.loose`, change `/backup/ledger` or `14`, and run
+Open `examples/ledger.backup`, change `/backup/ledger` or `14`, and run
 `just print` again. The module updates with no AI. Then add a sentence the
 language does not know and watch it fail loud, pointing you back to `generate`.
 
 Sometimes intent needs a program written, not just a package configured.
-`examples/hello-server.loose` asks for a small HTTP server; its engine builds
+`examples/hello.http` asks for a small HTTP server; its engine builds
 that server from generated Go source (a Nix `buildGoModule` derivation) and
 runs it as a service. The source is a committed, reviewable file beside the
 program; the build and run stay deterministic and offline. The `artifact-vm`
@@ -100,24 +107,26 @@ flake check compiles it and boots the service in a VM.
 
 ## The Files
 
-For a program `my.loose`, everything else sits beside it. You own the first
-line; the machine writes the rest.
+For a program `ledger.backup`, everything else sits beside it. The language
+artifacts are named by the language and shared by every `*.backup` program; the
+crystal witness is per instance. You own the first line; the machine writes the
+rest.
 
 | File | Author | Role | In git |
 |------|--------|------|--------|
-| `my.loose` | you | the program, the only real source | yes |
-| `my.loose.lang` | AI, once | the engine (grammar + rules + tests) | yes |
-| `my.loose.expect` | AI, once | behavioral tests that gate regeneration | yes |
-| `my.loose.direction` | you | optional taste steering the mint | yes, if you want it |
-| `my.loose.generation` | machine | receipt of the exact AI call | yes |
-| `my.loose.decisions` | machine | the machine's reading of your program | no (cache) |
+| `ledger.backup` | you | the program (instance `ledger`), the only real source | yes |
+| `backup.lang` | AI, once | the engine (grammar + rules + tests), shared | yes |
+| `backup.expect` | AI, once | behavioral tests that gate regeneration | yes |
+| `backup.direction` | you | optional taste steering the mint | yes, if you want it |
+| `backup.generation` | machine | receipt of the exact AI call | yes |
+| `ledger.backup.decisions` | machine | the machine's reading of this program | no (cache) |
 
 Everything the machine writes is traceable. Each `.lang` line ends in
 `@gen:<fingerprint>`, the hash of the AI call recorded in `.generation`. And
 `.decisions` shows how the machine read you, one precise statement per line, so
 you can check "did it understand me?" before trusting the output.
 
-If everything burned down, the `.loose` file is the only thing you could not
+If everything burned down, the program file is the only thing you could not
 recreate. That is the whole point.
 
 ## Layout

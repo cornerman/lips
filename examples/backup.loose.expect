@@ -1,5 +1,0 @@
-a1 expect services.restic.backups.ledger.paths from backup.job#1
-a2 expect services.restic.backups.ledger.repository from backup.job#2
-a3 expect services.restic.backups.ledger.timerConfig.OnCalendar from backup.job#3
-a4 expect services.restic.backups.ledger.pruneOpts from backup.retention
-a5 expect services.restic.backups.ledger.environmentFile from backup.credentials

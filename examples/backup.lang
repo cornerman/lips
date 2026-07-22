@@ -1,0 +1,13 @@
+p1 meta lang.pattern.p1 stated "back up <source> to <dest> <schedule> => fact backup.source stated \"<source>\" ; fact backup.dest stated \"<dest>\" ; fact backup.schedule stated \"<schedule>\"" @gen:ee1f645b199db5b6
+p2 meta lang.pattern.p2 stated "keep <count> <period> snapshots => fact backup.retention stated \"<count> <period>\"" @gen:ee1f645b199db5b6
+p3 meta lang.pattern.p3 stated "credentials come from <path> => fact backup.credentials stated \"<path>\"" @gen:ee1f645b199db5b6
+q1 meta engine.demand.q1 stated "demand backup.source \"which directory should be backed up?\"" @gen:ee1f645b199db5b6
+q2 meta engine.demand.q2 stated "demand backup.dest \"where should the restic repository live?\"" @gen:ee1f645b199db5b6
+q3 meta engine.demand.q3 stated "demand backup.schedule \"how often should the backup run?\"" @gen:ee1f645b199db5b6
+q4 meta engine.demand.q4 stated "demand backup.retention \"how many snapshots to keep and at what interval?\"" @gen:ee1f645b199db5b6
+q5 meta engine.demand.q5 stated "demand backup.credentials \"where is the restic credentials/environment file?\"" @gen:ee1f645b199db5b6
+r1 meta engine.rule.r1 stated "match fact backup.source => services.restic.backups.<self>.paths \"[ \\\"<value>\\\" ]\"" @gen:ee1f645b199db5b6
+r2 meta engine.rule.r2 stated "match fact backup.dest => services.restic.backups.<self>.repository \"\\\"<value>\\\"\"" @gen:ee1f645b199db5b6
+r3 meta engine.rule.r3 stated "match fact backup.schedule => services.restic.backups.<self>.timerConfig.OnCalendar \"\\\"<value>\\\"\"" @gen:ee1f645b199db5b6
+r4 meta engine.rule.r4 stated "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-<value.2> <value.1>\\\" ]\"" @gen:ee1f645b199db5b6
+r5 meta engine.rule.r5 stated "match fact backup.credentials => services.restic.backups.<self>.environmentFile \"\\\"<value>\\\"\"" @gen:ee1f645b199db5b6

@@ -1,0 +1,5 @@
+Model the feed as a single systemd service that only records configuration in
+environment variables: the inbox path, the delivery schedule (as a timer), and
+what each source row maps to. Do not build a program, and do not choose or
+demand an ingesting command; the service carries these settings as environment
+only.

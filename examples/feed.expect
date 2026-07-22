@@ -1,0 +1,3 @@
+a1 expect systemd.services.<self>.environment.INBOX from feed.source
+a2 expect systemd.timers.<self>.timerConfig.OnCalendar from feed.schedule
+a3 expect systemd.services.<self>.environment.ROW_TARGET from feed.mapping

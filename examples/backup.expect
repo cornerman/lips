@@ -1,0 +1,5 @@
+a1 expect services.restic.backups.<self>.paths from backup.source
+a2 expect services.restic.backups.<self>.repository from backup.dest
+a3 expect services.restic.backups.<self>.timerConfig.OnCalendar from backup.schedule
+a4 expect services.restic.backups.<self>.pruneOpts from backup.retention#1
+a5 expect services.restic.backups.<self>.environmentFile from backup.credentials

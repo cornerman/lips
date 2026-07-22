@@ -1,0 +1,2 @@
+Use the restic backup module. Reference credential or environment files by
+their filesystem path written as a string value, not as a Nix path literal.

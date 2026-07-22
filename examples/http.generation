@@ -1,0 +1,185 @@
+model: claude-opus-4-8
+confidence-threshold: 0.7
+--- system prompt ---
+You crystallize a loose program into a lips ENGINE: patterns (the
+language), rules (the mechanisms), and demands (completeness). You never
+state the program's meaning; the kernel derives it deterministically by
+applying your patterns to the program text.
+
+Your situation: you act exactly once. Afterwards the human edits the
+program and the kernel re-reads it with your patterns, deterministically,
+without you. So: replace EVERY program value with a hole, so edits flow
+without regeneration. The engine you mint is pure data; there is no
+escape to code. Never guess. Route each gap by its kind:
+  - A missing PROGRAM FACT (a value a human could write in the program and
+    a pattern could read) is not yours to invent: emit a high-confidence
+    demand asking for it, AND a pattern that will read the answer line, so
+    the human states it and re-runs. Prefer this whenever the program is
+    simply silent about something its setup needs.
+  - A value you must still choose (a free default, or a build input you
+    cannot deduce) gets LOW confidence -- refusal beats invention -- and a
+    because-note naming, in one plain sentence, what the human could state
+    to pin it: <confidence> <id> because "..." (same id as the item).
+Never work around the value grammar (no packing computation into strings);
+if something is inexpressible, give it low confidence so the kernel is
+extended instead.
+
+Output ONLY lines of these forms, no prose, no code fences. Every line
+names its kind with a leading keyword (pattern|match|demand|expect|because),
+so a
+pattern template may itself begin with any word:
+
+  <confidence> <id> pattern <template> => <kind> <subject> <strength> "<assertion>"
+  <confidence> <id> match <kind> <subject> => <option.path> "<rhs>" ; <option.path> "<rhs>"
+  <confidence> <id> demand <subject> "<question>"
+
+confidence: a number in [0,1]; below 0.7 means unsure, and the build will
+refuse the engine (that is correct behavior, not failure).
+
+PATTERNS (ids p1, p2, ...): one per distinct line shape; together they
+must cover every input line. template = the loose line with VALUES
+replaced by <holes>; fixed words match literally (case-insensitive).
+Each hole binds exactly one token, captured verbatim. To capture a QUOTED
+value that may contain spaces, use a quoted hole: text "<body>" binds the
+inner text of a "..." value (quotes dropped). A BULLETED list item begins
+with a literal - token, so include it (- <path> ...); put the item's own
+value (e.g. the path) into the subject so each item is a distinct decision.
+kind: one of
+concept fact oblige forbid allow invariant view assume steer glue meta.
+strength: stated. subject: invent a dotted vocabulary for this problem
+(e.g. backup.source). Every hole used in the subject or assertion MUST
+appear in the template. Patterns must be orthogonal: no input line may
+match two of them.
+
+RULES (ids r1, r2, ...): map EVERY subject your patterns produce to
+NixOS option assignments; any decision no rule maps fails the build.
+Every <rhs> is wrapped in ONE pair of surrounding double quotes, and
+inside it is a VALUE, not a Nix expression -- the kernel rejects
+computation. The value forms are the Nix value algebra minus computation:
+a string \"...\", a list [ ... ], true, false, null, an integer, a float,
+a path (/x or ./x), a TYPED HOLE (below), and a bare ${pkgs.<name>} or
+${artifact.<name>} REFERENCE. A string rhs looks like "\"<value>\"" and a
+list rhs looks like "[ \"timers.target\" ]". A list of PACKAGES (an
+option like environment.systemPackages, or writeShellApplication's
+runtimeInputs) holds bare references, not strings:
+"[ ${pkgs.curl} ${artifact.<name>} ]" -- each element is a derivation.
+Inside Nix strings only two things beyond literal text parse: the holes
+<value> (the matched decision's assertion) / <value.N> (its Nth
+whitespace-separated token, 1-based; use it when a pattern's assertion
+joins several holes) and ${pkgs.<name>} package references. Outside a
+string, a bare ${pkgs.<name>} or ${artifact.<name>} is itself a value (a
+list element). No functions, no splitString, no other ${...}. Do not quote
+a package into a string when the option wants a derivation. Template holes
+bind single tokens;
+punctuation like a trailing period stays outside the hole.
+
+TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
+count, a size, a toggle, a path) do NOT quote the hole; use a typed hole
+naming the type: <value:int>, <value:bool>, <value:float>, <value:path>
+(or <value.N:int> for the Nth token). It emits a value of that type and
+fails if the program token is not of that type. Quote a hole
+("\"<value>\"") only for genuinely string-typed options. So a port rule
+looks like services.nginx.defaultHTTPListenPort "<value:int>". Realize
+work as systemd services and timers or other NixOS options.
+
+INSTANCE NAMES (<self>): some options are an attrsOf of submodules keyed by
+an instance NAME you would otherwise invent -- services.restic.backups.<name>,
+systemd.services.<name>. Do NOT bake a name read from the program into that
+key. Use the reserved segment <self>: services.restic.backups.<self>.paths.
+It binds to the program's own instance name (its file basename) at realize
+time, so ONE grammar serves many programs -- each its own instance -- and two
+of them compose in one configuration without collision. Use <self> only where
+the option schema has such a name placeholder; elsewhere it is rejected.
+
+ARTIFACTS (only when the program needs a program BUILT FROM SOURCE, e.g. a
+server you must write): a rule may emit an artifact group under the subject
+root artifact.<name>: a builder and its arguments. The builder is a nixpkgs
+builder path (a name, not code), e.g. rustPlatform.buildRustPackage or
+buildGoModule. Example emits inside a rule:
+  artifact.<name>.builder "\"rustPlatform.buildRustPackage\"" ;
+  artifact.<name>.args.pname "\"<name>\"" ;
+  artifact.<name>.args.version "\"0.1.0\"" ;
+  artifact.<name>.args.src "./artifacts/<name>" ;
+  artifact.<name>.args.cargoHash "\"<sha256>\""
+The source tree is staged at ./artifacts/<name>, so args.src is that exact
+path. Provide each source file with a source block (a heredoc); the path is
+relative to the artifact's source root:
+  <confidence> <id> source <name> <relpath> <<<lips
+  ...verbatim file content...
+  lips>>>
+Reference the built artifact in an option with ${artifact.<name>}, e.g.
+  systemd.services.<name>.serviceConfig.ExecStart
+    "\"${artifact.<name>}/bin/<name>\""
+Prefer configuring a PREBUILT ${pkgs.<name>} package; mint an artifact only
+when the program itself must be written. Keep source self-contained (no
+external dependency fetch) unless the program clearly requires it.
+
+DEMANDS (ids q1, q2, ...): what any program in this language must state,
+as a subject plus the question to ask when it is missing.
+
+EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
+must reach the config. Form:
+  <confidence> <id> expect <option.path> from <subject>[#<n>]
+It asserts the value your patterns capture into <subject> (or its nth
+whitespace token, #n, 1-based) appears at NixOS option <option.path> in
+the realized module. Name the SAME option paths your rules assign. Emit
+one expect for every distinct program value a rule carries into an option,
+so realization and configurability are pinned.
+
+The kernel verifies: every line crystallizes, every decision is mapped,
+every demand is met, the result parses as a NixOS module, and every
+expect holds against the evaluated module.
+
+Example input line:
+  the bank drops csv files into inbox/.
+Example output lines:
+  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source stated "<loc>"
+  0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
+  0.9 q1 demand feed.source "where do the files arrive?"
+  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
+
+--- program (input) ---
+serve http on port 8080.
+respond to every request with the text "hello from lips".
+write the server in go, using only the standard library with no external dependencies.
+run it as a systemd service named hello.
+
+--- raw reply ---
+0.95 p1 pattern serve http on port <port>. => fact server.port stated "<port>"
+0.95 p2 pattern respond to every request with the text "<body>". => fact server.response stated "<body>"
+0.85 p3 pattern write the server in <lang>, using only the standard library with no external dependencies. => steer server.language stated "<lang>"
+0.9 p4 pattern run it as a systemd service named <name>. => fact server.name stated "<name>"
+0.92 r1 match fact server.port => systemd.services.<self>.environment.PORT "\"<value>\""
+0.92 r2 match fact server.response => systemd.services.<self>.environment.RESPONSE "\"<value>\""
+0.8 r3 match steer server.language => artifact.helloserver.builder "\"buildGoModule\"" ; artifact.helloserver.args.pname "\"helloserver\"" ; artifact.helloserver.args.version "\"0.1.0\"" ; artifact.helloserver.args.src "./artifacts/helloserver" ; artifact.helloserver.args.vendorHash "null"
+0.85 r4 match fact server.name => systemd.services.<self>.description "\"<value>\"" ; systemd.services.<self>.serviceConfig.ExecStart "\"${artifact.helloserver}/bin/helloserver\"" ; systemd.services.<self>.wantedBy "[ \"multi-user.target\" ]"
+0.65 r3 because "which nixpkgs version string to stamp the built server with; state a version in the program to pin it"
+0.9 q1 demand server.port "which TCP port should the server listen on?"
+0.9 q2 demand server.response "what text should the server return for every request?"
+0.7 q3 demand server.language "in which language and with what dependency policy should the server be built?"
+0.9 q4 demand server.name "what should the systemd service be named?"
+0.9 a1 expect systemd.services.<self>.environment.PORT from server.port
+0.9 a2 expect systemd.services.<self>.environment.RESPONSE from server.response
+0.85 a3 expect systemd.services.<self>.description from server.name
+0.9 s1 source helloserver go.mod <<<lips
+module helloserver
+
+go 1.21
+lips>>>
+0.9 s2 source helloserver main.go <<<lips
+package main
+
+import (
+	"net/http"
+	"os"
+)
+
+func main() {
+	response := os.Getenv("RESPONSE")
+	addr := ":" + os.Getenv("PORT")
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(response))
+	})
+	http.ListenAndServe(addr, nil)
+}
+lips>>>

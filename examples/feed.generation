@@ -1,5 +1,5 @@
-model: anthropic/claude-opus-4-8
-confidence-threshold: 0.4
+model: claude-opus-4-8
+confidence-threshold: 0.7
 --- system prompt ---
 You crystallize a loose program into a lips ENGINE: patterns (the
 language), rules (the mechanisms), and demands (completeness). You never
@@ -10,15 +10,26 @@ Your situation: you act exactly once. Afterwards the human edits the
 program and the kernel re-reads it with your patterns, deterministically,
 without you. So: replace EVERY program value with a hole, so edits flow
 without regeneration. The engine you mint is pure data; there is no
-escape to code. Never guess: where the program underdetermines a choice
-you cannot justify, give low confidence -- refusal beats invention. Never
-work around the value grammar (no packing computation into strings); if
-something is inexpressible, give it low confidence so the kernel is
+escape to code. Never guess. Route each gap by its kind:
+  - A missing PROGRAM FACT (a value a human could write in the program and
+    a pattern could read) is not yours to invent: emit a high-confidence
+    demand asking for it, AND a pattern that will read the answer line, so
+    the human states it and re-runs. Prefer this whenever the program is
+    simply silent about something its setup needs.
+  - A value you must still choose (a free default, or a build input you
+    cannot deduce) gets LOW confidence -- refusal beats invention -- and a
+    because-note naming, in one plain sentence, what the human could state
+    to pin it: <confidence> <id> because "..." (same id as the item).
+Never work around the value grammar (no packing computation into strings);
+if something is inexpressible, give it low confidence so the kernel is
 extended instead.
 
-Output ONLY lines of these three forms, no prose, no code fences:
+Output ONLY lines of these forms, no prose, no code fences. Every line
+names its kind with a leading keyword (pattern|match|demand|expect|because),
+so a
+pattern template may itself begin with any word:
 
-  <confidence> <id> <template> => <kind> <subject> <strength> "<assertion>"
+  <confidence> <id> pattern <template> => <kind> <subject> <strength> "<assertion>"
   <confidence> <id> match <kind> <subject> => <option.path> "<rhs>" ; <option.path> "<rhs>"
   <confidence> <id> demand <subject> "<question>"
 
@@ -46,13 +57,20 @@ Every <rhs> is wrapped in ONE pair of surrounding double quotes, and
 inside it is a VALUE, not a Nix expression -- the kernel rejects
 computation. The value forms are the Nix value algebra minus computation:
 a string \"...\", a list [ ... ], true, false, null, an integer, a float,
-a path (/x or ./x), and a TYPED HOLE (below). A string rhs looks like
-"\"<value>\"" and a list rhs looks like "[ \"timers.target\" ]".
+a path (/x or ./x), a TYPED HOLE (below), and a bare ${pkgs.<name>} or
+${artifact.<name>} REFERENCE. A string rhs looks like "\"<value>\"" and a
+list rhs looks like "[ \"timers.target\" ]". A list of PACKAGES (an
+option like environment.systemPackages, or writeShellApplication's
+runtimeInputs) holds bare references, not strings:
+"[ ${pkgs.curl} ${artifact.<name>} ]" -- each element is a derivation.
 Inside Nix strings only two things beyond literal text parse: the holes
 <value> (the matched decision's assertion) / <value.N> (its Nth
 whitespace-separated token, 1-based; use it when a pattern's assertion
-joins several holes) and ${pkgs.<name>} package references. No functions,
-no splitString, no other ${...}. Template holes bind single tokens;
+joins several holes) and ${pkgs.<name>} package references. Outside a
+string, a bare ${pkgs.<name>} or ${artifact.<name>} is itself a value (a
+list element). No functions, no splitString, no other ${...}. Do not quote
+a package into a string when the option wants a derivation. Template holes
+bind single tokens;
 punctuation like a trailing period stays outside the hole.
 
 TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
@@ -63,6 +81,15 @@ fails if the program token is not of that type. Quote a hole
 ("\"<value>\"") only for genuinely string-typed options. So a port rule
 looks like services.nginx.defaultHTTPListenPort "<value:int>". Realize
 work as systemd services and timers or other NixOS options.
+
+INSTANCE NAMES (<self>): some options are an attrsOf of submodules keyed by
+an instance NAME you would otherwise invent -- services.restic.backups.<name>,
+systemd.services.<name>. Do NOT bake a name read from the program into that
+key. Use the reserved segment <self>: services.restic.backups.<self>.paths.
+It binds to the program's own instance name (its file basename) at realize
+time, so ONE grammar serves many programs -- each its own instance -- and two
+of them compose in one configuration without collision. Use <self> only where
+the option schema has such a name placeholder; elsewhere it is rejected.
 
 ARTIFACTS (only when the program needs a program BUILT FROM SOURCE, e.g. a
 server you must write): a rule may emit an artifact group under the subject
@@ -106,58 +133,41 @@ expect holds against the evaluated module.
 Example input line:
   the bank drops csv files into inbox/.
 Example output lines:
-  0.96 p1 the bank drops csv files into <loc> => fact feed.source stated "<loc>"
+  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source stated "<loc>"
   0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
   0.9 q1 demand feed.source "where do the files arrive?"
   0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
 
+DIRECTION (the owner's taste for THIS program; optional, advisory).
+The text below is PREFERENCE, not requirement. It says how to prefer
+building the engine: mechanism choices only (which package, which
+shape). It never states what must be true. Anything that MUST hold
+lives in the program or its expects, so do not read an obligation out
+of it, and never let it override a value the program states. When it
+does not apply, ignore it.
+--- begin direction ---
+Model the feed as a single systemd service that only records configuration in
+environment variables: the inbox path, the delivery schedule (as a timer), and
+what each source row maps to. Do not build a program, and do not choose or
+demand an ingesting command; the service carries these settings as environment
+only.
+--- end direction ---
+
 --- program (input) ---
-serve http on port 8080.
-respond to every request with the text "hello from lips".
-write the server in go, using only the standard library with no external dependencies.
-run it as a systemd service named hello.
+the bank drops csv files into inbox/.
+the bank delivers new files hourly.
+every bank row becomes exactly one transaction.
 
 --- raw reply ---
-0.95 p1 serve http on port <port>. => fact http.port stated "<port>"
-0.95 p2 respond to every request with the text "<body>". => fact response.text stated "<body>"
-0.82 p3 write the server in <lang>, using only the standard library with no external dependencies. => steer server.language stated "<lang>"
-0.92 p4 run it as a systemd service named <name>. => fact service.name stated "<name>"
-0.9 r1 match fact http.port => systemd.services.hello.environment.PORT "\"<value>\""
-0.9 r2 match fact response.text => systemd.services.hello.environment.RESPONSE "\"<value>\""
-0.72 r3 match steer server.language => artifact.httpserver.builder "\"buildGoModule\"" ; artifact.httpserver.args.pname "\"httpserver\"" ; artifact.httpserver.args.version "\"0.1.0\"" ; artifact.httpserver.args.src "./artifacts/httpserver" ; artifact.httpserver.args.vendorHash "null"
-0.8 r4 match fact service.name => systemd.services.hello.serviceConfig.ExecStart "\"${artifact.httpserver}/bin/httpserver\"" ; systemd.services.hello.serviceConfig.SyslogIdentifier "\"<value>\"" ; systemd.services.hello.serviceConfig.DynamicUser "true" ; systemd.services.hello.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.hello.after "[ \"network.target\" ]"
-0.9 q1 demand http.port "which port should the server listen on?"
-0.9 q2 demand response.text "what text should the server respond with to every request?"
-0.9 q3 demand service.name "what should the systemd service be named?"
-0.6 q4 demand server.language "in which language should the server be written, and which builder realizes it?"
-0.9 a1 expect systemd.services.hello.environment.PORT from http.port
-0.9 a2 expect systemd.services.hello.environment.RESPONSE from response.text
-0.85 a3 expect systemd.services.hello.serviceConfig.SyslogIdentifier from service.name
-0.9 s1 source httpserver go.mod <<<lips
-module httpserver
-
-go 1.22
-lips>>>
-0.9 s2 source httpserver main.go <<<lips
-package main
-
-import (
-	"log"
-	"net/http"
-	"os"
-)
-
-func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	response := os.Getenv("RESPONSE")
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(response))
-	})
-	log.Printf("listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
-}
-lips>>>
-
+0.95 p1 pattern the bank drops csv files into <loc>. => fact feed.source stated "<loc>"
+0.95 p2 pattern the bank delivers new files <cadence>. => fact feed.schedule stated "<cadence>"
+0.95 p3 pattern every bank row becomes exactly one <target>. => fact feed.mapping stated "<target>"
+0.92 r1 match fact feed.source => systemd.services.<self>.environment.INBOX "\"<value>\""
+0.88 r2 match fact feed.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"<value>\""
+0.9 r3 match fact feed.mapping => systemd.services.<self>.environment.ROW_TARGET "\"<value>\""
+0.9 q1 demand feed.source "where do the csv files arrive?"
+0.9 q2 demand feed.schedule "how often does the bank deliver files?"
+0.9 q3 demand feed.mapping "what does each bank row become?"
+0.95 a1 expect systemd.services.<self>.environment.INBOX from feed.source
+0.9 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from feed.schedule
+0.92 a3 expect systemd.services.<self>.environment.ROW_TARGET from feed.mapping

@@ -1,3 +1,0 @@
-a1 expect systemd.services.hello.environment.PORT from http.port
-a2 expect systemd.services.hello.environment.RESPONSE from response.text
-a3 expect systemd.services.hello.serviceConfig.SyslogIdentifier from service.name

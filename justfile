@@ -29,7 +29,9 @@ check:
 check-expect:
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in examples/*.loose; do
+    # Explicit list: a program is <instance>.<language>, indistinguishable from
+    # its language-level sidecars (<language>.lang etc.) by glob alone.
+    for p in examples/ledger.backup examples/photos.backup examples/ingest.feed examples/hello.http; do
       nix run . -- check "$p"
     done
 
