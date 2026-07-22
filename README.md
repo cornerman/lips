@@ -40,7 +40,8 @@ lips never guesses.
 
 ## How You Work With It
 
-The loop has three moves. Only the first touches a model.
+The loop has three moves: write, generate, print. Only the middle
+one, `generate`, touches a model; the other two never do.
 
 **Write.** State intent in plain lines. This is the only artifact you own and
 the only one you cannot regenerate. Keep it short and truthful.
@@ -48,7 +49,12 @@ the only one you cannot regenerate. Keep it short and truthful.
 A program is named `<instance>.<language>.lips` and read right to left. The
 `.lips` extension is the constant marker every editor and language server keys
 on (one extension, so vim, VS Code, Emacs, and Helix all recognize a program
-with no per-language setup). The segment before it, `<language>`, names the
+with no per-language setup). lips ships that language server: `lips lsp` is one
+domain-blind, offline process that reads the `.lang` beside any program and
+gives completion (the language's own patterns as snippets) and live diagnostics
+(an unread line is an error, an open question a warning), with no per-language
+configuration. Editor glue for neovim, vim, VS Code, and Helix lives in
+`editors/`. The segment before it, `<language>`, names the
 lips language the program is written in -- a reusable grammar shared by every
 program in it. What precedes that, `<instance>`, names this one instance.
 
