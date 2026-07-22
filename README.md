@@ -40,8 +40,8 @@ lips never guesses.
 
 ## How You Work With It
 
-The loop has three moves: write, generate, print. Only the middle
-one, `generate`, touches a model; the other two never do.
+The loop has three moves: write, (generate), print/run. Only the middle
+one, `generate`, touches a model.
 
 **Write.** State intent in plain lines. This is the only artifact you own and
 the only one you cannot regenerate. Keep it short and truthful.
