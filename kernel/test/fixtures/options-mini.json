@@ -4,5 +4,7 @@
   "services.x.host":     { "type": "string", "description": "host" },
   "services.x.paths":    { "type": "list of string", "description": "paths" },
   "services.x.envFile":  { "type": "null or absolute path", "description": "env" },
-  "services.x.settings": { "type": "attribute set of anything", "description": "free" }
+  "services.x.settings": { "type": "attribute set of anything", "description": "free" },
+  "services.y.<name>.port": { "type": "signed integer", "description": "per-instance port" },
+  "services.y.<name>.timerConfig": { "type": "attribute set of anything", "description": "free" }
 }

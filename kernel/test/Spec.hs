@@ -1073,6 +1073,24 @@ main = hspec $ do
     it "flags a type mismatch" $
       checkEmits schema [ optRule "r4" ["services", "x", "port"] (VStr [PHole "value"]) ]
         `shouldBe` [ TypeMismatch "r4" ["services", "x", "port"] OTInt (VStr [PHole "value"]) ]
+    it "matches a wildcard schema segment (attrsOf-submodule instance name)" $ do
+      let sch = Map.fromList [ (["services", "r", "*", "port"], OTInt) ]
+      checkEmits sch [ optRule "r1" ["services", "r", "ledger", "port"] (VHole HInt "value") ]
+        `shouldBe` []
+      checkEmits sch [ optRule "r2" ["services", "r", "ledger", "port"] (VStr [PHole "v"]) ]
+        `shouldBe` [ TypeMismatch "r2" ["services", "r", "ledger", "port"] OTInt (VStr [PHole "v"]) ]
+    it "accepts a path that descends into a declared free-form option" $ do
+      let sch = Map.fromList [ (["services", "r", "*", "timerConfig"], OTOther "attribute set") ]
+      checkEmits sch [ optRule "r3" ["services", "r", "ledger", "timerConfig", "OnCalendar"] (VStr [PHole "v"]) ]
+        `shouldBe` []
+    it "flags a path outside any declared option" $ do
+      let sch = Map.fromList [ (["services", "r", "*", "port"], OTInt) ]
+      checkEmits sch [ optRule "r4" ["services", "r", "ledger", "nonsuch"] (VBool True) ]
+        `shouldBe` [ UnknownOption "r4" ["services", "r", "ledger", "nonsuch"] ]
+    it "ignores artifact build-group emits (a derivation, not a target option)" $
+      checkEmits Map.empty
+        [ optRule "r" ["artifact", "srv", "builder"] (VStr [PLit "buildGoModule"]) ]
+        `shouldBe` []
     it "echoes exactly the bogus option in a mixed rule set (deduce-or-fail)" $ do
       let sch  = Map.fromList [ (["services", "restic", "backups", "x", "paths"], OTListOf OTString) ]
           good = optRule "r1" ["services", "restic", "backups", "x", "paths"] (VList [VStr [PHole "value"]])
@@ -1104,6 +1122,8 @@ main = hspec $ do
           Map.lookup ["services", "x", "host"]    schema `shouldBe` Just OTString
           Map.lookup ["services", "x", "paths"]   schema `shouldBe` Just (OTListOf OTString)
           Map.lookup ["services", "x", "envFile"] schema `shouldBe` Just (OTOther "null or absolute path")
+          -- a <name> placeholder normalizes to the wildcard sentinel
+          Map.lookup ["services", "y", "*", "port"] schema `shouldBe` Just OTInt
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)

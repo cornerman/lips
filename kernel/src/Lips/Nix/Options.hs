@@ -57,5 +57,13 @@ parseNixOptionsJson bytes = do
         traverse
           (\(k, val) -> do
               ty <- withObject "option" (.: "type") val
-              pure (T.splitOn "." (K.toText k), classifyNixType ty))
+              pure (map normSeg (T.splitOn "." (K.toText k)), classifyNixType ty))
           (KM.toList km)
+
+    -- A NixOS schema key segment written @<...>@ (e.g. @<name>@) is a name
+    -- placeholder for an attrsOf/listOf-of-submodules instance; it becomes the
+    -- kernel's wildcard sentinel @"*"@, so one schema entry covers every
+    -- concrete instance name.
+    normSeg s
+      | "<" `T.isPrefixOf` s && ">" `T.isSuffixOf` s = "*"
+      | otherwise = s

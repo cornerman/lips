@@ -33,7 +33,12 @@ data OptionType
   | OTOther Text
   deriving (Eq, Show)
 
--- | A target's option schema: option path (segments) to its type.
+-- | A target's option schema: option path (segments) to its type. A path
+-- segment may be the wildcard sentinel @"*"@, which matches any concrete
+-- segment; the shell layer emits it for a name placeholder (a target's
+-- @attrsOf@-of-submodule instance name), so one schema entry covers every
+-- instance. The sentinel is a generic convention here; which source spelling
+-- becomes @"*"@ is the shell layer's business, not the kernel's.
 type OptionSchema = Map [Text] OptionType
 
 -- | Why a minted rule's option assignment is inadmissible. The first field is
@@ -64,18 +69,52 @@ valueMatches ot v = case (ot, v) of
   (OTOther _, _)             -> True
   _                          -> False
 
--- | Check every emit of every rule against the schema. An option not in the
--- schema is 'UnknownOption'; a present option whose value shape does not match
--- its type is 'TypeMismatch'. Empty result means admissible.
+-- | Check every emit of every rule against the schema. A path that matches a
+-- leaf option (wildcard-aware) is type-checked. A path that is not a leaf but
+-- descends into a declared option (a submodule or free-form attrset, whose
+-- children the schema does not enumerate) is accepted unconstrained. A path
+-- that no declared option covers is 'UnknownOption'. This mirrors how a target
+-- names options: leaves are listed, name placeholders are wildcards, and
+-- free-form regions accept any deeper key.
 checkEmits :: OptionSchema -> [MapRule] -> [OptionError]
 checkEmits schema rules =
   [ err
   | r <- rules, e <- mrEmits r
-  , err <- case Map.lookup (emPath e) schema of
-             Nothing -> [UnknownOption (mrId r) (emPath e)]
-             Just t  -> [ TypeMismatch (mrId r) (emPath e) t (emRhs e)
-                        | not (valueMatches t (emRhs e)) ]
+  , not (artifactRooted (emPath e))   -- build-group vocabulary, not target options
+  , err <- checkEmit (mrId r) (emPath e) (emRhs e)
   ]
+  where
+    entries = Map.toList schema
+    checkEmit rid path v =
+      case Map.lookup path schema of                     -- fast path: exact, no wildcard
+        Just t  -> mismatch rid path t v
+        Nothing -> case [ t | (k, t) <- entries, matchesPath k path ] of
+          (t : _) -> mismatch rid path t v              -- wildcard leaf match
+          []
+            | any (\(k, _) -> isPrefixPath k path) entries -> []   -- descends into a declared option
+            | otherwise -> [UnknownOption rid path]
+    mismatch rid path t v = [ TypeMismatch rid path t v | not (valueMatches t v) ]
+
+-- | Does a schema key match a concrete path exactly (same length, each segment
+-- literal-equal or a @"*"@ wildcard)?
+matchesPath :: [Text] -> [Text] -> Bool
+matchesPath key path = length key == length path && and (zipWith segEq key path)
+
+-- | Is a schema key a strict wildcard-aware prefix of a concrete path (so the
+-- path descends past a declared option into its submodule/free-form region)?
+isPrefixPath :: [Text] -> [Text] -> Bool
+isPrefixPath key path = length key < length path && and (zipWith segEq key path)
+
+segEq :: Text -> Text -> Bool
+segEq k c = k == "*" || k == c
+
+-- | An emit rooted at @artifact@ is the kernel's build-group vocabulary: it
+-- becomes a @let@-bound derivation in the realized module (see
+-- 'Lips.Kernel.Realize'), not a target option assignment, so the option schema
+-- does not constrain it.
+artifactRooted :: [Text] -> Bool
+artifactRooted ("artifact" : _) = True
+artifactRooted _               = False
 
 -- | A one-line, human-facing reason, naming the rule so a rejection points
 -- straight at the offending minted line.
