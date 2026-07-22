@@ -66,10 +66,15 @@ runBase budget rules demands base0 = do
     []        -> Right ()
     questions -> Left (OpenQuestions questions)
   ground  <- first RefineFailed (refine budget rules base1)
-  -- Only mapped mechanisms (kind Meta) may realize; any surviving domain
-  -- decision is an unmapped obligation and must fail loud, not emit garbage.
-  case filter ((/= Meta) . dKind) (toList ground) of
-    []      -> case realize ground of
+  -- A Concept is decorative vocabulary: a heading or label ("http routes:")
+  -- that groups and explains the lines under it, carrying no obligation to
+  -- realize. It is dropped here, so it neither trips the anti-MDA guard nor
+  -- leaks into the module as an option. Only mapped mechanisms (kind Meta) may
+  -- realize; any OTHER surviving decision is an unmapped obligation and must
+  -- fail loud, not emit garbage.
+  let realizable = filter ((/= Concept) . dKind) (toList ground)
+  case filter ((/= Meta) . dKind) realizable of
+    []      -> case realize (fromList realizable) of
                  Right nixMod          -> Right nixMod
                  Left (RConflicts cs)  -> Left (Conflicted cs)
                  Left (RDangling ns)   -> Left (Unrealizable

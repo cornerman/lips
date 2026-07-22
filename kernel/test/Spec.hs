@@ -321,6 +321,22 @@ main = hspec $ do
             ]
       run 100 engine (needs ["feed", "ingest"]) prog `shouldBe` Right expected
 
+    it "a concept line is decorative: it neither fails Unmapped nor realizes" $ do
+      -- A heading like "http routes:" crystallizes to a 'Concept': vocabulary
+      -- that groups and explains the lines under it, with no obligation to
+      -- realize. It must not trip the anti-MDA guard, and must not leak into
+      -- the module as an option assignment.
+      let withHeading = "h1 concept http.routes stated \"routes\" @prog:1\n" <> prog
+          expected = T.unlines
+            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            , "{ config, lib, pkgs, ... }:"
+            , "{"
+            , "  # <-o1 via ingest"
+            , "  services.ledger.enable = true;"
+            , "}"
+            ]
+      run 100 engine [] withHeading `shouldBe` Right expected
+
   describe "generate minting (engine-synthesis plan: whole-engine candidates)" $ do
     it "parses the three item forms and assembles an engine" $ do
       let reply = T.unlines
