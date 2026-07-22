@@ -1236,6 +1236,16 @@ main = hspec $ do
         `shouldBe` []
       checkEmits sch [ optRule "r2" ["services", "r", "ledger", "port"] (VStr [PHole "v"]) ]
         `shouldBe` [ TypeMismatch "r2" ["services", "r", "ledger", "port"] OTInt (VStr [PHole "v"]) ]
+    -- Value-keyed options: a <capture> emit-path segment must be admissible
+    -- exactly where an instance name is (a schema "*"), and rejected in a
+    -- literal slot -- so the mint can key ONLY a real attrsOf, deduced offline.
+    it "accepts a <capture> segment in a wildcard slot and rejects it in a literal slot" $ do
+      let sch = Map.fromList [ (["environment", "etc", "*", "text"], OTString) ]
+      checkEmits sch [ optRule "r1" ["environment", "etc", "<path>", "text"] (VStr [PHole "value"]) ]
+        `shouldBe` []
+      checkEmits sch [ optRule "r2" ["environment", "<path>", "foo", "text"] (VStr [PHole "value"]) ]
+        `shouldBe` [ UnknownOption "r2" ["environment", "<path>", "foo", "text"] ]
+
     it "accepts a path that descends into a declared free-form option" $ do
       let sch = Map.fromList [ (["services", "r", "*", "timerConfig"], OTOther "attribute set") ]
       checkEmits sch [ optRule "r3" ["services", "r", "ledger", "timerConfig", "OnCalendar"] (VStr [PHole "v"]) ]
