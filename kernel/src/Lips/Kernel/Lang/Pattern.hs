@@ -167,7 +167,7 @@ applyPattern :: Pattern -> Map Text Text -> [(Subject, Kind, Assertion, Strength
 applyPattern p binds = map one (pEmits p)
   where
     one e =
-      ( Subject (T.splitOn "." (subst (peSubject e)))
+      ( Subject (segsOf (peSubject e))
       , peKind e
       , Assertion (subst (peAssertion e))
       , peStrength e
@@ -177,3 +177,20 @@ applyPattern p binds = map one (pEmits p)
     fill (SHole h) = Map.findWithDefault (missing h) h binds
     -- A missing hole is a pattern the reader should have rejected; make it loud.
     missing h = error ("applyPattern: unbound hole <" <> T.unpack h <> "> in pattern " <> T.unpack (pId p))
+    -- Build the subject segments from the template structure, NOT by filling to
+    -- a flat string and splitting on ".": only a LITERAL dot separates segments,
+    -- while a captured value is atomic and keeps any dots it carries (an HTTP
+    -- route @\/file.json@ stays one key segment, not two). A literal's dots
+    -- still split, so a plain subject like @backup.source@ is unchanged.
+    segsOf = foldr step [""] . map fill'
+      where
+        fill' (SLit t)  = Left t                     -- separator-bearing literal
+        fill' (SHole h) = Right (Map.findWithDefault (missing h) h binds)
+        step (Right v) (seg : rest) = (v <> seg) : rest
+        step (Right _) []           = []             -- unreachable: acc always non-empty
+        step (Left t)  acc          = prepend (T.splitOn "." t) acc
+        -- Join the last literal piece onto the first accumulated segment; the
+        -- earlier pieces become their own segments (the dots that separate them).
+        prepend pieces (seg : rest) =
+          init pieces ++ [(last pieces <> seg)] ++ rest
+        prepend pieces []           = pieces

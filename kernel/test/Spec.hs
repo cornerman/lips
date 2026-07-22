@@ -568,6 +568,15 @@ main = hspec $ do
                 _   -> False
               Left _ -> False
 
+    -- A captured value may contain a dot (an HTTP route key /file.json): it
+    -- must stay ONE subject segment, not be split by the dot-joined path form.
+    it "keeps a dot inside a captured value as one subject segment" $ do
+      let routeP = patOne "pr" [TLit "-", THole "path", TLit "is", THole "body"]
+                     Fact Stated [SLit "route.", SHole "path", SLit ".body"] [SHole "body"]
+      case crystallize "prog" [routeP] "- /file.json is x" of
+        Right b -> map dSubject (toList b) `shouldBe` [Subject ["route", "/file.json", "body"]]
+        Left e  -> expectationFailure ("unexpected crystallize error: " ++ show e)
+
     it "captures a quoted multi-word value into a bulleted route (gap 2)" $ do
       let routeP = patOne "pr" [TLit "-", THole "path", TLit "returns", TLit "text", THole "body"]
                      Fact Stated [SLit "route.", SHole "path"] [SHole "body"]
@@ -1357,7 +1366,10 @@ isRight = either (const False) (const True)
 instance Arbitrary Decision where
   arbitrary = do
     i    <- safeToken
-    segs <- resize 3 (listOf1 safeToken)
+    -- Segments may carry a dot (a value-keyed key like a route path), so the
+    -- reader/renderer round-trip is exercised on the escaping codec, not just
+    -- dot-free idents.
+    segs <- resize 3 (listOf1 subjSeg)
     k    <- elements [minBound .. maxBound]
     a    <- assertionText
     s    <- elements [minBound .. maxBound]
@@ -1367,6 +1379,11 @@ instance Arbitrary Decision where
 
 safeToken :: Gen Text
 safeToken = T.pack <$> listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "_"))
+
+-- | A subject segment: a plain token, sometimes carrying a dot or slash (a
+-- value-keyed key), so the canonical dotted-path codec is tested for real.
+subjSeg :: Gen Text
+subjSeg = T.pack <$> listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "_./"))
 
 assertionText :: Gen Text
 assertionText = T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ " .,\"\\/()@:!"))

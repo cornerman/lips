@@ -490,7 +490,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   them -- rules, expects (a family `expect ... from route.<path>.status`
   expands to one concrete check per route against each program's base), and
   demands (a family demand is met by any matching item) -- so the capability is
-  complete across every stage, not just rules. So N sibling decisions from ONE program
+  complete across every stage, not just rules. A captured key may itself contain
+  a dot (an HTTP route `/file.json`): crystallize builds the subject from the
+  pattern's structure (a hole value is one atomic segment, never re-split), and
+  the canonical `.decisions` form escapes a literal dot (`\.`) so the base
+  round-trips losslessly; realize quotes the segment (`environment.etc."http/file.json".text`). So N sibling decisions from ONE program
   (several routes, mounts, vhosts) fan a SINGLE rule out to N distinct option
   slots keyed by their own value, riding the target's native `attrsOf` merge --
   the per-item analogue of the language-level `<self>` instance key. The pattern

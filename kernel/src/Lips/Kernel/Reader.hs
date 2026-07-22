@@ -72,7 +72,7 @@ parseLine line0 = do
   pure
     Decision
       { dId        = DecisionId idTok
-      , dSubject   = Subject (T.splitOn "." subjTok)
+      , dSubject   = Subject (splitSubject subjTok)
       , dKind      = kind
       , dAssertion = Assertion assertion
       , dStrength  = str
@@ -163,7 +163,7 @@ render d =
   T.unwords
     [ unId (dId d)
     , kindText (dKind d)
-    , T.intercalate "." (unSubject (dSubject d))
+    , joinSubject (unSubject (dSubject d))
     , strengthText (dStrength d)
     , quote (unAssertion (dAssertion d))
     , renderProv (dProv d)
@@ -180,6 +180,29 @@ quote a = "\"" <> T.concatMap esc a <> "\""
     esc '"'  = "\\\""
     esc '\\' = "\\\\"
     esc c    = T.singleton c
+
+-- | Serialize/parse a subject as a dotted path, LOSSLESSLY: a segment may
+-- itself contain a dot (an HTTP route key @\/file.json@, a value-keyed
+-- attrsOf name), so a literal dot inside a segment is escaped @\.@ and the
+-- backslash @\\@, and the split respects those escapes. A dot-free segment
+-- round-trips unchanged, so every existing base is byte-identical.
+joinSubject :: [Text] -> Text
+joinSubject = T.intercalate "." . map (T.concatMap esc)
+  where
+    esc '.'  = "\\."
+    esc '\\' = "\\\\"
+    esc c    = T.singleton c
+
+splitSubject :: Text -> [Text]
+splitSubject t0 = go t0 "" []
+  where
+    go t cur acc = case T.uncons t of
+      Nothing        -> reverse (cur : acc)
+      Just ('\\', r) -> case T.uncons r of
+        Just (c, r') -> go r' (T.snoc cur c) acc   -- escaped literal (\. or \\)
+        Nothing      -> reverse (T.snoc cur '\\' : acc)
+      Just ('.', r)  -> go r "" (cur : acc)        -- unescaped dot separates
+      Just (c, r)    -> go r (T.snoc cur c) acc
 
 renderProv :: Provenance -> Text
 renderProv (FromSource (SourceLoc f n)) = "@" <> f <> ":" <> T.pack (show n)
