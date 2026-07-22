@@ -19,7 +19,7 @@ module Lips.Kernel.Realize
   , realize
   ) where
 
-import           Data.Char       (isAlphaNum)
+import           Data.Char       (isAlphaNum, isSpace)
 import           Data.List       (partition, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -83,13 +83,21 @@ renderModule winners =
 artifactRefs :: Text -> [Text]
 artifactRefs = outside
   where
-    -- Outside a string a bare `artifact.<name>` is a real reference.
+    -- Outside a string, bare values are whitespace/bracket-separated tokens; a
+    -- token that STARTS with `artifact.` is a real reference. Matching only at
+    -- a token boundary (not any offset) is what keeps a package path whose own
+    -- segment happens to be @artifact@ (e.g. @pkgs.x.artifact.y@) from being
+    -- misread as a reference and failing realize with a bogus dangling error.
     outside s = case T.uncons s of
       Nothing        -> []
       Just ('"', r)  -> inside r
-      Just (_, _)
-        | Just r <- T.stripPrefix "artifact." s -> name r : outside (rest r)
-        | otherwise                             -> outside (T.drop 1 s)
+      Just (c, r)
+        | isSpace c || c == '[' || c == ']' -> outside r
+        | otherwise ->
+            let (tok, r') = T.break boundary s
+             in case T.stripPrefix "artifact." tok of
+                  Just nm -> name nm : outside r'
+                  Nothing -> outside r'
     -- Inside a string only a `${artifact.<name>}` interpolation is a reference;
     -- an escaped char is skipped so a `\"` does not end the string early.
     inside s = case T.uncons s of
@@ -98,6 +106,7 @@ artifactRefs = outside
       Just ('"', r)   -> outside r
       Just ('$', r) | Just b <- T.stripPrefix "{artifact." r -> name b : inside (rest b)
       Just (_, r)     -> inside r
+    boundary c = isSpace c || c == ']' || c == '"'
     name = T.takeWhile isNameChar
     rest = T.dropWhile isNameChar
     isNameChar c = c `elem` ("-_" :: String) || isAlphaNum c

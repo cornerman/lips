@@ -275,6 +275,12 @@ main = hspec $ do
       -- the literal token "artifact." inside a string is NOT a reference
       let litText = [ (mk "e" "x" "\"see artifact.ghost docs\"" Stated) { dSubject = Subject ["environment","variables","NOTE"] } ]
       realize (fromList litText) `shouldSatisfy` isRight
+      -- a package path whose OWN segment is `artifact` is not a reference:
+      -- `artifact.` must match only at a token boundary, never mid-path.
+      let pkgPath = [ (mk "e" "x" "pkgs.foo.artifact.bar" Stated) { dSubject = Subject ["services","x","package"] } ]
+      realize (fromList pkgPath) `shouldSatisfy` isRight
+      let pkgList = [ (mk "e" "x" "[ pkgs.foo.artifact.bar ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
+      realize (fromList pkgList) `shouldSatisfy` isRight
 
     it "fails loud (typed) on a malformed artifact group (no builder)" $
       let noBuilder = [ (mk "p" "x" "\"srv\"" Stated) { dSubject = Subject ["artifact","srv","args","pname"] } ]
