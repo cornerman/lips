@@ -27,6 +27,18 @@
           mkdir -p "$out/bin"
           ghc -Wall -isrc -iapp app/Main.hs -outputdir "$TMPDIR/o" -o "$out/bin/lips"
         '';
+      } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {
+        # The pinned NixOS option schema (search.nixos.org's optionsJSON),
+        # evaluated from THIS flake's nixpkgs so it matches the nixpkgs a
+        # realized module is checked against. generate reads it (via
+        # LIPS_OPTIONS_JSON) to reject a minted rule that names a nonexistent
+        # or mistyped option -- deduce-or-fail at the NixOS layer. Linux-only:
+        # the NixOS manual does not evaluate on darwin.
+        nixosOptionsJson =
+          (import (nixpkgs + "/nixos") {
+            system = pkgs.stdenv.hostPlatform.system;
+            configuration = { };
+          }).config.system.build.manual.optionsJSON;
       });
 
       # `nix flake check` compiles the calculus with -Wall and runs the suite.
