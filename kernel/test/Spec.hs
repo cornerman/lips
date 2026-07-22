@@ -228,6 +228,17 @@ main = hspec $ do
       let clash = [mk "a" "x" "true" Stated, mk "b" "x" "false" Stated]
       realize (fromList clash) `shouldSatisfy` isLeft
 
+    -- A value-keyed segment (e.g. a route path) is often not a bare Nix
+    -- identifier, so it must be string-quoted in the emitted attribute path;
+    -- plain identifier segments stay unquoted (existing engines unchanged).
+    it "quotes an option-path segment that is not a bare Nix identifier" $ do
+      let g = (mk "g" "x" "\"world\"" Stated)
+                { dSubject = Subject ["environment", "etc", "httpserver/hello", "text"] }
+      case realize (fromList [g]) of
+        Right out -> out `shouldSatisfy`
+                       T.isInfixOf "environment.etc.\"httpserver/hello\".text = \"world\";"
+        Left e    -> expectationFailure ("unexpected realize error: " ++ show e)
+
     it "is order-independent (deterministic output)" $
       property $ forAll (shuffle ground) $ \perm ->
         realize (fromList perm) === realize (fromList ground)
@@ -602,6 +613,46 @@ main = hspec $ do
 
     it "bindSelf leaves a rule without <self> untouched" $
       bindSelf "ledger" rule `shouldBe` rule
+
+    -- Value-keyed options: one rule matches a subject FAMILY (a <capture>
+    -- segment binds any concrete segment) and interpolates the captured key
+    -- into the emit path, so N sibling decisions fan out to N distinct option
+    -- slots that ride Nix's native attrsOf merge (routes keyed by path).
+    it "matches a <capture> subject family and fills the key into the emit path" $ do
+      let r = MapRule "r" Fact ["route", "<path>", "status"]
+                [ Emit ["environment", "etc", "<path>", "text"] (VStr [PHole "value"]) ]
+          d1 = (mk "d1" "unused" "200" Stated) { dSubject = Subject ["route", "hello", "status"] }
+          d2 = (mk "d2" "unused" "404" Stated) { dSubject = Subject ["route", "bye", "status"] }
+      case refine 100 [toRule r] (fromList [d1, d2]) of
+        Right b -> map (\d -> (dSubject d, dAssertion d)) (toList b) `shouldMatchList`
+                     [ (Subject ["environment", "etc", "hello", "text"], Assertion "\"200\"")
+                     , (Subject ["environment", "etc", "bye", "text"], Assertion "\"404\"") ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "a rule with a <capture> subject round-trips through render/parse" $ do
+      let r = MapRule "r" Fact ["route", "<path>", "status"]
+                [ Emit ["environment", "etc", "<path>", "text"] (VStr [PHole "value"]) ]
+      parseRuleBody "r" (renderRuleBody r) `shouldBe` Right r
+
+    -- End to end: two routes in one program, each keyed by its own path, flow
+    -- through crystallize -> refine -> realize into two DISTINCT keyed options
+    -- (the collision the value-keyed-options gap caused is gone).
+    it "end to end: two routes fan out to two path-keyed options" $ do
+      let routeP = Pattern "pr"
+                     [ TLit "-", THole "path", TLit "=>", TLit "status", THole "code" ]
+                     [ PatEmit Fact Stated [SLit "route.", SHole "path", SLit ".status"] [SHole "code"] ]
+          routeRule = MapRule "r" Fact ["route", "<path>", "status"]
+                   [ Emit ["environment", "etc", "<path>", "text"] (VStr [PHole "value"]) ]
+          prog = "- /hello => status 200\n- /bye => status 404"
+      case crystallize "prog" [routeP] prog of
+        Left e     -> expectationFailure ("crystallize: " ++ show e)
+        Right base -> case refine 100 [toRule routeRule] base of
+          Left e       -> expectationFailure ("refine: " ++ show e)
+          Right ground -> case realize ground of
+            Left e    -> expectationFailure ("realize: " ++ show e)
+            Right out -> do
+              out `shouldSatisfy` T.isInfixOf "environment.etc.\"/hello\".text = \"200\";"
+              out `shouldSatisfy` T.isInfixOf "environment.etc.\"/bye\".text = \"404\";"
 
     it "demand body round-trips" $ do
       let q = DemandSpec "q1" ["feed", "source"] "where do the files arrive?"

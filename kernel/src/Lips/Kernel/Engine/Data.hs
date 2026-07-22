@@ -41,6 +41,8 @@ module Lips.Kernel.Engine.Data
   , parseDemandBody
   ) where
 
+import           Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import           Data.Text      (Text)
 import qualified Data.Text      as T
 
@@ -93,30 +95,48 @@ bindSelf name mr = mr { mrEmits = map bindEmit (mrEmits mr) }
 -- | Interpret a minted rule with the kernel's generic refinement machinery.
 -- The emitted decisions are 'Meta' (mapped mechanisms); ids and provenance are
 -- stamped by the refiner, so only subject and assertion matter here.
+-- A rule subject may name a value-keyed FAMILY: a @<name>@ segment is a
+-- capture that binds any concrete segment (e.g. @route.<path>.status@ matches
+-- @route.hello.status@). The captured key then fills the matching @<name>@
+-- segment of an emit path, so N sibling decisions fan out to N distinct option
+-- slots keyed by their own value, riding Nix's native attrsOf merge -- the
+-- per-item analogue of the language-level @<self>@ instance key.
 toRule :: MapRule -> Rule
 toRule mr =
   Rule
     { rId      = RuleId (mrId mr)
-    , rMatches = \d -> dKind d == mrKind mr && dSubject d == Subject (mrSubject mr)
-    , rRewrite = \d -> traverse (emitDecision (assertionText d)) (mrEmits mr)
+    , rMatches = \d -> dKind d == mrKind mr && matchSubject (mrSubject mr) (subjSegs d) /= Nothing
+    , rRewrite = \d -> case matchSubject (mrSubject mr) (subjSegs d) of
+        Nothing   -> Right []   -- unreachable: 'rMatches' gates the rewrite
+        Just caps -> traverse (emitDecision caps (assertionText d)) (mrEmits mr)
     }
   where
+    subjSegs d = case dSubject d of Subject segs -> segs
     assertionText d = case dAssertion d of Assertion a -> a
-    emitDecision val e = do
+    emitDecision caps val e = do
       -- A program value that does not fit this emit (a missing @<value.N>@
       -- token, a wrong-typed hole) is a 'Left' the refiner turns into a loud
       -- 'RewriteFailed', not a crash: 'print' is deterministic and edited
       -- programs must fail through the error channel, never by exception.
+      p <- traverse (fillSeg caps) (emPath e)
       a <- fillValue (pick val) (emRhs e)
       Right Decision
         { dId        = DecisionId ""
-        , dSubject   = Subject (emPath e)
+        , dSubject   = Subject p
         , dKind      = Meta
         , dAssertion = Assertion a
         , dStrength  = Stated
         , dProv      = FromSource (SourceLoc "" 0)
         , dRationale = Nothing
         }
+    -- An emit-path @<name>@ segment resolves to the key the subject bound;
+    -- a name the subject never captured is an engine defect, loud not silent.
+    fillSeg caps seg = case captureName seg of
+      Nothing -> Right seg
+      Just nm -> case Map.lookup nm caps of
+        Just v  -> Right v
+        Nothing -> Left ("engine rule " <> mrId mr <> ": emit path capture <" <> nm
+                           <> "> is not bound by the subject")
     pick val "value" = Right val
     pick val h
       | Just n <- holeIndex h =
@@ -126,6 +146,29 @@ toRule mr =
                                 <> "> out of range for value: " <> val)
       -- Any other hole name was rejected at parse time; loud if it slips through.
       | otherwise = Left ("engine rule emit: unknown hole <" <> h <> ">")
+
+-- | A subject segment written @<name>@ is a capture (binds any concrete
+-- segment); anything else is a literal. An empty @<>@ is not a capture.
+captureName :: Text -> Maybe Text
+captureName s = do
+  inner <- T.stripSuffix ">" =<< T.stripPrefix "<" s
+  if T.null inner then Nothing else Just inner
+
+-- | Match a rule's subject pattern against a concrete subject: literals must be
+-- equal, a @<name>@ capture binds its concrete segment (a repeated name must
+-- bind consistently). 'Nothing' on any mismatch.
+matchSubject :: [Text] -> [Text] -> Maybe (Map Text Text)
+matchSubject pat conc
+  | length pat /= length conc = Nothing
+  | otherwise                 = foldl' step (Just Map.empty) (zip pat conc)
+  where
+    step Nothing _ = Nothing
+    step (Just m) (p, c) = case captureName p of
+      Nothing -> if p == c then Just m else Nothing
+      Just nm -> case Map.lookup nm m of
+        Nothing                       -> Just (Map.insert nm c m)
+        Just prev | prev == c         -> Just m
+                  | otherwise         -> Nothing
 
 -- | Interpret a minted demand: satisfied when any decision has the subject.
 toDemand :: DemandSpec -> Demand

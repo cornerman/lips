@@ -19,7 +19,7 @@ module Lips.Kernel.Realize
   , realize
   ) where
 
-import           Data.Char       (isAlphaNum, isSpace)
+import           Data.Char       (isAlpha, isAlphaNum, isSpace)
 import           Data.List       (partition, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -170,7 +170,24 @@ assignment (subj, d) =
   ]
 
 path :: Subject -> Text
-path (Subject segs) = T.intercalate "." segs
+path (Subject segs) = T.intercalate "." (map quoteSeg segs)
+
+-- | Render one attribute-path segment: bare when it is a valid Nix identifier,
+-- string-quoted otherwise. A value-keyed segment (e.g. a route path bound to an
+-- @attrsOf@ key) carries characters like @/@ that a bare identifier cannot, so
+-- it becomes @"..."@; the quoted form also escapes @\@ and @"@ so a program
+-- value can never break out of the attribute name.
+quoteSeg :: Text -> Text
+quoteSeg s
+  | isBareIdent s = s
+  | otherwise     = "\"" <> esc s <> "\""
+  where esc = T.replace "\"" "\\\"" . T.replace "\\" "\\\\"
+
+isBareIdent :: Text -> Bool
+isBareIdent s = case T.uncons s of
+  Nothing      -> False
+  Just (c, cs) -> (isAlpha c || c == '_') && T.all identChar cs
+  where identChar c = isAlphaNum c || c `elem` ("_'-" :: String)
 
 provComment :: Provenance -> Text
 provComment (FromSource (SourceLoc f n)) = f <> ":" <> T.pack (show n)
