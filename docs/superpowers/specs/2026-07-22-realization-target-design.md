@@ -95,7 +95,15 @@ grounding schema to verify against.
   evaluator, and runs the `.expect` gate against it. An engine is "valid for
   target T" iff every emitted path exists in T's schema; a mismatch fails loud.
 - `lips run [--target <world>] <program>` realizes and then runs: NixOS boots a
-  QEMU VM; home-manager builds and runs the activation package (no boot).
+  QEMU VM. home-manager has no machine to boot, so its `run` and its permanent
+  smoke check are **eval-only**: evaluate the `homeManagerConfiguration` and run
+  the same `.expect` containment gate against its `config`, no boot, no
+  activation-package build. This mirrors how `check` already works for NixOS and
+  stays hermetic. The VM proves more (units install and start at runtime), but
+  for a per-user environment that extra proof is not worth pulling home-manager
+  in as an input and adding boot time to CI. A stronger future check can reuse
+  the QEMU harness unchanged via `home-manager.users.<self> = <module>` inside a
+  NixOS VM; deferred.
 - Default: `--target` defaults to the world recorded in `.generation`, so the
   correct world is used without the owner remembering it. Passing a mismatched
   world is allowed and fails loud (paths absent), which is a diagnostic, not a
@@ -127,6 +135,13 @@ the git-tracked `program + .lang` (offline, deterministic).
   `imports = [ inputs.lips.nixosModules.ledger ]` or
   `imports = [ inputs.lips.homeManagerModules.myTimer ]`. Pinning rides
   `flake.lock`.
+- Instance discovery: the helper takes an explicitly given directory and
+  exposes every `*.lips` under it as an output, labeled by its recorded target.
+  One explicit knob (the directory, which is itself the semantic index of
+  instances), zero per-file repetition, and no surprising outputs from a stray
+  file elsewhere in the repo. A blind repo-wide glob and a hand-maintained
+  per-file list are both rejected (surprise, and DRY-violating repetition of
+  what the filesystem already states).
 
 Accepted cost: the `lips print` derivation puts the lips binary in the owner's
 system eval/build closure. Acceptable on the owner's own machine.
@@ -153,10 +168,5 @@ system eval/build closure. Acceptable on the owner's own machine.
 
 ## 10. Open Points
 
-- The exact home-manager run semantics in the sandbox: activation-package run
-  under a throwaway user versus a lighter eval-only smoke check. The NixOS side
-  boots a VM; the home-manager side has no boot, so its `run` and its smoke
-  test must be specified against activation.
-- Whether the flake helper auto-discovers instances from the tree or takes an
-  explicit instance list. Auto-discovery is more convenient; an explicit list
-  is more legible and avoids surprising outputs.
+None outstanding; the two prior open points (home-manager run semantics, flake
+instance discovery) are decided in sections 5 and 7.
