@@ -22,23 +22,18 @@
       # The reference `lips` CLI, built from the deliverable in kernel/.
       # `nix run . -- print examples/backup.loose`.
       packages = forAll (pkgs: {
-        default = pkgs.runCommand "lips" { nativeBuildInputs = [ (ghc pkgs) ]; } ''
+        default = pkgs.runCommand "lips" { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper ]; } ''
           cp -r ${./kernel}/. build && cd build
           mkdir -p "$out/bin"
-          ghc -Wall -isrc -iapp app/Main.hs -outputdir "$TMPDIR/o" -o "$out/bin/lips"
+          ghc -Wall -isrc -iapp app/Main.hs -outputdir "$TMPDIR/o" -o "$out/bin/.lips-unwrapped"
+          # generate checks minted rules against the NixOS option schema, which
+          # it builds lazily from THIS pinned nixpkgs. Bake the ref as a STRING
+          # (a rev, not a store path), so nixpkgs never enters the closure of
+          # print/run/check; only generate resolves and evaluates it. A caller
+          # may override with LIPS_OPTIONS_JSON (a prebuilt options.json).
+          makeWrapper "$out/bin/.lips-unwrapped" "$out/bin/lips" \
+            --set-default LIPS_NIXPKGS_FLAKE "github:NixOS/nixpkgs/${nixpkgs.rev}"
         '';
-      } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {
-        # The pinned NixOS option schema (search.nixos.org's optionsJSON),
-        # evaluated from THIS flake's nixpkgs so it matches the nixpkgs a
-        # realized module is checked against. generate reads it (via
-        # LIPS_OPTIONS_JSON) to reject a minted rule that names a nonexistent
-        # or mistyped option -- deduce-or-fail at the NixOS layer. Linux-only:
-        # the NixOS manual does not evaluate on darwin.
-        nixosOptionsJson =
-          (import (nixpkgs + "/nixos") {
-            system = pkgs.stdenv.hostPlatform.system;
-            configuration = { };
-          }).config.system.build.manual.optionsJSON;
       });
 
       # `nix flake check` compiles the calculus with -Wall and runs the suite.

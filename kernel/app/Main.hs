@@ -380,29 +380,69 @@ generate confidence mmodel file = do
 -- specifics live in 'Lips.Nix.Options'.
 assertOptionsAdmissible :: FilePath -> EngineData -> IO ()
 assertOptionsAdmissible file eng = do
-  mp <- lookupEnv "LIPS_OPTIONS_JSON"
-  case mp of
-    Nothing -> die (report
-      "lips can't check the setup's options: the NixOS option schema isn't available."
-      ["LIPS_OPTIONS_JSON is unset."]
-      "\226\134\146 run generate through the flake: just generate <program> (it builds the schema).")
-    Just p  -> do
-      mbytes <- try (BL.readFile p) :: IO (Either IOException BL.ByteString)
-      case mbytes of
-        Left e -> die (report
-          ("lips can't read the NixOS option schema at " <> T.pack p <> ":")
-          [tshow e]
-          "\226\134\146 rebuild it: nix build .#nixosOptionsJson, then run generate again.")
-        Right bytes -> case parseNixOptionsJson bytes of
-          Left why -> die (report
-            ("lips can't parse the NixOS option schema at " <> T.pack p <> ":")
-            [why]
-            "\226\134\146 rebuild it: nix build .#nixosOptionsJson.")
-          Right schema -> case checkEmits schema (edRules eng) of
-            []   -> pure ()
-            errs -> die (validationReport file
-              ("its rules use NixOS options that don't exist or have the wrong type:\n"
-                <> T.unlines (map (("  - " <>) . renderOptionError) errs)))
+  schemaPath <- ensureOptionSchema file
+  mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
+  case mbytes of
+    Left e -> die (report
+      ("lips can't read the NixOS option schema at " <> T.pack schemaPath <> ":")
+      [tshow e]
+      "\226\134\146 run generate again.")
+    Right bytes -> case parseNixOptionsJson bytes of
+      Left why -> die (report
+        ("lips can't parse the NixOS option schema at " <> T.pack schemaPath <> ":")
+        [why]
+        "\226\134\146 run generate again.")
+      Right schema -> case checkEmits schema (edRules eng) of
+        []   -> pure ()
+        errs -> die (validationReport file
+          ("its rules use NixOS options that don't exist or have the wrong type:\n"
+            <> T.unlines (map (("  - " <>) . renderOptionError) errs)))
+
+-- | Locate the NixOS @options.json@ used for the check. An explicit
+-- @LIPS_OPTIONS_JSON@ wins (a test seam, or a caller-supplied schema).
+-- Otherwise build it lazily from the pinned nixpkgs baked into
+-- @LIPS_NIXPKGS_FLAKE@ (set by the packaged binary). The build is announced,
+-- since the first one evaluates the whole NixOS manual (~11 MB) before nix
+-- caches it; every later generate is a store cache hit. Only generate pays
+-- this -- print\/run\/check never touch the schema.
+ensureOptionSchema :: FilePath -> IO FilePath
+ensureOptionSchema file = do
+  override <- lookupEnv "LIPS_OPTIONS_JSON"
+  case override of
+    Just p  -> pure p
+    Nothing -> do
+      mflake <- lookupEnv "LIPS_NIXPKGS_FLAKE"
+      case mflake of
+        Nothing -> die (report
+          "lips can't check the setup's options: no NixOS option schema source is configured."
+          ["neither LIPS_OPTIONS_JSON nor LIPS_NIXPKGS_FLAKE is set."]
+          "\226\134\146 run the packaged lips: nix run . -- generate <program> (it bakes the pinned nixpkgs).")
+        Just flakeref -> do
+          TIO.hPutStrLn stderr
+            ("checking options against the NixOS schema: building it from pinned nixpkgs ("
+              <> T.pack flakeref <> ").")
+          TIO.hPutStrLn stderr
+            "  the first build evaluates the NixOS manual and can take a few minutes; nix caches it afterwards."
+          built <- try (readProcessWithExitCode "nix"
+            [ "build", "--impure", "--no-link", "--print-out-paths"
+            , "--expr", T.unpack (schemaExpr flakeref) ] "")
+          case built of
+            Left e -> die (nixMissing file "build the NixOS option schema" "generate" (tshow (e :: IOException)))
+            Right (ExitFailure _, _, err) -> die (validationReport file
+              ("lips couldn't build the NixOS option schema:\n" <> T.pack err))
+            Right (ExitSuccess, out, _) ->
+              pure (T.unpack (T.strip (T.pack out)) <> "/share/doc/nixos/options.json")
+
+-- | The Nix expression that produces the pinned nixpkgs @optionsJSON@
+-- derivation (the same @options.json@ search.nixos.org is built from). Pins
+-- via @builtins.getFlake@ on the baked ref; @--impure@ covers
+-- @builtins.currentSystem@.
+schemaExpr :: String -> Text
+schemaExpr flakeref = T.pack $ concat
+  [ "let np = builtins.getFlake \"", flakeref, "\"; in "
+  , "(import (np.outPath + \"/nixos\") "
+  , "{ configuration = {}; system = builtins.currentSystem; })"
+  , ".config.system.build.manual.optionsJSON" ]
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.

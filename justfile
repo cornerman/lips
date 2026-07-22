@@ -49,9 +49,6 @@ check-program program:
 generate program model="":
     #!/usr/bin/env bash
     set -euo pipefail
-    # Deduce-or-fail: generate checks every minted rule against the pinned
-    # NixOS option schema (built from this flake's nixpkgs).
-    export LIPS_OPTIONS_JSON="$(nix build .#nixosOptionsJson --no-link --print-out-paths)/share/doc/nixos/options.json"
     if [ -n "{{model}}" ]; then
       nix run . -- generate "{{model}}" "{{program}}"
     else

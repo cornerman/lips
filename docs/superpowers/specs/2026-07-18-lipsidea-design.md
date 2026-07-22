@@ -388,8 +388,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   names and prefix-acceptance for free-form/submodule descents); the
   NixOS-specific `optionsJSON` shape and type-string wording live in
   `Lips.Nix.Options`, so a different target (terranix) adds a sibling module.
-  The pinned schema is a flake package (`nixosOptionsJson`) reaching `generate`
-  via `LIPS_OPTIONS_JSON`. `artifact.*` build-group emits are exempt (they
+  `generate` builds the schema lazily from the pinned nixpkgs baked into the
+  packaged binary as a plain rev string (`LIPS_NIXPKGS_FLAKE`), so nixpkgs
+  never enters `print`/`run`/`check`'s closure; the one-time build is
+  announced. `LIPS_OPTIONS_JSON` overrides it (the suite passes an offline
+  fixture). `artifact.*` build-group emits are exempt (they
   realize as a derivation, not an option). Verified against the committed
   backup, feed, and hello-server engines. This is steal #1 of the
   Compiled-AI/NixOS prior-art scan (`survey/e-compiled-ai-paradigm-and-nixos-targeting.md`).

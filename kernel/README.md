@@ -54,9 +54,11 @@ the subjects, and closure is checked (unmapped decision, unmet demand,
 uncovered line, invalid Nix, or an unknown/mistyped NixOS option each rejects
 the engine), not trusted. The option schema is domain-blind in the kernel
 (`Lips.Kernel.OptionType`, a typed `OptionSchema`); the NixOS `optionsJSON`
-shape and its type-string wording live in `Lips.Nix.Options`, and the pinned
-schema reaches `generate` via `LIPS_OPTIONS_JSON` (the justfile builds it from
-the flake's nixpkgs).
+shape and its type-string wording live in `Lips.Nix.Options`. `generate` builds
+the schema lazily from the pinned nixpkgs baked into the packaged binary
+(`LIPS_NIXPKGS_FLAKE`), announcing the one-time build; `print`/`run`/`check`
+never touch it. A caller may override with `LIPS_OPTIONS_JSON` (a prebuilt
+`options.json`), which the suite uses for an offline fixture.
 
 `run` takes the loose program directly and crystallizes it with `<file>.lang`,
 with no model. Edits that stay within the language (changing a value or
