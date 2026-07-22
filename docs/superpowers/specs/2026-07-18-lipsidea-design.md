@@ -379,6 +379,30 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Language reuse across instances (language as a configurable module).** A
+  program is named `<instance>.<language>.lips`: the uniform `.lips` marker is
+  the editor / language-server handle (one extension every tool associates on),
+  the segment before it names a shared language, and what precedes that is the
+  instance (optional -- `backup.lips` is the singleton shorthand, its instance
+  defaulting to the language). A language is one configurable NixOS module
+  induced by anti-unifying several example programs (divergences become both
+  the accepted holes and the option surface, empirically confirmed: two backup
+  examples generalized the overfit literal `daily` of one into a `<period>`
+  hole). An instance is a configuration keyed by the `<self>` value hole, which
+  the shell binds to the instance name and which fills the option schema's
+  `attrsOf` `"*"` wildcard -- so multiplicity rides Nix's native module merge,
+  not a lips mechanism (`services.restic.backups.ledger.*` and `...photos.*`
+  coexist). `.lang`/`.expect`/`.generation`/`.direction` are language-level
+  (named by the language), `.decisions` per instance; `generate` takes several
+  programs and gates the whole set (crystallize + committed `.expect`) as the
+  regeneration corpus. Kernel additions: the `<self>` binding in rule emits and
+  expect paths, plus path-value stringifying in the expect eval; the rest is
+  shell (`Lips.Identity`, CLI, LSP lookup) and the mint prompt (teach `<self>`
+  and generalize-across-programs). Proven live (opus-4-8 + KVM): the backup
+  language minted from `ledger`+`photos`, feed and http migrated, all four
+  programs `check` clean, `vm-smoke` and `artifact-vm` green. Full design in
+  `2026-07-22-language-as-configurable-module-plan.md`.
+
 - **Option-schema grounding (generate acceptance).** `generate` checks every
   minted rule's option path and value type against the pinned nixpkgs
   `optionsJSON` and rejects a rule that names a nonexistent or mistyped option,
@@ -770,23 +794,6 @@ but the loop around it is incomplete; "missing" means specced, not built.
   - Glue: TODO. The one documented incompleteness (computation).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
-- **Language reuse across instances (language as a configurable module).**
-  Built and verified on branch `lang-reuse` (not yet merged). A program is
-  named `<instance>.<language>.lips`: the uniform `.lips` marker is the editor /
-  language-server handle, the segment before it names a shared language, and
-  what precedes that is the instance (optional -- `backup.lips` is the
-  singleton shorthand). A language is one configurable NixOS module induced by
-  anti-unifying several example programs (divergences become both the accepted
-  holes and the option surface); an instance is a configuration keyed by the
-  `<self>` value hole, which the shell binds to the instance name and which
-  fills the option schema's `attrsOf` `"*"` wildcard. Multiplicity rides Nix's
-  native module merge, not a lips corpus; `.lang`/`.expect`/`.generation`/
-  `.direction` are language-level (named by the language), `.decisions` per
-  instance; `generate` takes several programs and gates the whole set as the
-  regeneration corpus. Kernel additions: `<self>` binding in rule emits and
-  expect paths, plus path-value stringifying in the expect eval; the rest is
-  shell (identity, CLI, LSP lookup) and the mint prompt. Full design in
-  `2026-07-22-language-as-configurable-module-plan.md`.
 - **Multi-language composition.** The sketch composes three languages in one
   decision base; the prototype runs one engine. Composing several
   engines/languages in one Solution is unbuilt. (Dual of language reuse above:
