@@ -442,6 +442,19 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `d<n>`, so older single-emit engines read and render byte-identically). The
   quote-aware ` ; ` split lets an assertion contain `; `. Verified end to end:
   the dense line crystallizes to two decisions and realizes both options.
+- **Decorative heading lines (a `concept` groups and explains).** A `Concept`
+  decision is decorative vocabulary: a heading or label (`http routes:`) that
+  groups the lines under it and, at mint time, tells the model what those lines
+  mean, but carries no obligation to realize. `run` drops it before realize, so
+  it neither trips the anti-MDA guard (unlike `Fact`/`Oblige`/... which must
+  still map) nor leaks into the module as an option. The mint gives the grouped
+  items a shared subject prefix (`route.<path>.*`), so the group is legible in
+  the output. Domain-blind: the kernel knows only that a `Concept` does not
+  realize, never what "routes" are. Verified end to end on the full
+  `http server + routes` program: heading absorbed, dense server line and both
+  dense route lines realized. (Rules still match exact subjects, so ADDING a
+  route instance needs regeneration; instance-reuse is the open "language as a
+  configurable module" plan.)
 - **Generate boundary plumbing.** Model call routed through `pi` print mode;
   deduce-or-fail confidence threshold, exposed as `lips generate
   [--confidence <0..1>] [model] <program>` (default 0.7, pinned into the
