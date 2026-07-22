@@ -485,7 +485,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   fills every `<name>` occurrence in the emit path -- a whole segment
   (`environment.etc.<path>.text`) or embedded in a composed one
   (`environment.etc.http-routes-<path>.text`); an unresolved `<name>` fails
-  loud rather than emitting a colliding literal. So N sibling decisions from ONE program
+  loud rather than emitting a colliding literal. The same capture primitive
+  (`Kernel/Capture`: match, fill) resolves subjects wherever the model writes
+  them -- rules, expects (a family `expect ... from route.<path>.status`
+  expands to one concrete check per route against each program's base), and
+  demands (a family demand is met by any matching item) -- so the capability is
+  complete across every stage, not just rules. So N sibling decisions from ONE program
   (several routes, mounts, vhosts) fan a SINGLE rule out to N distinct option
   slots keyed by their own value, riding the target's native `attrsOf` merge --
   the per-item analogue of the language-level `<self>` instance key. The pattern

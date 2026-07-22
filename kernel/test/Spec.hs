@@ -449,6 +449,28 @@ main = hspec $ do
       expectedValue base (Expect "a" ["o"] opt (Just 9))              `shouldSatisfy` isLeft
       expectedValue base (Expect "a" ["o"] (Subject ["no","x"]) Nothing) `shouldSatisfy` isLeft
 
+    -- Value-keyed contract: a family expect (from route.<path>.status) expands
+    -- against the program's routes to one concrete expect per route, each with
+    -- its <path> filled into the option path. Completes the capture capability
+    -- on the expect side (rules already fan out the same way).
+    it "expands a value-keyed family expect to one concrete expect per route" $ do
+      let rbase = fromList [ (dec "route./hello.status" "200") { dId = DecisionId "d1" }
+                           , (dec "route./bye.status"   "404") { dId = DecisionId "d2" } ]
+          fam   = Expect "a" ["environment", "etc", "http-routes<path>", "text"]
+                            (Subject ["route", "<path>", "status"]) Nothing
+      case expandExpects rbase [fam] of
+        Left e   -> expectationFailure ("expand failed: " ++ show e)
+        Right xs -> map (\x -> (exFrom x, exPath x)) xs `shouldMatchList`
+          [ (Subject ["route", "/hello", "status"], ["environment", "etc", "http-routes/hello", "text"])
+          , (Subject ["route", "/bye",   "status"], ["environment", "etc", "http-routes/bye",   "text"]) ]
+
+    it "a plain (captureless) expect passes through expansion unchanged" $
+      expandExpects base [Expect "a" ["o"] opt Nothing] `shouldBe` Right [Expect "a" ["o"] opt Nothing]
+
+    it "fails loud on a family expect no decision matches" $
+      expandExpects base [Expect "a" ["o"] (Subject ["route", "<path>", "status"]) Nothing]
+        `shouldSatisfy` isLeft
+
     it "containment: the program value must appear in the evaluated option" $ do
       let e = Expect "a1" ["p"] opt (Just 2)
       checkValues [e] [("/backup/ledger", "\"/backup/ledger\"")] `shouldBe` []          -- exact
@@ -679,6 +701,15 @@ main = hspec $ do
     it "demand body round-trips" $ do
       let q = DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
       parseDemandBody "q1" (renderDemandBody q) `shouldBe` Right q
+
+    -- A family demand (route.<path>.status) is met by ANY concrete route; a
+    -- plain demand still needs its exact subject present (backward compatible).
+    it "a value-keyed family demand is satisfied by any matching route" $ do
+      let famDem = toDemand (DemandSpec "q" ["route", "<path>", "status"] "?")
+          hit    = fromList [ (mk "d1" "u" "200" Stated) { dSubject = Subject ["route", "/hello", "status"] } ]
+          miss   = fromList [ (mk "d1" "u" "200" Stated) { dSubject = Subject ["other", "thing"] } ]
+      demSatisfied famDem hit  `shouldBe` True
+      demSatisfied famDem miss `shouldBe` False
 
     it "rejects an emit with an unknown hole" $
       parseRuleBody "r" "match fact x => a.b \"\\\"<mystery>\\\"\"" `shouldSatisfy` isLeft

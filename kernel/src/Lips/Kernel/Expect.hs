@@ -27,6 +27,7 @@ module Lips.Kernel.Expect
   , renderExpect
   , readExpect
   , bindSelfExpect
+  , expandExpects
   , parseExpectBody
   , expectedValue
   , evalExpr
@@ -34,11 +35,13 @@ module Lips.Kernel.Expect
   ) where
 
 import           Data.List  (sortOn)
+import           Data.Maybe (isJust)
 import           Data.Text  (Text)
 import qualified Data.Text  as T
 import           Text.Read  (readMaybe)
 
 import Lips.Kernel.Base     (Base, toList)
+import Lips.Kernel.Capture  (captureName, fillCaptures, matchSubject)
 import Lips.Kernel.Decision
 import Lips.Kernel.Reader   (ParseError (..))
 
@@ -113,6 +116,34 @@ bindSelfExpect name e = e { exPath = map seg (exPath e) }
   where
     seg "<self>" = name
     seg s        = s
+
+-- | Expand a value-keyed contract against a program's base. An expect whose
+-- @from@ subject carries a capture (@route.<path>.status@) is a FAMILY: it
+-- expands to one concrete expect per matching decision, its @from@ set to that
+-- decision's subject and every @<name>@ in its option path filled with the
+-- captured key -- the expect analogue of a rule fanning out. A plain expect
+-- passes through unchanged (its subject is checked later by 'expectedValue'),
+-- so older single-route contracts behave identically. A family that matches no
+-- decision is a defect, named loud.
+expandExpects :: Base -> [Expect] -> Either Text [Expect]
+expandExpects base = fmap concat . traverse (expandOne base)
+
+expandOne :: Base -> Expect -> Either Text [Expect]
+expandOne base e
+  | not (any (isJust . captureName) patSegs) = Right [e]
+  | otherwise = case matches of
+      [] -> Left ("expect " <> exId e <> ": no decision matches family " <> renderFrom e)
+      xs -> sequence xs
+  where
+    Subject patSegs = exFrom e
+    matches =
+      [ (\p -> e { exFrom = dSubject d, exPath = p }) <$> fillPath caps
+      | d <- toList base
+      , Just caps <- [matchSubject patSegs (subjOf d)] ]
+    subjOf d = case dSubject d of Subject xs -> xs
+    fillPath caps =
+      either (\r -> Left ("expect " <> exId e <> ": option path " <> r)) Right
+             (traverse (fillCaptures caps) (exPath e))
 
 -- | The value the program specifies for an assertion: the source decision's
 -- assertion, or its nth token. A missing subject or out-of-range token fails

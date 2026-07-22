@@ -41,11 +41,11 @@ module Lips.Kernel.Engine.Data
   , parseDemandBody
   ) where
 
-import           Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
+import           Data.Maybe     (isJust)
 import           Data.Text      (Text)
 import qualified Data.Text      as T
 
+import Lips.Kernel.Capture         (fillCaptures, matchSubject)
 import Lips.Kernel.Engine.Value    (Value, fillValue, holeIndex, parseValue, renderValue)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
@@ -105,7 +105,7 @@ toRule :: MapRule -> Rule
 toRule mr =
   Rule
     { rId      = RuleId (mrId mr)
-    , rMatches = \d -> dKind d == mrKind mr && matchSubject (mrSubject mr) (subjSegs d) /= Nothing
+    , rMatches = \d -> dKind d == mrKind mr && isJust (matchSubject (mrSubject mr) (subjSegs d))
     , rRewrite = \d -> case matchSubject (mrSubject mr) (subjSegs d) of
         Nothing   -> Right []   -- unreachable: 'rMatches' gates the rewrite
         Just caps -> traverse (emitDecision caps (assertionText d)) (mrEmits mr)
@@ -129,25 +129,10 @@ toRule mr =
         , dProv      = FromSource (SourceLoc "" 0)
         , dRationale = Nothing
         }
-    -- An emit-path @<name>@ resolves to the key the subject bound. It may be a
-    -- whole segment OR embedded in one (a literal prefix the model composes,
-    -- e.g. an etc filename @http-routes<path>@), so every occurrence is
-    -- substituted. A name the subject never captured, or an unterminated @<@,
-    -- is an engine defect: loud, never a silent literal that would collide.
-    fillSeg caps = go
-      where
-        go s = case T.breakOn "<" s of
-          (before, rest)
-            | T.null rest -> Right before
-            | otherwise   ->
-                let (nm, after) = T.breakOn ">" (T.drop 1 rest)
-                 in if T.null after
-                      then Left ("engine rule " <> mrId mr
-                                   <> ": unterminated <capture> in emit path: " <> s)
-                      else case Map.lookup nm caps of
-                        Just v  -> (\tl -> before <> v <> tl) <$> go (T.drop 1 after)
-                        Nothing -> Left ("engine rule " <> mrId mr <> ": emit path capture <"
-                                           <> nm <> "> is not bound by the subject")
+    -- Fill the captured key into an emit-path segment (whole or embedded); a
+    -- shared primitive so rules, expects, and demands resolve captures alike.
+    fillSeg caps seg = either (\r -> Left ("engine rule " <> mrId mr <> ": emit path " <> r))
+                              Right (fillCaptures caps seg)
     pick val "value" = Right val
     pick val h
       | Just n <- holeIndex h =
@@ -158,30 +143,9 @@ toRule mr =
       -- Any other hole name was rejected at parse time; loud if it slips through.
       | otherwise = Left ("engine rule emit: unknown hole <" <> h <> ">")
 
--- | A subject segment written @<name>@ is a capture (binds any concrete
--- segment); anything else is a literal. An empty @<>@ is not a capture.
-captureName :: Text -> Maybe Text
-captureName s = do
-  inner <- T.stripSuffix ">" =<< T.stripPrefix "<" s
-  if T.null inner then Nothing else Just inner
-
--- | Match a rule's subject pattern against a concrete subject: literals must be
--- equal, a @<name>@ capture binds its concrete segment (a repeated name must
--- bind consistently). 'Nothing' on any mismatch.
-matchSubject :: [Text] -> [Text] -> Maybe (Map Text Text)
-matchSubject pat conc
-  | length pat /= length conc = Nothing
-  | otherwise                 = foldl' step (Just Map.empty) (zip pat conc)
-  where
-    step Nothing _ = Nothing
-    step (Just m) (p, c) = case captureName p of
-      Nothing -> if p == c then Just m else Nothing
-      Just nm -> case Map.lookup nm m of
-        Nothing                       -> Just (Map.insert nm c m)
-        Just prev | prev == c         -> Just m
-                  | otherwise         -> Nothing
-
--- | Interpret a minted demand: satisfied when any decision has the subject.
+-- | Interpret a minted demand: satisfied when any decision matches the subject.
+-- 'matchSubject' means a family demand (@route.<path>.status@) is met by any
+-- concrete route, while a plain subject still needs an exact match.
 toDemand :: DemandSpec -> Demand
 toDemand ds =
   Demand
@@ -190,7 +154,9 @@ toDemand ds =
     , demSatisfied = hasSubject (dsSubject ds)
     }
   where
-    hasSubject segs base = any ((== Subject segs) . dSubject) (toList (base :: Base))
+    hasSubject segs base =
+      any (isJust . matchSubject segs . subjOf) (toList (base :: Base))
+    subjOf d = case dSubject d of Subject xs -> xs
 
 -- Rule body: @match <kind> <subject> => <path> "<rhs>" ; <path> "<rhs>" ...@
 

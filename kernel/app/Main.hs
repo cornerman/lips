@@ -38,7 +38,7 @@ import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
 import           Lips.Kernel.Decision
-import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkValues, evalExpr, expectedValue, readExpect, renderExpect)
+import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkValues, evalExpr, expandExpects, expectedValue, readExpect, renderExpect)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
@@ -547,10 +547,13 @@ data ExpectFail = ToolMissing Text | EvalFailed Text | Violations [Text]
 
 runExpects :: (FilePath -> IO ()) -> [Expect] -> Base -> Text -> IO (Either ExpectFail ())
 runExpects _     []      _    _         = pure (Right ())
-runExpects stage expects base nixModule =
-  case traverse (expectedValue base) expects of
-    Left e    -> pure (Left (Violations ["lips can't match a check to the program: " <> e]))
-    Right pvs -> do
+runExpects stage expects0 base nixModule =
+  -- Expand any value-keyed family expect against this program's routes first,
+  -- so a shared contract (route.<path>.status) checks every concrete route.
+  case expandExpects base expects0 >>= \expects ->
+         (,) expects <$> traverse (expectedValue base) expects of
+    Left e            -> pure (Left (Violations ["lips can't match a check to the program: " <> e]))
+    Right (expects, pvs) -> do
       dir <- mkTempDir
       let tmp = dir <> "/module.nix"
       TIO.writeFile tmp nixModule
