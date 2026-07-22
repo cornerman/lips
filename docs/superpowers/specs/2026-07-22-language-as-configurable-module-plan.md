@@ -1,6 +1,50 @@
 # Language as a Configurable Module: Reuse by Instancing
 
-Status: planned, not started. Companion to `2026-07-18-lipsidea-design.md`
+Status: Phase 1 landed on branch `lang-reuse` in full (multi-file generate
+included) and verified (all gates green), NOT merged (held at user request).
+Companion to `2026-07-18-lipsidea-design.md`
+
+## Progress (branch `lang-reuse`)
+
+Done and offline-tested (`just test`, 157 examples):
+- `Kernel.Engine.Data.bindSelf`: binds the `<self>` option-path segment to the
+  instance name; the option schema already admits `<self>` only at a `"*"`
+  wildcard, so no `OptionType` change was needed.
+- `Kernel.Expect.bindSelfExpect` + path-aware `evalExpr`: the shared contract's
+  `<self>` paths bind to each instance, and a path-typed option value is
+  stringified (not imported) so the gate does not force an absent system path.
+- `Lips.Identity`: the `<basename>.<language>` convention (language-level
+  `.lang`/`.expect`/`.generation`/`.direction`/`.artifacts`; per-instance
+  `.decisions`).
+- CLI (`app/Main.hs`): resolves the language by extension, binds `<self>` to
+  the basename in `validate`, and `generate` accepts several programs -- it
+  mints one grammar from the whole set and gates every program (crystallize +
+  committed `.expect`).
+- Mint prompt (`Generate.Minting`): teaches `<self>` (fill an `attrsOf` wildcard
+  key) and, given several `=== program ... ===` blocks, to generalize ACROSS
+  them into one grammar (anti-unification) rather than per-program patterns.
+
+Verified live (pi `claude-opus-4-8` + KVM):
+- Examples migrated by regeneration (never hand-edited): `ledger.backup`,
+  `ingest.feed`, `hello.http`, each realizing to `services...<self>` keyed by
+  its basename. `feed.direction` was added (mechanism taste: env-var service,
+  no built converter) and `ingest.feed` clarified to a valid `OnCalendar`
+  (`hourly`) -- both legitimate authoring, not workarounds.
+- Reuse proven: a fresh `photos.backup` reuses `backup.lang` with zero AI ->
+  `services.restic.backups.photos.*`, coexisting with `ledger`.
+- Multi-file generate proven live: `backup.lang` is minted from BOTH
+  `ledger.backup` (daily/14) and `photos.backup` (weekly/8) at once, so the
+  grammar generalizes `keep <count> <period> snapshots` (period a hole, not the
+  overfit literal `daily` a single example produced). `backup.direction` keeps
+  the credential a string. Both instances then `check` clean and coexist.
+- Gates: kernel-tests 157/0; `check` on all four programs passes; `vm-smoke`
+  (backup boots, all lines witnessed) and `artifact-vm` (Go server builds,
+  boots, answers curl) both green.
+
+History: tidied to four coherent commits on top of `main` (docs; kernel
+mechanism + tests; cli; examples+build). Ready to fast-forward to main and
+flip ledger §13 reuse item to Done. Held at the user's request.
+
 (spec v2, milestone ledger section 13). Written so the work resumes from this
 document alone. Supersedes the earlier "shared-language corpus" sketch that
 lived only in conversation: instancing rides Nix, not a lips-level corpus.
