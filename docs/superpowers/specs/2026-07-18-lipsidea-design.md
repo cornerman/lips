@@ -379,6 +379,21 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Option-schema grounding (generate acceptance).** `generate` checks every
+  minted rule's option path and value type against the pinned nixpkgs
+  `optionsJSON` and rejects a rule that names a nonexistent or mistyped option,
+  deterministically and offline (deduce-or-fail at the NixOS layer). The check
+  is domain-blind: `Lips.Kernel.OptionType` consumes a generic typed
+  `OptionSchema` (with `"*"` wildcard segments for `attrsOf`-submodule instance
+  names and prefix-acceptance for free-form/submodule descents); the
+  NixOS-specific `optionsJSON` shape and type-string wording live in
+  `Lips.Nix.Options`, so a different target (terranix) adds a sibling module.
+  The pinned schema is a flake package (`nixosOptionsJson`) reaching `generate`
+  via `LIPS_OPTIONS_JSON`. `artifact.*` build-group emits are exempt (they
+  realize as a derivation, not an option). Verified against the committed
+  backup, feed, and hello-server engines. This is steal #1 of the
+  Compiled-AI/NixOS prior-art scan (`survey/e-compiled-ai-paradigm-and-nixos-targeting.md`).
+
 - **Artifacts (program-derived source, built and run in the config).** A
   Solution whose realization *builds a program from generated source* and runs
   it, distinct from glue. Complete by inheritance from nixpkgs: a builder is a

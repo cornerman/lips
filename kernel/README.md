@@ -38,8 +38,11 @@ a whole *engine* into `<file>.lang` -- patterns (the language), rules (the
 mechanisms, as `match <kind> <subject> => <option.path> "<rhs>" ; ...`, where
 `<rhs>` is a value in a closed grammar, never a Nix expression), and
 demands -- and it never states the meaning of the program. The kernel then
-crystallizes the program with that engine, validates it by a full run plus a
-Nix parse (`nix-instantiate --parse`), and only then writes `<file>.lang`, the
+crystallizes the program with that engine, validates it by a full run, a
+Nix parse (`nix-instantiate --parse`), and an option-schema check (every minted
+rule must fill a NixOS option that exists in the pinned nixpkgs, with a
+compatible value type, or the engine is rejected -- deduce-or-fail), and only
+then writes `<file>.lang`, the
 crystal witness `<file>.decisions`, and a `<file>.generation` audit record. It
 routes the model call through `pi` in json print mode (`pi -p -nt -nc
 --no-session --mode json`); lips bakes in no model, so by default `--model` is
@@ -48,7 +51,12 @@ optional first argument. Either way lips reads the model pi actually used back
 out of the json stream and records it in `.generation`, so provenance stays
 concrete without a vendor model in the deliverable. No domain vocabulary is compiled in: the model invents
 the subjects, and closure is checked (unmapped decision, unmet demand,
-uncovered line, or invalid Nix each rejects the engine), not trusted.
+uncovered line, invalid Nix, or an unknown/mistyped NixOS option each rejects
+the engine), not trusted. The option schema is domain-blind in the kernel
+(`Lips.Kernel.OptionType`, a typed `OptionSchema`); the NixOS `optionsJSON`
+shape and its type-string wording live in `Lips.Nix.Options`, and the pinned
+schema reaches `generate` via `LIPS_OPTIONS_JSON` (the justfile builds it from
+the flake's nixpkgs).
 
 `run` takes the loose program directly and crystallizes it with `<file>.lang`,
 with no model. Edits that stay within the language (changing a value or
