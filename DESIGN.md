@@ -378,6 +378,53 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Realization target (NixOS / home-manager).** The world an engine targets is
+  per-problem knowledge that lives in the option paths its rules emit, decided
+  at mint time; the kernel stays world-blind (`realize` emits only
+  `{ config, lib, pkgs, ... }: { <path> = <value> }`). `lips generate
+  [--target nixos|home-manager]` (default nixos) steers the mint prompt into
+  that world's namespace (`Minting.worldSection`) and grounds the minted option
+  paths against that world's `optionsJSON` (nixpkgs NixOS manual vs
+  home-manager `docs-json`, baked as `LIPS_NIXPKGS_FLAKE` / `LIPS_HM_FLAKE`; only
+  generate ever builds a schema, so compile/run/check stay nixpkgs-free). The
+  world is recorded in `.generation` (`target:` line) and so enters `genId`; a
+  re-mint for a different world is a distinct, `.expect`-gated event. `run`
+  reads the recorded world and picks a harness: nixos boots a QEMU VM,
+  home-manager is eval-only (no machine to boot). No home-manager eval harness
+  was needed because the `.expect` gate is world-blind (it applies the bare
+  module with stubbed args and reads assigned values, never evaluating a world's
+  module system). The flake helper `lib.modulesFromDir { pkgs; dir; }` exposes
+  each `*.lips` in a directory under `nixosModules.<instance>` /
+  `homeManagerModules.<instance>` by its recorded world, built by a `compile`
+  derivation. `Lips.Nix.Target` holds the closed `Target` type; `Lips.Generate.Args`
+  the pure flag parser. Design in
+  `docs/superpowers/specs/2026-07-22-realization-target-design.md` (its §10-11
+  cover kubenix/terranix as further targets and the target-vs-solution-kind
+  axis: `nix run`/`shell`/`develop` are a different axis — a new realize output
+  shape, not a namespace). Caveat proven live: an option present in BOTH worlds
+  (`services.restic.backups`) yields identical module text, so `--target` does
+  no structural filtering there — only the recorded world and runtime differ;
+  lips cannot read intent, so targeting a system-concern program at
+  home-manager is a human error it will faithfully realize.
+
+- **Re-bless flag (`generate --renew`).** Ignore the committed `.expect` and
+  rewrite it from this mint, so a deliberate behavior change is one command
+  instead of `rm .expect && generate`. Every correctness gate (crystallize,
+  option grounding, realize, nix-parse) and the behavioral gate still run, so a
+  bad mint still writes nothing; the rewritten `.expect` diff stays the semantic
+  changelog (invariant 5 preserved: explicit human decision, never silent). The
+  refusal message names it.
+
+- **Grammar completeness: typed hole inside a string.** Inside a Nix string the
+  value is text, so a redundant `:type` on a hole (`<value:int>`,
+  `<value.N:int>`) is meaningless there; the value grammar now degrades it
+  losslessly to the plain hole rather than rejecting it (a form the mint writes
+  naturally when it wants a number). A real option-type mismatch is still caught
+  by option grounding, so nothing weakens. This is invariant 4 in action:
+  a mint that reliably slips is fixed in the kernel/format, not the prompt —
+  the model is one-shot and blind, so detection is the kernel's job and the
+  grammar should accept the model's natural output.
+
 - **Language reuse across instances (language as a configurable module).** A
   program is named `<instance>.<language>.lips`: the uniform `.lips` marker is
   the editor / language-server handle (one extension every tool associates on),
@@ -413,7 +460,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `Lips.Nix.Options`, so a different target (terranix) adds a sibling module.
   `generate` builds the schema lazily from the pinned nixpkgs baked into the
   packaged binary as a plain rev string (`LIPS_NIXPKGS_FLAKE`), so nixpkgs
-  never enters `print`/`run`/`check`'s closure; the one-time build is
+  never enters `compile`/`run`/`check`'s closure; the one-time build is
   announced. `LIPS_OPTIONS_JSON` overrides it (the suite passes an offline
   fixture). `artifact.*` build-group emits are exempt (they
   realize as a derivation, not an option). Verified against the committed
@@ -625,7 +672,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   deterministic paths always fail through a typed channel. (1) Rule rewrite is
   fallible: a value hole that outruns its program value (a `<value.N>` past the
   token count, a wrong-typed hole) is `RewriteFailed`, not an `error`, so an
-  edit that shortens a value fails loud on `print`. (2) Every minted item is
+  edit that shortens a value fails loud on `compile`. (2) Every minted item is
   keyword-led (`pattern|match|demand|expect`); a pattern template may begin
   with any domain word without being misdispatched, and an unknown item form is
   rejected. (3) A `.expect` naming an option a rule fills with a package or
@@ -706,27 +753,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
-- **Home-manager realization target.** A home-manager module and a NixOS module
-  share one shape: `realize` already emits a domain-blind
-  `{ config, lib, pkgs, ... }: { <path> = <value>; }`, so an engine that mints
-  home-manager option paths (`programs.*`, `systemd.user.services.*`,
-  `home.*`) yields a valid home-manager module today with zero kernel change
-  (the "kernel knows nothing" law: the module form is universal, only the
-  namespace differs). What is missing is a second realization *target*, not
-  kernel work: (a) the run/check harness assumes NixOS (`nixosSystem` +
-  qemu-vm boot; NixOS option eval), whereas home-manager evaluates through
-  `homeManagerConfiguration` and activates by `home-manager switch` (no
-  "boot"); (b) the target must enter generate as a pinned input (like the
-  direction file), since the mint prompt is domain-blind and nothing currently
-  tells the model which namespace to target; (c) the `.expect` gate and VM
-  smoke need the parallel home-manager eval entry point. Same axis as the
-  deferred run-modes/Solution-kinds work. Good fit for `wolf` (NixOS *and*
-  home-manager), where a per-user Solution (a user timer, a configured program)
-  lands in home-manager naturally.
 - **Artifacts: deferred pieces.** The core landed (see Done). Still open:
   artifact source is a fixed blob baked at generate (not templated with holes),
   so a value that must appear *inside* the compiled program needs regeneration
-  rather than flowing through `print`; dependency-fetching builders (a
+  rather than flowing through `compile`; dependency-fetching builders (a
   `cargoHash`/`vendorHash` over fetched crates) move the fetch to generate and
   are untried (the proven path is no-dependency source, e.g. Go stdlib with
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A
@@ -737,15 +767,20 @@ but the loop around it is incomplete; "missing" means specced, not built.
   and a multi-word message into one subject could not cleanly extract the tail
   and fell back to the whole value. Sibling-subject patterns avoid it; a tail
   hole is future value/template-completeness work.
-- **Activation verb: DONE, as the `print`/`run` split.** The CLI now separates
-  emitting from running (superseding the planned `lips up`): `lips print
-  <program>` is the pure deterministic printer (crystallize -> realize ->
-  module text on stdout); `lips run <program>` realizes and then literally runs
-  it by wrapping the module in a nixosSystem and booting a headless local QEMU
-  VM (impure, via ambient `<nixpkgs>` and the stock qemu-vm module; the host is
-  never mutated -- the VM is the Heile-Welt simulation of the target machine).
-  Note: the design's "generate/run loop" prose uses "run" for the deterministic
-  realize step, which is now the `print` command; `run` is the activation verb.
+- **Activation verb: DONE, as the `compile`/`run` split.** The CLI separates
+  emitting from running (superseding the planned `lips up`): `lips compile
+  [--out <dir>] <program>` is the pure deterministic compiler (crystallize ->
+  realize -> a module DIRECTORY: `default.nix` plus a staged `artifacts/` tree,
+  default dir `<program without .lips>/`). A directory, not stdout, so an engine
+  with artifacts is complete and `imports = [ ./<dir> ]` resolves default.nix;
+  the output is derived, never committed (gitignore it, like `.decisions`).
+  (`compile` replaced the earlier stdout-only `print`.) `lips run <program>`
+  realizes and then runs it: for a nixos engine, wrap the module in a
+  nixosSystem and boot a headless local QEMU VM (impure, via ambient
+  `<nixpkgs>`; the host is never mutated); for a home-manager engine, eval-only
+  (no machine to boot). Note: the design's "generate/run loop" prose uses "run"
+  for the deterministic realize step, which is now the `compile` command; `run`
+  is the activation verb.
   A `nix develop` shell for shell-shaped Solutions remains possible later.
   Host deployment stays a separate, explicit, privileged step.
   Run modes considered and DEFERRED (VM-only for now): two axes exist -- (a)
@@ -763,7 +798,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   appended guard states this rule to the model ("PREFERENCE, not requirement;
   never override a value the program states"). Pinned for free: direction
   enters the system prompt, which the `.generation` record embeds verbatim, so
-  it enters `genId`. `print`/`run`/`check` never see it. Also softens mechanism
+  it enters `genId`. `compile`/`run`/`check` never see it. Also softens mechanism
   churn across regenerations (same taste, stable mechanisms). Pure composition
   in `Minting.promptWithDirection`; `generate` reads `<program>.direction` and
   passes the composed prompt to both `callPi` and `record`; `Record` unchanged.
