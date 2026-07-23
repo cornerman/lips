@@ -2,8 +2,13 @@
   description = "lips: intent as a decision base, realized deterministically as a NixOS module";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # home-manager is a grounding-schema source for the home-manager target: its
+  # docs-json optionsJSON is baked (as a rev string) into the binary, so only
+  # generate ever resolves it; print/run/check stay nixpkgs/home-manager-free.
+  inputs.home-manager.url = "github:nix-community/home-manager";
+  inputs.home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, home-manager }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
@@ -32,9 +37,21 @@
           # print/run/check; only generate resolves and evaluates it. A caller
           # may override with LIPS_OPTIONS_JSON (a prebuilt options.json).
           makeWrapper "$out/bin/.lips-unwrapped" "$out/bin/lips" \
-            --set-default LIPS_NIXPKGS_FLAKE "github:NixOS/nixpkgs/${nixpkgs.rev}"
+            --set-default LIPS_NIXPKGS_FLAKE "github:NixOS/nixpkgs/${nixpkgs.rev}" \
+            --set-default LIPS_HM_FLAKE "github:nix-community/home-manager/${home-manager.rev}"
         '';
       });
+
+      # Expose lips programs in a directory as module outputs, labeled by the
+      # world each engine was minted for (read from its .generation record).
+      # Downstream: imports = [ inputs.lips.nixosModules.<instance> ] (or
+      # homeManagerModules). Not per-system: it takes pkgs explicitly.
+      lib.modulesFromDir = { pkgs, dir }:
+        import ./nix/modulesFromDir.nix {
+          inherit pkgs dir;
+          lib = pkgs.lib;
+          lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        };
 
       # `nix flake check` compiles the calculus with -Wall and runs the suite.
       checks = forAll (pkgs: {
@@ -45,6 +62,19 @@
           "$TMPDIR/spec"
           touch "$out"
         '';
+        # The module helper labels each committed example by its recorded world
+        # and produces an importable module path. All current examples are
+        # nixos engines, so homeManagerModules is empty; nixosModules must be
+        # non-empty and every realized module must build (test -f forces it).
+        lipsModules-eval =
+          let
+            mods  = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
+            paths = builtins.attrValues mods.nixosModules;
+          in pkgs.runCommand "lips-modules-eval" { } ''
+            test -n "${toString (builtins.attrNames mods.nixosModules)}"
+            ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}") paths}
+            touch "$out"
+          '';
       } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {
         # The realization smoke test (spec section 12.4, "realized ... on a
         # real machine"; ledger section 13): a committed Solution is realized
