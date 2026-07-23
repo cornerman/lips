@@ -30,7 +30,7 @@ import Lips.Nix.Options
 import Lips.Nix.Target
 import Lips.Generate.Args (parseGenerate)
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
@@ -1171,14 +1171,19 @@ main = hspec $ do
   -- keeps it advisory, never an obligation channel.
   describe "direction file (optional mint taste)" $ do
     it "absent or blank direction leaves the prompt untouched" $ do
-      promptWithDirection Nothing `shouldBe` systemPrompt
-      promptWithDirection (Just "   \n  ") `shouldBe` systemPrompt
+      promptWithDirection Nothing Nixos `shouldBe` systemPrompt
+      promptWithDirection (Just "   \n  ") Nixos `shouldBe` systemPrompt
+    it "steers home-manager to its namespaces, nixos to system options" $ do
+      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "home-manager"
+      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "systemd.user.services"
+      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "home.packages"
+      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "NixOS"
     it "present direction is appended verbatim atop the fixed prompt" $ do
-      let p = promptWithDirection (Just "prefer restic, no docker")
+      let p = promptWithDirection (Just "prefer restic, no docker") Nixos
       systemPrompt `shouldSatisfy` (`T.isInfixOf` p)
       p `shouldSatisfy` T.isInfixOf "prefer restic, no docker"
     it "states the advisory-not-obligation guard when direction is present" $ do
-      let p = promptWithDirection (Just "prefer systemd timers")
+      let p = promptWithDirection (Just "prefer systemd timers") Nixos
       mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
         [ "PREFERENCE, not requirement"
         , "never let it override a value the program states"

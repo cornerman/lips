@@ -292,7 +292,7 @@ generate target confidence mmodel files@(rep : _) = do
   progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
   -- Owner taste is language-level (shared); read once from the language path.
   direction <- tryRead (directionPath rep)
-  let prompt = promptWithDirection direction
+  let prompt = promptWithDirection direction target
       -- The mint sees the whole example set at once, so the grammar generalizes
       -- across them (anti-unification): tokens that vary between examples become
       -- holes, tokens that agree stay literal. One program is the corpus-of-one

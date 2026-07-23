@@ -18,6 +18,7 @@
 -- forms (pattern, @match@ rule, @demand@).
 module Lips.Generate.Minting
   ( systemPrompt
+  , systemPromptFor
   , promptWithDirection
   , EngineItem (..)
   , SourceFile (..)
@@ -36,6 +37,7 @@ import qualified Data.Text.Read  as TR
 import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), parseDemandBody, parseRuleBody)
 import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
+import Lips.Nix.Target       (Target (..))
 import Lips.Kernel.Expect          (Expect (..), parseExpectBody)
 import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
@@ -79,8 +81,38 @@ data ItemCandidate = ItemCandidate
 
 -- | The instruction given to the model. A versioned System artifact, stored in
 -- the repository and reviewable (spec section 5, layer 3).
+-- | The mint prompt for a target world: a world-steering preamble naming the
+-- option namespaces to emit into, then the world-neutral body. The preamble is
+-- the ONLY thing that differs per world; the body's grammar (patterns, rules,
+-- typed holes, artifacts, expects) is identical.
+systemPromptFor :: Target -> Text
+systemPromptFor t = worldSection t <> "\n" <> commonBody
+
+-- | Kept for back-compat and the pinned-artifact test: the NixOS prompt.
 systemPrompt :: Text
-systemPrompt = T.unlines
+systemPrompt = systemPromptFor Nixos
+
+-- | The per-world steering preamble: which option namespaces the mint must
+-- emit into. This is where the world lives; the body below is world-neutral.
+worldSection :: Target -> Text
+worldSection Nixos = T.unlines
+  [ "TARGET WORLD: NixOS (a whole machine, root). Emit NixOS option paths:"
+  , "services.*, systemd.services.* and systemd.timers.*, environment.*,"
+  , "networking.*, users.*, and so on. <self> keys an attrsOf-submodule"
+  , "instance name (services.restic.backups.<self>, systemd.services.<self>)." ]
+worldSection HomeManager = T.unlines
+  [ "TARGET WORLD: home-manager (one user's $HOME, unprivileged). Emit"
+  , "home-manager option paths ONLY, never NixOS system options: programs.*,"
+  , "services.* (home-manager user services), systemd.user.services.* and"
+  , "systemd.user.timers.*, home.packages, home.file.*, home.sessionVariables,"
+  , "xdg.*. There is no system-level config and no root. <self> keys an"
+  , "attrsOf-submodule instance name (systemd.user.services.<self>)." ]
+
+-- | The world-neutral body of the mint prompt: the grammar the model must
+-- emit. Named 'commonBody' because it is shared by every target; the world is
+-- chosen by 'worldSection' above.
+commonBody :: Text
+commonBody = T.unlines
   [ "You crystallize a loose program into a lips ENGINE: patterns (the"
   , "language), rules (the mechanisms), and demands (completeness). You never"
   , "state the program's meaning; the kernel derives it deterministically by"
@@ -150,7 +182,8 @@ systemPrompt = T.unlines
   , "breaks orthogonality, since the shared line then matches two patterns."
   , ""
   , "RULES (ids r1, r2, ...): map EVERY subject your patterns produce to"
-  , "NixOS option assignments; any decision no rule maps fails the build --"
+  , "option assignments in the target world named above; any decision no rule"
+  , "maps fails the build --"
   , "EXCEPT a 'concept' (decorative heading), which needs no rule."
   , "Every <rhs> is wrapped in ONE pair of surrounding double quotes, and"
   , "inside it is a VALUE, not a Nix expression -- the kernel rejects"
@@ -179,7 +212,7 @@ systemPrompt = T.unlines
   , "fails if the program token is not of that type. Quote a hole"
   , "(\"\\\"<value>\\\"\") only for genuinely string-typed options. So a port rule"
   , "looks like services.nginx.defaultHTTPListenPort \"<value:int>\". Realize"
-  , "work as systemd services and timers or other NixOS options."
+  , "work as services and timers or other options in the target world."
   , ""
   , "INSTANCE NAMES (<self>): some options are an attrsOf of submodules keyed by"
   , "an instance NAME you would otherwise invent -- services.restic.backups.<name>,"
@@ -270,10 +303,10 @@ systemPrompt = T.unlines
 -- Because direction rides inside the system prompt, it is pinned into the
 -- @.generation@ record and the @genId@ hash for free, and @run@\/@check@ never
 -- see it. A blank direction file is ignored (no channel, no drift).
-promptWithDirection :: Maybe Text -> Text
-promptWithDirection md = case md of
+promptWithDirection :: Maybe Text -> Target -> Text
+promptWithDirection md t = case md of
   Just d | not (T.null (T.strip d)) ->
-    systemPrompt <> T.unlines
+    systemPromptFor t <> T.unlines
       [ ""
       , "DIRECTION (the owner's taste for THIS program; optional, advisory)."
       , "The text below is PREFERENCE, not requirement. It says how to prefer"
@@ -286,7 +319,7 @@ promptWithDirection md = case md of
       , T.strip d
       , "--- end direction ---"
       ]
-  _ -> systemPrompt
+  _ -> systemPromptFor t
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
 -- Single-item lines parse individually; a @source@ block spans multiple lines
