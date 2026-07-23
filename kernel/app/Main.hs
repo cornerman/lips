@@ -23,7 +23,7 @@ import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           System.Environment (getArgs, getProgName, lookupEnv)
+import           System.Environment (getArgs, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, stderr, stdout)
 import           System.FilePath    (takeFileName)
@@ -66,10 +66,7 @@ main = do
   args <- getArgs
   case args of
     ["print", file]              -> printLoose file
-    ["run", file]                -> runProgram Nothing file
-    ["run", "--target", w, file] -> case parseTarget w of
-      Just t  -> runProgram (Just t) file
-      Nothing -> usage >> exitFailure
+    ["run", file]                -> runProgram file
     ["check", file]              -> checkLoose file
     ["lsp"]              -> runLsp
     ("generate" : rest)  -> case parseGenerate defaultConfidence rest of
@@ -83,7 +80,9 @@ main = do
 -- threshold, a duplicate model, or no program fails loud (returns Nothing).
 usage :: IO ()
 usage = do
-  name <- T.pack <$> getProgName
+  -- The tool's name is fixed. getProgName would leak the Nix wrapper's real
+  -- target (.lips-unwrapped), so name it directly.
+  let name = "lips" :: Text
   TIO.hPutStr stderr $ T.unlines
     [ "lips turns a plain-English <instance>.<language> program into a NixOS configuration."
     , ""
@@ -93,7 +92,7 @@ usage = do
     , "      The one step that uses AI."
     , "  " <> name <> " print <program>"
     , "      Show the NixOS configuration the program produces."
-    , "  " <> name <> " run [--target nixos|home-manager] <program>"
+    , "  " <> name <> " run <program>"
     , "      Boot as a local VM (nixos) or realize and check (home-manager)."
     , "  " <> name <> " check <program>"
     , "      Verify the program still produces what it promised."
@@ -109,13 +108,14 @@ printLoose file = do
     Left f            -> die (printFail file f)
     Right (_, nixMod) -> TIO.putStr nixMod
 
--- | @run@: realize the program, then run it in the world it was minted for. An
--- explicit @--target@ overrides; otherwise the world is read from the engine's
--- committed @.generation@ record. nixos boots a QEMU VM; home-manager has no
--- machine, so it is eval-only.
-runProgram :: Maybe Target -> FilePath -> IO ()
-runProgram mtarget file = do
-  target <- maybe (readRecordedTarget file) pure mtarget
+-- | @run@: realize the program, then run it in the world it was minted for.
+-- The world is fixed at mint time and read from the engine's committed
+-- @.generation@ record; run never overrides it, since a program is only
+-- verified against the world it was generated for. nixos boots a QEMU VM;
+-- home-manager has no machine, so it is eval-only.
+runProgram :: FilePath -> IO ()
+runProgram file = do
+  target <- readRecordedTarget file
   case target of
     Nixos       -> runVm file
     HomeManager -> runEvalOnly file
