@@ -73,7 +73,7 @@ main = do
     ["check", file]              -> checkLoose file
     ["lsp"]              -> runLsp
     ("generate" : rest)  -> case parseGenerate defaultConfidence rest of
-      Just (target, conf, mmodel, fs) -> generate target conf mmodel fs
+      Just (target, conf, renew, mmodel, fs) -> generate target conf renew mmodel fs
       Nothing                         -> usage >> exitFailure
     _                    -> usage >> exitFailure
 
@@ -88,7 +88,7 @@ usage = do
     [ "lips turns a plain-English <instance>.<language> program into a NixOS configuration."
     , ""
     , "usage:"
-    , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--model <id>|model] <program>..."
+    , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--renew] [--model <id>|model] <program>..."
     , "      Mint the language from one or more example programs and verify each."
     , "      The one step that uses AI."
     , "  " <> name <> " print <program>"
@@ -319,9 +319,9 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Target -> Double -> Maybe String -> [FilePath] -> IO ()
-generate _ _ _ [] = usage >> exitFailure
-generate target confidence mmodel files@(rep : _) = do
+generate :: Target -> Double -> Bool -> Maybe String -> [FilePath] -> IO ()
+generate _ _ _ _ [] = usage >> exitFailure
+generate target confidence renew mmodel files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -382,7 +382,11 @@ generate target confidence mmodel files@(rep : _) = do
       -- governs (the stable spec regeneration may not silently break); on first
       -- generation the minted assertions bootstrap it.
           mintedExpects = expectsOf (map icItem candidates)
-      committed <- tryRead (expectPath rep)
+      -- --renew re-blesses the behavioral contract: ignore the committed
+      -- .expect (do not even read it) so the minted assertions bootstrap it
+      -- afresh and overwrite the file below. Every correctness gate above and
+      -- the behavioral gate below still run, so a bad mint still writes nothing.
+      committed <- if renew then pure Nothing else tryRead (expectPath rep)
       expects <- case maybe (Right mintedExpects) readExpect committed of
         Left es -> die (report
           (T.pack (expectPath rep) <> " is unreadable, so lips can't verify against it:")
@@ -402,8 +406,9 @@ generate target confidence mmodel files@(rep : _) = do
           Left (Violations fs) -> die (report
             ("lips built a setup for " <> T.pack f <> ", but it doesn't produce what the program promises:")
             fs
-            ("→ run generate again. If you changed the program on purpose, delete "
-              <> T.pack (expectPath rep) <> " first to accept the new behavior."))
+            ("→ run generate again. If you changed the program on purpose, accept "
+              <> "the new behavior: lips generate --renew " <> T.pack rep
+              <> " (rewrites " <> T.pack (expectPath rep) <> ")."))
           Right () -> pure ()
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
