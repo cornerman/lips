@@ -180,7 +180,88 @@ system eval/build closure. Acceptable on the owner's own machine.
 - Live host deployment (`nixos-rebuild` / `home-manager switch` against the
   real machine). Remains an explicit, privileged step outside lips.
 
-## 10. Open Points
+## 10. Future Targets
+
+The target axis is not NixOS-specific. Any target that is a NixOS-module-system
+consumer (it defines config through `lib.evalModules` as `path = value`
+assignments and renders that to some artifact) slots in as another `Target`
+with zero kernel change, because the kernel already emits only `path = value`
+and the world lives in the emitted paths.
+
+Adding a target is three knobs, all outside the kernel:
+
+1. A mint-prompt preamble naming the world's option namespaces (as
+   `worldSection` does for NixOS and home-manager).
+2. A grounding schema source: the world's `optionsJSON`, built from a pinned
+   flake baked as a `LIPS_<world>_FLAKE` ref.
+3. A run harness: how the realized module is executed, degrading from "boot a
+   machine" (NixOS) to "eval-only / render-only" where there is no machine.
+
+Two concrete candidates:
+
+- **terranix** (`terranix.*` -> Terraform JSON). Already named in DESIGN.md
+  section 10 as proof the machinery retargets. Run harness: render the
+  Terraform JSON (a `terraform plan` against a throwaway backend is the
+  stronger, deferred check).
+- **Kubernetes via kubenix** (`kubernetes.resources.*` -> Kubernetes
+  manifests). kubenix is a NixOS-module-system consumer, so print/realize are
+  unchanged and the world lives in the `kubernetes.*` paths. Run harness:
+  render manifests and run the world-blind `.expect` gate (a throwaway
+  `kind`/`k3d` cluster is the machine-equivalent, deferred like the
+  home-manager-in-a-VM idea).
+
+One caveat specific to these targets: their option schemas are *generated*
+(kubenix from the Kubernetes OpenAPI swagger; terranix from provider schemas),
+so the option tree is large and deeply nested, and much of it classifies as
+`OTOther` (freeform submodules). Grounding therefore degrades to
+path-existence and prefix-acceptance rather than tight type checks -- the same
+graceful degradation the schema layer already applies to submodule descents,
+but worth verifying a clean `optionsJSON` is buildable for the target before
+promising it. This grounding-schema availability is the only real friction; it
+is harness work, never kernel work.
+
+## 11. Target vs Solution Kind (a Separate Axis)
+
+The realization design has two orthogonal axes. Do not conflate them; in
+particular, `--target` must never grow to mean `mkShell`/app/devShell.
+
+**Axis 1 -- Target (this spec).** *Which option namespace a module lands in.*
+NixOS, home-manager, kubenix, terranix all emit the same shape,
+`{ config, lib, pkgs, ... }: { <path> = <value>; }`, consumed by some
+`evalModules`; only the vocabulary differs. Selected by `--target`, recorded in
+`.generation`, zero kernel change. The world lives in the emitted paths.
+
+**Axis 2 -- Solution kind.** *What realize's top-level output IS.* A module of
+option assignments (all of Axis 1), versus a top-level derivation: a devShell
+(`pkgs.mkShell { ... }`, run by `nix develop`), a runnable app (a flake `app`
+or package, run by `nix run`), or packages on PATH (`nix shell`). `mkShell` is
+a function call producing a derivation, so it does not fit the `path = value`
+module shape at all. This is a different realize *form*, not a different
+namespace.
+
+What the two axes share: both reach concrete Nix things by name (builders,
+`mkShell`, packages), never by kernel special-casing, and both change how a
+Solution is run (boot -> activate -> render -> enter-shell / `nix run`). What
+differs: a target is a namespace swap over one fixed output shape (no kernel
+change); a solution kind is a new top-level output shape for `realize`, which
+today hardcodes the `{ config, lib, pkgs, ... }:` module wrapper.
+
+Design decisions recorded from the 2026-07-22 discussion:
+
+- Solution kind is a distinct, later milestone (the ledger's "artifacts /
+  Solution-kinds" line). The **artifacts** milestone already built the
+  derivation-emission mechanism (`artifact.<name>` groups gathered into a
+  `let` block, referenced by `${artifact.<name>}`); a devShell/app reuses that
+  *kind* of mechanism -- a top-level derivation -- not an option namespace.
+- Adding a solution kind is a closed grammar extension to `realize` (the "new
+  emission type" the Kernel-modules / grammar-completeness milestone
+  anticipates), never a per-problem kernel branch.
+- Consistent with "the world lives in what's emitted," solution kind is
+  **inferred** from the emission shape (option paths vs a top-level
+  `mkShell`/artifact derivation), with `run` reading it to pick its harness.
+  No new flag. Gated behind a real need (YAGNI).
+
+## 12. Open Points
 
 None outstanding; the two prior open points (home-manager run semantics, flake
 instance discovery) are decided in sections 5 and 7.
