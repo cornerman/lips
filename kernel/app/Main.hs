@@ -47,7 +47,7 @@ import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.OptionType        (checkEmits, renderOptionError)
 import           Lips.Nix.Options              (parseNixOptionsJson)
-import           Lips.Nix.Target               (Target (..), targetSlug)
+import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -65,9 +65,12 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["print", file]      -> printLoose file
-    ["run", file]        -> runVm file
-    ["check", file]      -> checkLoose file
+    ["print", file]              -> printLoose file
+    ["run", file]                -> runProgram Nothing file
+    ["run", "--target", w, file] -> case parseTarget w of
+      Just t  -> runProgram (Just t) file
+      Nothing -> usage >> exitFailure
+    ["check", file]              -> checkLoose file
     ["lsp"]              -> runLsp
     ("generate" : rest)  -> case parseGenerate defaultConfidence rest of
       Just (target, conf, mmodel, fs) -> generate target conf mmodel fs
@@ -90,8 +93,8 @@ usage = do
     , "      The one step that uses AI."
     , "  " <> name <> " print <program>"
     , "      Show the NixOS configuration the program produces."
-    , "  " <> name <> " run <program>"
-    , "      Boot that configuration as a throwaway local VM."
+    , "  " <> name <> " run [--target nixos|home-manager] <program>"
+    , "      Boot as a local VM (nixos) or realize and check (home-manager)."
     , "  " <> name <> " check <program>"
     , "      Verify the program still produces what it promised."
     ]
@@ -106,11 +109,50 @@ printLoose file = do
     Left f            -> die (printFail file f)
     Right (_, nixMod) -> TIO.putStr nixMod
 
--- | @run@: realize the program, then literally run it -- wrap the module in a
--- NixOS system and boot it as a local QEMU VM. The realization is the same
--- deterministic tail as @print@; only the booting is impure (it uses the
--- ambient @<nixpkgs>@, a Heile-Welt softness noted in the design). The host is
--- never touched; the VM is a throwaway simulation.
+-- | @run@: realize the program, then run it in the world it was minted for. An
+-- explicit @--target@ overrides; otherwise the world is read from the engine's
+-- committed @.generation@ record. nixos boots a QEMU VM; home-manager has no
+-- machine, so it is eval-only.
+runProgram :: Maybe Target -> FilePath -> IO ()
+runProgram mtarget file = do
+  target <- maybe (readRecordedTarget file) pure mtarget
+  case target of
+    Nixos       -> runVm file
+    HomeManager -> runEvalOnly file
+
+-- | The world an engine was minted for, read from its committed .generation
+-- record (the @target:@ line). An engine minted before targets existed has no
+-- such line and defaults to nixos, so old engines keep working.
+readRecordedTarget :: FilePath -> IO Target
+readRecordedTarget file = do
+  m <- tryRead (generationPath file)
+  pure $ case m of
+    Nothing  -> defaultTarget
+    Just src -> case [ t | l <- T.lines src
+                         , Just rest <- [T.stripPrefix "target:" l]
+                         , Just t <- [parseTarget (T.unpack (T.strip rest))] ] of
+      (t : _) -> t
+      []      -> defaultTarget
+
+-- | home-manager run: no VM. Realize, print the module, then run the committed
+-- world-blind @.expect@ gate so the values are witnessed. Stays hermetic (no
+-- home-manager eval); a booted-cluster-style check is deferred.
+runEvalOnly :: FilePath -> IO ()
+runEvalOnly file = do
+  program <- readProgramOrDie file
+  eng     <- loadLangOrDie file
+  case validate file eng program of
+    Left f            -> die (printFail file f)
+    Right (_, nixMod) -> do
+      TIO.hPutStrLn stderr
+        "home-manager module: no VM to boot; showing the module and checking its contract."
+      TIO.putStr nixMod
+      checkLoose file
+
+-- | @runVm@: wrap the module in a NixOS system and boot it as a local QEMU VM.
+-- The realization is the same deterministic tail as @print@; only the booting
+-- is impure (it uses the ambient @<nixpkgs>@, a Heile-Welt softness noted in
+-- the design). The host is never touched; the VM is a throwaway simulation.
 runVm :: FilePath -> IO ()
 runVm file = do
   program <- readProgramOrDie file
