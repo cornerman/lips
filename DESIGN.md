@@ -750,6 +750,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Missing
 
+- **List aggregation across decisions (N lines -> one list-valued option).**
+  Merge is by subject (replace, ordered by the strength lattice); the kernel
+  does not concatenate lists across decisions. So N sibling lines cannot fold
+  into a single list-valued option (e.g. several package lines -> one
+  `environment.systemPackages = [ ... ]`): two decisions on the same subject
+  are an equal-strength conflict, not a list-append. The lips-native way to say
+  "many of X" is `attrsOf` value-keying (each item its own keyed entry; see the
+  value-keyed-options milestone in Done). Where a target offers ONLY a flat
+  list for a repeated thing (no `attrsOf` surface), that repetition is
+  currently inexpressible from multiple lines. Note the asymmetry: NixOS's own
+  module system concatenates such lists across modules, but within ONE
+  lips-realized module every assignment lands in one attrset, so a repeated
+  path is a conflict. A fix would be a list-contribution merge mode (a decision
+  that appends to rather than replaces a list), a merge-semantics extension
+  weighed against keeping merge simple (replace-by-strength). Single-line
+  variable-length lists are the separate, also-missing multi-token tail hole.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
