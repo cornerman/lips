@@ -1152,6 +1152,15 @@ main = hspec $ do
     it "a bare identifier rhs is rejected (only closed value forms parse)" $
       property $ forAll bareWord $ \w -> parseValue w `shouldSatisfy` isLeft
 
+    -- Grammar completeness: inside a string the value is text, so a redundant
+    -- :type on a hole is meaningless and degrades to the plain hole rather
+    -- than being rejected (a form the mint writes naturally for a number).
+    it "a typed hole inside a string degrades to its plain form" $ do
+      parseValue "\"--keep-daily <value.2:int>\"" `shouldBe` parseValue "\"--keep-daily <value.2>\""
+      parseValue "\"x <value:int> y\"" `shouldBe` parseValue "\"x <value> y\""
+    it "a genuinely unknown hole inside a string is still rejected" $
+      parseValue "\"x <bogus> y\"" `shouldSatisfy` isLeft
+
   -- The system prompt is pinned into the generation id, so it is a versioned
   -- artifact; this guards its load-bearing clauses against silent drift.
   describe "generate prompt is a pinned artifact (mint doctrine)" $

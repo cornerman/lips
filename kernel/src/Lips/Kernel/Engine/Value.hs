@@ -116,6 +116,20 @@ holeIndex h = do
 validHoleName :: Text -> Bool
 validHoleName h = h == "value" || holeIndex h /= Nothing
 
+-- | The plain hole name a string-context @\<...\>@ denotes, accepting a
+-- redundant @:type@ suffix. Inside a string the value is always text, so a
+-- type annotation is meaningless there; rather than reject @\<value:int\>@ (a
+-- form the mint writes naturally when it wants a number), degrade it to its
+-- plain hole @\<value\>@ losslessly. A genuine option-type mismatch is still
+-- caught one layer down by option grounding, so nothing is weakened. Returns
+-- Nothing for a truly unknown hole.
+stringHoleName :: Text -> Maybe Text
+stringHoleName h =
+  let base = case T.breakOn ":" h of
+               (b, ty) | not (T.null ty), Just _ <- parseHoleType (T.drop 1 ty) -> b
+               _ -> h
+   in if validHoleName base then Just base else Nothing
+
 holeTypeText :: HoleType -> Text
 holeTypeText HInt   = "int"
 holeTypeText HBool  = "bool"
@@ -236,9 +250,9 @@ pString = go [] T.empty
         if T.null after
           then Left ("unterminated hole <" <> hole)
           else
-            if hole == "value" || holeIndex hole /= Nothing
-              then go (PHole hole : flush acc pieces) T.empty (T.drop 1 after)
-              else Left ("unknown hole <" <> hole <> "> (only <value> and <value.N> are defined)")
+            case stringHoleName hole of
+              Just base -> go (PHole base : flush acc pieces) T.empty (T.drop 1 after)
+              Nothing   -> Left ("unknown hole <" <> hole <> "> (only <value> and <value.N> are defined)")
       Just (c, more) -> go pieces (T.snoc acc c) more
     flush acc pieces = if T.null acc then pieces else PLit acc : pieces
 
