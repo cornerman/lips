@@ -27,6 +27,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
+import Lips.Nix.Target
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
@@ -58,6 +59,17 @@ winnerAssertion s = fmap dAssertion . Map.lookup s
 
 main :: IO ()
 main = hspec $ do
+  describe "realization target (Lips.Nix.Target)" $ do
+    it "parses the two world slugs and rejects others" $ do
+      parseTarget "nixos" `shouldBe` Just Nixos
+      parseTarget "home-manager" `shouldBe` Just HomeManager
+      parseTarget "darwin" `shouldBe` Nothing
+    it "slug round-trips through parse for every target" $
+      mapM_ (\t -> parseTarget (T.unpack (targetSlug t)) `shouldBe` Just t)
+            [minBound .. maxBound]
+    it "defaults to nixos" $
+      defaultTarget `shouldBe` Nixos
+
   describe "merge (spec 2.1: strength) " $ do
     it "delta-over-defaults: Stated overrides Default on the same subject" $ do
       let base = fromList [mk "d1" "cadence" "daily" Default, mk "d2" "cadence" "hourly" Stated]
