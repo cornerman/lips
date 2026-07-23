@@ -47,7 +47,7 @@ import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.OptionType        (checkEmits, renderOptionError)
 import           Lips.Nix.Options              (parseNixOptionsJson)
-import           Lips.Nix.Target               (Target)
+import           Lips.Nix.Target               (Target (..), targetSlug)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -319,7 +319,7 @@ generate target confidence mmodel files@(rep : _) = do
       eng <- case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
         Left es -> die (validationReport rep ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
         Right e -> pure e
-      assertOptionsAdmissible rep eng
+      assertOptionsAdmissible target rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
       validated <- forM progs $ \(f, t) -> case validate f eng t of
@@ -391,9 +391,9 @@ generate target confidence mmodel files@(rep : _) = do
 -- or an unreadable schema fails loud -- an unverifiable engine is not written.
 -- The check is domain-blind: 'checkEmits' takes a typed schema, and the NixOS
 -- specifics live in 'Lips.Nix.Options'.
-assertOptionsAdmissible :: FilePath -> EngineData -> IO ()
-assertOptionsAdmissible file eng = do
-  schemaPath <- ensureOptionSchema file
+assertOptionsAdmissible :: Target -> FilePath -> EngineData -> IO ()
+assertOptionsAdmissible target file eng = do
+  schemaPath <- ensureOptionSchema target file
   mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
   case mbytes of
     Left e -> die (report
@@ -418,44 +418,55 @@ assertOptionsAdmissible file eng = do
 -- since the first one evaluates the whole NixOS manual (~11 MB) before nix
 -- caches it; every later generate is a store cache hit. Only generate pays
 -- this -- print\/run\/check never touch the schema.
-ensureOptionSchema :: FilePath -> IO FilePath
-ensureOptionSchema file = do
+ensureOptionSchema :: Target -> FilePath -> IO FilePath
+ensureOptionSchema target file = do
   override <- lookupEnv "LIPS_OPTIONS_JSON"
   case override of
     Just p  -> pure p
     Nothing -> do
-      mflake <- lookupEnv "LIPS_NIXPKGS_FLAKE"
+      -- Each world builds its own optionsJSON from its own pinned flake, baked
+      -- into the binary. The file sub-path differs per world; the JSON shape
+      -- is identical (both are nixosOptionsDoc output).
+      let (envVar, subPath) = case target of
+            Nixos       -> ("LIPS_NIXPKGS_FLAKE", "/share/doc/nixos/options.json")
+            HomeManager -> ("LIPS_HM_FLAKE",      "/share/doc/home-manager/options.json")
+      mflake <- lookupEnv envVar
       case mflake of
         Nothing -> die (report
-          "lips can't check the setup's options: no NixOS option schema source is configured."
-          ["neither LIPS_OPTIONS_JSON nor LIPS_NIXPKGS_FLAKE is set."]
-          "\226\134\146 run the packaged lips: nix run . -- generate <program> (it bakes the pinned nixpkgs).")
+          ("lips can't check the setup's options: no " <> targetSlug target <> " option schema source is configured.")
+          ["neither LIPS_OPTIONS_JSON nor " <> T.pack envVar <> " is set."]
+          "\226\134\146 run the packaged lips: nix run . -- generate <program> (it bakes the pinned flakes).")
         Just flakeref -> do
           TIO.hPutStrLn stderr
-            ("checking options against the NixOS schema: building it from pinned nixpkgs ("
-              <> T.pack flakeref <> ").")
+            ("checking options against the " <> targetSlug target
+              <> " schema: building it from pinned flake (" <> T.pack flakeref <> ").")
           TIO.hPutStrLn stderr
-            "  the first build evaluates the NixOS manual and can take a few minutes; nix caches it afterwards."
+            "  the first build evaluates the manual and can take a few minutes; nix caches it afterwards."
           built <- try (readProcessWithExitCode "nix"
             [ "build", "--impure", "--no-link", "--print-out-paths"
-            , "--expr", T.unpack (schemaExpr flakeref) ] "")
+            , "--expr", T.unpack (schemaExpr target flakeref) ] "")
           case built of
-            Left e -> die (nixMissing file "build the NixOS option schema" "generate" (tshow (e :: IOException)))
+            Left e -> die (nixMissing file "build the option schema" "generate" (tshow (e :: IOException)))
             Right (ExitFailure _, _, err) -> die (validationReport file
-              ("lips couldn't build the NixOS option schema:\n" <> T.pack err))
+              ("lips couldn't build the " <> targetSlug target <> " option schema:\n" <> T.pack err))
             Right (ExitSuccess, out, _) ->
-              pure (T.unpack (T.strip (T.pack out)) <> "/share/doc/nixos/options.json")
+              pure (T.unpack (T.strip (T.pack out)) <> T.unpack subPath)
 
--- | The Nix expression that produces the pinned nixpkgs @optionsJSON@
--- derivation (the same @options.json@ search.nixos.org is built from). Pins
--- via @builtins.getFlake@ on the baked ref; @--impure@ covers
+-- | The Nix expression producing the target world's optionsJSON derivation.
+-- NixOS: the pinned nixpkgs NixOS manual optionsJSON (the same options.json
+-- search.nixos.org is built from). home-manager: the pinned home-manager
+-- flake's docs-json. Both are the same optionsJSON shape, so only the
+-- derivation differs. Pins via @builtins.getFlake@; @--impure@ covers
 -- @builtins.currentSystem@.
-schemaExpr :: String -> Text
-schemaExpr flakeref = T.pack $ concat
+schemaExpr :: Target -> String -> Text
+schemaExpr Nixos flakeref = T.pack $ concat
   [ "let np = builtins.getFlake \"", flakeref, "\"; in "
   , "(import (np.outPath + \"/nixos\") "
   , "{ configuration = {}; system = builtins.currentSystem; })"
   , ".config.system.build.manual.optionsJSON" ]
+schemaExpr HomeManager flakeref = T.pack $ concat
+  [ "let hm = builtins.getFlake \"", flakeref, "\"; in "
+  , "hm.packages.${builtins.currentSystem}.docs-json" ]
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.
