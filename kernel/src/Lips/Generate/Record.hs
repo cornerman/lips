@@ -24,6 +24,8 @@ import qualified Data.Text          as T
 import           Data.Text.Encoding (encodeUtf8)
 import           Data.Word          (Word64)
 
+import           Lips.Nix.Target    (Target, targetSlug)
+
 -- | The auditable record of a generation event: everything the model saw and
 -- said, self-contained (the system prompt is embedded, not referenced, so the
 -- record stays honest even after the prompt artifact evolves). Stored as
@@ -33,9 +35,15 @@ import           Data.Word          (Word64)
 -- admitted (deduce-or-fail), so a record that omitted it would not pin the
 -- event. It therefore also enters 'genId', so re-running with a different
 -- threshold yields a different id.
-record :: Text -> Double -> Text -> Text -> Text -> Text
-record model confidence sysPrompt program reply = T.unlines
+-- The target world co-determines what the mint produced (the option namespace
+-- it aimed at and the schema it was grounded against), so it is part of the
+-- event and enters 'genId': a re-mint targeting a different world yields a
+-- different id, so every engine line's @gen stamp pins the world it was minted
+-- for.
+record :: Text -> Target -> Double -> Text -> Text -> Text -> Text
+record model target confidence sysPrompt program reply = T.unlines
   [ "model: " <> model
+  , "target: " <> targetSlug target
   , "confidence-threshold: " <> T.pack (show confidence)
   , "--- system prompt ---", sysPrompt
   , "--- program (input) ---", program

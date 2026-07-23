@@ -872,14 +872,20 @@ main = hspec $ do
             `shouldBe` []
 
     it "generation ids are deterministic and content-sensitive" $ do
-      let r  = record "m" 0.7 "sp" "prog" "reply"
-          r' = record "m" 0.7 "sp" "prog" "reply2"
-          rc = record "m" 0.5 "sp" "prog" "reply"
+      let r  = record "m" Nixos 0.7 "sp" "prog" "reply"
+          r' = record "m" Nixos 0.7 "sp" "prog" "reply2"
+          rc = record "m" Nixos 0.5 "sp" "prog" "reply"
+          rt = record "m" HomeManager 0.7 "sp" "prog" "reply"
       genId r `shouldBe` genId r
       genId r `shouldNotBe` genId r'
       -- the confidence threshold is pinned: changing it changes the id
       genId r `shouldNotBe` genId rc
+      -- the target world is pinned: changing it changes the id
+      genId r `shouldNotBe` genId rt
       T.length (genId r) `shouldBe` 16
+    it "writes the target slug into the record text" $
+      record "m" HomeManager 0.7 "sp" "prog" "reply"
+        `shouldSatisfy` T.isInfixOf "target: home-manager"
 
     it "reads a hole with glued trailing punctuation: '<when>.' binds <when>" $
       case parsePatternBody "p9" "back up <src> every <when>. => fact backup.job stated \"<src> <when>\"" of
