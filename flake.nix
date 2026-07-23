@@ -72,7 +72,7 @@
             paths = builtins.attrValues mods.nixosModules;
           in pkgs.runCommand "lips-modules-eval" { } ''
             test -n "${toString (builtins.attrNames mods.nixosModules)}"
-            ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}") paths}
+            ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
             touch "$out"
           '';
       } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {
@@ -88,10 +88,10 @@
             lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
             # Deterministic tail only: crystallize + run the committed example
             # with its committed minted language. No AI in this derivation.
-            realized = pkgs.runCommand "lips-backup-module.nix" { } ''
+            realized = pkgs.runCommand "lips-backup-module" { } ''
               cp ${./examples/ledger.backup.lips} ledger.backup.lips
               cp ${./examples/backup.lang} backup.lang
-              ${lips}/bin/lips print ledger.backup.lips > "$out"
+              ${lips}/bin/lips compile --out "$out" ledger.backup.lips
             '';
           in
           pkgs.testers.runNixOSTest {
@@ -143,15 +143,14 @@
             realized = pkgs.runCommand "lips-hello-module" { } ''
               cp ${./examples/hello.http.lips} hello.http.lips
               cp ${./examples/http.lang} http.lang
-              mkdir -p "$out/artifacts"
-              ${lips}/bin/lips print hello.http.lips > "$out/module.nix"
-              cp -r ${./examples/http.artifacts}/. "$out/artifacts/"
+              cp -r ${./examples/http.artifacts} http.artifacts
+              ${lips}/bin/lips compile --out "$out" hello.http.lips
             '';
           in
           pkgs.testers.runNixOSTest {
             name = "lips-artifact-service-answers";
             nodes.machine = { pkgs, ... }: {
-              imports = [ "${realized}/module.nix" ];
+              imports = [ "${realized}/default.nix" ];
               environment.systemPackages = [ pkgs.curl ];
             };
             testScript = ''

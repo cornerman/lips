@@ -36,9 +36,10 @@ check-expect:
       nix run . -- check "$p"
     done
 
-# Deterministic realize: program + .lang -> NixOS module text (no model, offline).
-print program:
-    nix run . -- print "{{program}}"
+# Deterministic realize: program + .lang -> a module directory (default.nix +
+# artifacts/), no model, offline. Writes <program without .lips>/ by default.
+compile program:
+    nix run . -- compile "{{program}}"
 
 # Literally run: realize the program and boot it as a local NixOS VM (needs KVM).
 run program:

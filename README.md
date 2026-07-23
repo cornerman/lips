@@ -30,9 +30,9 @@ like yours, the rules that map them to real NixOS options, and tests that pin
 your values. In other words, the wording you chose defines a little language
 for your problem, and lips hands you the compiler for it.
 
-From then on the AI is gone. `print` compiles your text to a NixOS module
-offline and bit-identical, every time. Edit a path or a number and print again;
-the change flows straight through. The language you grew stays yours to write
+From then on the AI is gone. `compile` turns your text into a NixOS module
+offline and bit-identical, every time. Edit a path or a number and compile
+again; the change flows straight through. The language you grew stays yours to write
 in, and the compiler keeps working without a model ever running again.
 
 A line the engine cannot read fails loudly and sends you back to `generate`.
@@ -40,7 +40,7 @@ lips never guesses.
 
 ## How You Work With It
 
-The loop has three moves: write, (generate), print/run. Only the middle
+The loop has three moves: write, (generate), compile/run. Only the middle
 one, `generate`, touches a model.
 
 **Write.** State intent in plain lines. This is the only artifact you own and
@@ -72,13 +72,14 @@ and the tests for the language; pass several programs
 across them. lips refuses to write anything unless the engine actually compiles
 every program and the tests hold, so a bad mint costs you nothing.
 
-**Print and run (forever, no AI).** `lips print ledger.backup.lips` compiles
-your text to a NixOS module. `lips run ledger.backup.lips` goes further and
+**Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
+your text into a NixOS module directory (`default.nix` plus any staged
+`artifacts/`). `lips run ledger.backup.lips` goes further and
 boots that module in a throwaway local VM, so you can watch it work without
 touching your host.
 
 You then edit freely. Value and wording changes covered by your language run
-straight through `print`. You return to `generate` only when you say something
+straight through `compile`. You return to `generate` only when you say something
 genuinely new that the language cannot yet read, and even then regeneration is
 gated: a fresh engine is accepted only if the committed tests still hold. To
 change behavior on purpose you delete the `.expect` file and regenerate, and
@@ -96,7 +97,7 @@ file is optional; absent, nothing changes.
 flowchart LR
     W["write<br><b>ledger.backup.lips</b>"]
     W -->|"generate<br>(AI, once)"| E["engine + tests<br>verified, or nothing"]
-    W -->|"print / run<br>(no AI, forever)"| M["NixOS module<br>+ local VM"]
+    W -->|"compile / run<br>(no AI, forever)"| M["NixOS module<br>+ local VM"]
     E --> M
     M -.->|"a line it cannot read"| W
 ```
@@ -106,13 +107,13 @@ flowchart LR
 With direnv, run `direnv allow` once. Otherwise prefix each command with
 `nix develop -c`.
 
-    just print examples/ledger.backup.lips   # loose text -> NixOS module (offline)
+    just compile examples/ledger.backup.lips # loose text -> NixOS module dir (offline)
     just run   examples/ledger.backup.lips   # ... and boot it as a local VM (needs KVM)
     just generate path/to/my.backup.lips     # mint a language for your program (AI, needs pi)
     just test                                # conformance suite
 
 Open `examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and run
-`just print` again. The module updates with no AI. Then add a sentence the
+`just compile` again. The module updates with no AI. Then add a sentence the
 language does not know and watch it fail loud, pointing you back to `generate`.
 To see reuse, look at `examples/photos.backup.lips`: a second instance of the
 same `backup` language, sharing `backup.lang`.

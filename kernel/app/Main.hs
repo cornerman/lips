@@ -7,10 +7,11 @@
 --     program with it and validates by a full run; only then are the language
 --     (@\<program\>.lang@), the crystal witness (@\<program\>.decisions@), and
 --     the generation record written.
---   * @lips print \<program\>@ takes the loose program directly. It
---     crystallizes it with @\<program\>.lang@ and realizes it to a NixOS
---     module text on stdout, deterministically, with no AI. If the language is
---     missing, or the program escaped it, it fails loud and names @generate@.
+--   * @lips compile \<program\>@ takes the loose program directly. It
+--     crystallizes it with @\<program\>.lang@ and realizes it into a DIRECTORY
+--     (@default.nix@ plus a staged @artifacts/@), deterministically, with no
+--     AI. If the language is missing, or the program escaped it, it fails loud
+--     and names @generate@.
 --   * @lips run \<program\>@ goes one step further and literally runs the
 --     realized module: it wraps it in a NixOS system and boots it as a local
 --     QEMU VM (a Heile-Welt simulation of the target machine; the host is
@@ -26,7 +27,7 @@ import qualified Data.Text.IO       as TIO
 import           System.Environment (getArgs, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, stderr, stdout)
-import           System.FilePath    (takeFileName)
+import           System.FilePath    (dropExtension, takeFileName, (</>))
 import           System.Process     (callCommand, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
@@ -65,7 +66,8 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["print", file]              -> printLoose file
+    ["compile", file]                -> compileLoose Nothing file
+    ["compile", "--out", dir, file]  -> compileLoose (Just dir) file
     ["run", file]                -> runProgram file
     ["check", file]              -> checkLoose file
     ["lsp"]              -> runLsp
@@ -90,23 +92,32 @@ usage = do
     , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--renew] [--model <id>|model] <program>..."
     , "      Mint the language from one or more example programs and verify each."
     , "      The one step that uses AI."
-    , "  " <> name <> " print <program>"
-    , "      Show the NixOS configuration the program produces."
+    , "  " <> name <> " compile [--out <dir>] <program>"
+    , "      Realize into a directory (default.nix + artifacts/) for import."
     , "  " <> name <> " run <program>"
     , "      Boot as a local VM (nixos) or realize and check (home-manager)."
     , "  " <> name <> " check <program>"
     , "      Verify the program still produces what it promised."
     ]
 
--- | @print@: crystallize the loose program with its language, realize it, and
--- write the NixOS module text to stdout. Pure and deterministic (no AI).
-printLoose :: FilePath -> IO ()
-printLoose file = do
+-- | @compile@: crystallize + realize, then materialize a DIRECTORY -- default
+-- @<program without .lips>/@, or @--out <dir>@ -- holding @default.nix@ plus a
+-- staged @artifacts/@ tree. A directory, not stdout, so an engine with
+-- artifacts is complete and @imports = [ ./<dir> ]@ resolves default.nix. The
+-- output is derived, never committed (gitignore it, like .decisions).
+compileLoose :: Maybe FilePath -> FilePath -> IO ()
+compileLoose mout file = do
   program <- readProgramOrDie file
   eng     <- loadLangOrDie file
   case validate file eng program of
     Left f            -> die (printFail file f)
-    Right (_, nixMod) -> TIO.putStr nixMod
+    Right (_, nixMod) -> do
+      let outDir = maybe (dropExtension file) id mout
+      callCommand ("mkdir -p " <> shq outDir)
+      TIO.writeFile (outDir </> "default.nix") nixMod
+      stageFromDisk file (outDir </> "artifacts")
+      TIO.hPutStrLn stderr
+        ("compiled " <> T.pack file <> " -> " <> T.pack (outDir </> "default.nix"))
 
 -- | @run@: realize the program, then run it in the world it was minted for.
 -- The world is fixed at mint time and read from the engine's committed
@@ -134,20 +145,14 @@ readRecordedTarget file = do
       (t : _) -> t
       []      -> defaultTarget
 
--- | home-manager run: no VM. Realize, print the module, then run the committed
--- world-blind @.expect@ gate so the values are witnessed. Stays hermetic (no
--- home-manager eval); a booted-cluster-style check is deferred.
+-- | home-manager run: no VM to boot for a per-user environment. Run the
+-- committed world-blind @.expect@ gate so the values are witnessed. Stays
+-- hermetic (no home-manager eval); a booted-cluster-style check is deferred.
 runEvalOnly :: FilePath -> IO ()
 runEvalOnly file = do
-  program <- readProgramOrDie file
-  eng     <- loadLangOrDie file
-  case validate file eng program of
-    Left f            -> die (printFail file f)
-    Right (_, nixMod) -> do
-      TIO.hPutStrLn stderr
-        "home-manager module: no VM to boot; showing the module and checking its contract."
-      TIO.putStr nixMod
-      checkLoose file
+  TIO.hPutStrLn stderr
+    "home-manager module: no VM to boot; checking its contract (use compile to materialize it)."
+  checkLoose file
 
 -- | @runVm@: wrap the module in a NixOS system and boot it as a local QEMU VM.
 -- The realization is the same deterministic tail as @print@; only the booting
@@ -427,7 +432,7 @@ generate target confidence renew mmodel files@(rep : _) = do
         [ "lips set up ." <> T.pack lang <> " from " <> tshow (length files)
             <> " program(s) and verified each produces a valid NixOS configuration."
         , "" ]
-        ++ [ "→ preview:  lips print " <> T.pack f | (f, _, _) <- validated ]
+        ++ [ "→ preview:  lips compile " <> T.pack f | (f, _, _) <- validated ]
       case [ m | (f, _, m) <- validated, f == rep ] of
         (m : _) -> TIO.putStr m
         []      -> pure ()

@@ -2,11 +2,10 @@
 # world each engine was minted for. The label is read from the committed
 # <language>.generation record (the `target:` line), so a program lands under
 # nixosModules or homeManagerModules automatically. The realized module is
-# DERIVED by running `lips print` in a derivation (offline, deterministic); the
-# program and its .lang are the only committed inputs. Each output value is the
-# PATH to the realized module.nix (imports accepts a path), inside a directory
-# that also stages the program's artifacts/ tree when it has one, so a relative
-# `src = ./artifacts/<name>` resolves on import.
+# DERIVED by running `lips compile` in a derivation (offline, deterministic);
+# the program and its .lang are the only committed inputs. Each output value is
+# the compiled DIRECTORY (default.nix + a staged artifacts/ tree); `imports`
+# accepts the directory and resolves its default.nix.
 { pkgs, lib, lips, dir }:
 let
   entries = lib.filterAttrs (n: _: lib.hasSuffix ".lips" n) (builtins.readDir dir);
@@ -25,25 +24,24 @@ let
           && lib.hasInfix "target: home-manager" (builtins.readFile genFile)
        then "home-manager" else "nixos";
 
+  # Artifacts are language-named (Lips.Identity.artifactsPath -> <language>.artifacts).
+  # Stage them into the build cwd beside the program so `lips compile` finds and
+  # stages them itself into $out/artifacts.
   realize = name: p:
-    let artifactsSrc = dir + "/${name}.artifacts";
+    let artifactsSrc = dir + "/${p.language}.artifacts";
         hasArtifacts = builtins.pathExists artifactsSrc;
     in pkgs.runCommand "lips-${p.instance}-module" { } ''
       cp ${dir + "/${name}"} ${name}
       cp ${dir + "/${p.language}.lang"} ${p.language}.lang
-      mkdir -p "$out"
-      ${lips}/bin/lips print ${name} > "$out/module.nix"
-      ${lib.optionalString hasArtifacts ''
-        mkdir -p "$out/artifacts"
-        cp -r ${artifactsSrc}/. "$out/artifacts/"
-      ''}
+      ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}.artifacts"}
+      ${lips}/bin/lips compile --out "$out" ${name}
     '';
 
   built = lib.mapAttrs' (name: _:
     let p = parse name;
     in lib.nameValuePair p.instance {
          target = targetOf p.language;
-         module = "${realize name p}/module.nix";
+         module = realize name p;   # the compiled directory (imports resolves default.nix)
        }) entries;
 
   byTarget = t: lib.mapAttrs (_: v: v.module)
