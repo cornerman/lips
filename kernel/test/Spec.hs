@@ -28,6 +28,7 @@ import Lips.Kernel.Engine.Value
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
+import Lips.Generate.Args (parseGenerate)
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
@@ -59,6 +60,22 @@ winnerAssertion s = fmap dAssertion . Map.lookup s
 
 main :: IO ()
 main = hspec $ do
+  describe "generate argument parsing (--target, --confidence, model)" $ do
+    it "defaults target to nixos and confidence to the default" $
+      parseGenerate 0.7 ["ledger.backup.lips"]
+        `shouldBe` Just (Nixos, 0.7, Nothing, ["ledger.backup.lips"])
+    it "reads --target home-manager in any position" $
+      parseGenerate 0.7 ["--target", "home-manager", "a.backup.lips"]
+        `shouldBe` Just (HomeManager, 0.7, Nothing, ["a.backup.lips"])
+    it "rejects an unknown target" $
+      parseGenerate 0.7 ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
+    it "keeps model detection and multiple programs" $
+      parseGenerate 0.7 ["anthropic/claude", "a.backup.lips", "b.backup.lips"]
+        `shouldBe` Just (Nixos, 0.7, Just "anthropic/claude", ["a.backup.lips", "b.backup.lips"])
+    it "combines --target and --confidence" $
+      parseGenerate 0.7 ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
+        `shouldBe` Just (HomeManager, 0.9, Nothing, ["a.backup.lips"])
+
   describe "realization target (Lips.Nix.Target)" $ do
     it "parses the two world slugs and rejects others" $ do
       parseTarget "nixos" `shouldBe` Just Nixos

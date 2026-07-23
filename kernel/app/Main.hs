@@ -28,10 +28,10 @@ import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, stderr, stdout)
 import           System.FilePath    (takeFileName)
 import           System.Process     (callCommand, readProcessWithExitCode)
-import           Text.Read          (readMaybe)
 
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
 import           Lips.Identity                 (artifactsPath, decisionsPath, directionPath, expectPath, generationPath, instanceName, langPath, languageName)
+import           Lips.Generate.Args     (parseGenerate)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
@@ -47,6 +47,7 @@ import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.OptionType        (checkEmits, renderOptionError)
 import           Lips.Nix.Options              (parseNixOptionsJson)
+import           Lips.Nix.Target               (Target)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -68,41 +69,15 @@ main = do
     ["run", file]        -> runVm file
     ["check", file]      -> checkLoose file
     ["lsp"]              -> runLsp
-    ("generate" : rest)  -> case parseGenerate rest of
-      Just (conf, mmodel, fs) -> generate conf mmodel fs
-      Nothing                 -> usage >> exitFailure
+    ("generate" : rest)  -> case parseGenerate defaultConfidence rest of
+      Just (target, conf, mmodel, fs) -> generate target conf mmodel fs
+      Nothing                         -> usage >> exitFailure
     _                    -> usage >> exitFailure
 
 -- | Parse @generate@ arguments: optional @--confidence <0..1>@ and
 -- @--model <id>@ flags in any position, then @[model] <program-file>...@ --
 -- one or more programs (all of one language, checked later). A malformed
 -- threshold, a duplicate model, or no program fails loud (returns Nothing).
-parseGenerate :: [String] -> Maybe (Double, Maybe String, [FilePath])
-parseGenerate = go Nothing Nothing []
-  where
-    go _conf model pos ("--confidence" : v : rest)
-      | Just c <- readMaybe v, c >= 0, c <= 1 = go (Just c) model pos rest
-      | otherwise                              = Nothing
-    go _ _ _ ["--confidence"]                   = Nothing
-    go conf Nothing pos ("--model" : v : rest)   = go conf (Just v) pos rest
-    go _ (Just _) _ ("--model" : _ : _)          = Nothing   -- duplicate --model: fail loud, not last-wins
-    go _ _ _ ["--model"]                         = Nothing
-    go conf model pos (a : rest)                 = go conf model (pos ++ [a]) rest
-    go conf model pos []                         = finish (maybe defaultConfidence id conf) model pos
-    -- --model flag wins outright: every positional is then a program file, no
-    -- heuristic needed. Without the flag, a leading positional is taken as
-    -- the model when it looks like a model id (a @provider/id@ whose final
-    -- component has no dot) and at least one program follows; every other
-    -- positional is a program file. No model at all: omit --model so pi's own
-    -- configured default applies; the model pi reports is read back and
-    -- recorded.
-    finish _ _ []                = Nothing
-    finish c (Just m) ps         = Just (c, Just m, ps)
-    finish c Nothing (a : rest)
-      | not (null rest), looksLikeModel a = Just (c, Just a, rest)
-      | otherwise                         = Just (c, Nothing, a : rest)
-    looksLikeModel s = '/' `elem` s && '.' `notElem` takeFileName s
-
 usage :: IO ()
 usage = do
   name <- T.pack <$> getProgName
@@ -110,7 +85,7 @@ usage = do
     [ "lips turns a plain-English <instance>.<language> program into a NixOS configuration."
     , ""
     , "usage:"
-    , "  " <> name <> " generate [--confidence <0..1>] [--model <id>|model] <program>..."
+    , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--model <id>|model] <program>..."
     , "      Mint the language from one or more example programs and verify each."
     , "      The one step that uses AI."
     , "  " <> name <> " print <program>"
@@ -302,9 +277,9 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Double -> Maybe String -> [FilePath] -> IO ()
-generate _ _ [] = usage >> exitFailure
-generate confidence mmodel files@(rep : _) = do
+generate :: Target -> Double -> Maybe String -> [FilePath] -> IO ()
+generate _ _ _ [] = usage >> exitFailure
+generate target confidence mmodel files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -391,7 +366,7 @@ generate confidence mmodel files@(rep : _) = do
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
-      let rec = record model confidence prompt corpus reply
+      let rec = record model target confidence prompt corpus reply
       TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
       TIO.writeFile (generationPath rep) rec
       writeSources (artifactsPath rep) minted
