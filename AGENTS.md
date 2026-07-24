@@ -4,6 +4,8 @@ Read `README.md` first (the loop, the files). Design truth lives in
 `DESIGN.md` (repo root); its section 13 is the milestone ledger (done /
 partial / missing) and must be updated when a milestone lands. Dated plans
 live in `docs/superpowers/plans/`, surveys in `docs/superpowers/survey/`.
+Pending work is tracked in `TODO.md` (repo root); check it on session start
+and update it as items land.
 
 ## The Kernel Knows Nothing (read this first)
 
