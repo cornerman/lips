@@ -944,10 +944,13 @@ but the loop around it is incomplete; "missing" means specced, not built.
   an end-to-end test realizes `install htop, ripgrep.` + `install tmux.` to
   `environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];`.
 ### Partial
-- **Behavioral gate: remaining.** The gate (see Done) runs at `generate` and
-  via `lips check`; it is not yet enforced inside `run`, where a deterministic
-  re-check on every offline run would catch a program edit that breaks a
-  pinned relation. Assertions name concrete option paths, so a legitimate
+- **Behavioral gate: remaining.** The gate (see Done) runs at `generate`, via
+  `lips check`, and now inside `run` (a preflight before boot: `runVm` calls
+  the same gate `check` runs and dies on any violation, so `run` never boots a
+  module that dropped a pinned value; home-manager `run` already gated this
+  way, so both worlds are symmetric). `compile` stays pure and nix-free by
+  design (the deterministic emit primitive), verified by explicit `check` or
+  before `run`. Assertions name concrete option paths, so a legitimate
   mechanism swap always re-blesses (mechanism-independent assertions would
   need the unbuilt vocabulary/ontology). A cross-program corpus still does not
   typecheck because engines are per-problem (`feed.loose.lang` and
