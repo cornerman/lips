@@ -1567,6 +1567,7 @@ main = hspec $ do
         , "reserved segment <self>"
         , "PACKAGE NAMES"
         , "<value.tail:pkg>"
+        , "NO EXPECT FOR A PACKAGE OR BUILD"
         , "same line-shape appearing in different programs is a SINGLE"
         ]
 
