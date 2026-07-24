@@ -1,0 +1,9 @@
+Terminate the proxy with nginx as a virtualHost keyed by the hostname. Route
+all requests through a single location "/" whose proxyPass points at the
+upstream URL. Enable services.nginx. Reference the hostname and the upstream
+URL as string values, not Nix path literals.
+
+In rule target paths, write an attrsOf key (such as the nginx location "/")
+as a BARE segment with no surrounding quotes -- for example
+services.nginx.virtualHosts.<self>.locations./.proxyPass -- because the kernel
+quotes special characters itself. Do not write the key as "/".

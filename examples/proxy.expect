@@ -1,0 +1,2 @@
+a1 expect services.nginx.virtualHosts.<self>.serverName from proxy.host
+a2 expect services.nginx.virtualHosts.<self>.locations./.proxyPass from proxy.upstream
