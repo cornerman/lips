@@ -47,6 +47,7 @@ module Lips.Kernel.Engine.Value
   , renderValue
   , renderRealized
   , fillValue
+  , bindSelfValue
   , holeIndex
   , valueRefsDerivation
   , valueArtifactNames
@@ -62,7 +63,11 @@ import qualified Data.Text.Read as TR
 -- artifact (resolved by realize to its @let@-bound build); 'PHole' is
 -- @\<value\>@ or @\<value.N\>@ (a string hole). All three are names, not
 -- computation.
-data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text
+-- 'PSelf' is the reserved @\<self\>@ token inside a string: the instance name
+-- (the program's file basename), resolved by 'bindSelfValue' at realize time,
+-- exactly as the same token in an option-path segment is. It is a name, not a
+-- program value, so it is distinct from 'PHole'.
+data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text | PSelf
   deriving (Eq, Show)
 
 -- | A bare reference used as a whole value (e.g. a list element), naming a
@@ -146,6 +151,31 @@ valueArtifactNames (VList vs)        = concatMap valueArtifactNames vs
 valueArtifactNames (VAttr fs)        = concatMap (valueArtifactNames . snd) fs
 valueArtifactNames (VRef (RArt n))   = [n]
 valueArtifactNames _                 = []
+
+-- | The reserved instance-name token as it appears as an artifact name
+-- (@${artifact.<self>}@). Kept as one literal so the parser and 'bindSelfValue'
+-- agree on the exact spelling.
+selfToken :: Text
+selfToken = "<self>"
+
+-- | Resolve the reserved @\<self\>@ token inside a value to the instance name,
+-- the value-side twin of the option-path segment binding in
+-- 'Lips.Kernel.Engine.Data.bindSelf'. A @'PSelf'@ string piece becomes the
+-- name as literal text; an artifact reference named @\<self\>@ (string piece or
+-- whole value) becomes one named for the instance. Every other value is
+-- untouched. Run per-instance before realize, so the shared @.lang@ keeps
+-- @\<self\>@ literal.
+bindSelfValue :: Text -> Value -> Value
+bindSelfValue name = go
+  where
+    go (VStr ps)              = VStr (map piece ps)
+    go (VList vs)             = VList (map go vs)
+    go (VAttr fs)             = VAttr (map (\(k, v) -> (k, go v)) fs)
+    go (VRef (RArt n)) | n == selfToken = VRef (RArt name)
+    go v                      = v
+    piece PSelf               = PLit name
+    piece (PArt n) | n == selfToken = PArt name
+    piece p                   = p
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.
@@ -348,10 +378,15 @@ pString = go [] T.empty
         let (hole, after) = T.breakOn ">" more
         if T.null after
           then Left ("a hole inside the string is not closed with >: <" <> hole)
+          -- <self> is the reserved instance name (bound at realize), not a
+          -- program-value hole; recognized here so a rule can name the
+          -- program's own build/app inside a string.
+          else if hole == "self"
+            then go (PSelf : flush acc pieces) T.empty (T.drop 1 after)
           else
             case stringHoleName hole of
               Just base -> go (PHole base : flush acc pieces) T.empty (T.drop 1 after)
-              Nothing   -> Left ("unknown hole <" <> hole <> ">; only <value> and <value.N> are defined")
+              Nothing   -> Left ("unknown hole <" <> hole <> ">; only <value>, <value.N> and <self> are defined")
       Just (c, more) -> go pieces (T.snoc acc c) more
     flush acc pieces = if T.null acc then pieces else PLit acc : pieces
 
@@ -369,7 +404,10 @@ interp inside = refPiece <$> parseRef inside
 parseRef :: Text -> Either Text Ref
 parseRef inside
   | Just name <- T.stripPrefix "artifact." inside =
-      if okSeg name
+      -- The reserved <self> names the program's OWN artifact (its instance
+      -- name), resolved by 'bindSelfValue'; accepted here as the one
+      -- non-identifier artifact name, symmetric with <self> in a path segment.
+      if okSeg name || name == selfToken
         then Right (RArt name)
         else Left ("${artifact.<name>} is not a valid build reference; the name after"
                     <> " artifact. must be a plain identifier: ${" <> inside <> "}")
@@ -414,6 +452,7 @@ renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
     piece (PRef r)  = "${" <> T.intercalate "." r <> "}"
     piece (PArt n)  = "${artifact." <> n <> "}"
     piece (PHole h) = "<" <> h <> ">"
+    piece PSelf     = "<self>"
 
 -- | The canonical @${...}@ form of a whole-value reference. Kept in @.lang@ so
 -- 'parseValue' reads it back unchanged (round-trip).
@@ -478,6 +517,10 @@ fillValue pick = fmap renderValue . fillV
           Just ht -> VList <$> traverse (coerce ht h) toks
     fillV v            = Right v
     fillP (PHole h) = PLit <$> pick h
+    -- A PSelf that reached fill was not bound to an instance: 'bindSelfValue'
+    -- must run first (it always does in the run pipeline). Fail loud rather
+    -- than emit a literal "<self>".
+    fillP PSelf     = Left "the <self> token was not bound to an instance name before realize"
     fillP p         = Right p
 
     coerce HInt h tok = case TR.signed TR.decimal (T.strip tok) of

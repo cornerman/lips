@@ -48,7 +48,7 @@ import           Data.Text      (Text)
 import qualified Data.Text      as T
 
 import Lips.Kernel.Capture         (fillCaptures, matchSubject)
-import Lips.Kernel.Engine.Value    (Value, fillValue, holeIndex, parseValue, renderValue)
+import Lips.Kernel.Engine.Value    (Value, bindSelfValue, fillValue, holeIndex, parseValue, renderValue)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand   (Demand (..))
@@ -85,12 +85,14 @@ data DemandSpec = DemandSpec
 -- per-instance @attrsOf@ key without baking one instance into the grammar
 -- (plan 2026-07-22). The model emits @services.restic.backups.\<self\>.paths@;
 -- the option schema admits @\<self\>@ only where it declares a @"*"@ wildcard,
--- and each solution fills it with its own name. Segments other than
--- @\<self\>@, and every rhs value, are untouched.
+-- and each solution fills it with its own name. The same token also resolves
+-- inside a rhs value (a @\<self\>@ string piece, a @${artifact.\<self\>}@
+-- reference) via 'bindSelfValue', so a rule can name the program's own build
+-- or app; segments and values that do not mention @\<self\>@ are untouched.
 bindSelf :: Text -> MapRule -> MapRule
 bindSelf name mr = mr { mrEmits = map bindEmit (mrEmits mr) }
   where
-    bindEmit e = e { emPath = map seg (emPath e) }
+    bindEmit e = e { emPath = map seg (emPath e), emRhs = bindSelfValue name (emRhs e) }
     seg "<self>" = name
     seg s        = s
 

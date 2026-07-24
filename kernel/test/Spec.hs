@@ -935,6 +935,22 @@ main = hspec $ do
     it "bindSelf leaves a rule without <self> untouched" $
       bindSelf "ledger" rule `shouldBe` rule
 
+    -- <self> is the instance name everywhere it can appear, not only in an
+    -- option path: a rhs string piece (<self>) and an artifact reference
+    -- (${artifact.<self>}) both bind to the instance, so a rule can name the
+    -- program's own build and app name without baking one instance in.
+    it "binds <self> inside rhs values (string piece and artifact ref)" $ do
+      let selfRule = MapRule "r" Fact ["cli", "output"]
+            [ Emit ["artifact", "<self>", "args", "name"] (VStr [PSelf])
+            , Emit ["environment", "systemPackages"] (VList [VRef (RArt "<self>")]) ]
+          matched = (mk "d" "unused" "hi" Stated)
+                      { dSubject = Subject ["cli", "output"], dKind = Fact }
+      case refine 100 [toRule (bindSelf "hello" selfRule)] (fromList [matched]) of
+        Right b -> map (\d -> (dSubject d, dAssertion d)) (toList b) `shouldMatchList`
+          [ (Subject ["artifact", "hello", "args", "name"], Assertion "\"hello\"")
+          , (Subject ["environment", "systemPackages"], Assertion "[ ${artifact.hello} ]") ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
     -- Value-keyed options: one rule matches a subject FAMILY (a <capture>
     -- segment binds any concrete segment) and interpolates the captured key
     -- into the emit path, so N sibling decisions fan out to N distinct option
@@ -1077,6 +1093,18 @@ main = hspec $ do
 
     it "rejects a malformed artifact reference" $
       parseValue "\"${artifact.bad name}\"" `shouldSatisfy` isLeft
+
+    -- The reserved <self> (the instance name) is a first-class value token, in
+    -- a string and as an artifact reference, so a rule can name the program's
+    -- own build/app. It stays literal in .lang (shared) and round-trips.
+    it "parses and round-trips the reserved <self> in a value" $ do
+      parseValue "\"<self>\""          `shouldBe` Right (VStr [PSelf])
+      parseValue "\"echo <self>\""     `shouldBe` Right (VStr [PLit "echo ", PSelf])
+      parseValue "${artifact.<self>}"  `shouldBe` Right (VRef (RArt "<self>"))
+      parseValue "\"${artifact.<self>}/bin/x\"" `shouldBe`
+        Right (VStr [PArt "<self>", PLit "/bin/x"])
+      fmap renderValue (parseValue "\"<self>\"")          `shouldBe` Right "\"<self>\""
+      fmap renderValue (parseValue "${artifact.<self>}")  `shouldBe` Right "${artifact.<self>}"
 
     it "a bare ${pkgs}/${artifact} reference stands as a value (a list of derivations)" $ do
       -- honest Nix: runtimeInputs/systemPackages are lists of packages, not
