@@ -79,10 +79,11 @@ and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory
 runnable. Running is not a lips verb: `compile` prints the exact stock `nix`
 commands over that directory, and you pick one. A program that builds an
 artifact prints `nix run …#artifact.<name>` (run the binary bare) and
-`nix shell …#artifact.<name>`; a system module prints `nix run …#container`
-(the complete NixOS userspace under systemd-nspawn, no VM) and `nix run …#vm`
-(a throwaway QEMU boot). Each also has a `nix build …` form that produces the
-thing without running it. The host is never touched.
+`nix shell …#artifact.<name>`; a system module prints `nix run …#vm`
+(a throwaway QEMU boot of the whole system) and `nix build …#vm` (build it
+without booting, no KVM -- the "does it build" check). The host is never
+touched. (A portable OCI image for shipping a server is a future *package*
+axis, `dockerTools`-built, not a way to run locally.)
 
 You then edit freely. Value and wording changes covered by your language run
 straight through `compile`. You return to `generate` only when you say something
@@ -115,8 +116,7 @@ With direnv, run `direnv allow` once. Otherwise prefix each command with
 
     just compile examples/ledger.backup.lips # loose text -> module dir + flake (offline)
     # compile prints the nix commands to run it, e.g.:
-    #   nix run path:examples/ledger.backup#container   # full userspace, no VM
-    #   nix run path:examples/ledger.backup#vm          # throwaway QEMU boot (needs KVM)
+    #   nix run path:examples/ledger.backup#vm     # throwaway QEMU boot of the system (needs KVM)
     just generate path/to/my.backup.lips     # mint a language for your program (AI, needs pi)
     just test                                # conformance suite
 

@@ -382,10 +382,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Run axis: running is not a lips verb, it is `nix` over the compiled dir.**
   `compile` emits `flake.nix` + `default.nix` (+ `artifact.nix` when there are
   artifacts) and prints the exact stock `nix` commands the program's shape
-  supports: `nix run/shell …#artifact.<name>` (exec/shell the bare binary),
-  `nix run …#container` (full NixOS userspace via systemd-nspawn, no VM),
-  `nix run …#vm` (throwaway QEMU boot), each with a `nix build …` produce-only
-  form. The `run` verb and its VM-boot Haskell (`runVm`/`bootVm`/`vmExpr`/
+  supports: `nix run/shell …#artifact.<name>` (exec/shell the bare binary) and
+  `nix run …#vm` (throwaway QEMU boot of the whole system), with `nix build
+  …#vm` as the no-KVM "does it build" check. No `container` rung: running a real
+  init is inherently privileged, so nspawn was fragile and bought nothing `vm`
+  does not; a portable OCI image is a future PACKAGE-axis output (`dockerTools`),
+  not a run rung. The `run` verb and its VM-boot Haskell (`runVm`/`bootVm`/`vmExpr`/
   `runEvalOnly`) are deleted; the boot logic is now data in the flake.
   `default.nix` is byte-identical, so `vm-smoke`/`artifact-vm` are unaffected.
   Clash-proof by construction (rungs top-level, artifacts under
@@ -572,7 +574,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   world is recorded in `.generation` (`target:` line) and so enters `genId`; a
   re-mint for a different world is a distinct, `.expect`-gated event. `compile`
   reads the recorded world and emits the matching flake: nixos gets
-  `apps.vm`/`apps.container`, home-manager gets the module and a build hint (no
+  `apps.vm` + `packages.vm`, home-manager gets the module and an import hint (no
   machine to boot). No home-manager eval harness
   was needed because the `.expect` gate is world-blind (it applies the bare
   module with stubbed args and reads assigned values, never evaluating a world's
@@ -1021,22 +1023,28 @@ but the loop around it is incomplete; "missing" means specced, not built.
   command, `runVm`, `bootVm`, `vmExpr`, and home-manager `runEvalOnly` are
   deleted -- net negative code, the VM-boot logic now lives as data in the
   emitted flake.
-  The four rungs are stock `nix` over the dir (commands use `path:<dir>#…`
+  The three rungs are stock `nix` over the dir (commands use `path:<dir>#…`
   because the dir is derived/gitignored and `path:` copies it verbatim, past
   flake's git rules): `nix run …#artifact.<name>` (exec: the artifact binary,
   bare -- no init, so no service/env), `nix shell …#artifact.<name>` (the
-  binary on PATH), `nix run …#container` (the complete NixOS userspace under
-  systemd-nspawn, sharing the host kernel -- all services, no KVM), `nix run
-  …#vm` (a throwaway QEMU boot, adding the kernel/boot/hardware layer). Each
-  system rung has a `nix build …` form (produce, don't activate; `nix build
-  …#container` is a cheap "does the whole system build" check needing no KVM).
-  Clash-proof by construction: rung apps (`vm`/`container`) are top-level while
-  artifacts live under `artifact.<name>`, so a domain artifact named `vm` can
-  never collide with the rung. Nixpkgs is resolved ambiently (`flake:nixpkgs`
+  binary on PATH), and `nix run …#vm` (a throwaway QEMU boot of the whole
+  system, real systemd, all services). `nix build …#vm` produces the boot
+  script without booting -- building needs no KVM, so it is the cheap "does the
+  whole system build" check. A `container` (systemd-nspawn) rung was considered
+  and REJECTED: running a real init is inherently privileged (root, machined/
+  nsresourced, networking), so a light rootless "run the system" does not exist;
+  a hand-rolled nspawn was fragile and bought nothing `vm` does not, and the
+  robust path (`extra-container`) is a dependency needing sudo. Lightweight
+  witnessing is the artifact rungs' job; a portable OCI image (nginx, a Go
+  server) is a future PACKAGE-axis output built with `dockerTools`, a
+  distribution artifact, not a run rung.
+  Clash-proof by construction: the rung app `vm` is top-level while artifacts
+  live under `artifact.<name>`, so a domain artifact named `vm` can never
+  collide. Nixpkgs is resolved ambiently (`flake:nixpkgs`
   registry), so compile pins/fetches nothing and stays bit-identical -- the
   same Heile-Welt softness the old `<nixpkgs>` VM boot carried; the world is
   resolved at `nix run` time. `home-manager` (no machine) emits the module and
-  a build hint, no vm/container. Full design in
+  an import hint, no vm. Full design in
   `docs/superpowers/specs/2026-07-24-run-axis-design.md`.
   Out of scope, named as separate future axes: the PACKAGE axis (Docker image,
   ISO, standalone binary -- an artifact always needs a consumer, so "build to

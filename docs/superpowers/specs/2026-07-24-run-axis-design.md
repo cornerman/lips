@@ -2,6 +2,17 @@
 
 Date: 2026-07-24
 
+> **Amendment (2026-07-24, post-implementation).** The `container` (systemd-nspawn)
+> rung described below was implemented, then **dropped**. Live testing showed a
+> hand-rolled nspawn boot is fragile (machined/nsresourced, networking, /etc,
+> root) and the robust path (`extra-container`) is a dependency needing sudo.
+> Since `vm` already builds *and* boots the whole system and `nix build …#vm`
+> is a KVM-free "does it build" check, a build-only container was redundant and
+> a run-container bought nothing reliable. The shipped run axis is therefore
+> **exec / shell / vm**. A portable OCI image (nginx, a Go server) built with
+> `dockerTools` is a future PACKAGE-axis output (distribution), not a run rung.
+> Read the `container` references below as rejected-alternative history.
+
 ## Principle
 
 Running a lips program is not a lips verb. `compile` is the sole

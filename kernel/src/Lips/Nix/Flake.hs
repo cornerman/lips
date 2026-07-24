@@ -14,16 +14,19 @@
 --   * artifact rungs (@exec@, @shell@): run\/build the buildable derivation
 --     directly. Present only when the program declares an @artifact.\<name\>@.
 --     Bare by construction -- no init runs, so no service and no service env.
---   * system rungs (@container@, @vm@): evaluate @.\/default.nix@ through the
---     NixOS module system and boot the result. @container@ (systemd-nspawn) is
---     the complete NixOS userspace sharing the host kernel; @vm@ (QEMU) adds
---     the kernel\/boot\/hardware layer. nixos only -- home-manager has no
---     machine to boot.
+--   * system rung (@vm@): evaluate @.\/default.nix@ through the NixOS module
+--     system and boot the result in QEMU (real systemd, all services). nixos
+--     only -- home-manager has no machine to boot. There is deliberately no
+--     @container@ (systemd-nspawn) rung: running a real init is inherently
+--     privileged, so a light rootless \"run the system\" does not exist; nspawn
+--     was fragile and bought nothing @vm@ does not (see the run-axis spec).
+--     Lightweight witnessing is the artifact rungs' job; a portable OCI image
+--     is the future PACKAGE axis (@dockerTools@), not a run rung.
 --
--- Clash avoidance: rung app names (@vm@, @container@) are lips-fixed, artifact
--- names are domain-minted, so artifacts live under an @artifact.\<name\>@
--- namespace while rungs stay top-level. @artifact.vm@ can never equal the rung
--- @vm@ -- impossible by construction, no reserved word.
+-- Clash avoidance: the rung app name (@vm@) is lips-fixed, artifact names are
+-- domain-minted, so artifacts live under an @artifact.\<name\>@ namespace while
+-- the rung stays top-level. @artifact.vm@ can never equal the rung @vm@ --
+-- impossible by construction, no reserved word.
 --
 -- Nixpkgs is resolved ambiently (the @flake:nixpkgs@ registry indirection), so
 -- @compile@ pins nothing, fetches nothing, and emits bit-identical text; the
@@ -40,8 +43,8 @@ import qualified Data.Text     as T
 import Lips.Nix.Target (Target (..))
 
 -- | The @flake.nix@ text for a compiled directory. @hasArtifacts@ toggles the
--- artifact package output; the target toggles the system rungs (nixos gets
--- @apps.vm@\/@apps.container@; home-manager gets neither, only the module).
+-- artifact package output; the target toggles the system rung (nixos gets
+-- @apps.vm@ + @packages.vm@; home-manager gets neither, only the module).
 flakeText :: Target -> Bool -> Text
 flakeText target hasArtifacts = T.unlines $
   [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
@@ -79,7 +82,6 @@ nixosBuildsLet HomeManager = []
 nixosBuildsLet Nixos =
   [ "      nixosBuilds = system:"
   , "        let"
-  , "          pkgs = pkgsFor system;"
   , "          evalConfig = extra: import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
   , "            inherit system;"
   , "            modules = extra ++ [ ./default.nix ];"
@@ -90,32 +92,14 @@ nixosBuildsLet Nixos =
   , "            { system.stateVersion = \"24.11\"; networking.hostName = \"lips\";"
   , "              virtualisation.graphics = false; users.users.root.password = \"\"; }"
   , "          ]).config.system.build.vm;"
-  , "          # container: the complete NixOS userspace (all services), booted"
-  , "          # under systemd-nspawn sharing the host kernel. Needs root; the"
-  , "          # kernel/boot/hardware layer is the vm rung's job, not this one."
-  , "          toplevel = (evalConfig ["
-  , "            { system.stateVersion = \"24.11\"; networking.hostName = \"lips\"; boot.isContainer = true; }"
-  , "          ]).config.system.build.toplevel;"
-  , "          runContainer = pkgs.writeShellScript \"run-lips-container\" ''"
-  , "            root=$(${pkgs.coreutils}/bin/mktemp -d)"
-  , "            trap '${pkgs.coreutils}/bin/rm -rf \"$root\"' EXIT"
-  , "            ${pkgs.coreutils}/bin/mkdir -p \"$root/etc\" \"$root/sbin\""
-  , "            # nspawn needs an os-release and its own init to boot and register."
-  , "            : > \"$root/etc/os-release\""
-  , "            ${pkgs.coreutils}/bin/ln -sf ${toplevel}/init \"$root/sbin/init\""
-  , "            # --register=no --keep-unit: don't require machined/nsresourced."
-  , "            exec ${pkgs.systemd}/bin/systemd-nspawn --quiet --boot \\"
-  , "              --register=no --keep-unit \\"
-  , "              --directory=\"$root\" --bind-ro=/nix/store \"$@\""
-  , "          '';"
-  , "        in { inherit vm toplevel runContainer; };"
+  , "        in { inherit vm; };"
   ]
 
 -- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
 -- activate). Artifacts sit under the @artifact.\<name\>@ namespace (so a
 -- domain artifact named @vm@ never clashes with the @vm@ rung); the system
--- rungs expose @vm@ (the boot script derivation) and @container@ (the whole
--- system @toplevel@ -- a cheap \"does it build\" check, no KVM\/root).
+-- rung exposes @vm@ (the boot-script derivation -- building it needs no KVM, so
+-- @nix build \<x\>#vm@ is the cheap \"does the whole system build\" check).
 packagesOutput :: Target -> Bool -> [Text]
 packagesOutput target hasArtifacts
   | null body = []
@@ -126,8 +110,9 @@ packagesOutput target hasArtifacts
       | hasArtifacts = [ "        artifact = import ./artifact.nix { pkgs = pkgsFor system; };" ]
       | otherwise    = []
     sysLines = case target of
-      Nixos       -> [ "        vm = (nixosBuilds system).vm;"
-                     , "        container = (nixosBuilds system).toplevel;" ]
+      -- vm is buildable (no KVM) as the cheap "does the whole system build"
+      -- check; booting it (the app) needs KVM.
+      Nixos       -> [ "        vm = (nixosBuilds system).vm;" ]
       HomeManager -> []
 
 -- | @apps@ (@nix run \<x\>@ builds + activates), nixos only. Each references
@@ -138,7 +123,6 @@ appsOutput Nixos =
   [ "      apps = forSystems (system:"
   , "        let b = nixosBuilds system; in {"
   , "          vm = { type = \"app\"; program = \"${b.vm}/bin/run-lips-vm\"; };"
-  , "          container = { type = \"app\"; program = \"${b.runContainer}\"; };"
   , "        });"
   ]
 
@@ -158,9 +142,8 @@ runCommands target artNames dir =
       , "  a shell with it:       nix shell " <> ref ("artifact." <> n)
       ]
     systemLines Nixos =
-      [ "  run in a container:    nix run   " <> ref "container" <> "   (all services; needs root, no KVM)"
-      , "  run in a VM:           nix run   " <> ref "vm" <> "   (adds kernel/boot; needs KVM)"
-      , "  build the system only: nix build " <> ref "container"
+      [ "  run in a VM:           nix run   " <> ref "vm" <> "   (full system, all services; needs KVM)"
+      , "  build the system:      nix build " <> ref "vm" <> "   (checks it builds; no KVM)"
       ]
     -- home-manager has no machine to boot: a module is imported into a home
     -- config, not run standalone. Name that instead of a build that can't work.
