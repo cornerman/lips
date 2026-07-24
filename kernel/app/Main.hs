@@ -88,7 +88,7 @@ usage = do
   -- target (.lips-unwrapped), so name it directly.
   let name = "lips" :: Text
   TIO.hPutStr stderr $ T.unlines
-    [ "lips turns a plain-English <instance>.<language> program into a NixOS configuration."
+    [ "lips turns an <instance>.<language> program, written in your own plain lines, into a NixOS configuration."
     , ""
     , "usage:"
     , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--renew] [--verbose] [--model <id>|model] <program>..."
