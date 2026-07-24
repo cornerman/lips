@@ -21,7 +21,7 @@ import           Data.Aeson.Types        (parseMaybe)
 import qualified Data.ByteString         as BS
 import qualified Data.ByteString.Char8   as BC
 import qualified Data.ByteString.Lazy    as BL
-import           Data.Char               (digitToInt, isHexDigit)
+import           Data.Char               (digitToInt, isHexDigit, isSpace)
 import           Data.IORef
 import           Data.Map.Strict         (Map)
 import qualified Data.Map.Strict         as Map
@@ -91,7 +91,17 @@ dispatch docs (Msg mid mmethod params) = case mmethod of
     "textDocument/completion" -> do
       let uri = fromMaybe "" (paramUri params)
       meng <- loadLang (uriToPath uri)
-      respond mid (completionList (maybe [] (completionItems . edPatterns) meng))
+      docsMap <- readIORef docs
+      -- The buffer text is authoritative (it may be unsaved); fall back to the
+      -- file on disk if the editor never opened the document here.
+      mtext <- case Map.lookup uri docsMap of
+        Just t  -> pure (Just t)
+        Nothing -> tryReadFile (uriToPath uri)
+      let (line, col) = fromMaybe (0, 0) (paramPos params)
+          ltext = lineText mtext line
+          startCol = min col (leadingCol ltext)
+          items = maybe [] (\eng -> completionItemsAt (edPatterns eng) ltext col) meng
+      respond mid (completionList line startCol col items)
     -- Any other request must still get a reply, or a strict client hangs.
     _ -> maybe (pure ()) (const (respond mid Null)) mid
   where
@@ -122,9 +132,11 @@ initResult = object
   , "serverInfo" .= object ["name" .= ("lips" :: Text)]
   ]
 
-completionList :: [CItem] -> Value
-completionList items = object
-  [ "isIncomplete" .= False
+completionList :: Int -> Int -> Int -> [CItem] -> Value
+completionList line startCol endCol items = object
+  [ -- Contextual: the snippet depends on the cursor, so the client must
+    -- re-request as the user types rather than filter a cached list.
+    "isIncomplete" .= True
   , "items" .= map citemValue items
   ]
   where
@@ -133,16 +145,25 @@ completionList items = object
       , "kind" .= (15 :: Int)          -- Snippet
       , "insertText" .= snip
       , "insertTextFormat" .= (2 :: Int) -- Snippet syntax (${1:hole})
+      -- Replace the typed prefix with the whole sentence, so accepting completes
+      -- what was started instead of duplicating it. The range spans from the
+      -- first typed token (after any indentation) to the cursor.
+      , "textEdit" .= object
+          [ "range" .= object ["start" .= lspPos line startCol, "end" .= lspPos line endCol]
+          , "newText" .= snip
+          ]
       ]
 
 diagValue :: Diag -> Value
 diagValue (Diag l s e sev msg) = object
-  [ "range" .= object ["start" .= pos l s, "end" .= pos l e]
+  [ "range" .= object ["start" .= lspPos l s, "end" .= lspPos l e]
   , "severity" .= sev
   , "source" .= ("lips" :: Text)
   , "message" .= msg
   ]
-  where pos ln ch = object ["line" .= ln, "character" .= ch]
+
+lspPos :: Int -> Int -> Value
+lspPos ln ch = object ["line" .= ln, "character" .= ch]
 
 -- Field extractors over the params object (return Nothing when absent).
 paramUri :: Value -> Maybe Text
@@ -158,6 +179,30 @@ changeText = parseMaybe $ withObject "p" $ \p -> do
   case reverse changes of
     (c : _) -> withObject "change" (.: "text") c
     []      -> fail "no content changes"
+
+-- | The cursor position from a completion request: (line, character), both
+-- 0-based. Absent on malformed params (the server then completes as if at the
+-- start of the first line).
+paramPos :: Value -> Maybe (Int, Int)
+paramPos = parseMaybe $ withObject "p" $ \p -> do
+  pos <- p .: "position"
+  line <- pos .: "line"
+  ch   <- pos .: "character"
+  pure (line, ch)
+
+-- | The text of the 0-based @n@th line of a document, or empty if the document
+-- is missing or the line is out of range.
+lineText :: Maybe Text -> Int -> Text
+lineText mtext n = case mtext of
+  Just t -> case drop n (T.lines t) of
+    (l : _) -> l
+    []      -> ""
+  Nothing -> ""
+
+-- | The column of the first non-space character on a line (its indentation
+-- width). Completion begins here, so leading whitespace is preserved.
+leadingCol :: Text -> Int
+leadingCol = T.length . T.takeWhile isSpace
 
 -- | Load the program's shared language, resolved by extension (a program
 -- @ledger.backup@ reads @backup.lang@ beside it), matching the CLI. Completion
