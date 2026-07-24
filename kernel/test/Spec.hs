@@ -1568,6 +1568,7 @@ main = hspec $ do
         , "PACKAGE NAMES"
         , "<value.tail:pkg>"
         , "NO EXPECT FOR A PACKAGE OR BUILD"
+        , "ONLY the item's value"
         , "same line-shape appearing in different programs is a SINGLE"
         ]
 
