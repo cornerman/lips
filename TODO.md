@@ -1,21 +1,5 @@
 # TODO
 
-Status snapshot (2026-07-24): kernel `239/239` unit tests green, all 9 example
-programs pass their `.expect` behavioral gate offline, working tree clean on
-`main`. Milestone detail lives in `DESIGN.md` §13; this file is the forward
-queue.
-
-## Recently landed (2026-07-24)
-
-- List aggregation B (Append merge mode) + C (tail holes); all open questions
-  resolved (see git log, DESIGN §13).
-- Option-schema grounding now field-checks `listOf`-submodule attrset elements
-  (H3), with per-field mismatch messages in nixpkgs' human type wording.
-- Value grammar: attrsets, package-derivation holes (`<value:pkg>`,
-  `<value.tail:pkg>`), quote-aware attr-path split, round-trip closure pinned
-  by QuickCheck.
-- LSP contextual (partial-sentence) completion.
-
 ## Next up (priority order)
 
 1. **Behavioral gate enforced at every deterministic verb — DONE (2026-07-24).**

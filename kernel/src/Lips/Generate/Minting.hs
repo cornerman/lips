@@ -368,7 +368,10 @@ parseEngineCandidates reply = go (T.lines reply) [] []
                   Right c -> go rest' errs (c : cands)
       | ignorable (T.strip l) = go ls errs cands
       | otherwise = case parseLine (T.strip l) of
-          Left e  -> go ls (e : errs) cands
+          -- Echo the raw line the model wrote, so a refusal naming an item by
+          -- id ("...(item p1)") also shows what p1 actually was. Without it the
+          -- id is a dead reference: the reply is discarded on refusal.
+          Left e  -> go ls ((e <> "\n      as written: " <> T.strip l) : errs) cands
           Right c -> go ls errs (c : cands)
     ignorable t = T.null t || "#" `T.isPrefixOf` t || "```" `T.isPrefixOf` t
 

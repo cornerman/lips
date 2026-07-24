@@ -74,7 +74,7 @@ main = do
     ["check", file]              -> checkLoose file
     ["lsp"]              -> runLsp
     ("generate" : rest)  -> case parseGenerate defaultConfidence rest of
-      Just (target, conf, renew, mmodel, fs) -> generate target conf renew mmodel fs
+      Just (target, conf, renew, verbose, mmodel, fs) -> generate target conf renew verbose mmodel fs
       Nothing                         -> usage >> exitFailure
     _                    -> usage >> exitFailure
 
@@ -91,9 +91,9 @@ usage = do
     [ "lips turns a plain-English <instance>.<language> program into a NixOS configuration."
     , ""
     , "usage:"
-    , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--renew] [--model <id>|model] <program>..."
+    , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--renew] [--verbose] [--model <id>|model] <program>..."
     , "      Mint the language from one or more example programs and verify each."
-    , "      The one step that uses AI."
+    , "      The one step that uses AI. --verbose echoes the raw model reply."
     , "  " <> name <> " compile [--out <dir>] <program>"
     , "      Realize into a directory (default.nix + artifacts/) for import."
     , "  " <> name <> " run <program>"
@@ -345,9 +345,9 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Target -> Double -> Bool -> Maybe String -> [FilePath] -> IO ()
-generate _ _ _ _ [] = usage >> exitFailure
-generate target confidence renew mmodel files@(rep : _) = do
+generate :: Target -> Double -> Bool -> Bool -> Maybe String -> [FilePath] -> IO ()
+generate _ _ _ _ _ [] = usage >> exitFailure
+generate target confidence renew verbose mmodel files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -368,6 +368,14 @@ generate target confidence renew mmodel files@(rep : _) = do
       corpus = T.intercalate "\n"
         [ "=== program " <> T.pack (takeFileName f) <> " ===\n" <> t | (f, t) <- progs ]
   (reply, model) <- callPi mmodel prompt corpus
+  -- --verbose: echo the model's raw reply verbatim before parsing, so the
+  -- whole minted engine is inspectable even when it validates cleanly (a
+  -- refusal already shows the offending lines). To stderr, leaving stdout the
+  -- pipeable module.
+  if verbose
+    then TIO.hPutStr stderr (T.unlines
+           [ "--- raw model reply (" <> model <> ") ---", reply, "--- end reply ---" ])
+    else pure ()
   let (errs, candidates) = parseEngineCandidates reply
       -- A because-note explains a low-confidence item; keyed by shared id, it
       -- never gates the build and never enters the engine.

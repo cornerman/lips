@@ -62,25 +62,30 @@ winnerAssertion s = fmap dAssertion . Map.lookup s
 main :: IO ()
 main = hspec $ do
   describe "generate argument parsing (--target, --confidence, model)" $ do
-    it "defaults target to nixos, confidence to the default, renew off" $
+    it "defaults target to nixos, confidence to the default, renew/verbose off" $
       parseGenerate 0.7 ["ledger.backup.lips"]
-        `shouldBe` Just (Nixos, 0.7, False, Nothing, ["ledger.backup.lips"])
+        `shouldBe` Just (Nixos, 0.7, False, False, Nothing, ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseGenerate 0.7 ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (HomeManager, 0.7, False, Nothing, ["a.backup.lips"])
+        `shouldBe` Just (HomeManager, 0.7, False, False, Nothing, ["a.backup.lips"])
     it "rejects an unknown target" $
       parseGenerate 0.7 ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
     it "keeps model detection and multiple programs" $
       parseGenerate 0.7 ["anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (Nixos, 0.7, False, Just "anthropic/claude", ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (Nixos, 0.7, False, False, Just "anthropic/claude", ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseGenerate 0.7 ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (HomeManager, 0.9, False, Nothing, ["a.backup.lips"])
+        `shouldBe` Just (HomeManager, 0.9, False, False, Nothing, ["a.backup.lips"])
     it "reads --renew in any position" $ do
       parseGenerate 0.7 ["--renew", "a.backup.lips"]
-        `shouldBe` Just (Nixos, 0.7, True, Nothing, ["a.backup.lips"])
+        `shouldBe` Just (Nixos, 0.7, True, False, Nothing, ["a.backup.lips"])
       parseGenerate 0.7 ["a.backup.lips", "--renew"]
-        `shouldBe` Just (Nixos, 0.7, True, Nothing, ["a.backup.lips"])
+        `shouldBe` Just (Nixos, 0.7, True, False, Nothing, ["a.backup.lips"])
+    it "reads --verbose in any position" $ do
+      parseGenerate 0.7 ["--verbose", "a.backup.lips"]
+        `shouldBe` Just (Nixos, 0.7, False, True, Nothing, ["a.backup.lips"])
+      parseGenerate 0.7 ["a.backup.lips", "--verbose"]
+        `shouldBe` Just (Nixos, 0.7, False, True, Nothing, ["a.backup.lips"])
 
   describe "realization target (Lips.Nix.Target)" $ do
     it "parses the two world slugs and rejects others" $ do
