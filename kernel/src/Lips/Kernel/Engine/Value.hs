@@ -182,13 +182,14 @@ parseValue t = do
   (v, rest) <- pValue t
   if T.null (T.stripStart rest)
     then Right v
-    else Left ("trailing content after value (computation is not a value): " <> T.strip rest)
+    else Left ("text is left over after the value; the right-hand side must be one"
+                <> " value, not code: " <> T.strip rest)
 
 pValue :: Text -> Either Text (Value, Text)
 pValue raw =
   let t = T.stripStart raw
    in case T.uncons t of
-        Nothing -> Left "empty rhs"
+        Nothing -> Left "the right-hand side is empty"
         Just ('"', rest) -> pString rest
         Just ('[', rest) -> pList (T.stripStart rest) []
         Just ('{', rest) -> pAttr (T.stripStart rest) []
@@ -198,7 +199,7 @@ pValue raw =
         Just ('$', more) | Just body <- T.stripPrefix "{" more ->
           let (inside, after) = T.breakOn "}" body
            in if T.null after
-                then Left "unterminated ${...} reference"
+                then Left "a ${...} reference is not closed with }"
                 else (\r -> (VRef r, T.drop 1 after)) <$> parseRef inside
         Just (c, _)
           | isPathStart t                        -> pPath t
@@ -207,19 +208,20 @@ pValue raw =
           | Just rest <- T.stripPrefix "false" t -> Right (VBool False, rest)
           | Just rest <- T.stripPrefix "null" t  -> Right (VNull, rest)
           | otherwise ->
-              Left ("rhs must be a string, list, number, bool, path, null, or a "
-                     <> "typed <hole> (no Nix computation): " <> t)
+              Left ("the right-hand side must be one value: a string, list, number,"
+                     <> " bool, path, null, or a typed hole like <value:int>. It cannot"
+                     <> " run Nix code: " <> t)
 
 isPathStart :: Text -> Bool
 isPathStart t = any (`T.isPrefixOf` t) ["/", "./", "../"]
 
 pNumber :: Text -> Either Text (Value, Text)
 pNumber t = case TR.signed TR.decimal t of
-  Left _ -> Left ("bad number: " <> t)
+  Left _ -> Left ("not a number: " <> t)
   Right (n, rest)
     | Just ('.', _) <- T.uncons rest -> case TR.signed TR.double t of
         Right (d, rest') -> Right (VFloat d, rest')
-        Left _           -> Left ("bad float: " <> t)
+        Left _           -> Left ("not a float: " <> t)
     | otherwise -> Right (VInt n, rest)
 
 -- | A path literal runs to whitespace or a list terminator. It carries no
@@ -234,7 +236,7 @@ pPath t =
   -- legal inside a Nix path literal, so this stops at true boundaries only.
   let (p, rest) = T.span (\c -> not (isSpace c) && c `notElem` (";]}" :: String)) t
    in if validPathLit p then Right (VPath p, rest)
-                        else Left ("bad path literal (injection risk): " <> p)
+                        else Left ("not a valid path; a path must start with /, ./, or ../ and contain no quotes or ${...}: " <> p)
 
 validPathLit :: Text -> Bool
 validPathLit p =
@@ -247,7 +249,7 @@ pTypedHole :: Text -> Either Text (Value, Text)
 pTypedHole more =
   let (inside, after) = T.breakOn ">" more
    in if T.null after
-        then Left ("unterminated hole <" <> inside)
+        then Left ("a hole is not closed with >: <" <> inside)
         else case inside of
           "value.tail" -> Right (VTail "value", T.drop 1 after)
           _ -> case T.splitOn ":" inside of
@@ -255,12 +257,13 @@ pTypedHole more =
               | validHoleName hn, Just ht <- parseHoleType ty ->
                   Right (VHole ht hn, T.drop 1 after)
             _ ->
-              Left ("a hole outside a string must be typed "
-                     <> "<value:int|bool|float|path>, or <value.tail>: <" <> inside <> ">")
+              Left ("a hole outside a string must carry a type, like <value:int>,"
+                     <> " <value:bool>, <value:float>, <value:path>, or be <value.tail>: <"
+                     <> inside <> ">")
 
 pList :: Text -> [Value] -> Either Text (Value, Text)
 pList t acc = case T.uncons t of
-  Nothing          -> Left "unterminated list"
+  Nothing          -> Left "a list is not closed with ]"
   Just (']', rest) -> Right (VList (reverse acc), rest)
   _ -> do
     (v, rest) <- pValue t
@@ -272,20 +275,20 @@ pList t acc = case T.uncons t of
 -- with an optional trailing @;@, mirroring Nix.
 pAttr :: Text -> [(Text, Value)] -> Either Text (Value, Text)
 pAttr t acc = case T.uncons t of
-  Nothing          -> Left "unterminated attrset"
+  Nothing          -> Left "an attrset is not closed with }"
   Just ('}', rest) -> Right (VAttr (reverse acc), rest)
   _ -> do
     (name, afterName) <- pAttrKey t
     let t1 = T.stripStart afterName
     t2 <- case T.uncons t1 of
       Just ('=', r) -> Right (T.stripStart r)
-      _ -> Left ("attrset field missing '=' after key " <> name)
+      _ -> Left ("an attrset field needs = after its key " <> name)
     (v, afterV) <- pValue t2
     let t3 = T.stripStart afterV
     case T.uncons t3 of
       Just (';', r) -> pAttr (T.stripStart r) ((name, v) : acc)
       Just ('}', r) -> Right (VAttr (reverse ((name, v) : acc)), r)
-      _ -> Left ("attrset field must end with ';' or '}' (after " <> name <> ")")
+      _ -> Left ("an attrset field must end with ; or } (after key " <> name <> ")")
 
 -- | A bare-identifier attrset key: a non-empty run of @[_A-Za-z0-9]@ starting
 -- with a letter or underscore. Hyphens and quotes are rejected so the key is
@@ -294,9 +297,9 @@ pAttrKey :: Text -> Either Text (Text, Text)
 pAttrKey t =
   let (k, rest) = T.span isKeyChar t
    in case T.uncons k of
-        Nothing -> Left ("attrset key must be a bare identifier: " <> t)
+        Nothing -> Left ("an attrset key must be a plain name, not a string or symbol: " <> t)
         Just (c, _) | isAsciiAlpha c || c == '_' -> Right (k, rest)
-        _ -> Left ("attrset key must start with a letter or underscore: " <> k)
+        _ -> Left ("an attrset key must start with a letter or underscore: " <> k)
   where
     isKeyChar c = isAsciiAlpha c || isDigit c || c `elem` ("_-'-" :: String)
     -- ASCII-only (mirrors 'okSeg'): a Nix bare attribute name allows no
@@ -307,27 +310,27 @@ pString :: Text -> Either Text (Value, Text)
 pString = go [] T.empty
   where
     go pieces acc s = case T.uncons s of
-      Nothing -> Left "unterminated string"
+      Nothing -> Left "a string is not closed with a final quote"
       Just ('"', rest) -> Right (VStr (reverse (flush acc pieces)), rest)
       Just ('\\', more) -> case T.uncons more of
         Just (c, more') -> go pieces (T.snoc acc c) more'
-        Nothing         -> Left "dangling escape in string"
+        Nothing         -> Left "a string ends on a stray backslash with nothing after it"
       Just ('$', more)
         | Just body <- T.stripPrefix "{" more -> do
             let (inside, after) = T.breakOn "}" body
             if T.null after
-              then Left "unterminated ${...} in string"
+              then Left "a ${...} inside the string is not closed with }"
               else do
                 p <- interp inside
                 go (p : flush acc pieces) T.empty (T.drop 1 after)
       Just ('<', more) -> do
         let (hole, after) = T.breakOn ">" more
         if T.null after
-          then Left ("unterminated hole <" <> hole)
+          then Left ("a hole inside the string is not closed with >: <" <> hole)
           else
             case stringHoleName hole of
               Just base -> go (PHole base : flush acc pieces) T.empty (T.drop 1 after)
-              Nothing   -> Left ("unknown hole <" <> hole <> "> (only <value> and <value.N> are defined)")
+              Nothing   -> Left ("unknown hole <" <> hole <> ">; only <value> and <value.N> are defined")
       Just (c, more) -> go pieces (T.snoc acc c) more
     flush acc pieces = if T.null acc then pieces else PLit acc : pieces
 
@@ -347,7 +350,8 @@ parseRef inside
   | Just name <- T.stripPrefix "artifact." inside =
       if okSeg name
         then Right (RArt name)
-        else Left ("bad ${artifact.<name>} reference (name must be an identifier): ${" <> inside <> "}")
+        else Left ("${artifact.<name>} is not a valid build reference; the name after"
+                    <> " artifact. must be a plain identifier: ${" <> inside <> "}")
   | otherwise = RPkg <$> pkgsRef inside
 
 -- | A single identifier segment: non-empty, letters\/digits\/@-@\/@_@ only.
@@ -362,8 +366,10 @@ pkgsRef inside =
    in case segs of
         ("pkgs" : more) | not (null more), all okSeg more -> Right segs
         _ ->
-          Left ("only ${pkgs.<path>} or ${artifact.<name>} interpolation is allowed (a reference, not computation): ${"
-                  <> inside <> "}")
+          Left ("${" <> inside <> "} is not a value lips can use. Inside ${...} you can"
+                  <> " only name a package (pkgs.<path>) or a build (artifact.<name>);"
+                  <> " each part after the dot must be a plain identifier, with no"
+                  <> " spaces, holes, or operators.")
 
 -- | Canonical text of a value; the exact Nix expression realize will splice.
 -- Deterministic and injection-free by construction.
@@ -440,7 +446,7 @@ fillValue pick = fmap renderValue . fillV
       tok <- pick h
       let toks = map stripTailPunct (filter (not . T.null) (T.words tok))
       if null toks
-        then Left ("value hole <" <> h <> ".tail> matched no tokens (empty tail)")
+        then Left ("the value hole <" <> h <> ".tail> matched no tokens; there is nothing left on the line to fill it")
         else Right (VList (map (VStr . (: []) . PLit) toks))
     fillV v            = Right v
     fillP (PHole h) = PLit <$> pick h
@@ -460,8 +466,8 @@ fillValue pick = fmap renderValue . fillV
       let p = T.strip tok in if validPathLit p then Right (VPath p) else Left (holeError h "path" tok)
 
     holeError h ty tok =
-      "value hole <" <> h <> ":" <> ty
-        <> "> got a program value that is not a " <> ty <> ": " <> tok
+      "the value hole <" <> h <> ":" <> ty
+        <> "> was filled with something that is not a " <> ty <> ": " <> tok
 
 -- | Strip trailing sentence punctuation from a token. A twin of
 -- 'Lips.Kernel.Lang.Pattern.stripTrailingPunct', duplicated here so the value
