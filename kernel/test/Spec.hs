@@ -211,6 +211,39 @@ main = hspec $ do
         Left [_] -> pure ()   -- two equal-strength different assertions -> Conflict (today)
         _        -> expectationFailure "without Append, two list lines conflict"
 
+    -- Completeness cases beyond ordered (pinned above) and
+    -- replace-across-strengths (pinned above): the list elements need not be
+    -- plain strings, and a capture-bearing list emit fans out per concrete key
+    -- (an attrsOf-of-list), so siblings on the SAME key aggregate while
+    -- different keys coexist.
+    it "record-valued: listOf-submodule attrset elements aggregate as-is" $ do
+      let u1 = (mk "a" "x" "[ { name = \"app\"; ensureDBOwnership = true; } ]" Stated)
+                 { dSubject = Subject ["services","postgresql","ensureUsers"]
+                 , dProv = FromSource (SourceLoc "f" 1) }
+          u2 = (mk "b" "x" "[ { name = \"web\"; ensureDBOwnership = true; } ]" Stated)
+                 { dSubject = Subject ["services","postgresql","ensureUsers"]
+                 , dProv = FromSource (SourceLoc "f" 2) }
+      case assembleSubject [u1,u2] of
+        Right synth -> dAssertion synth `shouldBe`
+          Assertion "[ { name = \"app\"; ensureDBOwnership = true; } { name = \"web\"; ensureDBOwnership = true; } ]"
+        Left e      -> expectationFailure ("assemble failed: " <> show e)
+    it "attrsOf-of-list (Q5): same-key contributors aggregate, distinct keys coexist" $ do
+      let r    = MapRule "r" Fact ["grp"]
+                   [ Emit ["g","<name>","items"] (VList [VStr [PHole "value"]]) ]
+          modeOf = mergeModeOf [r]
+      -- the capture path matches any concrete key, so each key is Append
+      modeOf (Subject ["g","key1","items"]) `shouldBe` Append
+      modeOf (Subject ["g","key2","items"]) `shouldBe` Append
+      let k1a = (mk "a" "x" "[ \"x\" ]" Stated)
+                  { dSubject = Subject ["g","key1","items"], dProv = FromSource (SourceLoc "f" 1) }
+          k1b = (mk "b" "x" "[ \"y\" ]" Stated)
+                  { dSubject = Subject ["g","key1","items"], dProv = FromSource (SourceLoc "f" 2) }
+          k2  = (mk "c" "x" "[ \"z\" ]" Stated)
+                  { dSubject = Subject ["g","key2","items"], dProv = FromSource (SourceLoc "f" 3) }
+      case resolve modeOf assembleSubject (fromList [k1a,k1b,k2]) of
+        Right m -> Map.size m `shouldBe` 2   -- key1 (assembled) + key2 (alone)
+        Left e  -> expectationFailure ("resolve failed: " <> show e)
+
     it "end-to-end: two install lines aggregate into one systemPackages list" $ do
       -- Each line crystallizes to a DISTINCT captured subject (install.<pkg>),
       -- so the human base does not conflict; the rule emits a VList rhs to the
