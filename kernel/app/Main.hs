@@ -7,11 +7,12 @@
 --     program with it and validates by a full run; only then are the language
 --     (@\<program\>.lang@), the crystal witness (@\<program\>.decisions@), and
 --     the generation record written.
---   * @lips compile \<program\>@ takes the loose program directly. It
---     crystallizes it with @\<program\>.lang@ and realizes it into a DIRECTORY
---     (@default.nix@ plus a staged @artifacts/@), deterministically, with no
---     AI. If the language is missing, or the program escaped it, it fails loud
---     and names @generate@.
+--   * @lips compile \<program\>@ takes the loose program directly. It verifies
+--     the committed @.expect@ contract, then crystallizes with
+--     @\<program\>.lang@ and realizes into a DIRECTORY (@default.nix@ plus a
+--     staged @artifacts/@), deterministically, with no AI. If the language is
+--     missing, the program escaped it, or the module drops a promised value,
+--     it fails loud (and names @generate@ where that is the remedy).
 --   * @lips run \<program\>@ goes one step further and literally runs the
 --     realized module: it wraps it in a NixOS system and boots it as a local
 --     QEMU VM (a Heile-Welt simulation of the target machine; the host is
@@ -101,13 +102,23 @@ usage = do
     , "      Verify the program still produces what it promised."
     ]
 
--- | @compile@: crystallize + realize, then materialize a DIRECTORY -- default
--- @<program without .lips>/@, or @--out <dir>@ -- holding @default.nix@ plus a
--- staged @artifacts/@ tree. A directory, not stdout, so an engine with
--- artifacts is complete and @imports = [ ./<dir> ]@ resolves default.nix. The
--- output is derived, never committed (gitignore it, like .decisions).
+-- | @compile@: verify the program's committed contract, then crystallize +
+-- realize and materialize a DIRECTORY -- default @<program without .lips>/@, or
+-- @--out <dir>@ -- holding @default.nix@ plus a staged @artifacts/@ tree. A
+-- directory, not stdout, so an engine with artifacts is complete and
+-- @imports = [ ./<dir> ]@ resolves default.nix. The output is derived, never
+-- committed (gitignore it, like .decisions).
+--
+-- The behavioral gate runs FIRST (the same one @check@ and @run@ run), so
+-- compile never materializes a module that dropped a pinned value: a misroute
+-- an offline edit can introduce fails loud here instead of importing a
+-- silently-wrong config. Nix is the compile target, so the gate's @nix eval@
+-- is no new dependency (every compile invocation already runs through nix, and
+-- the output is only meaningful where nix runs); the output stays bit-identical
+-- and deterministic, the gate only refuses a bad one.
 compileLoose :: Maybe FilePath -> FilePath -> IO ()
 compileLoose mout file = do
+  checkLoose file
   program <- readProgramOrDie file
   eng     <- loadLangOrDie file
   case validate file eng program of
