@@ -772,9 +772,10 @@ refusalReport file _threshold errs unsure notes = T.intercalate "\n" $
           [ "", "The AI wrote something lips can't express yet:" ]
           ++ [ "  - " <> e | e <- errs ]
           ++ [ ""
-             , "→ this is usually a passing hiccup: run generate again."
-             , "  If the same item keeps failing, lips is missing a capability"
-             , "  it needs here — please report the line above." ]
+             , "→ if the same item (above) fails every time you run generate,"
+             , "  lips is missing a capability it needs here; please report that"
+             , "  line. If the failing item changes or it is one-off, run generate"
+             , "  again and the model may phrase it differently." ]
     underspecified
       | null unsure = []
       | otherwise =
@@ -797,10 +798,10 @@ refusalReport file _threshold errs unsure notes = T.intercalate "\n" $
 -- rejected loud instead of crashing the eval (deduce-or-fail).
 uncheckableReport :: FilePath -> [Expect] -> Text
 uncheckableReport file bad = report
-  (T.pack file <> " checks options that hold a package or build, not a value:")
+  (T.pack file <> " checks options that hold a package or build, not a plain value:")
   [ T.intercalate "." (exPath e) <> " (check " <> exId e <> ")" | e <- bad ]
-  ("→ a check must name an option carrying a value from " <> T.pack file
-    <> ". Rebuild the setup: lips generate " <> T.pack file)
+  ("→ a check must name an option that holds a value from " <> T.pack file
+    <> ", not a package or build. Rebuild the setup: lips generate " <> T.pack file)
 
 -- | A demand the minted engine leaves unmet at generate. Ambiguous by
 -- construction (the kernel cannot tell a silent program from patterns that
@@ -813,8 +814,8 @@ demandGenerateFail file qs = T.intercalate "\n" $
     ++ [ "  " <> q | q <- qs ]
     ++ [ ""
        , "Either your program does not state these, or the setup lips built"
-       , "misread them. If a value is already there (e.g. \"on port 8080\"), the"
-       , "mint misfired."
+       , "misread them; for example, if a value is already there (\"on port 8080\"),"
+       , "the setup read it wrong."
        , ""
        , "\x2192 run generate again. If the same facts keep coming up unanswered,"
        , "  state them in " <> T.pack file <> " or report it as a lips bug." ]
