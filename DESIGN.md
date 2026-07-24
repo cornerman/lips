@@ -944,17 +944,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
   an end-to-end test realizes `install htop, ripgrep.` + `install tmux.` to
   `environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];`.
 ### Partial
-- **Behavioral gate: remaining.** The gate (see Done) runs at `generate`, via
-  `lips check`, and now inside `run` (a preflight before boot: `runVm` calls
-  the same gate `check` runs and dies on any violation, so `run` never boots a
-  module that dropped a pinned value; home-manager `run` already gated this
-  way, so both worlds are symmetric). `compile` stays pure and nix-free by
-  design (the deterministic emit primitive), verified by explicit `check` or
-  before `run`. Assertions name concrete option paths, so a legitimate
-  mechanism swap always re-blesses (mechanism-independent assertions would
-  need the unbuilt vocabulary/ontology). A cross-program corpus still does not
-  typecheck because engines are per-problem (`feed.loose.lang` and
-  `backup.loose.lang` are independent); the gate is per-program by design.
+- **Behavioral gate: remaining.** The gate (see Done) now runs at every
+  deterministic verb, not just `generate`: `check` is the gate alone, `compile`
+  gates then writes, `run` gates then boots (`runVm`/`compileLoose` both call
+  the same gate `check` runs and die on any violation before their side effect,
+  so neither materializes nor boots a module that dropped a pinned value;
+  home-manager `run` gates too). This makes the safe path the obvious path
+  (Failproof): the headline offline verb no longer emits a silently-wrong
+  module. Nix is the compile target, so the gate's `nix eval` is no new
+  dependency (every invocation already runs through nix; the output is only
+  meaningful where nix runs) and the emitted module stays bit-identical and
+  deterministic -- the gate only refuses a bad one. Assertions name concrete
+  option paths, so a legitimate mechanism swap always re-blesses
+  (mechanism-independent assertions would need the unbuilt
+  vocabulary/ontology). A cross-program corpus still does not typecheck because
+  engines are per-problem (`feed.loose.lang` and `backup.loose.lang` are
+  independent); the gate is per-program by design.
 - **Glue.** `Glue` exists as a `Kind`, but its rigor downgrade (marked glue ->
   property testing, visible blast radius) is not implemented. This is the wall
   behind the expressiveness frontier: the closed rhs value language forbids
@@ -985,9 +990,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   remains glue, deferred.
 - **Activation verb: DONE, as the `compile`/`run` split.** The CLI separates
   emitting from running (superseding the planned `lips up`): `lips compile
-  [--out <dir>] <program>` is the pure deterministic compiler (crystallize ->
-  realize -> a module DIRECTORY: `default.nix` plus a staged `artifacts/` tree,
-  default dir `<program without .lips>/`). A directory, not stdout, so an engine
+  [--out <dir>] <program>` is the deterministic compiler (verify the committed
+  contract -> crystallize -> realize -> a module DIRECTORY: `default.nix` plus
+  a staged `artifacts/` tree, default dir `<program without .lips>/`). The
+  behavioral gate runs first and writes nothing on a violation (see the Partial
+  entry); the emitted module is bit-identical and deterministic either way. A
+  directory, not stdout, so an engine
   with artifacts is complete and `imports = [ ./<dir> ]` resolves default.nix;
   the output is derived, never committed (gitignore it, like `.decisions`).
   (`compile` replaced the earlier stdout-only `print`.) `lips run <program>`
