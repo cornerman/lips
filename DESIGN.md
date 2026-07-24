@@ -378,6 +378,32 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Value grammar: attrsets (listOf-submodule rhs).** The closed rhs value
+  algebra gains an attrset constructor `VAttr [(Text, Value)]`, so a rule can
+  fill a `listOf`-submodule option whose elements are records — the shape
+  `services.postgresql.ensureUsers = [ { name = "..."; ensureDBOwnership = true; } ]`
+  that was previously unrepresentable. Keys are bare ASCII identifiers only
+  (closed, injection-safe: a non-identifier or quoted key is rejected, so a
+  program value can never alter the attrset's shape); values are full `Value`s,
+  so a hole inside a field fills and escapes like any other. `parseValue`,
+  `renderValue`/`renderRealized` (nixpkgs-conventional trailing `;` per field,
+  `{}` for empty), `fillValue` (recurses), and `valueRefsDerivation` (recurses,
+  so a `${pkgs...}`/`${artifact...}` ref nested in a field is still detected)
+  cover the new form. No other layer moves: option-schema grounding already
+  typed `list of submodule` as `OTListOf (OTOther "submodule")`, whose
+  elements are unconstrained, so a `VList [VAttr ...]` grounds clean with zero
+  `OptionType` change — the kernel reaches the concrete (record-valued) shape by
+  the same closed grammar it always had, now with one more constructor. This is
+  invariant 3 (completeness by construction) in action: a missing grammar case
+  was a kernel bug, fixed in the kernel not the prompt; the model is one-shot
+  and blind, so the grammar must accept the record form NixOS options
+  everywhere demand. Verified by the conformance suite (parse, round-trip,
+  fill-and-escape, key rejection, computation rejection, nested-ref detection,
+  `OTListOf OTOther` grounding) and proven live end to end: `appdb.postgres.lips`
+  mints an engine whose r3 emits the attrset and `check` passes, the postgres
+  provisioning that was blocked before now realizes to `services.postgresql.
+  ensureUsers = [ { name = "app"; ensureDBOwnership = true; } ]`.
+
 - **Realization target (NixOS / home-manager).** The world an engine targets is
   per-problem knowledge that lives in the option paths its rules emit, decided
   at mint time; the kernel stays world-blind (`realize` emits only
