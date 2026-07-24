@@ -153,7 +153,8 @@ The entire interface:
 
     1. write program        any text; "hello" is already (probably) a valid program
     2. lips generate        the only AI step: build/evolve the engine for this program
-    3. lips run <program>   deterministic, repeatable forever
+    3. lips compile         deterministic, repeatable forever; emits a dir + flake
+                            and prints the `nix run`/`nix build` commands to run it
     4. edit program
          engine still accepts it  ->  step 3, no AI involved
          engine rejects it        ->  step 2, regenerate
@@ -378,6 +379,18 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Run axis: running is not a lips verb, it is `nix` over the compiled dir.**
+  `compile` emits `flake.nix` + `default.nix` (+ `artifact.nix` when there are
+  artifacts) and prints the exact stock `nix` commands the program's shape
+  supports: `nix run/shell …#artifact.<name>` (exec/shell the bare binary),
+  `nix run …#container` (full NixOS userspace via systemd-nspawn, no VM),
+  `nix run …#vm` (throwaway QEMU boot), each with a `nix build …` produce-only
+  form. The `run` verb and its VM-boot Haskell (`runVm`/`bootVm`/`vmExpr`/
+  `runEvalOnly`) are deleted; the boot logic is now data in the flake.
+  `default.nix` is byte-identical, so `vm-smoke`/`artifact-vm` are unaffected.
+  Clash-proof by construction (rungs top-level, artifacts under
+  `artifact.<name>`). Spec: `docs/superpowers/specs/2026-07-24-run-axis-design.md`.
+
 - **Option-schema grounding: field-check @listOf@-submodule attrset elements (H3).**
   A rule that fills a @list of (submodule)@ option (e.g.
   @services.postgresql.ensureUsers@) with a list of attrsets now has each
@@ -555,11 +568,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   that world's namespace (`Minting.worldSection`) and grounds the minted option
   paths against that world's `optionsJSON` (nixpkgs NixOS manual vs
   home-manager `docs-json`, baked as `LIPS_NIXPKGS_FLAKE` / `LIPS_HM_FLAKE`; only
-  generate ever builds a schema, so compile/run/check stay nixpkgs-free). The
+  generate ever builds a schema, so compile/check stay nixpkgs-free). The
   world is recorded in `.generation` (`target:` line) and so enters `genId`; a
-  re-mint for a different world is a distinct, `.expect`-gated event. `run`
-  reads the recorded world and picks a harness: nixos boots a QEMU VM,
-  home-manager is eval-only (no machine to boot). No home-manager eval harness
+  re-mint for a different world is a distinct, `.expect`-gated event. `compile`
+  reads the recorded world and emits the matching flake: nixos gets
+  `apps.vm`/`apps.container`, home-manager gets the module and a build hint (no
+  machine to boot). No home-manager eval harness
   was needed because the `.expect` gate is world-blind (it applies the bare
   module with stubbed args and reads assigned values, never evaluating a world's
   module system). The flake helper `lib.modulesFromDir { pkgs; dir; }` exposes
@@ -990,31 +1004,45 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A
   build needing *arbitrary* Nix (custom overlays, hand-built derivation graphs)
   remains glue, deferred.
-- **Activation verb: DONE, as the `compile`/`run` split.** The CLI separates
-  emitting from running (superseding the planned `lips up`): `lips compile
-  [--out <dir>] <program>` is the deterministic compiler (verify the committed
-  contract -> crystallize -> realize -> a module DIRECTORY: `default.nix` plus
-  a staged `artifacts/` tree, default dir `<program without .lips>/`). The
-  behavioral gate runs first and writes nothing on a violation (see the Partial
-  entry); the emitted module is bit-identical and deterministic either way. A
-  directory, not stdout, so an engine
-  with artifacts is complete and `imports = [ ./<dir> ]` resolves default.nix;
-  the output is derived, never committed (gitignore it, like `.decisions`).
-  (`compile` replaced the earlier stdout-only `print`.) `lips run <program>`
-  realizes and then runs it: for a nixos engine, wrap the module in a
-  nixosSystem and boot a headless local QEMU VM (impure, via ambient
-  `<nixpkgs>`; the host is never mutated); for a home-manager engine, eval-only
-  (no machine to boot). Note: the design's "generate/run loop" prose uses "run"
-  for the deterministic realize step, which is now the `compile` command; `run`
-  is the activation verb.
-  A `nix develop` shell for shell-shaped Solutions remains possible later.
-  Host deployment stays a separate, explicit, privileged step.
-  Run modes considered and DEFERRED (VM-only for now): two axes exist -- (a)
-  activation backends over the same module (vm / systemd-nspawn container /
-  host nixos-rebuild), a future `--mode` flag; (b) `nix-shell`, which is not a
-  mode of running a system module but a different realization target (the
-  engine emitting `mkShell`), meaningful only for a shell-shaped Solution, so
-  it belongs with the artifacts / Solution-kinds milestone.
+- **Run axis: DONE. Running is not a lips verb; it is stock `nix` over the
+  compiled dir.** `lips compile [--out <dir>] <program>` is the deterministic
+  compiler (verify the committed contract -> crystallize -> realize -> a
+  DIRECTORY, default `<program without .lips>/`). It writes `default.nix` (the
+  module, for `imports`/deploy), any staged `artifacts/`, a `flake.nix` (the
+  addressable entry), and, when the program declares artifacts, an
+  `artifact.nix` (the buildable derivations, extracted from the SAME ground
+  base as the module by `realizeArtifactFile`, so a compiled flake addresses
+  exactly the derivations the module `let`-binds). `default.nix` stays
+  byte-identical to before (the module render path is untouched), so the
+  `vm-smoke`/`artifact-vm` VM checks, which import it directly, are unaffected.
+  The behavioral gate runs first and writes nothing on a violation. After a
+  successful compile it PRINTS the exact `nix` commands the program's shape
+  supports (deduce-or-fail: no impossible command is ever shown). The `run`
+  command, `runVm`, `bootVm`, `vmExpr`, and home-manager `runEvalOnly` are
+  deleted -- net negative code, the VM-boot logic now lives as data in the
+  emitted flake.
+  The four rungs are stock `nix` over the dir (commands use `path:<dir>#…`
+  because the dir is derived/gitignored and `path:` copies it verbatim, past
+  flake's git rules): `nix run …#artifact.<name>` (exec: the artifact binary,
+  bare -- no init, so no service/env), `nix shell …#artifact.<name>` (the
+  binary on PATH), `nix run …#container` (the complete NixOS userspace under
+  systemd-nspawn, sharing the host kernel -- all services, no KVM), `nix run
+  …#vm` (a throwaway QEMU boot, adding the kernel/boot/hardware layer). Each
+  system rung has a `nix build …` form (produce, don't activate; `nix build
+  …#container` is a cheap "does the whole system build" check needing no KVM).
+  Clash-proof by construction: rung apps (`vm`/`container`) are top-level while
+  artifacts live under `artifact.<name>`, so a domain artifact named `vm` can
+  never collide with the rung. Nixpkgs is resolved ambiently (`flake:nixpkgs`
+  registry), so compile pins/fetches nothing and stays bit-identical -- the
+  same Heile-Welt softness the old `<nixpkgs>` VM boot carried; the world is
+  resolved at `nix run` time. `home-manager` (no machine) emits the module and
+  a build hint, no vm/container. Full design in
+  `docs/superpowers/specs/2026-07-24-run-axis-design.md`.
+  Out of scope, named as separate future axes: the PACKAGE axis (Docker image,
+  ISO, standalone binary -- an artifact always needs a consumer, so "build to
+  nowhere" is a non-thing; each distribution format is its own realize output
+  shape) and the DEPLOY axis (import `default.nix` into `~/nixos` on `wolf`,
+  persistent and privileged -- the headline missing proof).
 - **Direction file (done).** Optional owner taste for the mint: per-program
   `<program>.direction`, plain text, appended to the minting prompt when
   present. Sharp boundary: the program states what must be true; direction

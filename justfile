@@ -41,9 +41,9 @@ check-expect:
 compile program:
     nix run . -- compile "{{program}}"
 
-# Literally run: realize the program and boot it as a local NixOS VM (needs KVM).
-run program:
-    nix run . -- run "{{program}}"
+# Running is not a lips verb: `compile` prints the exact `nix run`/`nix build`
+# commands over the compiled dir (exec/shell for an artifact, container/vm for a
+# system module). Run one of those printed commands to run the program.
 
 # Verify one program's committed behavioral contract against its realized module.
 check-program program:

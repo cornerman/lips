@@ -40,8 +40,9 @@ lips never guesses.
 
 ## How You Work With It
 
-The loop has three moves: write, (generate), compile/run. Only the middle
-one, `generate`, touches a model.
+The loop has three moves: write, (generate), compile. Only the middle
+one, `generate`, touches a model; running the result is stock `nix` over what
+`compile` emits.
 
 **Write.** State intent in plain lines. This is the only artifact you own and
 the only one you cannot regenerate. Keep it short and truthful.
@@ -73,10 +74,15 @@ across them. lips refuses to write anything unless the engine actually compiles
 every program and the tests hold, so a bad mint costs you nothing.
 
 **Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
-your text into a NixOS module directory (`default.nix` plus any staged
-`artifacts/`). `lips run ledger.backup.lips` goes further and
-boots that module in a throwaway local VM, so you can watch it work without
-touching your host.
+your text into a directory holding `default.nix` (the NixOS module, for import
+and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory
+runnable. Running is not a lips verb: `compile` prints the exact stock `nix`
+commands over that directory, and you pick one. A program that builds an
+artifact prints `nix run …#artifact.<name>` (run the binary bare) and
+`nix shell …#artifact.<name>`; a system module prints `nix run …#container`
+(the complete NixOS userspace under systemd-nspawn, no VM) and `nix run …#vm`
+(a throwaway QEMU boot). Each also has a `nix build …` form that produces the
+thing without running it. The host is never touched.
 
 You then edit freely. Value and wording changes covered by your language run
 straight through `compile`. You return to `generate` only when you say something
@@ -97,7 +103,7 @@ file is optional; absent, nothing changes.
 flowchart LR
     W["write<br><b>ledger.backup.lips</b>"]
     W -->|"generate<br>(AI, once)"| E["engine + tests<br>verified, or nothing"]
-    W -->|"compile / run<br>(no AI, forever)"| M["NixOS module<br>+ local VM"]
+    W -->|"compile<br>(no AI, forever)"| M["module dir + flake<br>run via nix"]
     E --> M
     M -.->|"a line it cannot read"| W
 ```
@@ -107,8 +113,10 @@ flowchart LR
 With direnv, run `direnv allow` once. Otherwise prefix each command with
 `nix develop -c`.
 
-    just compile examples/ledger.backup.lips # loose text -> NixOS module dir (offline)
-    just run   examples/ledger.backup.lips   # ... and boot it as a local VM (needs KVM)
+    just compile examples/ledger.backup.lips # loose text -> module dir + flake (offline)
+    # compile prints the nix commands to run it, e.g.:
+    #   nix run path:examples/ledger.backup#container   # full userspace, no VM
+    #   nix run path:examples/ledger.backup#vm          # throwaway QEMU boot (needs KVM)
     just generate path/to/my.backup.lips     # mint a language for your program (AI, needs pi)
     just test                                # conformance suite
 
