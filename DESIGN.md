@@ -378,6 +378,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Realize refuses an unfilled @<value.tail>@ (fail loud, not a literal).**
+  The list-aggregation C work added @VTail@, a tail hole whose rhs fills to
+  a @VList@ of the program value's tokens. @fillValue@ always converts
+  @VTail@ -> @VList@ at the refine door, and a non-firing rule stores no
+  decision, so an unfilled tail is unreachable in production. But the plan
+  claimed an @RMalformed@ at realize's parse, and that claim was optimistic:
+  @parseValue "<value.tail>"@ succeeds (returns @VTail@), so
+  @renderRealized@'s catch-all would emit the literal @<value.tail>@ into the
+  module -- the silent-wrong-config failure mode invariant #2 (fail loud,
+  never guess) exists to prevent. The guard is now structural, not trusted to
+  "currently unreachable": @realize@'s option-parse door rejects a @VTail@
+  value with @RMalformed@, so any future path that lets an unfilled tail reach
+  realize fails through the error channel rather than emitting a bogus string.
+  (The error, not a crash: @renderRealized@ returns @Text@, so the guard lives
+  at the @Either@-returning parse door, not in the renderer.) Verified 219/219,
+  @-Wall@ clean, all 9 examples @check@ clean.
+
 - **List aggregation (B + C, no block construct).** N sibling lines fold into
   one list-valued option, and one line may carry many items, with no block
   construct, no dictated collection syntax, and no new ordering key on the
