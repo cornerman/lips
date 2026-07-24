@@ -96,26 +96,26 @@ main = hspec $ do
   describe "merge (spec 2.1: strength) " $ do
     it "delta-over-defaults: Stated overrides Default on the same subject" $ do
       let base = fromList [mk "d1" "cadence" "daily" Default, mk "d2" "cadence" "hourly" Stated]
-      resolve base `shouldSatisfy` \r -> case r of
+      resolveReplace base `shouldSatisfy` \r -> case r of
         Right m -> winnerAssertion (Subject ["cadence"]) m == Just (Assertion "hourly")
         Left _  -> False
 
     it "Law overrides Stated" $ do
       let base = fromList [mk "d1" "x" "a" Stated, mk "d2" "x" "b" Law]
-      case resolve base of
+      case resolveReplace base of
         Right m -> winnerAssertion (Subject ["x"]) m `shouldBe` Just (Assertion "b")
         Left _  -> expectationFailure "expected a winner, got conflict"
 
     it "distinct subjects coexist without competing" $ do
       let base = fromList [mk "d1" "a" "1" Stated, mk "d2" "b" "2" Stated]
-      case resolve base of
+      case resolveReplace base of
         Right m -> Map.size m `shouldBe` 2
         Left _  -> expectationFailure "distinct subjects must not conflict"
 
   describe "agreement (spec 2: set semantics)" $
     it "equal strength, equal assertion: one winner, no conflict" $ do
       let base = fromList [mk "d1" "x" "same" Stated, mk "d2" "x" "same" Stated]
-      case resolve base of
+      case resolveReplace base of
         Right m -> Map.size m `shouldBe` 1
         Left _  -> expectationFailure "agreeing decisions must not conflict"
 
@@ -123,7 +123,7 @@ main = hspec $ do
     it "equal strength, differing assertion: conflict carrying both provenances" $ do
       let d1 = mk "d1" "x" "a" Stated
           d2 = mk "d2" "x" "b" Stated
-      case resolve (fromList [d1, d2]) of
+      case resolveReplace (fromList [d1, d2]) of
         Left [c] -> do
           conflictSubject c `shouldBe` Subject ["x"]
           -- both provenances are present, in deterministic (smallest-id) order
@@ -141,7 +141,7 @@ main = hspec $ do
             , mk "d5" "name" "ledger" Stated
             ]
       property $ forAll (shuffle pool) $ \perm ->
-        resolve (fromList perm) === resolve (fromList pool)
+        resolveReplace (fromList perm) === resolveReplace (fromList pool)
 
   describe "list aggregation (B: Append merge mode)" $ do
     let pkgs = Subject ["environment","systemPackages"]
@@ -174,6 +174,42 @@ main = hspec $ do
       case assembleSubject [d1,d2] of
         Right synth -> dProv synth `shouldBe` Derived [DecisionId "d2", DecisionId "d1"] (RuleId "append")
         Left e      -> expectationFailure ("assemble failed: " <> show e)
+
+    it "resolve: two Append contributors aggregate, not conflict" $ do
+      let base = fromList [d1,d2]
+          modeOf _ = Append
+      case resolve modeOf assembleSubject base of
+        Right m -> Map.size m `shouldBe` 1
+        Left _  -> expectationFailure "Append contributors must not conflict"
+    it "resolve: a Replace subject still conflicts on equal-strength dissent" $ do
+      -- A Replace subject (modeOf returns Replace) keeps today's semantics:
+      -- two equal-strength differing assertions conflict, never silently pick.
+      let base = fromList [ (mk "a" "x" "\"a\"" Stated) { dSubject = pkgs }
+                          , (mk "b" "x" "\"b\"" Stated) { dSubject = pkgs } ]
+          modeOf _ = Replace
+      case resolve modeOf assembleSubject base of
+        Left (REConflict _ : _) -> pure ()
+        Left _                  -> expectationFailure "expected REConflict, got REAssemble"
+        Right _                 -> expectationFailure "equal-strength dissent on a Replace subject must conflict"
+    it "resolve: a single stronger decision on an Append subject wins as-is (no assembly)" $ do
+      -- replace-across-strengths: a lone top-strength winner is taken verbatim,
+      -- without assembling (the list-shape check is the option schema's job at
+      -- generate, not resolve's; resolve never inspects element types).
+      let base = fromList [ (mk "a" "x" "[ \"x\" ]" Stated) { dSubject = pkgs }
+                          , (mk "b" "x" "[ \"y\" ]" Law) { dSubject = pkgs } ]
+      case resolve (const Append) assembleSubject base of
+        Right m -> winnerAssertion pkgs m `shouldBe` Just (Assertion "[ \"y\" ]")
+        Left e  -> expectationFailure ("a single stronger list should replace, got " <> show e)
+    it "resolve: replace-across-strengths -- Law list replaces the Stated list" $ do
+      let stated = (mk "s" "x" "[ \"a\" ]" Stated) { dSubject = pkgs, dProv = FromSource (SourceLoc "f" 1) }
+          law    = (mk "l" "x" "[ \"b\" ]" Law) { dSubject = pkgs, dProv = FromSource (SourceLoc "f" 2) }
+      case resolve (const Append) assembleSubject (fromList [stated,law]) of
+        Right m -> winnerAssertion pkgs m `shouldBe` Just (Assertion "[ \"b\" ]")
+        Left e  -> expectationFailure ("expected the Law list to replace, got " <> show e)
+    it "resolveReplace is today's behavior (no config)" $
+      case resolveReplace (fromList [d1,d2]) of
+        Left [_] -> pure ()   -- two equal-strength different assertions -> Conflict (today)
+        _        -> expectationFailure "without Append, two list lines conflict"
 
   describe "refinement (spec 2.4, 4)" $ do
     let oblige = (mk "o1" "row" "row->txn" Stated) { dKind = Oblige }
@@ -1226,7 +1262,7 @@ main = hspec $ do
 
     it "every resolved winner has the maximum strength among its subject's decisions" $
       property $ \ds ->
-        case resolve (fromList ds) of
+        case resolveReplace (fromList ds) of
           Left _        -> property True  -- the law constrains winners, not conflicts
           Right winners ->
             let bds = toList (fromList ds)
@@ -1236,7 +1272,7 @@ main = hspec $ do
 
     it "resolve never invents or drops a subject" $
       property $ \ds ->
-        case resolve (fromList ds) of
+        case resolveReplace (fromList ds) of
           Left _        -> property True
           Right winners ->
             let subjects = Map.keys (Map.fromList [ (dSubject d, ()) | d <- toList (fromList ds) ])

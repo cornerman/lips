@@ -59,7 +59,7 @@ run budget rules demands src = do
 -- produces the base. Pure in (base, engine).
 runBase :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
 runBase budget rules demands base0 = do
-  winners <- first Conflicted (resolve base0)
+  winners <- first (Conflicted . concatMap confOf) (resolveReplace base0)
   -- Refine the resolved winners, so overridden defaults never realize.
   let base1 = fromList (Map.elems winners)
   case map demQuestion (openQuestions demands base1) of
@@ -87,3 +87,8 @@ runBase budget rules demands base0 = do
 -- | Render a subject as a dotted path for a plain-language error.
 subjText :: Subject -> Text
 subjText (Subject ss) = T.intercalate "." ss
+
+-- | Today's resolve yields only conflicts; resolveReplace keeps that shape.
+-- (Append-aware resolve is threaded in Task 4; until then run is Replace-only.)
+confOf :: Conflict -> [Conflict]
+confOf c = [c]

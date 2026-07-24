@@ -25,7 +25,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
-import Lips.Kernel.Base         (Base, Conflict, resolve)
+import Lips.Kernel.Base         (Base, Conflict, resolveReplace)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
                                   valueArtifactNames)
@@ -51,7 +51,7 @@ data RealizeError
 -- byte-identical text.
 realize :: Base -> Either RealizeError Text
 realize base = do
-  winners <- either (Left . RConflicts) Right (resolve base)
+  winners <- either (Left . RConflicts) Right (resolveReplace base)
   renderModule (Map.toList winners)
 
 -- | An artifact group is any decision whose subject is rooted at @artifact@
