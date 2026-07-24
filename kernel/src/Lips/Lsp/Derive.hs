@@ -38,9 +38,11 @@ completionItems = map item
     item p =
       let (label, snippet, _) = foldl step ([], [], 1 :: Int) (pTemplate p)
        in CItem (T.unwords (reverse label)) (T.unwords (reverse snippet))
-    step (ls, ss, n) (TLit t)  = (t : ls, t : ss, n)
-    step (ls, ss, n) (THole h) =
+    step (ls, ss, n) (TLit t)   = (t : ls, t : ss, n)
+    step (ls, ss, n) (THole h)  =
       ("<" <> h <> ">" : ls, "${" <> T.pack (show n) <> ":" <> h <> "}" : ss, n + 1)
+    step (ls, ss, n) (TTail h)  =
+      ("<" <> h <> ".tail>" : ls, "${" <> T.pack (show n) <> ":" <> h <> "}" : ss, n + 1)
 
 -- | One diagnostic: a whole-line span (0-based line, character range) with a
 -- severity (LSP: 1 error, 2 warning) and a message.

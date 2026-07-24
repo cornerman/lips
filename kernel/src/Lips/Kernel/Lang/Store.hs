@@ -162,8 +162,9 @@ renderBody p =
         <> " " <> quoteParts (peAssertion e)
 
 renderTplTok :: TplTok -> Text
-renderTplTok (TLit t)  = t
-renderTplTok (THole h) = "<" <> h <> ">"
+renderTplTok (TLit t)   = t
+renderTplTok (THole h)  = "<" <> h <> ">"
+renderTplTok (TTail h) = "<" <> h <> ".tail>"
 
 renderParts :: [StrPart] -> Text
 renderParts = T.concat . map r
@@ -190,6 +191,17 @@ parseBody pid body = do
       emptyLit _        = False
   emits <- mapM (parseEmit . T.strip) (splitEmits rest0)
   let p = Pattern { pId = pid, pTemplate = template, pEmits = emits }
+  -- A <name.tail> may appear only as the LAST template token: a tail consumes
+  -- the rest of the line, so anything after it could never match. Reject it on
+  -- read so the matcher never faces an impossible template.
+  let tailMisplaced = case template of
+        []  -> False
+        xs  -> any isTail (init xs)
+      isTail (TTail _) = True
+      isTail _         = False
+  if tailMisplaced
+    then Left ("pattern " <> pid <> ": a <name.tail> hole must be the last token")
+    else Right ()
   -- Every hole in the target must be bound by the template, so 'applyPattern'
   -- is total. Reject a pattern that would leave any emit's hole dangling.
   let bound = holesOf p
@@ -249,9 +261,12 @@ parseTplTok w
   -- Symmetric with 'tokenizeLine': trailing sentence punctuation is noise on
   -- the template side too, so a minted "<when>." is the hole <when> (live
   -- mints glue the line's final period onto the hole; kernel physics, not a
-  -- prompt plea).
-  | Just h <- holeName (stripTrailingPunct w) = THole h
-  | otherwise                                 = TLit (normalizeToken w)
+  -- prompt plea). A <name.tail> is the tail hole (binds the rest of the line).
+  | Just h <- holeName (stripTrailingPunct w) =
+      case T.stripSuffix ".tail" h of
+        Just name -> TTail name
+        Nothing   -> THole h
+  | otherwise = TLit (normalizeToken w)
 
 -- | Parse a holey string (literal text with @\<name\>@ holes) into parts.
 parseHoley :: Text -> [StrPart]

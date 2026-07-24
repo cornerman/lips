@@ -717,6 +717,31 @@ main = hspec $ do
       matchTemplate [TLit "-", THole "path"] (tokenizeLine "- /hello")
         `shouldBe` Just (Map.fromList [("path", "/hello")])
 
+  describe "template tail hole (C: many items on one line)" $ do
+    -- A trailing @<name.tail>@ binds the REST of a line's tokens (>= 1), so one
+    -- line may carry many items. The kernel dictates no collection syntax:
+    -- the tail is a generic "bind the rest" capability; how items are
+    -- separated is the minted pattern's affair (here, comma+space prose).
+    it "a trailing <name.tail> binds the rest of the tokens, joined by space" $ do
+      let p   = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SHole "pkgs"] [SHole "value"]
+          toks = tokenizeLine "install htop, ripgrep, tmux."
+      matchTemplate (pTemplate p) toks `shouldBe` Just (Map.fromList [("pkgs", "htop ripgrep tmux")])
+    it "a tail hole matching zero tokens fails (deduce-or-fail, never guess)" $ do
+      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SHole "pkgs"] [SHole "value"]
+      matchTemplate (pTemplate p) (tokenizeLine "install") `shouldBe` Nothing
+    it "a tail hole is still a binding a target hole may use" $ do
+      -- holesOf must include a tail name, or a target <pkgs> bound only by a
+      -- tail would be rejected as loose on read (applyPattern would be partial).
+      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SHole "pkgs"] [SHole "value"]
+      holesOf p `shouldBe` ["pkgs"]
+    it "a <name.tail> template token round-trips through the .lang store" $ do
+      let p  = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SLit "install"] [SHole "pkgs"]
+          rt = decisionToPattern . patternToDecision
+      rt p `shouldBe` Right p
+    it "a tail hole must be the last template token" $
+      parsePatternBody "p" "install <pkgs.tail> on <host> => fact pkg stated \"<value>\""
+        `shouldSatisfy` isLeft
+
   describe "crystallize (crystallization plan: three outcomes)" $ do
     let sourceP = patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
                     Fact Stated [SLit "feed.source"] [SHole "loc"]
@@ -1483,7 +1508,7 @@ main = hspec $ do
           , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
           ]
         -- reconstruct a surface line from a template, filling its single hole
-        surface toks fill = T.unwords [ case t of TLit l -> l; THole _ -> fill | t <- toks ]
+        surface toks fill = T.unwords [ case t of TLit l -> l; THole _ -> fill; TTail _ -> fill | t <- toks ]
         runProg prog = do
           base <- either (Left . show) Right (crystallize "feed" pats prog)
           either (Left . show) Right

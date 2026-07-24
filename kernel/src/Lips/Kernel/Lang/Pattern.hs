@@ -51,9 +51,12 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Decision (Assertion (..), Kind, Strength, Subject (..))
 
--- | A template token: a literal to match (stored already normalized) or a hole
--- that binds one loose token's surface form.
-data TplTok = TLit Text | THole Text
+-- | A template token: a literal to match (stored already normalized), a hole
+-- that binds one loose token's surface form, or a tail hole that binds the
+-- REST of the line's tokens (>= 1) as one space-joined capture. A tail hole
+-- must be the last template token (validated on read); it lets one line carry
+-- many items without the kernel dictating any collection syntax.
+data TplTok = TLit Text | THole Text | TTail Text
   deriving (Eq, Show)
 
 -- | A piece of a target (subject or assertion) string: literal text or a hole
@@ -86,9 +89,16 @@ data Pattern = Pattern
 patOne :: Text -> [TplTok] -> Kind -> Strength -> [StrPart] -> [StrPart] -> Pattern
 patOne i tpl k s subj assn = Pattern i tpl [PatEmit k s subj assn]
 
--- | The hole names a pattern binds, in template order.
+-- | The hole names a pattern binds, in template order. A tail hole binds a
+-- name too, so a target @<name>@ may be filled from a tail capture (otherwise
+-- 'applyPattern' could be partial and the reader would reject a target hole
+-- bound only by a tail).
 holesOf :: Pattern -> [Text]
-holesOf p = [h | THole h <- pTemplate p]
+holesOf p = [h | tok <- pTemplate p, h <- tokHoles tok]
+  where
+    tokHoles (THole h) = [h]
+    tokHoles (TTail h) = [h]
+    tokHoles _         = []
 
 -- | Strip trailing sentence punctuation, so @inbox\/.@ captures as @inbox\/@
 -- and a template literal @files.@ matches @files@. Internal punctuation (the
@@ -140,24 +150,31 @@ tokenizeLine = filter (not . T.null . snd) . map tok . lexTokens
     -- meaning and is dropped, symmetric with the template side, so trailing
     -- punctuation never changes the token count a match depends on.
 
--- | Match a template against a tokenized line. Succeeds only on equal length
--- (single-token holes): each literal must equal the normalized token, each hole
--- binds the surface token. Returns the hole bindings, or Nothing on any
--- mismatch. A repeated hole must bind consistently.
+-- | Match a template against a tokenized line. A literal must equal the
+-- normalized token; a hole binds one surface token (a repeated hole must bind
+-- consistently). A trailing @TTail@ binds the rest of the tokens (>= 1;
+-- matching zero fails loud), space-joined, so one line may carry many items.
+-- A @TTail@ that is not the last template token is rejected on read; the
+-- length-unequal case here is a defense-in-depth 'Nothing'.
 matchTemplate :: [TplTok] -> [(Text, Text)] -> Maybe (Map Text Text)
-matchTemplate toks line
-  | length toks /= length line = Nothing
-  | otherwise = foldl' step (Just Map.empty) (zip toks line)
+matchTemplate toks line = go toks line Map.empty
   where
-    step Nothing _ = Nothing
-    step (Just binds) (TLit lit, (_, norm))
-      | lit == norm = Just binds
+    go [] [] binds = Just binds
+    go [] _  _     = Nothing
+    go (TTail name : []) rest binds
+      | null rest  = Nothing                       -- empty tail: never guess
+      | otherwise  = Just (Map.insert name (T.unwords (map fst rest)) binds)
+    go (TTail _ : _ : _) _ _ = Nothing             -- tail not last (defense in depth)
+    go (TLit lit : ts) ((_, norm) : rs) binds
+      | lit == norm = go ts rs binds
       | otherwise   = Nothing
-    step (Just binds) (THole h, (surface, _)) =
+    go (TLit _ : _) [] _ = Nothing
+    go (THole h : ts) ((surface, _) : rs) binds =
       case Map.lookup h binds of
-        Nothing               -> Just (Map.insert h surface binds)
-        Just prev | prev == surface -> Just binds
+        Nothing               -> go ts rs (Map.insert h surface binds)
+        Just prev | prev == surface -> go ts rs binds
                   | otherwise       -> Nothing
+    go (THole _ : _) [] _ = Nothing
 
 -- | Apply a matched pattern's bindings to produce one (subject, kind,
 -- assertion, strength) tuple per emit. Bindings are complete by construction:
