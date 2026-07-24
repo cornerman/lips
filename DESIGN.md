@@ -378,6 +378,30 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **List aggregation (B + C, no block construct).** N sibling lines fold into
+  one list-valued option, and one line may carry many items, with no block
+  construct, no dictated collection syntax, and no new ordering key on the
+  decision. (B) An `Append` merge mode alongside `Replace`, derived from the
+  rule emits (a subject whose rule emits a `VList` rhs appends; the option
+  schema is the authority but lives only at generate, and `checkEmits` already
+  guarantees the rhs value-shape matches the option type, so run stays
+  nixpkgs-free). `Append` assembles the top-strength contributors' `VList`
+  elements in source-line order (human by `(file,line)` before derived by
+  parent line) into one synthetic decision whose provenance links every
+  contributor; replace-across-strengths holds (a stronger list replaces the
+  whole list; `Append` is only same-strength aggregation). Cross-module list
+  composition stays NixOS's job. (C) A template tail hole `<name.tail>` binds
+  the rest of a line's tokens, and a value tail hole `<value.tail>` makes a rhs
+  that fills to a `VList` of the program value's tokens (trailing punctuation
+  stripped); an empty tail fails loud. A multiline collection is N flat lines
+  whose patterns share a list subject; a header, if wanted, is an optional
+  `Concept`. Prerequisite refactor (R1): Meta assertions are stored canonically
+  (`renderValue`, round-trippable) and `realize` is the single canonical→Nix
+  render point, which also completed the round-trip and replaced a quote-aware
+  text artifact-ref scanner with Value-based detection. Domain-blind preserved
+  (invariant 1); the canonical stored form stays one-decision-per-line. Design:
+  `docs/superpowers/specs/2026-07-24-list-aggregation-design.md`.
+
 - **Round-trip closure of the value and engine-path grammars.** The closed
   grammars now satisfy `parse . render = id` over generated inputs, pinned by
   QuickCheck properties (the meta-gap that let holes survive). Three holes the
@@ -831,22 +855,6 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Missing
 
-- **List aggregation across decisions (N lines -> one list-valued option).**
-  Merge is by subject (replace, ordered by the strength lattice); the kernel
-  does not concatenate lists across decisions. So N sibling lines cannot fold
-  into a single list-valued option (e.g. several package lines -> one
-  `environment.systemPackages = [ ... ]`): two decisions on the same subject
-  are an equal-strength conflict, not a list-append. The lips-native way to say
-  "many of X" is `attrsOf` value-keying (each item its own keyed entry; see the
-  value-keyed-options milestone in Done). Where a target offers ONLY a flat
-  list for a repeated thing (no `attrsOf` surface), that repetition is
-  currently inexpressible from multiple lines. Note the asymmetry: NixOS's own
-  module system concatenates such lists across modules, but within ONE
-  lips-realized module every assignment lands in one attrset, so a repeated
-  path is a conflict. A fix would be a list-contribution merge mode (a decision
-  that appends to rather than replaces a list), a merge-semantics extension
-  weighed against keeping merge simple (replace-by-strength). Single-line
-  variable-length lists are the separate, also-missing multi-token tail hole.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
@@ -859,11 +867,6 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A
   build needing *arbitrary* Nix (custom overlays, hand-built derivation graphs)
   remains glue, deferred.
-- **Multi-token tail holes.** A template hole binds one token (or one quoted
-  span); there is no "tokens N onward" slice. A live mint that joined a port
-  and a multi-word message into one subject could not cleanly extract the tail
-  and fell back to the whole value. Sibling-subject patterns avoid it; a tail
-  hole is future value/template-completeness work.
 - **Activation verb: DONE, as the `compile`/`run` split.** The CLI separates
   emitting from running (superseding the planned `lips up`): `lips compile
   [--out <dir>] <program>` is the pure deterministic compiler (crystallize ->
