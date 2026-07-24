@@ -5,3 +5,6 @@ result
 *.decisions
 editors/vscode/node_modules/
 editors/vscode/*.vsix
+
+# feature worktrees
+.worktrees/
