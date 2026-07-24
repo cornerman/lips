@@ -318,7 +318,7 @@ commonBody = T.unlines
   , "Example input line:"
   , "  the bank drops csv files into inbox/."
   , "Example output lines:"
-  , "  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source stated \"<loc>\""
+  , "  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source \"<loc>\""
   , "  0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX \"\\\"<value>\\\"\""
   , "  0.9 q1 demand feed.source \"where do the files arrive?\""
   , "  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source"
