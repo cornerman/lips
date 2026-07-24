@@ -1,0 +1,3 @@
+a1 expect services.postgresql.enable from postgres.enable
+a2 expect services.postgresql.ensureDatabases from postgres.database.<name>
+a3 expect services.postgresql.ensureUsers from postgres.user.<user>
