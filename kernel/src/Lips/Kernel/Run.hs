@@ -13,6 +13,7 @@ module Lips.Kernel.Run
   ( RunError (..)
   , run
   , runBase
+  , runBaseArtifact
   , runReplace
   , runBaseReplace
   ) where
@@ -26,7 +27,7 @@ import Lips.Kernel.Base
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
-import Lips.Kernel.Realize  (RealizeError (..), realize)
+import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile)
 import Lips.Kernel.Refine
 
 -- | The four run outcomes other than success (spec section 5).
@@ -65,29 +66,39 @@ run modeOf assemble budget rules demands src = do
 runBase :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
         -> Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
 runBase modeOf assemble budget rules demands base0 = do
-  winners <- first toConflicts (resolve modeOf assemble base0)
+  realizable <- runGround budget rules demands (resolve modeOf assemble base0)
+  first fromRealizeError (realize modeOf assemble (fromList realizable))
+
+-- | Like 'runBase' but projects the same ground base to its standalone
+-- @artifact.nix@ (the buildable artifact derivations), or 'Nothing' when the
+-- program declares none. Shares 'runGround' with 'runBase', so the artifacts a
+-- compile emits as an addressable file are byte-for-byte the ones the module
+-- @let@-binds -- one ground base, one rendering.
+runBaseArtifact :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+                -> Int -> [Rule] -> [Demand] -> Base -> Either RunError (Maybe Text)
+runBaseArtifact modeOf assemble budget rules demands base0 = do
+  realizable <- runGround budget rules demands (resolve modeOf assemble base0)
+  first fromRealizeError (realizeArtifactFile modeOf assemble (fromList realizable))
+
+-- | The realizable ground decisions (post resolve, demands, refine, anti-MDA
+-- guard), shared by 'runBase' and 'runBaseArtifact'. Takes the resolve result
+-- so the caller injects the merge config once. A 'Concept' is decorative
+-- vocabulary (a heading grouping lines) that carries no obligation to realize
+-- and is dropped; a surviving non-'Meta' decision is an unmapped obligation
+-- and fails loud (the program escaped the engine), never emitted as garbage.
+runGround :: Int -> [Rule] -> [Demand] -> Either [ResolveErr] (Map.Map Subject Decision)
+          -> Either RunError [Decision]
+runGround budget rules demands resolved = do
+  winners <- first toConflicts resolved
   -- Refine the resolved winners, so overridden defaults never realize.
   let base1 = fromList (Map.elems winners)
   case map demQuestion (openQuestions demands base1) of
     []        -> Right ()
     questions -> Left (OpenQuestions questions)
   ground  <- first RefineFailed (refine budget rules base1)
-  -- A Concept is decorative vocabulary: a heading or label ("http routes:")
-  -- that groups and explains the lines under it, carrying no obligation to
-  -- realize. It is dropped here, so it neither trips the anti-MDA guard nor
-  -- leaks into the module as an option. Only mapped mechanisms (kind Meta) may
-  -- realize; any OTHER surviving decision is an unmapped obligation and must
-  -- fail loud, not emit garbage.
   let realizable = filter ((/= Concept) . dKind) (toList ground)
   case filter ((/= Meta) . dKind) realizable of
-    []      -> case realize modeOf assemble (fromList realizable) of
-                 Right nixMod          -> Right nixMod
-                 Left (RConflicts cs)  -> Left (Conflicted cs)
-                 Left (RDangling ns)   -> Left (Unrealizable
-                   ["references artifact(s) nothing builds: " <> T.intercalate ", " ns])
-                 Left (RBadArtifact n why) -> Left (Unrealizable ["artifact " <> n <> ": " <> why])
-                 Left (RMalformed s e)    -> Left (Unrealizable
-                   ["option " <> subjText s <> ": " <> e])
+    []        -> Right realizable
     leftovers -> Left (Unmapped leftovers)
   where
     -- Resolve groups by subject; a subject is either Replace (a conflict) or
@@ -102,6 +113,16 @@ runBase modeOf assemble budget rules demands base0 = do
         cs@(_ : _) -> Conflicted cs
         []         -> Unrealizable
           [ "list " <> subjText s <> ": " <> e | REAssemble s e <- errs ]
+
+-- | Map a realization defect to its run outcome. A dangling @${artifact}@ or a
+-- malformed group is an engine bug (Unrealizable); an equal-strength
+-- contradiction is Conflicted.
+fromRealizeError :: RealizeError -> RunError
+fromRealizeError (RConflicts cs)     = Conflicted cs
+fromRealizeError (RDangling ns)      = Unrealizable
+  ["references artifact(s) nothing builds: " <> T.intercalate ", " ns]
+fromRealizeError (RBadArtifact n why) = Unrealizable ["artifact " <> n <> ": " <> why]
+fromRealizeError (RMalformed s e)    = Unrealizable ["option " <> subjText s <> ": " <> e]
 
 -- | Today's all-Replace behavior, for callers and tests that do not
 -- aggregate. Identical to the pre-aggregation 'run'/'runBase'.

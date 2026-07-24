@@ -18,6 +18,7 @@ module Lips.Kernel.Realize
   ( RealizeError (..)
   , realize
   , realizeReplace
+  , realizeArtifactFile
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
@@ -57,20 +58,45 @@ realize :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
         -> Base -> Either RealizeError Text
 realize modeOf assemble base =
   case resolve modeOf assemble base of
-    Left errs -> Left (toErr errs)
+    Left errs -> Left (resolveErr errs)
     Right winners -> renderModule (Map.toList winners)
-  where
-    -- A subject is either Replace or Append, so its failure is exactly one
-    -- kind; across subjects the kinds can mix. Report every conflict (the
-    -- author's to edit); if there are none, the first assembly defect (an
-    -- engine bug). Never silent: resolve returns Left only with a non-empty
-    -- list, so the final branch is unreachable in practice.
-    toErr errs =
-      case [ c | REConflict c <- errs ] of
-        cs@(_ : _) -> RConflicts cs
-        []         -> case [ (s, e) | REAssemble s e <- errs ] of
-                        ((s, e) : _) -> RMalformed s e
-                        []            -> RConflicts []
+
+-- | A subject is either Replace or Append, so its failure is exactly one kind;
+-- across subjects the kinds can mix. Report every conflict (the author's to
+-- edit); if there are none, the first assembly defect (an engine bug). Never
+-- silent: resolve returns Left only with a non-empty list, so the final branch
+-- is unreachable in practice. Shared by 'realize' and 'realizeArtifactFile'.
+resolveErr :: [ResolveErr] -> RealizeError
+resolveErr errs =
+  case [ c | REConflict c <- errs ] of
+    cs@(_ : _) -> RConflicts cs
+    []         -> case [ (s, e) | REAssemble s e <- errs ] of
+                    ((s, e) : _) -> RMalformed s e
+                    []            -> RConflicts []
+
+-- | Render the program's artifacts as a standalone @artifact.nix@ file:
+-- @{ pkgs }: { \<name\> = pkgs.\<builder\> { ... }; }@. This is the exact same
+-- derivation the module @let@-binds (via 'artifactEntries'), extracted so a
+-- compiled directory's flake can address each artifact as a buildable package
+-- without re-deriving it (one authoritative rendering, from one ground base).
+-- 'Nothing' when the program declares no artifacts, so an artifact-free
+-- compile writes no such file. Pass the same /ground/ base 'realize' takes.
+realizeArtifactFile :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+                    -> Base -> Either RealizeError (Maybe Text)
+realizeArtifactFile modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs     -> Left (resolveErr errs)
+    Right winners ->
+      let arts = filter (rootedAtArtifact . fst) (Map.toList winners)
+      in if null arts
+           then Right Nothing
+           else do
+             entries <- artifactEntries arts
+             Right (Just (T.unlines (
+               [ "# lips-realized artifact derivations. Generated; do not edit."
+               , "{ pkgs }:"
+               , "{"
+               ] ++ map ("  " <>) entries ++ ["}"])))
 
 -- | Today's all-Replace behavior, for callers and tests that do not
 -- aggregate. Byte-identical to the pre-aggregation 'realize'.

@@ -477,6 +477,30 @@ main = hspec $ do
             ]
       realizeReplace (fromList arts) `shouldBe` Right expected
 
+    it "extracts the same artifacts into a standalone artifact.nix (addressable for a flake)" $ do
+      let arts =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","myserver","builder"] }
+            , (mk "p" "x" "\"myserver\"" Stated) { dSubject = Subject ["artifact","myserver","args","pname"] }
+            , (mk "s" "x" "./artifacts/myserver" Stated) { dSubject = Subject ["artifact","myserver","args","src"] }
+            , (mk "e" "x" "\"${artifact.myserver}/bin/myserver\"" Stated) { dSubject = Subject ["systemd","services","myserver","serviceConfig","ExecStart"], dProv = FromSource (SourceLoc "app" 1) }
+            ]
+          expected = T.unlines
+            [ "# lips-realized artifact derivations. Generated; do not edit."
+            , "{ pkgs }:"
+            , "{"
+            , "  myserver = pkgs.buildGoModule {"
+            , "    pname = \"myserver\";"
+            , "    src = ./artifacts/myserver;"
+            , "  };"
+            , "}"
+            ]
+      realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
+        `shouldBe` Right (Just expected)
+
+    it "emits no artifact.nix for a program with no artifacts" $
+      realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList ground)
+        `shouldBe` Right Nothing
+
     it "fails loud (typed, not a crash) on a ${artifact.<name>} reference to an undefined artifact" $
       let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
        in realizeReplace (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
