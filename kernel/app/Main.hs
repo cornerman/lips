@@ -155,12 +155,21 @@ runEvalOnly file = do
     "home-manager module: no VM to boot; checking its contract (use compile to materialize it)."
   checkLoose file
 
--- | @runVm@: wrap the module in a NixOS system and boot it as a local QEMU VM.
--- The realization is the same deterministic tail as @print@; only the booting
--- is impure (it uses the ambient @<nixpkgs>@, a Heile-Welt softness noted in
--- the design). The host is never touched; the VM is a throwaway simulation.
+-- | @runVm@: verify the program's committed contract, then wrap the module in a
+-- NixOS system and boot it as a local QEMU VM. The behavioral gate runs FIRST
+-- (the same one @check@ runs), so @run@ never boots a module that no longer
+-- carries the values its program promises: an offline edit that breaks a
+-- pinned relation fails loud here instead of booting a silently-wrong system.
+-- home-manager @run@ (@runEvalOnly@) already gates this way, so both worlds are
+-- symmetric. Only the booting is impure (it uses the ambient @<nixpkgs>@, a
+-- Heile-Welt softness noted in the design). The host is never touched; the VM
+-- is a throwaway simulation.
 runVm :: FilePath -> IO ()
 runVm file = do
+  -- Gate before boot: checkLoose prints the diagnosis and the .expect result
+  -- and dies on any failure (unread line, open question, contract violation),
+  -- so reaching past it means the contract holds and the module is safe to run.
+  checkLoose file
   program <- readProgramOrDie file
   eng     <- loadLangOrDie file
   case validate file eng program of
