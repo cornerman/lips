@@ -49,7 +49,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
-import Lips.Kernel.Decision (Assertion (..), Kind, Strength, Subject (..))
+import Lips.Kernel.Decision (Assertion (..), Kind, Strength (Stated), Subject (..))
 
 -- | A template token: a literal to match (stored already normalized), a hole
 -- that binds one loose token's surface form, or a tail hole that binds the
@@ -64,11 +64,12 @@ data TplTok = TLit Text | THole Text | TTail Text
 data StrPart = SLit Text | SHole Text
   deriving (Eq, Show)
 
--- | One decision a pattern emits: its kind and strength, plus subject and
--- assertion as holey strings filled from the matched line's captured tokens.
+-- | One decision a pattern emits: its kind, plus subject and assertion as
+-- holey strings filled from the matched line's captured tokens. A pattern
+-- reads a program line the human wrote, so its emit is always a 'Stated' fact;
+-- strength is not part of the emit grammar and 'applyPattern' fixes it.
 data PatEmit = PatEmit
   { peKind      :: Kind
-  , peStrength  :: Strength
   , peSubject   :: [StrPart] -- substituted, then split on \".\" into a path
   , peAssertion :: [StrPart]
   }
@@ -86,8 +87,8 @@ data Pattern = Pattern
 
 -- | The common single-emit pattern (one loose line to one decision), spelled
 -- out so call sites and tests stay readable.
-patOne :: Text -> [TplTok] -> Kind -> Strength -> [StrPart] -> [StrPart] -> Pattern
-patOne i tpl k s subj assn = Pattern i tpl [PatEmit k s subj assn]
+patOne :: Text -> [TplTok] -> Kind -> [StrPart] -> [StrPart] -> Pattern
+patOne i tpl k subj assn = Pattern i tpl [PatEmit k subj assn]
 
 -- | The hole names a pattern binds, in template order. A tail hole binds a
 -- name too, so a target @<name>@ may be filled from a tail capture (otherwise
@@ -187,7 +188,7 @@ applyPattern p binds = map one (pEmits p)
       ( Subject (segsOf (peSubject e))
       , peKind e
       , Assertion (subst (peAssertion e))
-      , peStrength e
+      , Stated  -- a pattern reads a program line: its emit is always a stated fact
       )
     subst parts = T.concat (map fill parts)
     fill (SLit t)  = t

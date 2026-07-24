@@ -253,7 +253,7 @@ main = hspec $ do
       -- Each line crystallizes to a DISTINCT captured subject (install.<pkg>),
       -- so the human base does not conflict; the rule emits a VList rhs to the
       -- COMMON environment.systemPackages, so resolve assembles both into one.
-      let pat = patOne "p" [TLit "install", THole "pkg"] Fact Stated
+      let pat = patOne "p" [TLit "install", THole "pkg"] Fact
                   [SLit "install.", SHole "pkg"] [SHole "pkg"]
           installRule = MapRule "r" Fact ["install", "<pkg>"]
                    [ Emit ["environment","systemPackages"] (VList [VStr [PHole "value"]]) ]
@@ -272,7 +272,7 @@ main = hspec $ do
       -- crystallizes to a DISTINCT captured subject (install.<pkgs>), so the
       -- human base does not conflict; the rule emits a VTail rhs to the COMMON
       -- environment.systemPackages, so resolve assembles both VLists into one.
-      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated
+      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact
                   [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
           tailRule = MapRule "r" Fact ["install", "<pkg>"]
                    [ Emit ["environment","systemPackages"] (VTail Nothing "value") ]
@@ -292,7 +292,7 @@ main = hspec $ do
       -- derivations), so the module carries [ pkgs.htop pkgs.ripgrep pkgs.tmux ],
       -- the shape environment.systemPackages demands. This is the capability
       -- the string-tail form above could not express (it would emit strings).
-      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated
+      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact
                   [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
           tailRule = MapRule "r" Fact ["install", "<pkg>"]
                    [ Emit ["environment","systemPackages"] (VTail (Just HPkg) "value") ]
@@ -563,7 +563,7 @@ main = hspec $ do
   describe "generate minting (engine-synthesis plan: whole-engine candidates)" $ do
     it "parses the three item forms and assembles an engine" $ do
       let reply = T.unlines
-            [ "0.95 p1 pattern the bank drops files into <loc> => fact feed.source stated \"<loc>\""
+            [ "0.95 p1 pattern the bank drops files into <loc> => fact feed.source \"<loc>\""
             , "0.9 r1 match fact feed.source => systemd.services.i.environment.INBOX \"\\\"<value>\\\"\""
             , "0.85 q1 demand feed.source \"where do the files arrive?\""
             , "0.95 a1 expect systemd.services.i.environment.INBOX from feed.source"
@@ -579,7 +579,7 @@ main = hspec $ do
       -- Regression (kernel review): a loose line starting with a domain word
       -- like "match" must mint as a pattern, not be misrouted to the rule
       -- parser. The leading 'pattern' keyword makes the kind explicit.
-      let reply = "0.95 p1 pattern match <a> to <b> => fact link.p stated \"<a> <b>\""
+      let reply = "0.95 p1 pattern match <a> to <b> => fact link.p \"<a> <b>\""
           (errs, cs) = parseEngineCandidates reply
       errs `shouldBe` []
       case map icItem cs of
@@ -589,8 +589,8 @@ main = hspec $ do
     it "skips fences and comments, collects malformed lines as errors" $ do
       let reply = T.unlines
             [ "```", "# note", ""
-            , "0.9 p1 pattern every bank row becomes one <e> => oblige feed.ingest stated \"<e>\""
-            , "2.0 p2 pattern x => fact y stated \"z\""   -- confidence out of range
+            , "0.9 p1 pattern every bank row becomes one <e> => oblige feed.ingest \"<e>\""
+            , "2.0 p2 pattern x => fact y \"z\""   -- confidence out of range
             , "0.9 r9 match fact feed.x => a.b \"<mystery>\""  -- unknown emit hole
             , "```"
             ]
@@ -757,7 +757,7 @@ main = hspec $ do
 
     it "applies bindings to build subject and assertion" $ do
       let p = patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
-                Fact Stated [SLit "feed.source"] [SHole "loc"]
+                Fact [SLit "feed.source"] [SHole "loc"]
       applyPattern p (Map.fromList [("loc", "inbox/")])
         `shouldBe` [(Subject ["feed", "source"], Fact, Assertion "inbox/", Stated)]
 
@@ -779,30 +779,30 @@ main = hspec $ do
     -- the tail is a generic "bind the rest" capability; how items are
     -- separated is the minted pattern's affair (here, comma+space prose).
     it "a trailing <name.tail> binds the rest of the tokens, joined by space" $ do
-      let p   = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SHole "pkgs"] [SHole "value"]
+      let p   = patOne "p" [TLit "install", TTail "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
           toks = tokenizeLine "install htop, ripgrep, tmux."
       matchTemplate (pTemplate p) toks `shouldBe` Just (Map.fromList [("pkgs", "htop ripgrep tmux")])
     it "a tail hole matching zero tokens fails (deduce-or-fail, never guess)" $ do
-      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SHole "pkgs"] [SHole "value"]
+      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
       matchTemplate (pTemplate p) (tokenizeLine "install") `shouldBe` Nothing
     it "a tail hole is still a binding a target hole may use" $ do
       -- holesOf must include a tail name, or a target <pkgs> bound only by a
       -- tail would be rejected as loose on read (applyPattern would be partial).
-      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SHole "pkgs"] [SHole "value"]
+      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
       holesOf p `shouldBe` ["pkgs"]
     it "a <name.tail> template token round-trips through the .lang store" $ do
-      let p  = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated [SLit "install"] [SHole "pkgs"]
+      let p  = patOne "p" [TLit "install", TTail "pkgs"] Fact [SLit "install"] [SHole "pkgs"]
           rt = decisionToPattern . patternToDecision
       rt p `shouldBe` Right p
     it "a tail hole must be the last template token" $
-      parsePatternBody "p" "install <pkgs.tail> on <host> => fact pkg stated \"<value>\""
+      parsePatternBody "p" "install <pkgs.tail> on <host> => fact pkg \"<value>\""
         `shouldSatisfy` isLeft
 
   describe "crystallize (crystallization plan: three outcomes)" $ do
     let sourceP = patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
-                    Fact Stated [SLit "feed.source"] [SHole "loc"]
+                    Fact [SLit "feed.source"] [SHole "loc"]
         obligeP = patOne "p2" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "one", THole "e"]
-                    Oblige Stated [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
+                    Oblige [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
 
     it "a line matched by one pattern crystallizes to one decision" $ do
       case crystallize "prog" [sourceP, obligeP] "the bank drops files into inbox/." of
@@ -817,8 +817,8 @@ main = hspec $ do
         `shouldSatisfy` \r -> case r of Left [NoPattern 1 _] -> True; _ -> False
 
     it "a line matched by two patterns is Overlapping (orthogonality)" $ do
-      let a = patOne "a" [THole "x", TLit "hour"] Fact Stated [SLit "feed.cadence"] [SHole "x"]
-          b = patOne "b" [TLit "every", THole "y"] Fact Stated [SLit "feed.cadence"] [SHole "y"]
+      let a = patOne "a" [THole "x", TLit "hour"] Fact [SLit "feed.cadence"] [SHole "x"]
+          b = patOne "b" [TLit "every", THole "y"] Fact [SLit "feed.cadence"] [SHole "y"]
       crystallize "prog" [a, b] "every hour"
         `shouldBe` Left [Overlapping 1 ["a", "b"]]
 
@@ -828,7 +828,7 @@ main = hspec $ do
 
     it "hole re-instantiation always crystallizes (edit-tolerance by construction)" $ do
       let setP = patOne "set" [TLit "set", THole "k", TLit "to", THole "v"]
-                   Fact Stated [SLit "cfg.", SHole "k"] [SHole "v"]
+                   Fact [SLit "cfg.", SHole "k"] [SHole "v"]
       property $ forAll ((,) <$> safeToken <*> safeToken) $ \(k, v) ->
         let line = T.unwords ["set", k, "to", v]
          in case crystallize "p" [setP] line of
@@ -841,14 +841,14 @@ main = hspec $ do
     -- must stay ONE subject segment, not be split by the dot-joined path form.
     it "keeps a dot inside a captured value as one subject segment" $ do
       let routeP = patOne "pr" [TLit "-", THole "path", TLit "is", THole "body"]
-                     Fact Stated [SLit "route.", SHole "path", SLit ".body"] [SHole "body"]
+                     Fact [SLit "route.", SHole "path", SLit ".body"] [SHole "body"]
       case crystallize "prog" [routeP] "- /file.json is x" of
         Right b -> map dSubject (toList b) `shouldBe` [Subject ["route", "/file.json", "body"]]
         Left e  -> expectationFailure ("unexpected crystallize error: " ++ show e)
 
     it "captures a quoted multi-word value into a bulleted route (gap 2)" $ do
       let routeP = patOne "pr" [TLit "-", THole "path", TLit "returns", TLit "text", THole "body"]
-                     Fact Stated [SLit "route.", SHole "path"] [SHole "body"]
+                     Fact [SLit "route.", SHole "path"] [SHole "body"]
       case crystallize "prog" [routeP] "- /hello returns text \"hello world\"" of
         Right b -> case toList b of
           [d] -> (dSubject d, dAssertion d) `shouldBe`
@@ -863,8 +863,8 @@ main = hspec $ do
     let denseP = Pattern "p1"
                    [ TLit "http", TLit "server", TLit "in", THole "lang"
                    , TLit "on", TLit "port", THole "port" ]
-                   [ PatEmit Steer Stated [SLit "server.language"] [SHole "lang"]
-                   , PatEmit Fact  Stated [SLit "http.port"]       [SHole "port"] ]
+                   [ PatEmit Steer [SLit "server.language"] [SHole "lang"]
+                   , PatEmit Fact [SLit "http.port"]       [SHole "port"] ]
         roundTrip = decisionToPattern . patternToDecision
 
     it "applyPattern yields one tuple per emit" $
@@ -880,7 +880,7 @@ main = hspec $ do
         Left e  -> expectationFailure ("unexpected crystallize error: " ++ show e)
 
     it "a one-emit pattern keeps the bare per-line id (backward compatible)" $
-      case crystallize "prog" [patOne "p" [TLit "port", THole "n"] Fact Stated [SLit "http.port"] [SHole "n"]] "port 8080" of
+      case crystallize "prog" [patOne "p" [TLit "port", THole "n"] Fact [SLit "http.port"] [SHole "n"]] "port 8080" of
         Right b -> map dId (toList b) `shouldBe` [DecisionId "d1"]
         Left e  -> expectationFailure ("unexpected crystallize error: " ++ show e)
 
@@ -888,7 +888,7 @@ main = hspec $ do
       roundTrip denseP `shouldBe` Right denseP
 
     it "an assertion containing '; ' is not mis-split into a second emit" $ do
-      let p = patOne "p" [TLit "note", THole "x"] Fact Stated [SLit "n"] [SLit "a ; b ", SHole "x"]
+      let p = patOne "p" [TLit "note", THole "x"] Fact [SLit "n"] [SLit "a ; b ", SHole "x"]
       roundTrip p `shouldBe` Right p
 
   describe "engine data (engine-synthesis plan: rules and demands as data)" $ do
@@ -961,7 +961,7 @@ main = hspec $ do
     it "end to end: two routes fan out to two path-keyed options" $ do
       let routeP = Pattern "pr"
                      [ TLit "-", THole "path", TLit "=>", TLit "status", THole "code" ]
-                     [ PatEmit Fact Stated [SLit "route.", SHole "path", SLit ".status"] [SHole "code"] ]
+                     [ PatEmit Fact [SLit "route.", SHole "path", SLit ".status"] [SHole "code"] ]
           routeRule = MapRule "r" Fact ["route", "<path>", "status"]
                    [ Emit ["environment", "etc", "<path>", "text"] (VStr [PHole "value"]) ]
           prog = "- /hello => status 200\n- /bye => status 404"
@@ -1153,9 +1153,9 @@ main = hspec $ do
     let engine = EngineData
           { edPatterns =
               [ patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
-                  Fact Stated [SLit "feed.source"] [SHole "loc"]
+                  Fact [SLit "feed.source"] [SHole "loc"]
               , patOne "p2" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "one", THole "e"]
-                  Oblige Stated [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
+                  Oblige [SLit "feed.ingest"] [SLit "every bank row becomes one ", SHole "e"]
               ]
           , edRules =
               [ MapRule "r1" Oblige ["feed", "ingest"]
@@ -1176,7 +1176,7 @@ main = hspec $ do
       -- Regression (kernel review): readLang lost the line number for body
       -- sub-grammar errors. Line 2 here carries a malformed rule body.
       let src = T.unlines
-            [ "p1 meta lang.pattern.p1 stated \"x => fact y stated \\\"z\\\"\" @gen:x"
+            [ "p1 meta lang.pattern.p1 stated \"x => fact y \\\"z\\\"\" @gen:x"
             , "r1 meta engine.rule.r1 stated \"not-a-rule-body\" @gen:x"
             ]
       case readLang src of
@@ -1204,29 +1204,44 @@ main = hspec $ do
       record "m" HomeManager 0.7 "sp" "prog" "reply"
         `shouldSatisfy` T.isInfixOf "target: home-manager"
 
+    it "emit grammar carries no strength: body parses and applies to a Stated fact" $
+      -- A pattern reads a program line the human wrote, so the kernel fixes the
+      -- emitted decision to Stated; there is no strength token to write or drop.
+      case parsePatternBody "ps" "say <msg> => fact out \"<msg>\"" of
+        Right p  -> applyPattern p (Map.fromList [("msg", "hi")])
+                      `shouldBe` [(Subject ["out"], Fact, Assertion "hi", Stated)]
+        Left e   -> expectationFailure (T.unpack e)
+
+    it "a stray 'stated' token is read as the assertion, not a strength slot" $
+      -- No lenient backward-compat: the old <kind> <subject> <strength>
+      -- \"...\" form no longer has a strength slot, so 'stated' where a quoted
+      -- assertion is expected fails loud rather than being silently absorbed.
+      parsePatternBody "po" "say <msg> => fact out stated \"<msg>\""
+        `shouldSatisfy` isLeft
+
     it "reads a hole with glued trailing punctuation: '<when>.' binds <when>" $
-      case parsePatternBody "p9" "back up <src> every <when>. => fact backup.job stated \"<src> <when>\"" of
+      case parsePatternBody "p9" "back up <src> every <when>. => fact backup.job \"<src> <when>\"" of
         Right p -> pTemplate p `shouldBe`
           [TLit "back", TLit "up", THole "src", TLit "every", THole "when"]
         Left e  -> expectationFailure (T.unpack e)
 
     it "reads a quoted hole \"<body>\" in a template as a capturing hole (gap 2)" $
-      case parsePatternBody "pr" "- <path> returns text \"<body>\" => fact route.text stated \"<path> <body>\"" of
+      case parsePatternBody "pr" "- <path> returns text \"<body>\" => fact route.text \"<path> <body>\"" of
         Right p -> pTemplate p `shouldBe`
           [TLit "-", THole "path", TLit "returns", TLit "text", THole "body"]
         Left e  -> expectationFailure (T.unpack e)
 
     it "splits on the LAST unquoted => so a template may itself contain => (route arrow)" $
-      case parsePatternBody "pr2" "- <path> => status <code> \"<body>\" => fact route.<path> stated \"<path> <code> <body>\"" of
+      case parsePatternBody "pr2" "- <path> => status <code> \"<body>\" => fact route.<path> \"<path> <code> <body>\"" of
         Right p -> do
           pTemplate p `shouldBe`
             [TLit "-", THole "path", TLit "=>", TLit "status", THole "code", THole "body"]
-          pEmits p `shouldBe` [PatEmit Fact Stated [SLit "route.", SHole "path"] [SHole "path", SLit " ", SHole "code", SLit " ", SHole "body"]]
+          pEmits p `shouldBe` [PatEmit Fact [SLit "route.", SHole "path"] [SHole "path", SLit " ", SHole "code", SLit " ", SHole "body"]]
         Left e  -> expectationFailure (T.unpack e)
 
     it "rejects a pattern whose target hole is not bound by the template" $ do
-      let bad = (patternToDecision (patOne "p1" [THole "loc"] Fact Stated [SLit "feed.source"] [SHole "loc"]))
-                  { dAssertion = Assertion "<loc> => fact feed.source stated \"<missing>\"" }
+      let bad = (patternToDecision (patOne "p1" [THole "loc"] Fact [SLit "feed.source"] [SHole "loc"]))
+                  { dAssertion = Assertion "<loc> => fact feed.source \"<missing>\"" }
       decisionToPattern bad `shouldSatisfy` isLeft
 
   -- Corpus pin (crystallization + engine-synthesis plans): a whole feed engine
@@ -1238,11 +1253,11 @@ main = hspec $ do
         feedEngine = EngineData
           { edPatterns =
               [ patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "csv", TLit "files", TLit "into", THole "loc"]
-                  Fact Stated [SLit "feed.source"] [SHole "loc"]
+                  Fact [SLit "feed.source"] [SHole "loc"]
               , patOne "p2" [TLit "the", TLit "bank", TLit "delivers", TLit "new", TLit "files", TLit "every", THole "sched"]
-                  Fact Stated [SLit "feed.cadence"] [SHole "sched"]
+                  Fact [SLit "feed.cadence"] [SHole "sched"]
               , patOne "p3" [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "exactly", TLit "one", THole "rec"]
-                  Oblige Stated [SLit "feed.ingest"] [SHole "rec"]
+                  Oblige [SLit "feed.ingest"] [SHole "rec"]
               ]
           , edRules =
               [ MapRule "r1" Oblige ["feed", "ingest"]
@@ -1309,9 +1324,9 @@ main = hspec $ do
     let eng = EngineData
           { edPatterns =
               [ patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "csv", TLit "files", TLit "into", THole "loc"]
-                  Fact Stated [SLit "feed.source"] [SHole "loc"]
+                  Fact [SLit "feed.source"] [SHole "loc"]
               , patOne "p2" [TLit "the", TLit "bank", TLit "delivers", TLit "new", TLit "files", TLit "every", THole "sched"]
-                  Fact Stated [SLit "feed.cadence"] [SHole "sched"]
+                  Fact [SLit "feed.cadence"] [SHole "sched"]
               ]
           , edRules = []
           , edDemands =
@@ -1648,9 +1663,9 @@ main = hspec $ do
         p2t = [TLit "the", TLit "bank", TLit "delivers", TLit "new", TLit "files", TLit "every", THole "sched"]
         p3t = [TLit "every", TLit "bank", TLit "row", TLit "becomes", TLit "exactly", TLit "one", THole "rec"]
         pats =
-          [ patOne "p1" p1t Fact   Stated [SLit "feed.source"]  [SHole "loc"]
-          , patOne "p2" p2t Fact   Stated [SLit "feed.cadence"] [SHole "sched"]
-          , patOne "p3" p3t Oblige Stated [SLit "feed.ingest"]  [SHole "rec"]
+          [ patOne "p1" p1t Fact [SLit "feed.source"]  [SHole "loc"]
+          , patOne "p2" p2t Fact [SLit "feed.cadence"] [SHole "sched"]
+          , patOne "p3" p3t Oblige [SLit "feed.ingest"]  [SHole "rec"]
           ]
         svc seg = ["systemd", "services", "ledger-ingest"] ++ seg
         rules =

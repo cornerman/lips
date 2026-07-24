@@ -11,7 +11,7 @@
 --
 -- Pattern sub-grammar inside the assertion:
 --
--- > <template>  =>  <kind> <subject> <strength> "<assertion>" ; <kind> <subject> <strength> "<assertion>" ...
+-- > <template>  =>  <kind> <subject> "<assertion>" ; <kind> <subject> "<assertion>" ...
 --
 -- A pattern emits one decision per @ ; @-separated clause (mirroring the rule
 -- back half), so one dense loose line can state several facts. A single emit
@@ -158,7 +158,6 @@ renderBody p =
     renderEmit e =
       kindText (peKind e)
         <> " " <> renderParts (peSubject e)
-        <> " " <> strengthText (peStrength e)
         <> " " <> quoteParts (peAssertion e)
 
 renderTplTok :: TplTok -> Text
@@ -211,14 +210,16 @@ parseBody pid body = do
     then Right p
     else Left ("pattern " <> pid <> ": target holes not bound by template: " <> T.intercalate "," loose)
   where
+    -- Emit grammar is <kind> <subject> "<assertion>": no strength token. A
+    -- pattern reads a program line the human wrote, so 'applyPattern' fixes the
+    -- emitted decision to 'Stated'; there is nothing for the mint to choose or
+    -- forget here.
     parseEmit t = do
       (kindTok, r1) <- firstToken t ("pattern " <> pid <> ": missing kind")
       (subjTok, r2) <- firstToken r1 ("pattern " <> pid <> ": missing subject")
-      (strTok,  r3) <- firstToken r2 ("pattern " <> pid <> ": missing strength")
       kind <- maybe (Left ("pattern " <> pid <> ": unknown kind " <> kindTok)) Right (lookup kindTok kindTable)
-      str  <- maybe (Left ("pattern " <> pid <> ": unknown strength " <> strTok)) Right (lookup strTok strengthTable)
-      assn <- parseQuoted (T.stripStart r3)
-      Right (PatEmit kind str (parseHoley subjTok) (parseHoley assn))
+      assn <- parseQuoted (T.stripStart r2)
+      Right (PatEmit kind (parseHoley subjTok) (parseHoley assn))
 
 -- The pattern body is @<template> => <decision>@, but a template may itself
 -- contain @=>@ (route arrows, lambdas and mappings are common domain syntax).
@@ -311,11 +312,5 @@ parseQuoted t = case T.uncons t of
 kindTable :: [(Text, Kind)]
 kindTable = [(kindText k, k) | k <- [minBound .. maxBound]]
 
-strengthTable :: [(Text, Strength)]
-strengthTable = [(strengthText s, s) | s <- [minBound .. maxBound]]
-
 kindText :: Kind -> Text
 kindText = T.toLower . T.pack . show
-
-strengthText :: Strength -> Text
-strengthText = T.toLower . T.pack . show
