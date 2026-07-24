@@ -1329,6 +1329,48 @@ main = hspec $ do
           ciSnippet i0 `shouldBe` "the bank drops csv files into ${1:loc}"
         _ -> expectationFailure "expected two completion items"
 
+    -- Contextual completion: complete the sentence a line has already started.
+    -- Already-typed holes become literals; only holes still to type become
+    -- tab-stops; a fragment at the cursor completes the literal it prefixes.
+    let at line col = completionItemsAt (edPatterns eng) line col
+
+    it "offers every whole sentence on an empty line" $
+      at "" 0 `shouldBe` completionItems (edPatterns eng)
+
+    it "keeps the common prefix and completes both patterns at a branch" $ do
+      let items = at "the bank " (T.length "the bank ")
+      map ciLabel items `shouldBe`
+        [ "the bank drops csv files into <loc>"
+        , "the bank delivers new files every <sched>" ]
+      map ciSnippet items `shouldBe`
+        [ "the bank drops csv files into ${1:loc}"
+        , "the bank delivers new files every ${1:sched}" ]
+
+    it "fills an already-typed hole as a literal, completes the rest" $ do
+      -- cursor right after the value, before the line is whole: loc still unfilled
+      let items = at "the bank drops csv files into inbox/ and "
+                     (T.length "the bank drops csv files into inbox/ and ")
+      -- 'and' matches no literal after loc -> p1 is outgrown, so no candidates
+      items `shouldBe` []
+
+    it "offers nothing once the line already matches a pattern whole" $
+      at "the bank drops csv files into inbox/" (T.length "the bank drops csv files into inbox/")
+        `shouldBe` []
+
+    it "completes a fragment of the next literal (cursor mid-word)" $ do
+      let items = at "the bank dr" (T.length "the bank dr")
+      map ciLabel items `shouldBe` [ "the bank drops csv files into <loc>" ]
+      map ciSnippet items `shouldBe` [ "the bank drops csv files into ${1:loc}" ]
+
+    it "prefers the literal a fragment prefixes over an unrelated branch" $ do
+      -- 'dr' prefixes 'drops' but not 'delivers', so only p1 is offered
+      length (at "the bank dr" (T.length "the bank dr")) `shouldBe` 1
+
+    it "does not offer a pattern the prefix has outgrown" $ do
+      -- extra tokens after a filled loc: the line exceeds p1
+      at "the bank drops csv files into inbox/ more" (T.length "the bank drops csv files into inbox/ more")
+        `shouldBe` []
+
     it "derives an error diagnostic on a line that escapes the language" $ do
       let ds = diagsOf (diagnose "f" eng "encrypt everything at rest.")
       case [x | x <- ds, dgSeverity x == 1] of
