@@ -110,8 +110,18 @@ renderModule winners = do
     subjOf (s, _, _) = s
     valOf  (_, _, v) = v
     parseOpt (s, d) = case parseValue (unAssertion (dAssertion d)) of
-      Right v  -> Right (s, d, v)
+      Right v
+        | isUnfilledTail v -> Left (RMalformed s "unfilled <value.tail> reached realize (a tail hole must be filled to a list before storage; a non-firing rule stores nothing)")
+        | otherwise        -> Right (s, d, v)
       Left e   -> Left (RMalformed s e)
+    -- An unfilled VTail is structurally unreachable in production (fillValue
+    -- converts VTail -> VList at the refine door; a non-firing rule emits no
+    -- decision), but "fail loud, never guess" is a kernel invariant, so a
+    -- future path that let one slip through is caught here rather than
+    -- rendering the literal "<value.tail>" into a module (renderRealized's
+    -- catch-all would otherwise emit it).
+    isUnfilledTail (VTail _) = True
+    isUnfilledTail _         = False
 
 rootedAtArtifact :: Subject -> Bool
 rootedAtArtifact (Subject ("artifact" : _)) = True

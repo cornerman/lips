@@ -400,6 +400,18 @@ main = hspec $ do
       let clash = [mk "a" "x" "true" Stated, mk "b" "x" "false" Stated]
       realizeReplace (fromList clash) `shouldSatisfy` isLeft
 
+    -- An unfilled <value.tail> (VTail) must never silently render as the
+    -- literal string "<value.tail>" into a module. In production fillValue
+    -- always converts VTail -> VList before storage, and a non-firing rule
+    -- stores nothing, so this path is unreachable today -- but "fail loud,
+    -- never guess" is a kernel invariant enforced structurally, not trusted to
+    -- "currently unreachable." If a future change lets an unfilled tail reach
+    -- realize, it must fail through the error channel, not emit a bogus string.
+    it "refuses to realize an unfilled <value.tail> (fail loud, not a literal)" $ do
+      let g = (mk "g" "x" "<value.tail>" Stated)
+                { dSubject = Subject ["environment", "systemPackages"] }
+      realizeReplace (fromList [g]) `shouldSatisfy` isLeft
+
     -- A value-keyed segment (e.g. a route path) is often not a bare Nix
     -- identifier, so it must be string-quoted in the emitted attribute path;
     -- plain identifier segments stay unquoted (existing engines unchanged).
