@@ -19,7 +19,7 @@ module Lips.Kernel.Realize
   , realize
   ) where
 
-import           Data.Char       (isAlpha, isAlphaNum, isSpace)
+import           Data.Char       (isAlpha, isAlphaNum)
 import           Data.List       (partition, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -27,7 +27,8 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Base         (Base, Conflict, resolve)
 import Lips.Kernel.Decision
-import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue)
+import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
+                                  valueArtifactNames)
 
 -- | Why a ground base could not be projected to a module. Every case is an
 -- engine defect (a minted rule that emitted an ill-formed artifact group or a
@@ -40,6 +41,9 @@ data RealizeError
     RDangling [Text]
   | -- | A malformed artifact group: the artifact name and the reason.
     RBadArtifact Text Text
+  | -- | An option assertion that is not a canonical 'Value' (an engine defect;
+    --    after the R1 canonical-storage refactor every assertion must re-parse).
+    RMalformed Subject Text
   deriving (Eq, Show)
 
 -- | Realize a base to a NixOS module, or report why it cannot. Deterministic:
@@ -55,61 +59,36 @@ realize base = do
 -- become option assignments; realize gathers them into a @let@-bound
 -- derivation the module can reference as @${artifact.<name>}@.
 renderModule :: [(Subject, Decision)] -> Either RealizeError Text
-renderModule winners =
+renderModule winners = do
   let (arts, opts) = partition (rootedAtArtifact . fst) winners
       defined  = [ n | (Subject ("artifact" : n : _), _) <- arts ]
-      refs     = concatMap (artifactRefs . unAssertion . dAssertion . snd) opts
+  -- Each option assertion is canonical 'Value' text (stored by 'fillValue'),
+  -- so parse it once: the Value drives both artifact-reference detection
+  -- (structural, not text-scanned) and the single canonical->Nix render. A
+  -- non-Value assertion is an engine defect (RMalformed), never spliced raw.
+  optVals <- traverse parseOpt opts
+  let refs     = concatMap (valueArtifactNames . valOf) optVals
       dangling = [ r | r <- refs, r `notElem` defined ]
-   in if not (null dangling)
-        -- Deduce-or-fail: never emit a module that references an artifact no
-        -- group builds. An engine bug, so it fails loud naming the culprits.
-        then Left (RDangling dangling)
-        else do
-          entries <- artifactEntries arts
-          Right $ T.unlines $
-            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
-            , "{ config, lib, pkgs, ... }:"
-            ]
-              ++ letBlock entries
-              ++ ["{"]
-              ++ concatMap assignment (sortOn (path . fst) opts)
-              ++ ["}"]
-
--- | Artifact names a rendered value references, in either realized form: a
--- bare @artifact.<name>@ standing as a value (a list element or top-level),
--- or a @${artifact.<name>}@ interpolation inside a string. Quote-aware, so the
--- literal token @artifact.@ appearing as plain text inside a string is not
--- mistaken for a reference (only @${artifact.@ counts there).
-artifactRefs :: Text -> [Text]
-artifactRefs = outside
+  if not (null dangling)
+    -- Deduce-or-fail: never emit a module that references an artifact no
+    -- group builds. An engine bug, so it fails loud naming the culprits.
+    then Left (RDangling dangling)
+    else do
+      entries <- artifactEntries arts
+      Right $ T.unlines $
+        [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+        , "{ config, lib, pkgs, ... }:"
+        ]
+          ++ letBlock entries
+          ++ ["{"]
+          ++ concatMap assignment (sortOn (path . subjOf) optVals)
+          ++ ["}"]
   where
-    -- Outside a string, bare values are whitespace/bracket-separated tokens; a
-    -- token that STARTS with `artifact.` is a real reference. Matching only at
-    -- a token boundary (not any offset) is what keeps a package path whose own
-    -- segment happens to be @artifact@ (e.g. @pkgs.x.artifact.y@) from being
-    -- misread as a reference and failing realize with a bogus dangling error.
-    outside s = case T.uncons s of
-      Nothing        -> []
-      Just ('"', r)  -> inside r
-      Just (c, r)
-        | isSpace c || c == '[' || c == ']' -> outside r
-        | otherwise ->
-            let (tok, r') = T.break boundary s
-             in case T.stripPrefix "artifact." tok of
-                  Just nm -> name nm : outside r'
-                  Nothing -> outside r'
-    -- Inside a string only a `${artifact.<name>}` interpolation is a reference;
-    -- an escaped char is skipped so a `\"` does not end the string early.
-    inside s = case T.uncons s of
-      Nothing         -> []
-      Just ('\\', r)  -> inside (T.drop 1 r)
-      Just ('"', r)   -> outside r
-      Just ('$', r) | Just b <- T.stripPrefix "{artifact." r -> name b : inside (rest b)
-      Just (_, r)     -> inside r
-    boundary c = isSpace c || c == ']' || c == '"'
-    name = T.takeWhile isNameChar
-    rest = T.dropWhile isNameChar
-    isNameChar c = c `elem` ("-_" :: String) || isAlphaNum c
+    subjOf (s, _, _) = s
+    valOf  (_, _, v) = v
+    parseOpt (s, d) = case parseValue (unAssertion (dAssertion d)) of
+      Right v  -> Right (s, d, v)
+      Left e   -> Left (RMalformed s e)
 
 rootedAtArtifact :: Subject -> Bool
 rootedAtArtifact (Subject ("artifact" : _)) = True
@@ -139,11 +118,16 @@ artifactEntries arts = do
       Left (RBadArtifact (T.intercalate "." segs) "artifact decision has no <name> segment")
     entry (n, parts) = do
       b <- builderOf n parts
+      argLines <- traverse argLine (sortOn fst [ (k, d) | (Subject ("artifact" : _ : "args" : k), d) <- parts ])
       Right $
         [ n <> " = pkgs." <> b <> " {" ]
-          ++ [ "  " <> T.intercalate "." k <> " = " <> unAssertion (dAssertion d) <> ";"
-             | (Subject ("artifact" : _ : "args" : k), d) <- sortOn fst parts ]
+          ++ argLines
           ++ [ "};" ]
+    -- One artifact arg: its path and the realized Nix of its (canonical)
+    -- Value assertion. A non-Value arg is an engine defect, loud.
+    argLine (k, d) = case parseValue (unAssertion (dAssertion d)) of
+      Right v  -> Right ("  " <> T.intercalate "." k <> " = " <> renderRealized v <> ";")
+      Left e   -> Left (RMalformed (dSubject d) e)
 
 -- | The builder is a plain string naming a dotted path under @pkgs@; realize
 -- splices it as @pkgs.<path>@ (a function, not a string). A missing or
@@ -163,10 +147,13 @@ unAssertion (Assertion a) = a
 
 -- | One option assignment, preceded by a provenance comment so any line is
 -- traceable to the decision that produced it (spec section 2, provenance).
-assignment :: (Subject, Decision) -> [Text]
-assignment (subj, d) =
+-- The value is the pre-parsed 'Value', rendered to Nix once here (the single
+-- canonical->Nix render point), so artifact refs render bare and strings stay
+-- quoted.
+assignment :: (Subject, Decision, Value) -> [Text]
+assignment (subj, d, v) =
   [ "  # " <> provComment (dProv d)
-  , "  " <> path subj <> " = " <> unAssertion (dAssertion d) <> ";"
+  , "  " <> path subj <> " = " <> renderRealized v <> ";"
   ]
 
 path :: Subject -> Text

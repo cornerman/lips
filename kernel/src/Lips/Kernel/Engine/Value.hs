@@ -47,6 +47,7 @@ module Lips.Kernel.Engine.Value
   , fillValue
   , holeIndex
   , valueRefsDerivation
+  , valueArtifactNames
   ) where
 
 import           Data.Char      (isDigit, isSpace)
@@ -111,6 +112,19 @@ valueRefsDerivation (VList vs) = any valueRefsDerivation vs
 valueRefsDerivation (VAttr fs) = any (valueRefsDerivation . snd) fs
 valueRefsDerivation (VRef _)   = True
 valueRefsDerivation _          = False
+
+-- | The artifact names a value references, anywhere inside it: a string
+-- interpolation @${artifact.<name>}@ or a bare whole-value reference. Used by
+-- 'Lips.Kernel.Realize.realize' to detect a dangling artifact reference:
+-- once realize parses each assertion to a 'Value', the references are
+-- structural facts, not text to scan (replacing the old quote-aware text
+-- scanner that the canonical-assertion refactor made redundant).
+valueArtifactNames :: Value -> [Text]
+valueArtifactNames (VStr ps)         = [ n | PArt n <- ps ]
+valueArtifactNames (VList vs)        = concatMap valueArtifactNames vs
+valueArtifactNames (VAttr fs)        = concatMap (valueArtifactNames . snd) fs
+valueArtifactNames (VRef (RArt n))   = [n]
+valueArtifactNames _                 = []
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.
@@ -392,10 +406,16 @@ escape = T.replace "${" "\\${" . T.replace "\"" "\\\"" . T.replace "\\" "\\\\"
 -- value that does not fit the rule surfaces as a value the caller propagates
 -- (into 'Lips.Kernel.Refine.RewriteFailed'), never a crash. Either way program
 -- text cannot alter the value's shape.
--- | Fill holes and render for the EMITTED module (bare references via
--- 'renderRealized'); @.lang@ persistence uses 'renderValue' instead.
+-- | Fill holes and render to the CANONICAL form ('renderValue'), so the
+-- stored assertion round-trips through 'parseValue' (a ref stays @${pkgs..}@,
+-- not a bare @pkgs..@). 'Lips.Kernel.Realize.realize' is the single point that
+-- converts canonical to realized Nix ('renderRealized'); @.lang@ persistence
+-- also uses 'renderValue'. A ref stored bare would not re-parse (a bare
+-- identifier is not a value), so list aggregation -- which re-parses each
+-- contributor's assertion as a 'Value' to concatenate VList elements --
+-- depends on this canonical storage.
 fillValue :: (Text -> Either Text Text) -> Value -> Either Text Text
-fillValue pick = fmap renderRealized . fillV
+fillValue pick = fmap renderValue . fillV
   where
     fillV (VStr ps)    = VStr <$> traverse fillP ps
     fillV (VList vs)   = VList <$> traverse fillV vs

@@ -306,26 +306,28 @@ main = hspec $ do
       let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
        in realize (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
 
-    it "detects a bare artifact.<name> reference used as a list element" $ do
-      -- systemPackages is a list of derivations; a bare `artifact.weather`
-      -- element must be found (built, not dangling) even without ${...}.
+    it "detects an artifact reference in a canonical list and flags it dangling if unbuilt" $ do
+      -- systemPackages is a list of derivations; a list element references an
+      -- artifact via the canonical ${artifact.<name>} form (stored by fillValue,
+      -- detected structurally from the parsed Value, not text-scanned).
       let built =
             [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","weather","builder"] }
             , (mk "p" "x" "\"weather\"" Stated) { dSubject = Subject ["artifact","weather","args","pname"] }
-            , (mk "e" "x" "[ artifact.weather ]" Stated) { dSubject = Subject ["environment","systemPackages"] }
+            , (mk "e" "x" "[ ${artifact.weather} ]" Stated) { dSubject = Subject ["environment","systemPackages"] }
             ]
       realize (fromList built) `shouldSatisfy` isRight
-      -- a bare ref to an unbuilt artifact still fails loud
-      let dangling = [ (mk "e" "x" "[ artifact.ghost ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
+      -- a ref to an unbuilt artifact still fails loud
+      let dangling = [ (mk "e" "x" "[ ${artifact.ghost} ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
       realize (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
-      -- the literal token "artifact." inside a string is NOT a reference
+      -- the literal token "artifact." inside a string is NOT a reference: a
+      -- VStr holds it as a PLit, so valueArtifactNames finds nothing.
       let litText = [ (mk "e" "x" "\"see artifact.ghost docs\"" Stated) { dSubject = Subject ["environment","variables","NOTE"] } ]
       realize (fromList litText) `shouldSatisfy` isRight
-      -- a package path whose OWN segment is `artifact` is not a reference:
-      -- `artifact.` must match only at a token boundary, never mid-path.
-      let pkgPath = [ (mk "e" "x" "pkgs.foo.artifact.bar" Stated) { dSubject = Subject ["services","x","package"] } ]
+      -- a package whose OWN segment is 'artifact' is a package (RPkg), not an
+      -- artifact (RArt): valueArtifactNames returns [] for RPkg.
+      let pkgPath = [ (mk "e" "x" "${pkgs.foo.artifact.bar}" Stated) { dSubject = Subject ["services","x","package"] } ]
       realize (fromList pkgPath) `shouldSatisfy` isRight
-      let pkgList = [ (mk "e" "x" "[ pkgs.foo.artifact.bar ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
+      let pkgList = [ (mk "e" "x" "[ ${pkgs.foo.artifact.bar} ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
       realize (fromList pkgList) `shouldSatisfy` isRight
 
     it "fails loud (typed) on a malformed artifact group (no builder)" $
@@ -886,7 +888,14 @@ main = hspec $ do
       renderValue    (VRef (RPkg ["pkgs", "curl"]))          `shouldBe` "${pkgs.curl}"
       renderRealized (VList [VRef (RPkg ["pkgs", "curl"])])  `shouldBe` "[ pkgs.curl ]"
       renderRealized (VList [VRef (RArt "weather")])         `shouldBe` "[ artifact.weather ]"
-      fillValue (const (Right "x")) (VList [VRef (RArt "weather")]) `shouldBe` Right "[ artifact.weather ]"
+      -- R1: fillValue stores the CANONICAL form (round-trippable via parseValue,
+      -- refs stay ${...}), so assembly can re-parse contributor assertions as
+      -- Values; realize is the single canonical->Nix render point.
+      fillValue (const (Right "x")) (VList [VRef (RArt "weather")]) `shouldBe` Right "[ ${artifact.weather} ]"
+      -- the canonical stored form re-parses to the same Value (the round-trip)
+      case fillValue (const (Right "x")) (VList [VRef (RArt "weather")]) of
+        Right stored -> parseValue stored `shouldBe` Right (VList [VRef (RArt "weather")])
+        Left e       -> expectationFailure ("fillValue failed: " <> show e)
 
     it "parses and round-trips an attrset (a listOf-submodule element, e.g. ensureUsers)" $ do
       parseValue "{ name = \"app\"; ensureDBOwnership = true; }"

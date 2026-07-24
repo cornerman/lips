@@ -80,4 +80,10 @@ runBase budget rules demands base0 = do
                  Left (RDangling ns)   -> Left (Unrealizable
                    ["references artifact(s) nothing builds: " <> T.intercalate ", " ns])
                  Left (RBadArtifact n why) -> Left (Unrealizable ["artifact " <> n <> ": " <> why])
+                 Left (RMalformed s e)    -> Left (Unrealizable
+                   ["option " <> subjText s <> ": " <> e])
     leftovers -> Left (Unmapped leftovers)
+
+-- | Render a subject as a dotted path for a plain-language error.
+subjText :: Subject -> Text
+subjText (Subject ss) = T.intercalate "." ss
