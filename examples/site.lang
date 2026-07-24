@@ -1,6 +1,6 @@
-p1 meta lang.pattern.p1 stated "serve the static files in <root> at <host> => fact site.root stated \"<root>\" ; fact site.host stated \"<host>\"" @gen:d1916b604c650915
-p2 meta lang.pattern.p2 stated "enable https with a let's encrypt certificate => fact site.https stated \"true\"" @gen:d1916b604c650915
-p3 meta lang.pattern.p3 stated "the let's encrypt account email is <email> => fact acme.email stated \"<email>\"" @gen:d1916b604c650915
+p1 meta lang.pattern.p1 stated "serve the static files in <root> at <host> => fact site.root \"<root>\" ; fact site.host \"<host>\"" @gen:d1916b604c650915
+p2 meta lang.pattern.p2 stated "enable https with a let's encrypt certificate => fact site.https \"true\"" @gen:d1916b604c650915
+p3 meta lang.pattern.p3 stated "the let's encrypt account email is <email> => fact acme.email \"<email>\"" @gen:d1916b604c650915
 q1 meta engine.demand.q1 stated "demand site.root \"which directory holds the static files to serve?\"" @gen:d1916b604c650915
 q2 meta engine.demand.q2 stated "demand site.host \"which hostname should the site be served on?\"" @gen:d1916b604c650915
 q3 meta engine.demand.q3 stated "demand acme.email \"what is the Let's Encrypt account email?\"" @gen:d1916b604c650915

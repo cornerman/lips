@@ -1,6 +1,6 @@
-p1 meta lang.pattern.p1 stated "run a postgresql database server => fact postgres.enable stated \"true\"" @gen:2c1434a7ff0cdf6c
-p2 meta lang.pattern.p2 stated "provision a database named <name> => fact postgres.database.<name> stated \"<name>\"" @gen:2c1434a7ff0cdf6c
-p3 meta lang.pattern.p3 stated "provision a user named <user> who owns the <dbname> database => fact postgres.user.<user> stated \"<user>\"" @gen:2c1434a7ff0cdf6c
+p1 meta lang.pattern.p1 stated "run a postgresql database server => fact postgres.enable \"true\"" @gen:2c1434a7ff0cdf6c
+p2 meta lang.pattern.p2 stated "provision a database named <name> => fact postgres.database.<name> \"<name>\"" @gen:2c1434a7ff0cdf6c
+p3 meta lang.pattern.p3 stated "provision a user named <user> who owns the <dbname> database => fact postgres.user.<user> \"<user>\"" @gen:2c1434a7ff0cdf6c
 r1 meta engine.rule.r1 stated "match fact postgres.enable => services.postgresql.enable \"true\"" @gen:2c1434a7ff0cdf6c
 r2 meta engine.rule.r2 stated "match fact postgres.database.<name> => services.postgresql.ensureDatabases \"[ \\\"<value>\\\" ]\"" @gen:2c1434a7ff0cdf6c
 r3 meta engine.rule.r3 stated "match fact postgres.user.<user> => services.postgresql.ensureUsers \"[ { name = \\\"<value>\\\"; ensureDBOwnership = true; } ]\"" @gen:2c1434a7ff0cdf6c
