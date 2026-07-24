@@ -1746,9 +1746,13 @@ main = hspec $ do
                     (VList [VAttr [("name", VStr [PHole "value"])
                                   ,("ensureDBOwnership", VStr [PLit "true"])]])  -- string, not bool
       map renderOptionError (checkEmits sch [good]) `shouldBe` []
+      -- Per-field TypeMismatch (no new variant): the error carries the field's
+      -- leaf path + type + value, so the regenerate door names the exact
+      -- offending field, not just the whole-element list.
+      checkEmits sch [bad] `shouldBe`
+        [ TypeMismatch "r2" ["services","postgresql","ensureUsers","ensureDBOwnership"] OTBool (VStr [PLit "true"]) ]
       map renderOptionError (checkEmits sch [bad])
-        `shouldBe` ["rule r2: option services.postgresql.ensureUsers has type "
-                  <> "OTListOf (OTOther \"submodule\") but the rule fills it with an incompatible value"]
+        `shouldBe` ["rule r2: option services.postgresql.ensureUsers.ensureDBOwnership has type boolean but the rule fills it with an incompatible value"]
 
     it "a listOf-submodule with no listed field leaves degrades to unconstrained (the schema genuinely doesn't constrain; the kernel can't either)" $ do
       let sch = Map.fromList [ (["s","users"], OTListOf (OTOther "submodule")) ]
@@ -1767,6 +1771,20 @@ main = hspec $ do
     it "flags a type mismatch" $
       checkEmits schema [ optRule "r4" ["services", "x", "port"] (VStr [PHole "value"]) ]
         `shouldBe` [ TypeMismatch "r4" ["services", "x", "port"] OTInt (VStr [PHole "value"]) ]
+    -- Q2: the mismatch message prints the HUMAN type string (the wording the
+    -- model and nixpkgs use), not the Haskell 'show' form, so a regenerate
+    -- door reads "boolean" / "list of (submodule)", not "OTBool".
+    it "renders option types as human strings in a mismatch message" $ do
+      let port = optRule "r" ["services", "x", "port"] (VStr [PHole "value"])
+          sch  = Map.fromList [ (["services","x","port"], OTInt)
+                              , (["services","x","bool"], OTBool)
+                              , (["services","x","users"], OTListOf (OTOther "(submodule)")) ]
+      map renderOptionError (checkEmits sch [ port ])
+        `shouldBe` ["rule r: option services.x.port has type integer but the rule fills it with an incompatible value"]
+      map renderOptionError (checkEmits sch [ optRule "r" ["services","x","bool"] (VStr [PLit "x"]) ])
+        `shouldBe` ["rule r: option services.x.bool has type boolean but the rule fills it with an incompatible value"]
+      map renderOptionError (checkEmits sch [ optRule "r" ["services","x","users"] (VBool True) ])
+        `shouldBe` ["rule r: option services.x.users has type list of (submodule) but the rule fills it with an incompatible value"]
     it "matches a wildcard schema segment (attrsOf-submodule instance name)" $ do
       let sch = Map.fromList [ (["services", "r", "*", "port"], OTInt) ]
       checkEmits sch [ optRule "r1" ["services", "r", "ledger", "port"] (VHole HInt "value") ]

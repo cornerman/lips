@@ -94,8 +94,12 @@ checkEmits schema rules =
             | any (\(k, _) -> isPrefixPath k path) entries -> []   -- descends into a declared option
             | otherwise -> [UnknownOption rid path]
     mismatch rid path t v =
-      [ TypeMismatch rid path t v
-      | not (valueMatches t v) || not (submoduleFieldsOk path v) ]
+      -- Whole-element mismatch (a non-submodule list, or a scalar in the wrong
+      -- slot): one TypeMismatch at the option path. For a listOf-submodule the
+      -- OTOther catch-all makes valueMatches pass here, so this arm is silent
+      -- and the per-field check below is the real gate.
+      [ TypeMismatch rid path t v | not (valueMatches t v) ]
+        ++ submoduleFieldMismatches rid path v
     -- H3: a listOf-submodule option (list of (submodule)) is field-checked
     -- when the schema lists the submodule's fields as *-wildcard leaves
     -- (services.postgresql.ensureUsers.*.ensureDBOwnership :: boolean). The
@@ -110,19 +114,24 @@ checkEmits schema rules =
     -- fields the schema does NOT list has no leaves to check against and
     -- degrades to unconstrained, which is correct (the kernel can't constrain
     -- what the schema doesn't; completeness by construction, not a guess).
-    submoduleFieldsOk path v = case v of
-      VList elems -> all (elemFieldsOk path) elems
-      _            -> True   -- non-list rhs: valueMatches already judged it
-    elemFieldsOk path (VAttr fs) = all (fieldOk path) fs
-    elemFieldsOk _    _          = True   -- a non-attrset element: OTOther
+    --
+    -- Each failing field is its OWN TypeMismatch (no new error variant): the
+    -- path carries the field name (path ++ [name], no "*" -- a listOf has no
+    -- instance key) so the regenerate door names the exact offending field,
+    -- not the whole element.
+    submoduleFieldMismatches rid path v = case v of
+      VList elems -> concatMap (elemMismatches rid path) elems
+      _            -> []
+    elemMismatches rid path (VAttr fs) =
+      [ TypeMismatch rid (path ++ [name]) ft val
+      | (name, val) <- fs
+      , Just ft <- [fieldLeaf path name]
+      , not (valueMatches ft val) ]
+    elemMismatches _    _     _          = []   -- a non-attrset element: OTOther
     -- Look up a field's leaf type under the emit path's * wildcard. The path
     -- [services,postgresql,ensureUsers] with field "ensureDBOwnership" becomes
     -- [services,postgresql,ensureUsers,*,ensureDBOwnership]; matchesPath
     -- ("*" matches any segment) resolves the concrete-instance leaf.
-    fieldOk path (name, val) =
-      case fieldLeaf path name of
-        Nothing  -> True   -- no listed leaf: unconstrained (completeness)
-        Just ft  -> valueMatches ft val
     fieldLeaf path name =
       case [ ft | (k, ft) <- entries, matchesPath k (path ++ ["*", name]) ] of
         (ft : _) -> Just ft
@@ -149,13 +158,28 @@ artifactRooted :: [Text] -> Bool
 artifactRooted ("artifact" : _) = True
 artifactRooted _               = False
 
+-- | The human wording of an option type (the nixpkgs 'type' string, not the
+-- Haskell 'show' form), so a mismatch message reads "boolean" / "list of
+-- (submodule)", not "OTBool" / "OTListOf (OTOther \"(submodule)\")". These
+-- messages feed the regenerate door, so the human wording improves the loop's
+-- convergence, not just a human's reading. 'OTOther' carries the raw type text
+-- from optionsJSON (e.g. @"(submodule)"@, @"attribute set of anything"@).
+renderOptionType :: OptionType -> Text
+renderOptionType OTBool         = "boolean"
+renderOptionType OTInt          = "integer"
+renderOptionType OTFloat        = "floating point number"
+renderOptionType OTString       = "string"
+renderOptionType OTPath         = "path"
+renderOptionType (OTListOf t)   = "list of " <> renderOptionType t
+renderOptionType (OTOther x)    = x
+
 -- | A one-line, human-facing reason, naming the rule so a rejection points
 -- straight at the offending minted line.
 renderOptionError :: OptionError -> Text
 renderOptionError (UnknownOption rid p) =
   "rule " <> rid <> ": unknown NixOS option " <> dotted p
 renderOptionError (TypeMismatch rid p t _) =
-  "rule " <> rid <> ": option " <> dotted p <> " has type " <> T.pack (show t)
+  "rule " <> rid <> ": option " <> dotted p <> " has type " <> renderOptionType t
     <> " but the rule fills it with an incompatible value"
 
 dotted :: [Text] -> Text

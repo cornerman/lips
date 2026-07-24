@@ -409,6 +409,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
   previously slipped to @nix eval@. 221/221, @-Wall@ clean, all 9 examples
   @check@ clean.
 
+  Follow-up (polish with regenerate-loop leverage): each failing field is now
+  its OWN @TypeMismatch@ (no new error variant) at @path ++ [fieldName]@ -- so
+  the message names the exact offending field
+  (@services.postgresql.ensureUsers.ensureDBOwnership@, not the whole list) and
+  its leaf type, in the human wording the model and nixpkgs use (@boolean@, not
+  the Haskell @OTBool@), via a one-line @renderOptionType@ helper. The whole-
+  element @TypeMismatch@ at the option path is kept for the non-submodule /
+  scalar case (a non-@VAttr@ element into a @OTListOf@ scalar); the two are
+  mutually exclusive for a submodule list (@OTOther@ catch-all makes
+  @valueMatches@ pass, so only the field check fires). Proven live at the real
+  door: @generate@ now reports @rule r2: option
+  services.postgresql.ensureUsers.ensureDBOwnership has type boolean but the
+  rule fills it with an incompatible value@. These messages feed the regenerate
+  door, so the specificity improves loop convergence, not just a human's
+  reading. 239/239.
+
 - **Realize refuses an unfilled @<value.tail>@ (fail loud, not a literal).**
   The list-aggregation C work added @VTail@, a tail hole whose rhs fills to
   a @VList@ of the program value's tokens. @fillValue@ always converts
