@@ -6,10 +6,11 @@
 -- grammar, and its grammar is deliberately the Nix value algebra MINUS
 -- computation (completeness plan, Target 1):
 --
--- > value  ::= string | list | bool | int | float | path | null | typed-hole | ref
+-- > value  ::= string | list | bool | int | float | path | null | typed-hole | ref | attrset
 -- > string ::= '"' (literal | ${pkgs.<dotted-path>} | <value> | <value.N>)* '"'
 -- > list   ::= '[' value* ']'
 -- > ref    ::= ${pkgs.<dotted-path>} | ${artifact.<name>}   -- a bare reference value
+-- > attrset ::= '{' (ident '=' value ';')* '}'              -- optional trailing ';'
 -- > typed-hole ::= '<' ('value' | 'value.'N) ':' ('int'|'bool'|'float'|'path') '>'
 --
 -- A @ref@ names a concrete thing (a package, a program-derived build) the
@@ -87,6 +88,13 @@ data Value
   | VNull
   | VHole HoleType Text -- ^ a bare typed hole, filled and coerced from a program token
   | VRef Ref            -- ^ a package\/artifact reference standing as a whole value
+  | VAttr [(Text, Value)] -- ^ a Nix attrset of named fields (a listOf-submodule
+                          -- element, e.g. an @ensureUsers@ entry). Keys are bare
+                          -- identifiers only (closed, injection-safe); values are
+                          -- 'Value's, so a hole inside a field fills and escapes
+                          -- like any other. No quoted keys: a field name that is
+                          -- not a bare identifier is rejected, so a program value
+                          -- can never alter the attrset's shape.
   deriving (Eq, Show)
 
 -- | Does this value interpolate a package (@${pkgs...}@) or artifact
@@ -100,6 +108,7 @@ valueRefsDerivation (VStr ps)  = any isRef ps
         isRef (PArt _) = True
         isRef _        = False
 valueRefsDerivation (VList vs) = any valueRefsDerivation vs
+valueRefsDerivation (VAttr fs) = any (valueRefsDerivation . snd) fs
 valueRefsDerivation (VRef _)   = True
 valueRefsDerivation _          = False
 
@@ -160,6 +169,7 @@ pValue raw =
         Nothing -> Left "empty rhs"
         Just ('"', rest) -> pString rest
         Just ('[', rest) -> pList (T.stripStart rest) []
+        Just ('{', rest) -> pAttr (T.stripStart rest) []
         Just ('<', more) -> pTypedHole more
         -- A ${pkgs...}/${artifact...} reference standing as a whole value (a
         -- list element or a top-level rhs), not inside a string.
@@ -227,6 +237,42 @@ pList t acc = case T.uncons t of
     (v, rest) <- pValue t
     pList (T.stripStart rest) (v : acc)
 
+-- | Parse an attrset body (the text after the opening @{@). Keys are bare
+-- identifiers (a non-identifier key is rejected, so program text can never
+-- leave the attrset's shape); values are full 'Value's. Fields are @;@-separated
+-- with an optional trailing @;@, mirroring Nix.
+pAttr :: Text -> [(Text, Value)] -> Either Text (Value, Text)
+pAttr t acc = case T.uncons t of
+  Nothing          -> Left "unterminated attrset"
+  Just ('}', rest) -> Right (VAttr (reverse acc), rest)
+  _ -> do
+    (name, afterName) <- pAttrKey t
+    let t1 = T.stripStart afterName
+    t2 <- case T.uncons t1 of
+      Just ('=', r) -> Right (T.stripStart r)
+      _ -> Left ("attrset field missing '=' after key " <> name)
+    (v, afterV) <- pValue t2
+    let t3 = T.stripStart afterV
+    case T.uncons t3 of
+      Just (';', r) -> pAttr (T.stripStart r) ((name, v) : acc)
+      Just ('}', r) -> Right (VAttr (reverse ((name, v) : acc)), r)
+      _ -> Left ("attrset field must end with ';' or '}' (after " <> name <> ")")
+
+-- | A bare-identifier attrset key: a non-empty run of @[_A-Za-z0-9]@ starting
+-- with a letter or underscore. Hyphens and quotes are rejected so the key is
+-- always a valid bare Nix attribute name (never subtraction or a string).
+pAttrKey :: Text -> Either Text (Text, Text)
+pAttrKey t =
+  let (k, rest) = T.span isKeyChar t
+   in case T.uncons k of
+        Nothing -> Left ("attrset key must be a bare identifier: " <> t)
+        Just (c, _) | isAsciiAlpha c || c == '_' -> Right (k, rest)
+        _ -> Left ("attrset key must start with a letter or underscore: " <> k)
+  where
+    isKeyChar c = isAsciiAlpha c || isDigit c || c == '_'
+    -- ASCII-only (mirrors 'okSeg'): a Nix bare attribute name allows no
+    -- unicode, so a broad 'Data.Char.isAlpha' would admit invalid keys.
+    isAsciiAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 -- String scanning: literal text with escapes, ${pkgs...} refs, <value> holes.
 pString :: Text -> Either Text (Value, Text)
 pString = go [] T.empty
@@ -302,6 +348,8 @@ renderValue (VPath p)      = p
 renderValue (VHole ht h)   = "<" <> h <> ":" <> holeTypeText ht <> ">"
 renderValue (VRef r)       = renderRefCanon r
 renderValue (VList vs)     = "[ " <> T.unwords (map renderValue vs) <> " ]"
+renderValue (VAttr [])     = "{}"
+renderValue (VAttr fs)     = "{ " <> T.unwords (map (\(k, v) -> k <> " = " <> renderValue v <> ";") fs) <> " }"
 renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
   where
     piece (PLit t)  = escape t
@@ -323,6 +371,8 @@ renderRealized :: Value -> Text
 renderRealized (VRef (RPkg r)) = T.intercalate "." r
 renderRealized (VRef (RArt n)) = "artifact." <> n
 renderRealized (VList vs)      = "[ " <> T.unwords (map renderRealized vs) <> " ]"
+renderRealized (VAttr [])       = "{}"
+renderRealized (VAttr fs)       = "{ " <> T.unwords (map (\(k, v) -> k <> " = " <> renderRealized v <> ";") fs) <> " }"
 renderRealized v               = renderValue v
 
 -- | Escape text destined for the inside of a Nix string: quotes, backslashes,
@@ -344,6 +394,7 @@ fillValue pick = fmap renderRealized . fillV
   where
     fillV (VStr ps)    = VStr <$> traverse fillP ps
     fillV (VList vs)   = VList <$> traverse fillV vs
+    fillV (VAttr fs)   = VAttr <$> traverse (\(k, v) -> (k,) <$> fillV v) fs
     fillV (VHole ht h) = pick h >>= coerce ht h
     fillV v            = Right v
     fillP (PHole h) = PLit <$> pick h

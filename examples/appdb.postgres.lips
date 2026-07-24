@@ -1,0 +1,3 @@
+run a postgresql database server.
+provision a database named app.
+provision a user named app who owns the app database.

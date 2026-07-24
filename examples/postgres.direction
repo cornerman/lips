@@ -1,0 +1,12 @@
+Provision with services.postgresql: enable the server, list database names in
+ensureDatabases, and create users via ensureUsers. Grant a user ownership of a
+database by setting that user's ensureDBOwnership to true -- nixpkgs grants
+ownership of the database whose name matches the user's name, so the database
+and the owning user must share a name. Do not set passwords and do not write
+SQL by hand. Reference database and user names as string values.
+
+ensureUsers is a list of attrsets: emit it as
+services.postgresql.ensureUsers with a rhs value of
+[ { name = "<user>"; ensureDBOwnership = true; } ] -- a list whose one element
+is an attrset with a name field (the program value) and an ensureDBOwnership
+field (the literal true). The kernel's value grammar supports attrsets.

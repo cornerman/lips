@@ -834,6 +834,38 @@ main = hspec $ do
       renderRealized (VList [VRef (RArt "weather")])         `shouldBe` "[ artifact.weather ]"
       fillValue (const (Right "x")) (VList [VRef (RArt "weather")]) `shouldBe` Right "[ artifact.weather ]"
 
+    it "parses and round-trips an attrset (a listOf-submodule element, e.g. ensureUsers)" $ do
+      parseValue "{ name = \"app\"; ensureDBOwnership = true; }"
+        `shouldBe` Right (VAttr [("name", VStr [PLit "app"]), ("ensureDBOwnership", VBool True)])
+      parseValue "[ { name = \"<value>\"; ensureDBOwnership = true; } ]"
+        `shouldBe` Right (VList [VAttr [("name", VStr [PHole "value"]), ("ensureDBOwnership", VBool True)]])
+      fmap renderValue (parseValue "{ name = \"app\"; ensureDBOwnership = true; }")
+        `shouldBe` Right "{ name = \"app\"; ensureDBOwnership = true; }"
+
+    it "parses an empty attrset and round-trips it" $ do
+      parseValue "{}" `shouldBe` Right (VAttr [])
+      fmap renderValue (parseValue "{}") `shouldBe` Right "{}"
+
+    it "fills a hole inside an attrset element, escaping program text (no injection)" $
+      fillValue (const (Right "app\" ; evil"))
+        (VList [VAttr [("name", VStr [PHole "value"]), ("ensureDBOwnership", VBool True)]])
+        `shouldBe` Right "[ { name = \"app\\\" ; evil\"; ensureDBOwnership = true; } ]"
+
+    it "rejects a non-identifier attrset key (keys are closed, injection-safe)" $ do
+      parseValue "{ \"bad key\" = 1; }" `shouldSatisfy` isLeft
+      parseValue "{ 1bad = 1; }" `shouldSatisfy` isLeft
+
+    it "rejects computation inside an attrset value" $
+      parseValue "{ a = lib.foo 1; }" `shouldSatisfy` isLeft
+
+    it "detects a derivation reference nested in an attrset" $ do
+      valueRefsDerivation (VAttr [("src", VRef (RPkg ["pkgs", "curl"]))]) `shouldBe` True
+      valueRefsDerivation (VAttr [("name", VStr [PHole "value"])]) `shouldBe` False
+
+    it "a listOf-submodule option accepts a list of attrsets (grounding is unconstrained per element)" $
+      valueMatches (OTListOf (OTOther "submodule")) (VList [VAttr [("name", VStr [PLit "app"])]])
+        `shouldBe` True
+
     it "<value.N> picks the Nth token of the matched assertion" $ do
       let r = MapRule "r4" Fact ["backup", "job"]
                 [ Emit ["src"] (VStr [PHole "value.1"])
