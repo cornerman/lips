@@ -49,6 +49,7 @@ import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.OptionType        (checkEmits, renderOptionError)
+import           Lips.Nix.Flake                (flakeText, runCommands)
 import           Lips.Nix.Options              (parseNixOptionsJson)
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
 import           Lips.Lsp.Server               (runLsp)
@@ -70,7 +71,6 @@ main = do
   case args of
     ["compile", file]                -> compileLoose Nothing file
     ["compile", "--out", dir, file]  -> compileLoose (Just dir) file
-    ["run", file]                -> runProgram file
     ["check", file]              -> checkLoose file
     ["lsp"]              -> runLsp
     ("generate" : rest)  -> case parseGenerate defaultConfidence rest of
@@ -95,9 +95,8 @@ usage = do
     , "      Mint the language from one or more example programs and verify each."
     , "      The one step that uses AI. --verbose echoes the raw model reply."
     , "  " <> name <> " compile [--out <dir>] <program>"
-    , "      Realize into a directory (default.nix + artifacts/) for import."
-    , "  " <> name <> " run <program>"
-    , "      Boot as a local VM (nixos) or realize and check (home-manager)."
+    , "      Realize into a directory (flake.nix + default.nix + artifacts/) and"
+    , "      print the nix commands that run it (nix run/build over the dir)."
     , "  " <> name <> " check <program>"
     , "      Verify the program still produces what it promised."
     ]
@@ -116,32 +115,34 @@ usage = do
 -- is no new dependency (every compile invocation already runs through nix, and
 -- the output is only meaningful where nix runs); the output stays bit-identical
 -- and deterministic, the gate only refuses a bad one.
+-- The output directory is derived, never committed (gitignore it, like
+-- .decisions). Beside @default.nix@ it writes @flake.nix@ (the addressable
+-- entry) and, when the program declares artifacts, @artifact.nix@ (the
+-- buildable derivations, extracted from the same ground base as the module).
+-- Then it prints the exact @nix@ commands that run it: running a lips program
+-- is not a lips verb, it is stock @nix@ over this directory, so compile emits
+-- the handles and names the commands (only those the program's shape supports,
+-- so no impossible command is ever shown -- deduce-or-fail).
 compileLoose :: Maybe FilePath -> FilePath -> IO ()
 compileLoose mout file = do
   checkLoose file
   program <- readProgramOrDie file
   eng     <- loadLangOrDie file
+  target  <- readRecordedTarget file
   case validate file eng program of
-    Left f            -> die (printFail file f)
-    Right (_, nixMod) -> do
+    Left f                 -> die (printFail file f)
+    Right (_, nixMod, art) -> do
       let outDir = maybe (dropExtension file) id mout
       callCommand ("mkdir -p " <> shq outDir)
       TIO.writeFile (outDir </> "default.nix") nixMod
       stageFromDisk file (outDir </> "artifacts")
-      TIO.hPutStrLn stderr
-        ("compiled " <> T.pack file <> " -> " <> T.pack (outDir </> "default.nix"))
-
--- | @run@: realize the program, then run it in the world it was minted for.
--- The world is fixed at mint time and read from the engine's committed
--- @.generation@ record; run never overrides it, since a program is only
--- verified against the world it was generated for. nixos boots a QEMU VM;
--- home-manager has no machine, so it is eval-only.
-runProgram :: FilePath -> IO ()
-runProgram file = do
-  target <- readRecordedTarget file
-  case target of
-    Nixos       -> runVm file
-    HomeManager -> runEvalOnly file
+      artNames <- case art of
+        Nothing            -> pure []
+        Just (body, names) -> TIO.writeFile (outDir </> "artifact.nix") body >> pure names
+      TIO.writeFile (outDir </> "flake.nix") (flakeText target (not (null artNames)))
+      TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack outDir)
+      TIO.hPutStrLn stderr "run it with nix over the compiled dir:"
+      mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames outDir)
 
 -- | The world an engine was minted for, read from its committed .generation
 -- record (the @target:@ line). An engine minted before targets existed has no
@@ -156,81 +157,6 @@ readRecordedTarget file = do
                          , Just t <- [parseTarget (T.unpack (T.strip rest))] ] of
       (t : _) -> t
       []      -> defaultTarget
-
--- | home-manager run: no VM to boot for a per-user environment. Run the
--- committed world-blind @.expect@ gate so the values are witnessed. Stays
--- hermetic (no home-manager eval); a booted-cluster-style check is deferred.
-runEvalOnly :: FilePath -> IO ()
-runEvalOnly file = do
-  TIO.hPutStrLn stderr
-    "home-manager module: no VM to boot; checking its contract (use compile to materialize it)."
-  checkLoose file
-
--- | @runVm@: verify the program's committed contract, then wrap the module in a
--- NixOS system and boot it as a local QEMU VM. The behavioral gate runs FIRST
--- (the same one @check@ runs), so @run@ never boots a module that no longer
--- carries the values its program promises: an offline edit that breaks a
--- pinned relation fails loud here instead of booting a silently-wrong system.
--- home-manager @run@ (@runEvalOnly@) already gates this way, so both worlds are
--- symmetric. Only the booting is impure (it uses the ambient @<nixpkgs>@, a
--- Heile-Welt softness noted in the design). The host is never touched; the VM
--- is a throwaway simulation.
-runVm :: FilePath -> IO ()
-runVm file = do
-  -- Gate before boot: checkLoose prints the diagnosis and the .expect result
-  -- and dies on any failure (unread line, open question, contract violation),
-  -- so reaching past it means the contract holds and the module is safe to run.
-  checkLoose file
-  program <- readProgramOrDie file
-  eng     <- loadLangOrDie file
-  case validate file eng program of
-    Left f            -> die (printFail file f)
-    Right (_, nixMod) -> bootVm file (stageFromDisk file) nixMod
-
-bootVm :: FilePath -> (FilePath -> IO ()) -> Text -> IO ()
-bootVm file stage nixMod = do
-  dir <- mkTempDir
-  let tmp = dir <> "/module.nix"
-  TIO.writeFile tmp nixMod
-  stage (dir <> "/artifacts")
-  TIO.hPutStrLn stderr "building a local NixOS VM from your configuration..."
-  built <- try (readProcessWithExitCode "nix"
-                  [ "build", "--impure", "--no-link", "--print-out-paths"
-                  , "--expr", T.unpack (vmExpr tmp) ] "")
-  case built of
-    Left e -> die (nixMissing file "boot the VM" "run" (tshow (e :: IOException)))
-    Right (ExitFailure _, _, err) ->
-      die (report
-        "the VM didn't build:"
-        (T.lines (T.pack err))
-        ("→ the run simulation needs nixpkgs. Try: nix run . -- run " <> T.pack file
-          <> ", or set NIX_PATH to a nixpkgs."))
-    Right (ExitSuccess, out, _) -> do
-      let outPath = T.unpack (T.strip (T.pack out))
-      TIO.hPutStrLn stderr "booting the VM (quit QEMU with Ctrl-a x)..."
-      -- The qemu-vm module names the boot script run-<host>-vm; glob it so the
-      -- hostname is not hard-coded. The shell inherits stdio for the console.
-      callCommand (outPath <> "/bin/run-*-vm")
-
--- | An impure Nix expression that turns a realized module (at @modPath@) into a
--- bootable, headless local VM via the stock qemu-vm module.
-vmExpr :: FilePath -> Text
-vmExpr modPath = T.pack $ unlines
-  [ "let"
-  , "  system = builtins.currentSystem;"
-  , "  nixpkgs = <nixpkgs>;"
-  , "  cfg = import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
-  , "    inherit system;"
-  , "    modules = ["
-  , "      (nixpkgs + \"/nixos/modules/virtualisation/qemu-vm.nix\")"
-  , "      " <> modPath
-  , "      { system.stateVersion = \"24.11\";"
-  , "        virtualisation.graphics = false;"
-  , "        users.users.root.password = \"\"; }"
-  , "    ];"
-  , "  };"
-  , "in cfg.config.system.build.vm"
-  ]
 
 -- | @check@: verify the program's committed behavioral contract holds against
 -- its realized module, deterministically (no AI). This is the offline guardian
@@ -277,7 +203,7 @@ expectGate file eng program = do
             die (uncheckableReport file bad)
         | otherwise -> case validate file eng program of
         Left f       -> die (printFail file f)
-        Right (base, nixMod) -> do
+        Right (base, nixMod, _) -> do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
           res <- runExpects (stageFromDisk file) (map (bindSelfExpect (instanceName file)) expects) base nixMod
@@ -403,7 +329,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
         -- is domain-blind): name both remedies rather than blame one side.
         Left (FailRun (OpenQuestions qs)) -> die (demandGenerateFail f qs)
         Left ff -> die (validationReport f (failureReport f ff))
-        Right (base, nixModule) -> do
+        Right (base, nixModule, _) -> do
           nixCheck <- nixParses nixModule
           case nixCheck of
             Left (NixToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
@@ -551,7 +477,10 @@ schemaExpr HomeManager flakeref = T.pack $ concat
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.
-validate :: FilePath -> EngineData -> Text -> Either Failure (Base, Text)
+-- The module and the artifact.nix (the buildable derivations, or Nothing) are
+-- projected from the same bound rules and ground base, so the artifacts a
+-- compiled flake addresses are exactly the ones the module @let@-binds.
+validate :: FilePath -> EngineData -> Text -> Either Failure (Base, Text, Maybe (Text, [Text]))
 validate file eng program =
   case crystallize file (edPatterns eng) program of
     Left errs  -> Left (FailRead errs)
@@ -564,10 +493,13 @@ validate file eng program =
       let inst       = instanceName file
           boundRules = map (bindSelf inst) (edRules eng)
           modeOf     = mergeModeOf boundRules
-      in case runBase modeOf assembleSubject budget
-                  (map toRule boundRules) (map toDemand (edDemands eng)) base of
+          rules      = map toRule boundRules
+          demands    = map toDemand (edDemands eng)
+      in case runBase modeOf assembleSubject budget rules demands base of
         Left err        -> Left (FailRun err)
-        Right nixModule -> Right (base, nixModule)
+        Right nixModule -> case runBaseArtifact modeOf assembleSubject budget rules demands base of
+          Left err  -> Left (FailRun err)
+          Right art -> Right (base, nixModule, art)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable

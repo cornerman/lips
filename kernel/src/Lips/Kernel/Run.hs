@@ -75,7 +75,7 @@ runBase modeOf assemble budget rules demands base0 = do
 -- compile emits as an addressable file are byte-for-byte the ones the module
 -- @let@-binds -- one ground base, one rendering.
 runBaseArtifact :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-                -> Int -> [Rule] -> [Demand] -> Base -> Either RunError (Maybe Text)
+                -> Int -> [Rule] -> [Demand] -> Base -> Either RunError (Maybe (Text, [Text]))
 runBaseArtifact modeOf assemble budget rules demands base0 = do
   realizable <- runGround budget rules demands (resolve modeOf assemble base0)
   first fromRealizeError (realizeArtifactFile modeOf assemble (fromList realizable))

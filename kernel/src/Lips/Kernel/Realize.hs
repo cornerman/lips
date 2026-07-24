@@ -22,7 +22,7 @@ module Lips.Kernel.Realize
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
-import           Data.List       (partition, sortOn)
+import           Data.List       (nub, partition, sortOn)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -81,22 +81,26 @@ resolveErr errs =
 -- without re-deriving it (one authoritative rendering, from one ground base).
 -- 'Nothing' when the program declares no artifacts, so an artifact-free
 -- compile writes no such file. Pass the same /ground/ base 'realize' takes.
+-- Returns the file body paired with the artifact names (the attrset keys), so
+-- the caller can print exact @#artifact.\<name\>@ commands without re-parsing.
 realizeArtifactFile :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-                    -> Base -> Either RealizeError (Maybe Text)
+                    -> Base -> Either RealizeError (Maybe (Text, [Text]))
 realizeArtifactFile modeOf assemble base =
   case resolve modeOf assemble base of
     Left errs     -> Left (resolveErr errs)
     Right winners ->
-      let arts = filter (rootedAtArtifact . fst) (Map.toList winners)
+      let arts  = filter (rootedAtArtifact . fst) (Map.toList winners)
+          names = nub [ n | (Subject ("artifact" : n : _), _) <- arts ]
       in if null arts
            then Right Nothing
            else do
              entries <- artifactEntries arts
-             Right (Just (T.unlines (
-               [ "# lips-realized artifact derivations. Generated; do not edit."
-               , "{ pkgs }:"
-               , "{"
-               ] ++ map ("  " <>) entries ++ ["}"])))
+             let body = T.unlines (
+                   [ "# lips-realized artifact derivations. Generated; do not edit."
+                   , "{ pkgs }:"
+                   , "{"
+                   ] ++ map ("  " <>) entries ++ ["}"])
+             Right (Just (body, names))
 
 -- | Today's all-Replace behavior, for callers and tests that do not
 -- aggregate. Byte-identical to the pre-aggregation 'realize'.

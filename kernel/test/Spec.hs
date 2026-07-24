@@ -495,7 +495,7 @@ main = hspec $ do
             , "}"
             ]
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
-        `shouldBe` Right (Just expected)
+        `shouldBe` Right (Just (expected, ["myserver"]))
 
     it "emits no artifact.nix for a program with no artifacts" $
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList ground)
