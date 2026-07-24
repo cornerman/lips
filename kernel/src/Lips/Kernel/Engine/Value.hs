@@ -6,12 +6,13 @@
 -- grammar, and its grammar is deliberately the Nix value algebra MINUS
 -- computation (completeness plan, Target 1):
 --
--- > value  ::= string | list | bool | int | float | path | null | typed-hole | ref | attrset
+-- > value  ::= string | list | bool | int | float | path | null | typed-hole | tail-hole | ref | attrset
 -- > string ::= '"' (literal | ${pkgs.<dotted-path>} | <value> | <value.N>)* '"'
 -- > list   ::= '[' value* ']'
 -- > ref    ::= ${pkgs.<dotted-path>} | ${artifact.<name>}   -- a bare reference value
 -- > attrset ::= '{' (ident '=' value ';')* '}'              -- optional trailing ';'
 -- > typed-hole ::= '<' ('value' | 'value.'N) ':' ('int'|'bool'|'float'|'path') '>'
+-- > tail-hole  ::= '<' 'value.tail' '>'   -- fills to a VList of the program value's tokens
 --
 -- A @ref@ names a concrete thing (a package, a program-derived build) the
 -- kernel never inspects; as a whole value it stands as a list element (a list
@@ -96,6 +97,13 @@ data Value
                           -- like any other. No quoted keys: a field name that is
                           -- not a bare identifier is rejected, so a program value
                           -- can never alter the attrset's shape.
+  | VTail Text          -- ^ @<value.tail>@: fills to a 'VList' of the program
+                          -- value's whitespace tokens (trailing sentence
+                          -- punctuation stripped). The whole rhs, not a list
+                          -- element: one line carrying many items becomes one
+                          -- list, which 'Append' (B) can aggregate with others.
+                          -- The name is always @value@ (the program value); an
+                          -- empty tail fails loud, never guesses a shape.
   deriving (Eq, Show)
 
 -- | Does this value interpolate a package (@${pkgs...}@) or artifact
@@ -240,13 +248,15 @@ pTypedHole more =
   let (inside, after) = T.breakOn ">" more
    in if T.null after
         then Left ("unterminated hole <" <> inside)
-        else case T.splitOn ":" inside of
-          [hn, ty]
-            | validHoleName hn, Just ht <- parseHoleType ty ->
-                Right (VHole ht hn, T.drop 1 after)
-          _ ->
-            Left ("a hole outside a string must be typed "
-                   <> "<value:int|bool|float|path> (or <value.N:...>): <" <> inside <> ">")
+        else case inside of
+          "value.tail" -> Right (VTail "value", T.drop 1 after)
+          _ -> case T.splitOn ":" inside of
+            [hn, ty]
+              | validHoleName hn, Just ht <- parseHoleType ty ->
+                  Right (VHole ht hn, T.drop 1 after)
+            _ ->
+              Left ("a hole outside a string must be typed "
+                     <> "<value:int|bool|float|path>, or <value.tail>: <" <> inside <> ">")
 
 pList :: Text -> [Value] -> Either Text (Value, Text)
 pList t acc = case T.uncons t of
@@ -369,6 +379,7 @@ renderValue (VRef r)       = renderRefCanon r
 renderValue (VList vs)     = "[ " <> T.unwords (map renderValue vs) <> " ]"
 renderValue (VAttr [])     = "{}"
 renderValue (VAttr fs)     = "{ " <> T.unwords (map (\(k, v) -> k <> " = " <> renderValue v <> ";") fs) <> " }"
+renderValue (VTail _)      = "<value.tail>"
 renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
   where
     piece (PLit t)  = escape t
@@ -421,6 +432,16 @@ fillValue pick = fmap renderValue . fillV
     fillV (VList vs)   = VList <$> traverse fillV vs
     fillV (VAttr fs)   = VAttr <$> traverse (\(k, v) -> (k,) <$> fillV v) fs
     fillV (VHole ht h) = pick h >>= coerce ht h
+    fillV (VTail h) = do
+      -- The program value's whitespace tokens, each stripped of trailing
+      -- sentence punctuation, become one VList. An empty tail is a loud Left:
+      -- a tail hole binds "the rest of the line", and the matcher already
+      -- rejects a zero-token rest, so reaching here empty is a shape mismatch.
+      tok <- pick h
+      let toks = map stripTailPunct (filter (not . T.null) (T.words tok))
+      if null toks
+        then Left ("value hole <" <> h <> ".tail> matched no tokens (empty tail)")
+        else Right (VList (map (VStr . (: []) . PLit) toks))
     fillV v            = Right v
     fillP (PHole h) = PLit <$> pick h
     fillP p         = Right p
@@ -441,3 +462,10 @@ fillValue pick = fmap renderValue . fillV
     holeError h ty tok =
       "value hole <" <> h <> ":" <> ty
         <> "> got a program value that is not a " <> ty <> ": " <> tok
+
+-- | Strip trailing sentence punctuation from a token. A twin of
+-- 'Lips.Kernel.Lang.Pattern.stripTrailingPunct', duplicated here so the value
+-- grammar stays decoupled from the language layer; the two share a rule, so
+-- they name it alike and must be kept in step.
+stripTailPunct :: Text -> Text
+stripTailPunct = T.dropWhileEnd (`elem` (".,;:!?" :: String))

@@ -261,6 +261,25 @@ main = hspec $ do
           Right mod_ -> mod_ `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" ];"
 
+    it "end-to-end C: one line with many packages -> one VList, aggregatable with B" $ do
+      -- Capability C: a <name.tail> template hole binds the rest of a line, and
+      -- a <value.tail> rhs fills to a VList of those tokens. Each line
+      -- crystallizes to a DISTINCT captured subject (install.<pkgs>), so the
+      -- human base does not conflict; the rule emits a VTail rhs to the COMMON
+      -- environment.systemPackages, so resolve assembles both VLists into one.
+      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated
+                  [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
+          tailRule = MapRule "r" Fact ["install", "<pkg>"]
+                   [ Emit ["environment","systemPackages"] (VTail "value") ]
+          prog = T.unlines [ "install htop, ripgrep.", "install tmux." ]
+          modeOf = mergeModeOf [tailRule]
+      case crystallize "f" [pat] prog of
+        Left e  -> expectationFailure ("crystallize failed: " <> show e)
+        Right base -> case runBase modeOf assembleSubject 100 (map toRule [tailRule]) [] base of
+          Left e     -> expectationFailure ("run failed: " <> show e)
+          Right mod_ -> mod_ `shouldSatisfy`
+            T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" \"tmux\" ];"
+
   describe "refinement (spec 2.4, 4)" $ do
     let oblige = (mk "o1" "row" "row->txn" Stated) { dKind = Oblige }
         -- one rule: an Oblige expands into one Meta mechanism decision
@@ -1399,6 +1418,17 @@ main = hspec $ do
       parseValue "\"x <value:int> y\"" `shouldBe` parseValue "\"x <value> y\""
     it "a genuinely unknown hole inside a string is still rejected" $
       parseValue "\"x <bogus> y\"" `shouldSatisfy` isLeft
+    -- Capability C: a <value.tail> rhs fills to a VList of the program value's
+    -- tokens (trailing sentence punctuation stripped). The whole rhs becomes
+    -- one list, so a single line carrying many items is aggregatable with B.
+    it "a <value.tail> rhs parses and renders canonically" $ do
+      parseValue "<value.tail>" `shouldBe` Right (VTail "value")
+      renderValue (VTail "value") `shouldBe` "<value.tail>"
+    it "fillValue on a tail hole splits the program value into a VList of tokens" $
+      fillValue (const (Right "htop, ripgrep, tmux.")) (VTail "value")
+        `shouldBe` Right "[ \"htop\" \"ripgrep\" \"tmux\" ]"
+    it "an empty program value for a tail hole fails loud" $
+      fillValue (const (Right "")) (VTail "value") `shouldSatisfy` isLeft
 
   -- The system prompt is pinned into the generation id, so it is a versioned
   -- artifact; this guards its load-bearing clauses against silent drift.
@@ -1700,6 +1730,7 @@ genValue = sized go
       , (2, VHole  <$> elements [HInt, HBool, HFloat, HPath] <*> genHole)
       , (1, VRef   <$> oneof [ RPkg . ("pkgs" :) <$> listOf1 refSeg, RArt <$> refSeg ])
       , (2, VAttr  <$> resize (n `div` 3) (listOf1 ((,) <$> genAttrKey <*> go (n `div` 3))))
+      , (1, pure (VTail "value"))
       ]
     genPath = do
       pre  <- elements ["/", "./", "../"]
