@@ -471,6 +471,15 @@ main = hspec $ do
       let src = "a1 expect services.restic.backups.ledger.repository from backup.job#2\n"
       (renderExpect <$> readExpect src) `shouldBe` Right src
 
+    -- The contract round-trips even when an option path carries a literal
+    -- dotted key (environment.etc."my.route".text): the engine path split and
+    -- the render must agree, or a dotted segment shreds and the check looks up
+    -- the wrong option.
+    it "expect round-trips with a dotted segment in the option path" $
+      property $ forAll dottedSeg $ \seg ->
+        let e = Expect "a" ["services","nginx",seg,"proxyPass"] (Subject ["proxy","upstream"]) Nothing
+        in readExpect (renderExpect [e]) === Right [e]
+
     -- A model may write an attrsOf key in Nix-attr-path form, quoted
     -- (locations."/".proxyPass), or bare (locations./.proxyPass). Both must
     -- parse to the SAME segment, so a rule written bare and an expect written
@@ -686,6 +695,15 @@ main = hspec $ do
 
     it "rule body round-trips" $
       parseRuleBody "r2" (renderRuleBody rule) `shouldBe` Right rule
+
+    -- The storage round-trip must hold for ANY segment shape, including a
+    -- literal dotted key (a model may write environment.etc."my.route".text).
+    -- The base layer escapes \.; the engine layer must too, or parse . render
+    -- shreds a dotted segment into two. This is the engine analogue of the
+    -- base-layer readBase . renderBase == id property.
+    it "rule body round-trips with a dotted segment in the emit path" $
+      property $ forAll (dottedPathRule <$> dottedSeg) $ \r ->
+        parseRuleBody "r" (renderRuleBody r) === Right r
 
     -- A quoted attrsOf key in an emit path normalizes to the same bare segment
     -- as the unquoted form (plan: align the engine path split with the base
@@ -1528,6 +1546,7 @@ genValue = sized go
       , (1, VPath  <$> genPath)
       , (2, VHole  <$> elements [HInt, HBool, HFloat, HPath] <*> genHole)
       , (1, VRef   <$> oneof [ RPkg . ("pkgs" :) <$> listOf1 refSeg, RArt <$> refSeg ])
+      , (2, VAttr  <$> resize (n `div` 3) (listOf1 ((,) <$> genAttrKey <*> go (n `div` 3))))
       ]
     genPath = do
       pre  <- elements ["/", "./", "../"]
@@ -1539,6 +1558,13 @@ genValue = sized go
     genRef   = ("pkgs" :) <$> listOf1 refSeg
     refSeg   = T.pack <$> listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "-_"))
     genHole  = oneof [ pure "value", (\i -> "value." <> T.pack (show i)) <$> choose (1 :: Int, 9) ]
+    -- A bare Nix attribute name: starts with a letter or '_', then the ident
+    -- alphabet (incl. '-' and "'"), matching Realize's isBareIdent so an
+    -- attrset key and a path segment accept the SAME key shapes.
+    genAttrKey = do
+      h <- elements (['a' .. 'z'] ++ "_")
+      t <- listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "_-'-"))
+      pure (T.pack (h : t))
 
 -- Canonicalize a piece list the way parseValue would read it back: drop empty
 -- literals and merge adjacent ones.
@@ -1550,6 +1576,21 @@ canon = merge . filter notEmpty
     merge (PLit a : PLit b : rest) = merge (PLit (a <> b) : rest)
     merge (p : rest)               = p : merge rest
     merge []                       = []
+
+-- A segment containing a literal '.', the shape that breaks a naive dot
+-- split. Includes a hyphen and a slash so the round-trip covers the attr-of
+-- keys a model realistically writes (a route path, a dotted filename).
+dottedSeg :: Gen Text
+dottedSeg = do
+  a <- listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "_-"))
+  b <- listOf1 (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "_-"))
+  pure (T.pack (a ++ "." ++ b))
+
+-- A one-emit rule whose path carries a dotted segment, to drive the storage
+-- round-trip parseRuleBody . renderRuleBody == id over the failing shape.
+dottedPathRule :: Text -> MapRule
+dottedPathRule seg =
+  MapRule "r" Fact ["x"] [ Emit ["services", "nginx", seg, "proxyPass"] (VStr [PHole "value"]) ]
 
 -- Program text that fills a hole: includes exactly the characters the escape
 -- must neutralize. Excludes '<', whose re-parse asymmetry is a known,

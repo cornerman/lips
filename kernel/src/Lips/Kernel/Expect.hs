@@ -43,7 +43,7 @@ import           Text.Read  (readMaybe)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Capture  (captureName, fillCaptures, matchSubject)
 import Lips.Kernel.Decision
-import Lips.Kernel.Engine.Data (splitAttrPath)
+import Lips.Kernel.Engine.Data (renderAttrPath, splitAttrPath)
 import Lips.Kernel.Reader   (ParseError (..))
 
 -- | One behavioral assertion: option 'exPath' carries the value drawn from
@@ -68,7 +68,7 @@ renderFrom e = dotted segs <> maybe "" (\n -> "#" <> tshow n) (exToken e)
   where Subject segs = exFrom e
 
 dotted :: [Text] -> Text
-dotted = T.intercalate "."
+dotted = renderAttrPath
 
 -- | Read a contract, collecting per-line errors. Blank lines and @#@ comments
 -- are ignored.

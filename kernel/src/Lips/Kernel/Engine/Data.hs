@@ -40,6 +40,7 @@ module Lips.Kernel.Engine.Data
   , renderDemandBody
   , parseDemandBody
   , splitAttrPath
+  , renderAttrPath
   ) where
 
 import           Data.Maybe     (isJust)
@@ -163,11 +164,11 @@ toDemand ds =
 
 renderRuleBody :: MapRule -> Text
 renderRuleBody mr =
-  "match " <> kindText (mrKind mr) <> " " <> T.intercalate "." (mrSubject mr)
+  "match " <> kindText (mrKind mr) <> " " <> renderAttrPath (mrSubject mr)
     <> " => "
     <> T.intercalate " ; " (map renderEmit (mrEmits mr))
   where
-    renderEmit e = T.intercalate "." (emPath e) <> " " <> quoteText (renderValue (emRhs e))
+    renderEmit e = renderAttrPath (emPath e) <> " " <> quoteText (renderValue (emRhs e))
 
 parseRuleBody :: Text -> Text -> Either Text MapRule
 parseRuleBody rid body = do
@@ -205,7 +206,7 @@ parseRuleBody rid body = do
 
 renderDemandBody :: DemandSpec -> Text
 renderDemandBody ds =
-  "demand " <> T.intercalate "." (dsSubject ds) <> " " <> quoteText (dsQuestion ds)
+  "demand " <> renderAttrPath (dsSubject ds) <> " " <> quoteText (dsQuestion ds)
 
 parseDemandBody :: Text -> Text -> Either Text DemandSpec
 parseDemandBody did body = do
@@ -282,6 +283,19 @@ splitAttrPath t0 = go (T.stripStart t0) T.empty []
         Nothing      -> Left (pre <> "dangling escape in quotes")
       Just (c, r)       -> inQuote r (T.snoc cur c) acc
     revcons cur acc = reverse (cur : acc)
+
+-- | Render a dotted attribute path -- the inverse of 'splitAttrPath'. Each
+-- segment is escaped so a literal @.@ or @\@ in it cannot be mistaken for a
+-- separator or an escape, mirroring the base 'Lips.Kernel.Reader.joinSubject'
+-- (so the engine layer and the base layer share one canonical path form).
+-- A segment without @.@ or @\@ (every identifier and @<self>\/@<name>@
+-- placeholder) renders unchanged, so every existing engine is byte-identical.
+renderAttrPath :: [Text] -> Text
+renderAttrPath = T.intercalate "." . map (T.concatMap esc)
+  where
+    esc '.'  = "\\."
+    esc '\\' = "\\\\"
+    esc c    = T.singleton c
 
 parseKindTok :: Text -> Text -> Either Text Kind
 parseKindTok pre w =

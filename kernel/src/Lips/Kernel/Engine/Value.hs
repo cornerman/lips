@@ -205,7 +205,12 @@ pNumber t = case TR.signed TR.decimal t of
 -- safe to emit unquoted.
 pPath :: Text -> Either Text (Value, Text)
 pPath t =
-  let (p, rest) = T.span (\c -> not (isSpace c) && c /= ']') t
+  -- A path value is terminated by whitespace, a list @]@, or an attrset
+  -- field separator @;@ / closer @}@. Spanning past @;@ would fold the
+  -- separator into the path (rejected by 'validPathLit'), so a path value
+  -- inside an attrset (@{ n = ../a; }@) round-trips. None of these chars is
+  -- legal inside a Nix path literal, so this stops at true boundaries only.
+  let (p, rest) = T.span (\c -> not (isSpace c) && c `notElem` (";]}" :: String)) t
    in if validPathLit p then Right (VPath p, rest)
                         else Left ("bad path literal (injection risk): " <> p)
 
@@ -269,7 +274,7 @@ pAttrKey t =
         Just (c, _) | isAsciiAlpha c || c == '_' -> Right (k, rest)
         _ -> Left ("attrset key must start with a letter or underscore: " <> k)
   where
-    isKeyChar c = isAsciiAlpha c || isDigit c || c == '_'
+    isKeyChar c = isAsciiAlpha c || isDigit c || c `elem` ("_-'-" :: String)
     -- ASCII-only (mirrors 'okSeg'): a Nix bare attribute name allows no
     -- unicode, so a broad 'Data.Char.isAlpha' would admit invalid keys.
     isAsciiAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
