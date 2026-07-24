@@ -610,8 +610,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   coexist). `.lang`/`.expect`/`.generation`/`.direction` are language-level
   (named by the language), `.decisions` per instance; `generate` takes several
   programs and gates the whole set (crystallize + committed `.expect`) as the
-  regeneration corpus. Kernel additions: the `<self>` binding in rule emits and
-  expect paths, plus path-value stringifying in the expect eval; the rest is
+  regeneration corpus. Kernel additions: the `<self>` binding in rule emit
+  paths, rule rhs values (a `<self>` string piece and a `${artifact.<self>}`
+  reference, so a rule names the program's own build/app), and expect paths,
+  plus path-value stringifying in the expect eval; the rest is
   shell (`Lips.Identity`, CLI, LSP lookup) and the mint prompt (teach `<self>`
   and generalize-across-programs). Proven live (opus-4-8 + KVM): the backup
   language minted from `ledger`+`photos`, feed and http migrated, all four
