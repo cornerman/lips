@@ -378,6 +378,38 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Quote-aware attribute-path split (rule + expect).** The engine path split
+  (a rule emit path, an expect option path, and the demand/rule subjects) is
+  now quote/escape-aware, the engine analogue of the base
+  'Lips.Kernel.Reader.splitSubject'. A model may write an @attrsOf@ key in
+  Nix-attr-path form, quoted (@locations."/".proxyPass@) or bare
+  (@locations./.proxyPass@); 'splitAttrPath' (in 'Lips.Kernel.Engine.Data')
+  takes a quoted segment literally (no split on a dot inside the quotes) and
+  strips the surrounding quotes, so both spellings parse to the SAME segment
+  @/@. A backslash escapes the next char (@\"@, @\\@, @\.@); an unterminated
+  quote fails loud. The canonical stored form stays BARE (the kernel quotes on
+  realize via 'quoteSeg'), so every existing engine round-trips byte-identically;
+  the fix is lenient on input, canonical on output. This closes the asymmetry
+  between the realize side ('quoteSeg', which escaped a special-char key) and
+  the eval-check side ('Expect.quote', which wrapped a quoted segment a second
+  time into @""/""@ -- a Nix syntax error): a model that wrote a quoted key
+  in the expect but a bare key in the rule (or split across them) crashed the
+  gate with an inscrutable syntax error instead of a clear mismatch. Naively
+  making 'Expect.quote' escape like 'quoteSeg' would have made the check look
+  up the WRONG key (@"/"@, quote-slash-quote) that the realize side also
+  emits for a quoted rule key, so a config serving the wrong route would pass
+  the gate SILENTLY -- the wrong fix. Normalizing at the only door minted
+  engines enter keeps rule and expect agreeing on the key without a prompt
+  plea and without masking (this is invariant 4: a mint that reliably slips is
+  fixed in the kernel/format, not the prompt). The 'Lips.Kernel.Engine.Value'
+  attrset constructor and the realize 'quoteSeg' are untouched. Verified by the
+  conformance suite (quoted-key rule/expect parse to the bare segment,
+  unterminated quote rejected, dot-in-quoted-key stays one segment) and proven
+  live: a proxy engine written with a quoted @"/"@ location in both rule and
+  expect realizes to the correct @services.nginx.virtualHosts.<self>.locations."/".proxyPass@
+  and its contract passes, where it previously crashed the eval with a syntax
+  error.
+
 - **Value grammar: attrsets (listOf-submodule rhs).** The closed rhs value
   algebra gains an attrset constructor `VAttr [(Text, Value)]`, so a rule can
   fill a `listOf`-submodule option whose elements are records — the shape
