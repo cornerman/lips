@@ -1725,6 +1725,37 @@ main = hspec $ do
     it "accepts any value for an unmodelled type (OTOther is unconstrained)" $
       valueMatches (OTOther "submodule") (VBool True) `shouldBe` True
 
+    -- H3: a listOf-submodule option (list of (submodule)) whose fields the
+    -- schema lists as *-wildcard leaves is field-checked. The element type is
+    -- OTOther "submodule" (an unconstrained catch-all by itself), but when the
+    -- schema carries the submodule's fields, each VAttr element's fields are
+    -- checked against their leaf types. A mistyped field (ensureDBOwnership =
+    -- a STRING, not a bool) is flagged; a well-typed one passes. This is the
+    -- one door minted engines enter, where the schema lives (generate); the
+    -- run path stays schema-free (invariant 1).
+    it "field-checks a listOf-submodule's attrset elements against the schema's wildcard leaves" $ do
+      let sch = Map.fromList
+            [ (["services","postgresql","ensureUsers"], OTListOf (OTOther "submodule"))
+            , (["services","postgresql","ensureUsers","*","name"], OTString)
+            , (["services","postgresql","ensureUsers","*","ensureDBOwnership"], OTBool)
+            ]
+          good = optRule "r1" ["services","postgresql","ensureUsers"]
+                    (VList [VAttr [("name", VStr [PHole "value"])
+                                  ,("ensureDBOwnership", VBool True)]])
+          bad  = optRule "r2" ["services","postgresql","ensureUsers"]
+                    (VList [VAttr [("name", VStr [PHole "value"])
+                                  ,("ensureDBOwnership", VStr [PLit "true"])]])  -- string, not bool
+      map renderOptionError (checkEmits sch [good]) `shouldBe` []
+      map renderOptionError (checkEmits sch [bad])
+        `shouldBe` ["rule r2: option services.postgresql.ensureUsers has type "
+                  <> "OTListOf (OTOther \"submodule\") but the rule fills it with an incompatible value"]
+
+    it "a listOf-submodule with no listed field leaves degrades to unconstrained (the schema genuinely doesn't constrain; the kernel can't either)" $ do
+      let sch = Map.fromList [ (["s","users"], OTListOf (OTOther "submodule")) ]
+      checkEmits sch [ optRule "r" ["s","users"] (VList [VAttr [("anything", VStr [PLit "x"]),("goes", VBool True)]]) ]
+        `shouldBe` []
+
+
     it "passes when every option exists and types match" $
       checkEmits schema
         [ optRule "r1" ["services", "x", "port"] (VHole HInt "value")

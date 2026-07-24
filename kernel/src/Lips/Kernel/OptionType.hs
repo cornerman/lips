@@ -93,7 +93,40 @@ checkEmits schema rules =
           []
             | any (\(k, _) -> isPrefixPath k path) entries -> []   -- descends into a declared option
             | otherwise -> [UnknownOption rid path]
-    mismatch rid path t v = [ TypeMismatch rid path t v | not (valueMatches t v) ]
+    mismatch rid path t v =
+      [ TypeMismatch rid path t v
+      | not (valueMatches t v) || not (submoduleFieldsOk path v) ]
+    -- H3: a listOf-submodule option (list of (submodule)) is field-checked
+    -- when the schema lists the submodule's fields as *-wildcard leaves
+    -- (services.postgresql.ensureUsers.*.ensureDBOwnership :: boolean). The
+    -- element type is OTOther (an unconstrained catch-all by itself), so the
+    -- bare valueMatches pass would accept any VAttr; this steps into each
+    -- VAttr element and valueMatches each field against its leaf type. The
+    -- schema is already here (this is the one door minted engines enter,
+    -- generate); the run path stays schema-free (invariant 1). Assembly is
+    -- element-preserving (concatenate, never merge/split a VAttr), so
+    -- pre-assembly field-checking is complete -- nothing assembly does can
+    -- introduce a field-type error absent from a fragment. A submodule whose
+    -- fields the schema does NOT list has no leaves to check against and
+    -- degrades to unconstrained, which is correct (the kernel can't constrain
+    -- what the schema doesn't; completeness by construction, not a guess).
+    submoduleFieldsOk path v = case v of
+      VList elems -> all (elemFieldsOk path) elems
+      _            -> True   -- non-list rhs: valueMatches already judged it
+    elemFieldsOk path (VAttr fs) = all (fieldOk path) fs
+    elemFieldsOk _    _          = True   -- a non-attrset element: OTOther
+    -- Look up a field's leaf type under the emit path's * wildcard. The path
+    -- [services,postgresql,ensureUsers] with field "ensureDBOwnership" becomes
+    -- [services,postgresql,ensureUsers,*,ensureDBOwnership]; matchesPath
+    -- ("*" matches any segment) resolves the concrete-instance leaf.
+    fieldOk path (name, val) =
+      case fieldLeaf path name of
+        Nothing  -> True   -- no listed leaf: unconstrained (completeness)
+        Just ft  -> valueMatches ft val
+    fieldLeaf path name =
+      case [ ft | (k, ft) <- entries, matchesPath k (path ++ ["*", name]) ] of
+        (ft : _) -> Just ft
+        []       -> Nothing
 
 -- | Does a schema key match a concrete path exactly (same length, each segment
 -- literal-equal or a @"*"@ wildcard)?
