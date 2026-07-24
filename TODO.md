@@ -18,12 +18,14 @@ queue.
 
 ## Next up (priority order)
 
-1. **Behavioral gate enforced inside `run` — DONE (2026-07-24).** `runVm`
-   (nixos) now runs the same `.expect` gate `check` runs as a preflight and
-   dies on any violation before booting; home-manager `run` already gated, so
-   both worlds are symmetric. `run` never boots a module that dropped a pinned
-   value. `compile` stays pure and nix-free by design (verified by explicit
-   `check` or before `run`). See DESIGN §13 Partial entry.
+1. **Behavioral gate enforced at every deterministic verb — DONE (2026-07-24).**
+   `check` is the gate alone; `compile` gates then writes; `run` gates then
+   boots (nixos `runVm` and `compileLoose` both call the same gate and die on a
+   violation before their side effect; home-manager `run` gates too). So the
+   headline offline verb never emits or boots a module that dropped a pinned
+   value (Failproof: the safe path is the obvious path). Nix is the compile
+   target, so the gate's `nix eval` is no new dependency and the emitted module
+   stays bit-identical. See DESIGN §13 Partial entry.
 
 2. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
    When `generate` refuses because physics is missing, write a machine-readable
