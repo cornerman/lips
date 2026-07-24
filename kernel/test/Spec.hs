@@ -25,6 +25,7 @@ import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Value
+import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
@@ -141,6 +142,38 @@ main = hspec $ do
             ]
       property $ forAll (shuffle pool) $ \perm ->
         resolve (fromList perm) === resolve (fromList pool)
+
+  describe "list aggregation (B: Append merge mode)" $ do
+    let pkgs = Subject ["environment","systemPackages"]
+        -- two Stated contributors, canonical VList assertions
+        d1 = (mk "d1" "x" "[ \"htop\" ]" Stated) { dSubject = pkgs, dProv = FromSource (SourceLoc "f" 2) }
+        d2 = (mk "d2" "x" "[ \"ripgrep\" ]" Stated) { dSubject = pkgs, dProv = FromSource (SourceLoc "f" 1) }
+        rule = MapRule "r" Fact ["pkg"] [ Emit ["environment","systemPackages"] (VList [VStr [PHole "value"]]) ]
+
+    it "mergeModeOf: a subject a rule emits a VList to is Append; else Replace" $ do
+      mergeModeOf [rule] (Subject ["environment","systemPackages"]) `shouldBe` Append
+      mergeModeOf [rule] (Subject ["pkg"]) `shouldBe` Replace
+    it "mergeModeOf: a capture-bearing list emit path matches a concrete subject" $ do
+      let r2 = MapRule "r2" Fact ["grp"] [ Emit ["g","<name>","items"] (VList [VStr [PHole "value"]]) ]
+      mergeModeOf [r2] (Subject ["g","key1","items"]) `shouldBe` Append
+
+    it "assembleSubject concatenates VList contributors in source-line order" $
+      case assembleSubject [d2,d1] of          -- given out of order
+        Right synth -> dAssertion synth `shouldBe` Assertion "[ \"ripgrep\" \"htop\" ]"
+        Left e      -> expectationFailure ("assemble failed: " <> show e)
+    it "assembleSubject preserves package refs across contributors" $ do
+      let a = (mk "a" "x" "[ ${pkgs.curl} ]" Stated) { dSubject = pkgs, dProv = FromSource (SourceLoc "f" 1) }
+          b = (mk "b" "x" "[ ${pkgs.htop} ]" Stated) { dSubject = pkgs, dProv = FromSource (SourceLoc "f" 2) }
+      case assembleSubject [a,b] of
+        Right synth -> dAssertion synth `shouldBe` Assertion "[ ${pkgs.curl} ${pkgs.htop} ]"
+        Left e      -> expectationFailure ("assemble failed: " <> show e)
+    it "assembleSubject fails loud on a non-VList contributor" $
+      let bad = (mk "b" "x" "\"not-a-list\"" Stated) { dSubject = pkgs, dProv = FromSource (SourceLoc "f" 1) }
+       in assembleSubject [bad] `shouldSatisfy` isLeft
+    it "assembleSubject provenance links all contributors (walkable)" $
+      case assembleSubject [d1,d2] of
+        Right synth -> dProv synth `shouldBe` Derived [DecisionId "d2", DecisionId "d1"] (RuleId "append")
+        Left e      -> expectationFailure ("assemble failed: " <> show e)
 
   describe "refinement (spec 2.4, 4)" $ do
     let oblige = (mk "o1" "row" "row->txn" Stated) { dKind = Oblige }

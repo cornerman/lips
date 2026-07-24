@@ -13,6 +13,7 @@ module Lips.Kernel.Base
   , insert
   , union
   , Conflict (..)
+  , MergeMode (..)
   , resolve
   ) where
 
@@ -53,6 +54,17 @@ data Conflict = Conflict
   , conflictLeft    :: Decision
   , conflictRight   :: Decision
   }
+  deriving (Eq, Show)
+
+-- | How a subject's decisions merge at resolve time. 'Replace' is the scalar
+-- default: the top-strength decision wins, equal-strength dissent conflicts.
+-- 'Append' is the list-aggregation mode: the top-strength decisions all
+-- CONTRIBUTE their elements to one assembled list (same-strength aggregation,
+-- not conflict); a stronger decision still REPLACES the whole list. Which mode
+-- a subject uses is derived from the engine (rule emits / option schema), never
+-- carried on the decision, so the kernel stays domain-blind (spec section 2,
+-- merge; list-aggregation design, Closure B).
+data MergeMode = Replace | Append
   deriving (Eq, Show)
 
 -- | Resolve a base to one winning decision per subject, or report every
