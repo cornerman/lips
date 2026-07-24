@@ -1,0 +1,4 @@
+Serve the site with nginx as an nginx virtualHost keyed by the hostname. The
+static files directory becomes the virtualHost root. For HTTPS, set
+enableACME and forceSSL on the virtualHost. Enable services.nginx itself.
+Reference directories and hostnames as string values, not Nix path literals.

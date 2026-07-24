@@ -1,0 +1,5 @@
+a1 expect services.nginx.virtualHosts.<self>.root from site.root
+a2 expect services.nginx.virtualHosts.<self>.serverName from site.host
+a3 expect services.nginx.virtualHosts.<self>.enableACME from site.https
+a4 expect services.nginx.virtualHosts.<self>.forceSSL from site.https
+a5 expect security.acme.defaults.email from acme.email

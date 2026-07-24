@@ -1,0 +1,3 @@
+serve the static files in /var/www/docs at docs.example.com.
+enable HTTPS with a Let's Encrypt certificate.
+the Let's Encrypt account email is admin@example.com.
