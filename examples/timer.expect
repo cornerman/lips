@@ -1,0 +1,3 @@
+a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command
+a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule
+a3 expect systemd.services.<self>.description from job.name

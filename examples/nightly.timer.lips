@@ -1,0 +1,2 @@
+run /var/lib/scripts/cleanup.sh every day at 03:00.
+name the job cleanup.
