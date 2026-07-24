@@ -17,6 +17,7 @@
 module Lips.Kernel.Realize
   ( RealizeError (..)
   , realize
+  , realizeReplace
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
@@ -25,7 +26,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
-import Lips.Kernel.Base         (Base, Conflict, resolveReplace)
+import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
                                   valueArtifactNames)
@@ -46,13 +47,35 @@ data RealizeError
     RMalformed Subject Text
   deriving (Eq, Show)
 
--- | Realize a base to a NixOS module, or report why it cannot. Deterministic:
--- assignments are ordered by option path, so the same base always yields
--- byte-identical text.
-realize :: Base -> Either RealizeError Text
-realize base = do
-  winners <- either (Left . RConflicts) Right (resolveReplace base)
-  renderModule (Map.toList winners)
+-- | Realize a base to a NixOS module, or report why it cannot. The merge
+-- config (which subjects append vs. replace) and the assembly function are
+-- injected, so this module needs no 'Value' dependency and no cycle: the
+-- caller derives both from the engine's rule emits at run time (the kernel
+-- stays domain-blind). Deterministic: assignments are ordered by option
+-- path, so the same base always yields byte-identical text.
+realize :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+        -> Base -> Either RealizeError Text
+realize modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs -> Left (toErr errs)
+    Right winners -> renderModule (Map.toList winners)
+  where
+    -- A subject is either Replace or Append, so its failure is exactly one
+    -- kind; across subjects the kinds can mix. Report every conflict (the
+    -- author's to edit); if there are none, the first assembly defect (an
+    -- engine bug). Never silent: resolve returns Left only with a non-empty
+    -- list, so the final branch is unreachable in practice.
+    toErr errs =
+      case [ c | REConflict c <- errs ] of
+        cs@(_ : _) -> RConflicts cs
+        []         -> case [ (s, e) | REAssemble s e <- errs ] of
+                        ((s, e) : _) -> RMalformed s e
+                        []            -> RConflicts []
+
+-- | Today's all-Replace behavior, for callers and tests that do not
+-- aggregate. Byte-identical to the pre-aggregation 'realize'.
+realizeReplace :: Base -> Either RealizeError Text
+realizeReplace = realize (const Replace) (\_ -> Left "assemble unused")
 
 -- | An artifact group is any decision whose subject is rooted at @artifact@
 -- (@artifact.<name>.builder@, @artifact.<name>.args.<key>@). These do not

@@ -211,6 +211,23 @@ main = hspec $ do
         Left [_] -> pure ()   -- two equal-strength different assertions -> Conflict (today)
         _        -> expectationFailure "without Append, two list lines conflict"
 
+    it "end-to-end: two install lines aggregate into one systemPackages list" $ do
+      -- Each line crystallizes to a DISTINCT captured subject (install.<pkg>),
+      -- so the human base does not conflict; the rule emits a VList rhs to the
+      -- COMMON environment.systemPackages, so resolve assembles both into one.
+      let pat = patOne "p" [TLit "install", THole "pkg"] Fact Stated
+                  [SLit "install.", SHole "pkg"] [SHole "pkg"]
+          installRule = MapRule "r" Fact ["install", "<pkg>"]
+                   [ Emit ["environment","systemPackages"] (VList [VStr [PHole "value"]]) ]
+          prog = T.unlines [ "install htop.", "install ripgrep." ]
+          modeOf = mergeModeOf [installRule]
+      case crystallize "f" [pat] prog of
+        Left e  -> expectationFailure ("crystallize failed: " <> show e)
+        Right base -> case runBase modeOf assembleSubject 100 (map toRule [installRule]) [] base of
+          Left e     -> expectationFailure ("run failed: " <> show e)
+          Right mod_ -> mod_ `shouldSatisfy`
+            T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" ];"
+
   describe "refinement (spec 2.4, 4)" $ do
     let oblige = (mk "o1" "row" "row->txn" Stated) { dKind = Oblige }
         -- one rule: an Oblige expands into one Meta mechanism decision
@@ -325,11 +342,11 @@ main = hspec $ do
             , "  systemd.timers.ledger.timerConfig.OnCalendar = \"daily\";"
             , "}"
             ]
-      realize (fromList ground) `shouldBe` Right expected
+      realizeReplace (fromList ground) `shouldBe` Right expected
 
     it "refuses to realize a base with a conflict" $ do
       let clash = [mk "a" "x" "true" Stated, mk "b" "x" "false" Stated]
-      realize (fromList clash) `shouldSatisfy` isLeft
+      realizeReplace (fromList clash) `shouldSatisfy` isLeft
 
     -- A value-keyed segment (e.g. a route path) is often not a bare Nix
     -- identifier, so it must be string-quoted in the emitted attribute path;
@@ -337,14 +354,14 @@ main = hspec $ do
     it "quotes an option-path segment that is not a bare Nix identifier" $ do
       let g = (mk "g" "x" "\"world\"" Stated)
                 { dSubject = Subject ["environment", "etc", "httpserver/hello", "text"] }
-      case realize (fromList [g]) of
+      case realizeReplace (fromList [g]) of
         Right out -> out `shouldSatisfy`
                        T.isInfixOf "environment.etc.\"httpserver/hello\".text = \"world\";"
         Left e    -> expectationFailure ("unexpected realize error: " ++ show e)
 
     it "is order-independent (deterministic output)" $
       property $ forAll (shuffle ground) $ \perm ->
-        realize (fromList perm) === realize (fromList ground)
+        realizeReplace (fromList perm) === realizeReplace (fromList ground)
 
     it "gathers artifact.<name> groups into a let-bound derivation" $ do
       let arts =
@@ -369,11 +386,11 @@ main = hspec $ do
             , "  systemd.services.myserver.serviceConfig.ExecStart = \"${artifact.myserver}/bin/myserver\";"
             , "}"
             ]
-      realize (fromList arts) `shouldBe` Right expected
+      realizeReplace (fromList arts) `shouldBe` Right expected
 
     it "fails loud (typed, not a crash) on a ${artifact.<name>} reference to an undefined artifact" $
       let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
-       in realize (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
+       in realizeReplace (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
 
     it "detects an artifact reference in a canonical list and flags it dangling if unbuilt" $ do
       -- systemPackages is a list of derivations; a list element references an
@@ -384,24 +401,24 @@ main = hspec $ do
             , (mk "p" "x" "\"weather\"" Stated) { dSubject = Subject ["artifact","weather","args","pname"] }
             , (mk "e" "x" "[ ${artifact.weather} ]" Stated) { dSubject = Subject ["environment","systemPackages"] }
             ]
-      realize (fromList built) `shouldSatisfy` isRight
+      realizeReplace (fromList built) `shouldSatisfy` isRight
       -- a ref to an unbuilt artifact still fails loud
       let dangling = [ (mk "e" "x" "[ ${artifact.ghost} ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
-      realize (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
+      realizeReplace (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
       -- the literal token "artifact." inside a string is NOT a reference: a
       -- VStr holds it as a PLit, so valueArtifactNames finds nothing.
       let litText = [ (mk "e" "x" "\"see artifact.ghost docs\"" Stated) { dSubject = Subject ["environment","variables","NOTE"] } ]
-      realize (fromList litText) `shouldSatisfy` isRight
+      realizeReplace (fromList litText) `shouldSatisfy` isRight
       -- a package whose OWN segment is 'artifact' is a package (RPkg), not an
       -- artifact (RArt): valueArtifactNames returns [] for RPkg.
       let pkgPath = [ (mk "e" "x" "${pkgs.foo.artifact.bar}" Stated) { dSubject = Subject ["services","x","package"] } ]
-      realize (fromList pkgPath) `shouldSatisfy` isRight
+      realizeReplace (fromList pkgPath) `shouldSatisfy` isRight
       let pkgList = [ (mk "e" "x" "[ ${pkgs.foo.artifact.bar} ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
-      realize (fromList pkgList) `shouldSatisfy` isRight
+      realizeReplace (fromList pkgList) `shouldSatisfy` isRight
 
     it "fails loud (typed) on a malformed artifact group (no builder)" $
       let noBuilder = [ (mk "p" "x" "\"srv\"" Stated) { dSubject = Subject ["artifact","srv","args","pname"] } ]
-       in realize (fromList noBuilder) `shouldBe` Left (RBadArtifact "srv" "no builder")
+       in realizeReplace (fromList noBuilder) `shouldBe` Left (RBadArtifact "srv" "no builder")
 
   describe "run pipeline (spec 5: four outcomes)" $ do
     -- an engine: one rule mapping any Oblige to a ground option assignment
@@ -411,19 +428,19 @@ main = hspec $ do
         prog = "o1 oblige feed.ingest stated \"row->txn\" @ledger:9\n"
 
     it "parse rejection: a malformed line re-enters generate" $
-      run 100 engine [] "this line has no quoted assertion"
+      runReplace 100 engine [] "this line has no quoted assertion"
         `shouldSatisfy` \r -> case r of Left (ParseRejected _) -> True; _ -> False
 
     it "open question: an unmet demand is surfaced verbatim" $
-      run 100 engine (needs ["currency"]) prog
+      runReplace 100 engine (needs ["currency"]) prog
         `shouldBe` Left (OpenQuestions ["need currency"])
 
     it "conflict: equal-strength contradiction stops the run" $
-      run 100 engine [] "d1 fact x stated \"1\" @f:1\nd2 fact x stated \"2\" @f:2\n"
+      runReplace 100 engine [] "d1 fact x stated \"1\" @f:1\nd2 fact x stated \"2\" @f:2\n"
         `shouldSatisfy` \r -> case r of Left (Conflicted _) -> True; _ -> False
 
     it "unmapped: an obligation no rule maps fails loud (anti-MDA guard)" $
-      run 100 engine (needs ["feed", "ingest"])
+      runReplace 100 engine (needs ["feed", "ingest"])
         "o1 oblige feed.ingest stated \"rows\" @l:9\nx1 invariant feed.dedup stated \"never twice\" @l:10\n"
         `shouldSatisfy` \r -> case r of Left (Unmapped ds) -> map dSubject ds == [Subject ["feed", "dedup"]]; _ -> False
 
@@ -436,7 +453,7 @@ main = hspec $ do
             , "  services.ledger.enable = true;"
             , "}"
             ]
-      run 100 engine (needs ["feed", "ingest"]) prog `shouldBe` Right expected
+      runReplace 100 engine (needs ["feed", "ingest"]) prog `shouldBe` Right expected
 
     it "a concept line is decorative: it neither fails Unmapped nor realizes" $ do
       -- A heading like "http routes:" crystallizes to a 'Concept': vocabulary
@@ -452,7 +469,7 @@ main = hspec $ do
             , "  services.ledger.enable = true;"
             , "}"
             ]
-      run 100 engine [] withHeading `shouldBe` Right expected
+      runReplace 100 engine [] withHeading `shouldBe` Right expected
 
   describe "generate minting (engine-synthesis plan: whole-engine candidates)" $ do
     it "parses the three item forms and assembles an engine" $ do
@@ -838,7 +855,7 @@ main = hspec $ do
         Left e     -> expectationFailure ("crystallize: " ++ show e)
         Right base -> case refine 100 [toRule routeRule] base of
           Left e       -> expectationFailure ("refine: " ++ show e)
-          Right ground -> case realize ground of
+          Right ground -> case realizeReplace ground of
             Left e    -> expectationFailure ("realize: " ++ show e)
             Right out -> do
               out `shouldSatisfy` T.isInfixOf "environment.etc.\"/hello\".text = \"200\";"
@@ -1138,7 +1155,7 @@ main = hspec $ do
           eng  <- either (Left . show) Right (readLang (renderLang (FromGeneration "feedcafe") feedEngine))
           base <- either (Left . show) Right (crystallize "feed" (edPatterns eng) (loose loc sched))
           either (Left . show) Right
-            (runBase 10000 (map toRule (edRules eng)) (map toDemand (edDemands eng)) base)
+            (runBaseReplace 10000 (map toRule (edRules eng)) (map toDemand (edDemands eng)) base)
         moduleWith inbox oncal = T.unlines
           [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
           , "{ config, lib, pkgs, ... }:"
@@ -1168,7 +1185,7 @@ main = hspec $ do
       case crystallize "feed" (edPatterns feedEngine) noSource of
         Left e -> expectationFailure ("unexpected crystallize error: " ++ show e)
         Right base ->
-          runBase 10000 (map toRule (edRules feedEngine)) (map toDemand (edDemands feedEngine)) base
+          runBaseReplace 10000 (map toRule (edRules feedEngine)) (map toDemand (edDemands feedEngine)) base
             `shouldBe` Left (OpenQuestions ["where do the files arrive?"])
 
   -- Authoring diagnostics: the pure (language, program) view a human/editor
@@ -1437,7 +1454,7 @@ main = hspec $ do
         runProg prog = do
           base <- either (Left . show) Right (crystallize "feed" pats prog)
           either (Left . show) Right
-            (runBase 10000 (map toRule rules) (map toDemand demands) base)
+            (runBaseReplace 10000 (map toRule rules) (map toDemand demands) base)
         -- the realized module minus provenance comments: the semantic content,
         -- which is what edits must preserve (comments track ids, not meaning)
         opts = filter (not . ("#" `T.isPrefixOf`) . T.stripStart) . T.lines

@@ -13,6 +13,8 @@ module Lips.Kernel.Run
   ( RunError (..)
   , run
   , runBase
+  , runReplace
+  , runBaseReplace
   ) where
 
 import           Data.Bifunctor  (first)
@@ -48,18 +50,22 @@ data RunError
   deriving (Eq, Show)
 
 -- | Run a program (canonical-form text) against an engine (its rules and
--- demands). The budget bounds refinement steps.
-run :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
-run budget rules demands src = do
+-- demands). The merge config (derived from the rule emits) and the assembly
+-- function are injected, keeping run domain-blind. The budget bounds
+-- refinement steps.
+run :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+    -> Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
+run modeOf assemble budget rules demands src = do
   base0 <- first ParseRejected (readBase src)
-  runBase budget rules demands base0
+  runBase modeOf assemble budget rules demands base0
 
 -- | The pipeline from a decision base onward (resolve, demands, refine,
 -- realize), shared by canonical @run@ and the loose path where @crystallize@
--- produces the base. Pure in (base, engine).
-runBase :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
-runBase budget rules demands base0 = do
-  winners <- first (Conflicted . concatMap confOf) (resolveReplace base0)
+-- produces the base. Pure in (base, engine). The merge config is injected.
+runBase :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+        -> Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
+runBase modeOf assemble budget rules demands base0 = do
+  winners <- first toConflicts (resolve modeOf assemble base0)
   -- Refine the resolved winners, so overridden defaults never realize.
   let base1 = fromList (Map.elems winners)
   case map demQuestion (openQuestions demands base1) of
@@ -74,7 +80,7 @@ runBase budget rules demands base0 = do
   -- fail loud, not emit garbage.
   let realizable = filter ((/= Concept) . dKind) (toList ground)
   case filter ((/= Meta) . dKind) realizable of
-    []      -> case realize (fromList realizable) of
+    []      -> case realize modeOf assemble (fromList realizable) of
                  Right nixMod          -> Right nixMod
                  Left (RConflicts cs)  -> Left (Conflicted cs)
                  Left (RDangling ns)   -> Left (Unrealizable
@@ -83,12 +89,28 @@ runBase budget rules demands base0 = do
                  Left (RMalformed s e)    -> Left (Unrealizable
                    ["option " <> subjText s <> ": " <> e])
     leftovers -> Left (Unmapped leftovers)
+  where
+    -- Resolve groups by subject; a subject is either Replace (a conflict) or
+    -- Append (an assembly defect). Conflicts are the author's to edit; an
+    -- assembly failure on the human base is an engine defect surfaced as
+    -- Unrealizable so it is never silent (invariant 2). For a valid engine the
+    -- Append branch is unreachable at the human base (a list emit's rhs fills
+    -- to a VList, so assembly never fails), but a buggy engine must still fail
+    -- loud, not as an empty Conflicted.
+    toConflicts errs =
+      case [ c | REConflict c <- errs ] of
+        cs@(_ : _) -> Conflicted cs
+        []         -> Unrealizable
+          [ "list " <> subjText s <> ": " <> e | REAssemble s e <- errs ]
+
+-- | Today's all-Replace behavior, for callers and tests that do not
+-- aggregate. Identical to the pre-aggregation 'run'/'runBase'.
+runReplace :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
+runReplace = run (const Replace) (\_ -> Left "assemble unused")
+
+runBaseReplace :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
+runBaseReplace = runBase (const Replace) (\_ -> Left "assemble unused")
 
 -- | Render a subject as a dotted path for a plain-language error.
 subjText :: Subject -> Text
 subjText (Subject ss) = T.intercalate "." ss
-
--- | Today's resolve yields only conflicts; resolveReplace keeps that shape.
--- (Append-aware resolve is threaded in Task 4; until then run is Replace-only.)
-confOf :: Conflict -> [Conflict]
-confOf c = [c]

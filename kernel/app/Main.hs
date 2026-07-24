@@ -30,6 +30,7 @@ import           System.IO          (hFlush, stderr, stdout)
 import           System.FilePath    (dropExtension, takeFileName, (</>))
 import           System.Process     (callCommand, readProcessWithExitCode)
 
+import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
 import           Lips.Identity                 (artifactsPath, decisionsPath, directionPath, expectPath, generationPath, instanceName, langPath, languageName)
 import           Lips.Generate.Args     (parseGenerate)
@@ -529,8 +530,14 @@ validate file eng program =
     Right base ->
       -- Language reuse: the shared grammar names its per-instance attrsOf key by
       -- <self>, bound here to this program's instance name (its file basename).
-      case runBase budget (map (toRule . bindSelf (instanceName file)) (edRules eng))
-                          (map toDemand (edDemands eng)) base of
+      -- The merge mode is derived from the rule emits (a subject whose rule
+      -- emits a VList rhs appends); the BOUND emits carry the instance name in
+      -- place of <self>, so they match the concrete Meta subjects resolve sees.
+      let inst       = instanceName file
+          boundRules = map (bindSelf inst) (edRules eng)
+          modeOf     = mergeModeOf boundRules
+      in case runBase modeOf assembleSubject budget
+                  (map toRule boundRules) (map toDemand (edDemands eng)) base of
         Left err        -> Left (FailRun err)
         Right nixModule -> Right (base, nixModule)
 
