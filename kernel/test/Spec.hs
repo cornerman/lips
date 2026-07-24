@@ -471,6 +471,30 @@ main = hspec $ do
       let src = "a1 expect services.restic.backups.ledger.repository from backup.job#2\n"
       (renderExpect <$> readExpect src) `shouldBe` Right src
 
+    -- A model may write an attrsOf key in Nix-attr-path form, quoted
+    -- (locations."/".proxyPass), or bare (locations./.proxyPass). Both must
+    -- parse to the SAME segment, so a rule written bare and an expect written
+    -- quoted (or vice versa) still agree and the check looks up the right key.
+    it "parses a quoted attrsOf key in an option path to its bare segment" $ do
+      parseExpectBody "a" "expect services.nginx.virtualHosts.app.locations.\"/\".proxyPass from proxy.upstream"
+        `shouldBe` Right Expect
+            { exId = "a"
+            , exPath = ["services","nginx","virtualHosts","app","locations","/","proxyPass"]
+            , exFrom = Subject ["proxy","upstream"]
+            , exToken = Nothing
+            }
+      -- a quoted key with a dot inside stays one segment (no split on the dot)
+      parseExpectBody "a" "expect a.\"file.txt\".b from x"
+        `shouldBe` Right Expect
+            { exId = "a"
+            , exPath = ["a","file.txt","b"]
+            , exFrom = Subject ["x"]
+            , exToken = Nothing
+            }
+
+    it "rejects an unterminated quote in an option path" $
+      parseExpectBody "a" "expect a.\"unterminated from x" `shouldSatisfy` isLeft
+
     it "binds <self> in the option path to the instance (contract is language-level)" $
       bindSelfExpect "ledger" (Expect "a" ["services", "restic", "backups", "<self>", "paths"] opt Nothing)
         `shouldBe` Expect "a" ["services", "restic", "backups", "ledger", "paths"] opt Nothing
@@ -662,6 +686,18 @@ main = hspec $ do
 
     it "rule body round-trips" $
       parseRuleBody "r2" (renderRuleBody rule) `shouldBe` Right rule
+
+    -- A quoted attrsOf key in an emit path normalizes to the same bare segment
+    -- as the unquoted form (plan: align the engine path split with the base
+    -- subject split), so a model writing locations."/".proxyPass emits the
+    -- option slot / (not the wrong key "/"), matching a bare-keyed expect.
+    it "parses a quoted attrsOf key in an emit path to its bare segment" $ do
+      parseRuleBody "r" "match fact x => a.b.\"/\".c true"
+        `shouldBe` Right (MapRule "r" Fact ["x"]
+            [ Emit ["a","b","/","c"] (VBool True) ])
+      parseRuleBody "r" "match fact x => a.b.\"file.txt\".c true"
+        `shouldBe` Right (MapRule "r" Fact ["x"]
+            [ Emit ["a","b","file.txt","c"] (VBool True) ])
 
     -- Language reuse (plan 2026-07-22): a shared grammar names the per-instance
     -- attrsOf key by the reserved <self> segment, bound to the solution's file

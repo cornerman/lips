@@ -43,6 +43,7 @@ import           Text.Read  (readMaybe)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Capture  (captureName, fillCaptures, matchSubject)
 import Lips.Kernel.Decision
+import Lips.Kernel.Engine.Data (splitAttrPath)
 import Lips.Kernel.Reader   (ParseError (..))
 
 -- | One behavioral assertion: option 'exPath' carries the value drawn from
@@ -92,10 +93,12 @@ parseExpectBody eid body =
   case T.words body of
     ["expect", pathTok, "from", fromTok] -> do
       (subjTok, tok) <- parseFrom fromTok
+      path  <- splitAttrPath pathTok
+      subj  <- splitAttrPath subjTok
       Right Expect
         { exId    = eid
-        , exPath  = T.splitOn "." pathTok
-        , exFrom  = Subject (T.splitOn "." subjTok)
+        , exPath  = path
+        , exFrom  = Subject subj
         , exToken = tok
         }
     _ -> Left ("expect " <> eid <> ": want `expect <path> from <subject>[#n]`, got: " <> body)

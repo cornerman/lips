@@ -39,6 +39,7 @@ module Lips.Kernel.Engine.Data
   , parseRuleBody
   , renderDemandBody
   , parseDemandBody
+  , splitAttrPath
   ) where
 
 import           Data.Maybe     (isJust)
@@ -174,7 +175,7 @@ parseRuleBody rid body = do
   let (matchPart, arrowPart) = T.breakOn " => " afterMatch
   emitsPart <- if T.null arrowPart then Left (pre <> "missing =>") else Right (T.drop 4 arrowPart)
   (kind, subj) <- case T.words matchPart of
-    [k, s] -> (,) <$> parseKindTok pre k <*> pure (T.splitOn "." s)
+    [k, s] -> (,) <$> parseKindTok pre k <*> splitAttrPath s
     _      -> Left (pre <> "match needs '<kind> <subject>'")
   emits <- mapM (parseEmit . T.strip) (T.splitOn " ; " emitsPart)
   if null emits
@@ -198,7 +199,7 @@ parseRuleBody rid body = do
           inner <- parseQuoted pre rest
           either (\e -> Left (pre <> e)) Right (parseValue inner)
         _ -> either (\e -> Left (pre <> e)) Right (parseValue rest)
-      Right (Emit (T.splitOn "." pathTok) rhs)
+      Emit <$> splitAttrPath pathTok <*> pure rhs
 
 -- Demand body: @demand <subject> "<question>"@
 
@@ -213,7 +214,7 @@ parseDemandBody did body = do
     (w : _) -> Right (w, T.stripStart (T.drop (T.length w) (T.stripStart afterKw)))
     []      -> Left (pre <> "demand needs '<subject> \"<question>\"'")
   q <- parseQuoted pre rest
-  Right (DemandSpec did (T.splitOn "." subjTok) q)
+  DemandSpec did <$> splitAttrPath subjTok <*> pure q
   where
     pre = "demand " <> did <> ": "
 
@@ -239,6 +240,48 @@ quoteText a = "\"" <> T.concatMap esc a <> "\""
     esc '"'  = "\\\""
     esc '\\' = "\\\\"
     esc c    = T.singleton c
+
+-- | Split a dotted attribute path -- a rule emit path or an expect option path
+-- -- into segments, tolerating the Nix-attr-path quoting a model may write. A
+-- segment wrapped in @"..."@ is taken literally (no split on a dot inside) and
+-- the surrounding quotes are stripped, so @locations."/".proxyPass@ and
+-- @locations./.proxyPass@ parse to the SAME segment @/@. A backslash escapes
+-- the next char (@\"@, @\\@, @\.@), mirroring the base 'splitSubject'; an
+-- unterminated quote fails loud.
+--
+-- Why normalize here, not at render: the canonical stored form writes keys
+-- BARE (the kernel quotes on realize via 'quoteSeg'), so a bare segment
+-- round-trips unchanged and every existing engine is byte-identical. The model
+-- is one-shot and may write a quoted key in either the rule or the expect (or
+-- split across them); normalizing at the only door minted engines enter keeps
+-- the two sides agreeing on the key without a prompt plea. This is the engine
+-- analogue of the base subject split ('Lips.Kernel.Reader.splitSubject'):
+-- both are quote/escape-aware, so a path segment is never shredded by a dot.
+splitAttrPath :: Text -> Either Text [Text]
+splitAttrPath t0 = go (T.stripStart t0) T.empty []
+  where
+    pre = "bad attribute path " <> t0 <> ": "
+    -- Outside a quoted span: '.' separates; '\' escapes the next char;
+    -- '"' opens a quoted span (its quote is not part of the segment).
+    go t cur acc = case T.uncons t of
+      Nothing            -> Right (revcons cur acc)
+      Just ('.', r)      -> go r T.empty (cur : acc)
+      Just ('"', r)      -> inQuote r cur acc
+      Just ('\\', r)    -> case T.uncons r of
+        Just (c, r') -> go r' (T.snoc cur c) acc
+        Nothing      -> Left (pre <> "dangling escape")
+      Just (c, r)        -> go r (T.snoc cur c) acc
+    -- Inside a quoted span: '"' closes; '\' escapes the next char (so a key
+    -- may contain a quote or a dot); a '.' is literal, so a dotted key stays
+    -- one segment.
+    inQuote t cur acc = case T.uncons t of
+      Nothing           -> Left (pre <> "unterminated quote")
+      Just ('"', r)     -> go r cur acc
+      Just ('\\', r)   -> case T.uncons r of
+        Just (c, r') -> inQuote r' (T.snoc cur c) acc
+        Nothing      -> Left (pre <> "dangling escape in quotes")
+      Just (c, r)       -> inQuote r (T.snoc cur c) acc
+    revcons cur acc = reverse (cur : acc)
 
 parseKindTok :: Text -> Text -> Either Text Kind
 parseKindTok pre w =
