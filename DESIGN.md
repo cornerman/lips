@@ -378,6 +378,37 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Option-schema grounding: field-check @listOf@-submodule attrset elements (H3).**
+  A rule that fills a @list of (submodule)@ option (e.g.
+  @services.postgresql.ensureUsers@) with a list of attrsets now has each
+  element's fields type-checked against the submodule's @*@@-wildcard leaves
+  (@ensureUsers.*.ensureDBOwnership :: boolean@, @.*.name :: string@), which
+  nixpkgs' @optionsJSON@ does list and the schema already carries. Previously
+  the element type @OTOther "(submodule)"@ was the unconstrained catch-all, so
+  a mistyped field (@ensureDBOwnership = "true"@ -- a string for a bool) slipped
+  the gate and surfaced only at @nix eval@, less targeted and with no mint
+  guidance. Now @checkEmits@ (the one door minted engines enter, @generate@;
+  the run path stays schema-free -- invariant 1) steps into each @VAttr@
+  element of a @VList@ rhs and @valueMatches@@ each field against its leaf type,
+  reusing the existing scalar checker (so hole-filled fields -- @VHole HBool@,
+  @VStr [PHole]@ -- check correctly). This is the pre-assembly placement
+  (decided with the list-aggregation design): @assembleSubject@ is
+  element-preserving (it concatenates @VList@ elements, never merges two
+  @VAttr@s into one or splits one), so pre-assembly field-checking is complete
+  -- nothing assembly does can introduce a field-type error absent from a
+  fragment, and post-assembly would only re-check the same elements while
+  dragging the schema into run. A submodule whose fields the schema does NOT
+  list has no leaves to check against and degrades to unconstrained, which is
+  correct (completeness by construction: the kernel cannot constrain what the
+  schema does not, never a guess). @VTail@ is untouched: a tail-of-tokens rhs
+  into a @listOf@ is already gated by @valueMatches@@'s missing @VTail@ arm.
+  Verified by a conformance test (a string @ensureDBOwnership@ is flagged; a
+  bool passes; a leafless submodule degrades to unconstrained) and proven live
+  at the real door: @generate@ against the pinned nixpkgs schema rejects an
+  engine emitting @ensureDBOwnership = "true"@, naming rule r2, where it
+  previously slipped to @nix eval@. 221/221, @-Wall@ clean, all 9 examples
+  @check@ clean.
+
 - **Realize refuses an unfilled @<value.tail>@ (fail loud, not a literal).**
   The list-aggregation C work added @VTail@, a tail hole whose rhs fills to
   a @VList@ of the program value's tokens. @fillValue@ always converts
