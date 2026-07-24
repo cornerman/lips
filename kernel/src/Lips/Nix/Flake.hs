@@ -51,12 +51,14 @@ flakeText target hasArtifacts = T.unlines $
   , "  outputs = { self, nixpkgs }:"
   , "    let"
   , "      systems = [ \"x86_64-linux\" \"aarch64-linux\" ];"
-  , "      forAll = f: nixpkgs.lib.genAttrs systems (system: f system (import nixpkgs { inherit system; }));"
-  , "    in {"
+  , "      forSystems = nixpkgs.lib.genAttrs systems;"
+  , "      pkgsFor = system: import nixpkgs { inherit system; };"
   ]
+  ++ nixosBuildsLet target
+  ++ [ "    in {" ]
   ++ moduleOutput target
-  ++ (if hasArtifacts then artifactPackages else [])
-  ++ appsOutput target hasArtifacts
+  ++ packagesOutput target hasArtifacts
+  ++ appsOutput target
   ++ [ "    };"
      , "}"
      ]
@@ -67,26 +69,17 @@ moduleOutput :: Target -> [Text]
 moduleOutput Nixos       = [ "      nixosModules.default = import ./default.nix;" ]
 moduleOutput HomeManager = [ "      homeManagerModules.default = import ./default.nix;" ]
 
--- | Every declared artifact as a buildable package under the @artifact.<name>@
--- namespace (so `nix build .#artifact.<name>` builds it and `nix run` executes
--- its mainProgram). Names come from @artifact.nix@ itself, so a program
--- nobody foresaw works with no change here.
-artifactPackages :: [Text]
-artifactPackages =
-  [ "      packages = forAll (system: pkgs: {"
-  , "        artifact = import ./artifact.nix { inherit pkgs; };"
-  , "      });"
-  ]
-
--- | The system rungs, nixos only. Each evaluates @./default.nix@ through
--- @eval-config@ (the exact logic the old runtime VM boot used, now emitted as
--- data) and exposes a boot script as an app. home-manager has no machine, so
--- it emits no apps.
-appsOutput :: Target -> Bool -> [Text]
-appsOutput HomeManager _ = []
-appsOutput Nixos _ =
-  [ "      apps = forAll (system: pkgs:"
+-- | The per-system system-rung derivations (nixos only), defined once in the
+-- outer @let@ so both @packages@ (build, don't activate) and @apps@ (build +
+-- boot) reference the SAME vm\/toplevel. This is the @nix build \<x\>@ vs
+-- @nix run \<x\>@ duality: a rung is one derivation reachable two ways, never
+-- two definitions. home-manager has no machine, so it emits nothing here.
+nixosBuildsLet :: Target -> [Text]
+nixosBuildsLet HomeManager = []
+nixosBuildsLet Nixos =
+  [ "      nixosBuilds = system:"
   , "        let"
+  , "          pkgs = pkgsFor system;"
   , "          evalConfig = extra: import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
   , "            inherit system;"
   , "            modules = extra ++ [ ./default.nix ];"
@@ -106,14 +99,46 @@ appsOutput Nixos _ =
   , "          runContainer = pkgs.writeShellScript \"run-lips-container\" ''"
   , "            root=$(${pkgs.coreutils}/bin/mktemp -d)"
   , "            trap '${pkgs.coreutils}/bin/rm -rf \"$root\"' EXIT"
-  , "            ${pkgs.coreutils}/bin/mkdir -p \"$root/sbin\""
+  , "            ${pkgs.coreutils}/bin/mkdir -p \"$root/etc\" \"$root/sbin\""
+  , "            # nspawn needs an os-release and its own init to boot and register."
+  , "            : > \"$root/etc/os-release\""
   , "            ${pkgs.coreutils}/bin/ln -sf ${toplevel}/init \"$root/sbin/init\""
+  , "            # --register=no --keep-unit: don't require machined/nsresourced."
   , "            exec ${pkgs.systemd}/bin/systemd-nspawn --quiet --boot \\"
+  , "              --register=no --keep-unit \\"
   , "              --directory=\"$root\" --bind-ro=/nix/store \"$@\""
   , "          '';"
-  , "        in {"
-  , "          vm = { type = \"app\"; program = \"${vm}/bin/run-lips-vm\"; };"
-  , "          container = { type = \"app\"; program = \"${runContainer}\"; };"
+  , "        in { inherit vm toplevel runContainer; };"
+  ]
+
+-- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
+-- activate). Artifacts sit under the @artifact.\<name\>@ namespace (so a
+-- domain artifact named @vm@ never clashes with the @vm@ rung); the system
+-- rungs expose @vm@ (the boot script derivation) and @container@ (the whole
+-- system @toplevel@ -- a cheap \"does it build\" check, no KVM\/root).
+packagesOutput :: Target -> Bool -> [Text]
+packagesOutput target hasArtifacts
+  | null body = []
+  | otherwise = [ "      packages = forSystems (system: {" ] ++ body ++ [ "      });" ]
+  where
+    body = artLine ++ sysLines
+    artLine
+      | hasArtifacts = [ "        artifact = import ./artifact.nix { pkgs = pkgsFor system; };" ]
+      | otherwise    = []
+    sysLines = case target of
+      Nixos       -> [ "        vm = (nixosBuilds system).vm;"
+                     , "        container = (nixosBuilds system).toplevel;" ]
+      HomeManager -> []
+
+-- | @apps@ (@nix run \<x\>@ builds + activates), nixos only. Each references
+-- the shared 'nixosBuildsLet' derivations, so run and build agree.
+appsOutput :: Target -> [Text]
+appsOutput HomeManager = []
+appsOutput Nixos =
+  [ "      apps = forSystems (system:"
+  , "        let b = nixosBuilds system; in {"
+  , "          vm = { type = \"app\"; program = \"${b.vm}/bin/run-lips-vm\"; };"
+  , "          container = { type = \"app\"; program = \"${b.runContainer}\"; };"
   , "        });"
   ]
 
@@ -137,6 +162,8 @@ runCommands target artNames dir =
       , "  run in a VM:           nix run   " <> ref "vm" <> "   (adds kernel/boot; needs KVM)"
       , "  build the system only: nix build " <> ref "container"
       ]
+    -- home-manager has no machine to boot: a module is imported into a home
+    -- config, not run standalone. Name that instead of a build that can't work.
     systemLines HomeManager =
-      [ "  build the module:      nix build " <> ref "homeManagerModules.default"
+      [ "  import into your home config: imports = [ " <> T.pack dir <> " ];"
       ]
