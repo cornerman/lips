@@ -847,6 +847,28 @@ but the loop around it is incomplete; "missing" means specced, not built.
   again") instead of the lips-bug wording. Guessable values (free defaults,
   synthesized build inputs) stay low-confidence with a because-note.
 
+- **LSP contextual completion (partials).** The language server used to ignore
+  the cursor and return every pattern as a whole-sentence snippet with no
+  `textEdit`, so accepting a completion mid-sentence duplicated the prefix and
+  threw away any hole value already typed. `textDocument/completion` now reads
+  the cursor position and the buffer line, matches the typed prefix against
+  each pattern's template (`Lips.Lsp.Derive.completionItemsAt`, pure), and offers
+  only patterns whose template still has something left to complete.
+  Already-typed holes fill as literals; only holes still to type become
+  numbered tab-stops (by hole name, so a repeated hole stays in sync). A
+  fragment at the cursor (the cursor mid-word) completes positionally: it fills
+  the literal it is a prefix of (so `dr` completes `drops`) or binds the hole
+  at that position. Each item carries a `textEdit` spanning the typed prefix
+  (from the first non-space column to the cursor), so accepting replaces the
+  prefix with the whole sentence cleanly, and `isIncomplete` is true so the
+  client re-requests as the user types. An empty line reaches the old
+  whole-sentence behavior through the same renderer. The match reuses the
+  template grammar and adds no per-program knowledge, so the kernel stays
+  domain-blind (invariant 1); the pure core is testable without a socket and
+  the wire shell stays a thin mapper. Verified 226/226, `-Wall` clean, and live
+  over stdio against `backup.lang` (filled `source` preserved as a literal,
+  `ba` completes `back`, a fully-matched line offers nothing).
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) runs at `generate` and
   via `lips check`; it is not yet enforced inside `run`, where a deterministic
