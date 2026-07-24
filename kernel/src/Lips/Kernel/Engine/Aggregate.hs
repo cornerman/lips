@@ -53,8 +53,8 @@ mergeModeOf rules (Subject segs)
     -- A @VTail@ rhs fills to a @VList@ of the program value's tokens, so it is
     -- a list-producing emit just like a literal @VList@ rhs: contributors on
     -- such a subject aggregate (capability C feeding B).
-    isListRhs (VList _) = True
-    isListRhs (VTail _) = True
+    isListRhs (VList _)   = True
+    isListRhs (VTail _ _) = True
     isListRhs _         = False
 
 -- | Assemble one Append subject's top-strength contributors into a single

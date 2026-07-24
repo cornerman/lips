@@ -869,6 +869,33 @@ but the loop around it is incomplete; "missing" means specced, not built.
   over stdio against `backup.lang` (filled `source` preserved as a literal,
   `ba` completes `back`, a fully-matched line offers nothing).
 
+- **Value grammar: package-derivation holes (`<value:pkg>`, `<value.tail:pkg>`).**
+  The closed rhs value algebra gains a hole whose filled value is a
+  `pkgs.<token>` *derivation*, not a string or scalar. This bridges the two
+  universes the grammar kept separate: a hole fills to a *value* (a string,
+  number, list of strings), a `${pkgs.<path>}` *reference* names a *literal*
+  derivation. A program that names packages ("install npm, yarn, bun") had no
+  path from a name token to a derivation, so the model tried `${pkgs.<value>}`
+  and the kernel honestly rejected it (a ref path is a literal name, never a
+  hole); the only alternative emitted strings, the wrong type for an option
+  like `environment.systemPackages`. The fix is one new `HoleType` constructor,
+  `HPkg`, and a typed tail. A bare `<value:pkg>` (or `<value.N:pkg>`) fills one
+  token to a `VRef (RPkg ("pkgs":segs))`; `VTail` generalizes from `VTail Text`
+  to `VTail (Maybe HoleType) Text`, so `<value.tail:pkg>` fills a line of names
+  to a `VList` of `pkgs.<name>` derivations (bare `<value.tail>` keeps its
+  string-token behavior; the other typed tails come free by symmetry with the
+  bare hole). Injection-safety is unchanged in spirit: the token is split on
+  `.` and every segment gated by `okSeg`, so program text can never alter the
+  path shape (a space, operator, `${`, or non-identifier fails loud). Domain-
+  blindness holds: `environment.systemPackages` is `OTListOf (OTOther
+  "package")`, and a `VList [VRef ...]` matches via the existing `OTOther _
+  -> True` arm with no new `OptionType`, so the kernel still never learns
+  "package". The one downstream correction the primitive exposed: a pkg hole
+  and a typed tail reference a derivation, so `valueRefsDerivation` now reads
+  `VHole HPkg _` and `VTail (Just _) _` as `True` (both fell through to `False`
+  before), keeping `uncheckableExpects` honest. Verified 229/229, `-Wall` clean;
+  an end-to-end test realizes `install htop, ripgrep.` + `install tmux.` to
+  `environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];`.
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) runs at `generate` and
   via `lips check`; it is not yet enforced inside `run`, where a deterministic

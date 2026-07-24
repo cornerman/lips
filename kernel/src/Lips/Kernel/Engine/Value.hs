@@ -11,8 +11,9 @@
 -- > list   ::= '[' value* ']'
 -- > ref    ::= ${pkgs.<dotted-path>} | ${artifact.<name>}   -- a bare reference value
 -- > attrset ::= '{' (ident '=' value ';')* '}'              -- optional trailing ';'
--- > typed-hole ::= '<' ('value' | 'value.'N) ':' ('int'|'bool'|'float'|'path') '>'
--- > tail-hole  ::= '<' 'value.tail' '>'   -- fills to a VList of the program value's tokens
+-- > typed-hole ::= '<' ('value' | 'value.'N) ':' ('int'|'bool'|'float'|'path'|'pkg') '>'
+-- > tail-hole  ::= '<' 'value.tail' [':' ('int'|'bool'|'float'|'path'|'pkg')] '>'
+-- >               -- bare: a VList of string tokens; with :pkg, a VList of pkgs.<token> refs
 --
 -- A @ref@ names a concrete thing (a package, a program-derived build) the
 -- kernel never inspects; as a whole value it stands as a list element (a list
@@ -74,8 +75,13 @@ data Ref = RPkg [Text] | RArt Text
   deriving (Eq, Show)
 
 -- | The type a bare (non-string) hole coerces its program token into. String
--- holes need no tag: they live inside 'VStr' as 'PHole'.
-data HoleType = HInt | HBool | HFloat | HPath
+-- holes need no tag: they live inside 'VStr' as 'PHole'. 'HPkg' turns a
+-- program token into a @pkgs.<token>@ derivation reference (a package whose
+-- name comes from the program), validated segment-by-segment so program text
+-- can never alter the path. It bridges the two universes a hole fills to
+-- (values) and a ref names (derivations), letting a program-name token become
+-- a derivation without computation.
+data HoleType = HInt | HBool | HFloat | HPath | HPkg
   deriving (Eq, Show)
 
 -- | A rhs value: the Nix value algebra minus computation. No constructor for
@@ -97,13 +103,18 @@ data Value
                           -- like any other. No quoted keys: a field name that is
                           -- not a bare identifier is rejected, so a program value
                           -- can never alter the attrset's shape.
-  | VTail Text          -- ^ @<value.tail>@: fills to a 'VList' of the program
-                          -- value's whitespace tokens (trailing sentence
-                          -- punctuation stripped). The whole rhs, not a list
-                          -- element: one line carrying many items becomes one
-                          -- list, which 'Append' (B) can aggregate with others.
-                          -- The name is always @value@ (the program value); an
-                          -- empty tail fails loud, never guesses a shape.
+  | VTail (Maybe HoleType) Text
+                          -- ^ @<value.tail>[@:@type]@: fills to a 'VList' of
+                          -- the program value's whitespace tokens (trailing
+                          -- sentence punctuation stripped). The whole rhs, not
+                          -- a list element: one line carrying many items
+                          -- becomes one list, which 'Append' (B) can aggregate
+                          -- with others. The name is always @value@ (the
+                          -- program value); an empty tail fails loud, never
+                          -- guesses a shape. 'Nothing' yields string elements
+                          -- (the original form); @'Just' 'HPkg'@ yields
+                          -- @pkgs.<token>@ derivation elements, so a line of
+                          -- package names realizes to a list of derivations.
   deriving (Eq, Show)
 
 -- | Does this value interpolate a package (@${pkgs...}@) or artifact
@@ -118,8 +129,10 @@ valueRefsDerivation (VStr ps)  = any isRef ps
         isRef _        = False
 valueRefsDerivation (VList vs) = any valueRefsDerivation vs
 valueRefsDerivation (VAttr fs) = any (valueRefsDerivation . snd) fs
-valueRefsDerivation (VRef _)   = True
-valueRefsDerivation _          = False
+valueRefsDerivation (VRef _)         = True
+valueRefsDerivation (VHole HPkg _)   = True
+valueRefsDerivation (VTail (Just _) _) = True
+valueRefsDerivation _                = False
 
 -- | The artifact names a value references, anywhere inside it: a string
 -- interpolation @${artifact.<name>}@ or a bare whole-value reference. Used by
@@ -166,12 +179,14 @@ holeTypeText HInt   = "int"
 holeTypeText HBool  = "bool"
 holeTypeText HFloat = "float"
 holeTypeText HPath  = "path"
+holeTypeText HPkg   = "pkg"
 
 parseHoleType :: Text -> Maybe HoleType
 parseHoleType "int"   = Just HInt
 parseHoleType "bool"  = Just HBool
 parseHoleType "float" = Just HFloat
 parseHoleType "path"  = Just HPath
+parseHoleType "pkg"   = Just HPkg
 parseHoleType _       = Nothing
 
 -- | Parse a rhs text into a 'Value'. Anything outside the grammar -- bare
@@ -248,18 +263,24 @@ validPathLit p =
 pTypedHole :: Text -> Either Text (Value, Text)
 pTypedHole more =
   let (inside, after) = T.breakOn ">" more
+      rest = T.drop 1 after
    in if T.null after
         then Left ("a hole is not closed with >: <" <> inside)
-        else case inside of
-          "value.tail" -> Right (VTail "value", T.drop 1 after)
-          _ -> case T.splitOn ":" inside of
+        else case T.stripPrefix "value.tail" inside of
+          Just suffix -> case T.uncons suffix of
+            Nothing        -> Right (VTail Nothing "value", rest)
+            Just (':', ty)
+              | Just ht <- parseHoleType ty -> Right (VTail (Just ht) "value", rest)
+            _ -> Left ("a <value.tail> hole may be bare or carry a single type, "
+                        <> "like <value.tail:pkg>: <" <> inside <> ">")
+          Nothing -> case T.splitOn ":" inside of
             [hn, ty]
               | validHoleName hn, Just ht <- parseHoleType ty ->
-                  Right (VHole ht hn, T.drop 1 after)
+                  Right (VHole ht hn, rest)
             _ ->
               Left ("a hole outside a string must carry a type, like <value:int>,"
-                     <> " <value:bool>, <value:float>, <value:path>, or be <value.tail>: <"
-                     <> inside <> ">")
+                     <> " <value:bool>, <value:float>, <value:path>, <value:pkg>, or be "
+                     <> "<value.tail>: <" <> inside <> ">")
 
 pList :: Text -> [Value] -> Either Text (Value, Text)
 pList t acc = case T.uncons t of
@@ -385,7 +406,8 @@ renderValue (VRef r)       = renderRefCanon r
 renderValue (VList vs)     = "[ " <> T.unwords (map renderValue vs) <> " ]"
 renderValue (VAttr [])     = "{}"
 renderValue (VAttr fs)     = "{ " <> T.unwords (map (\(k, v) -> k <> " = " <> renderValue v <> ";") fs) <> " }"
-renderValue (VTail _)      = "<value.tail>"
+renderValue (VTail Nothing _)   = "<value.tail>"
+renderValue (VTail (Just ht) _) = "<value.tail:" <> holeTypeText ht <> ">"
 renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
   where
     piece (PLit t)  = escape t
@@ -438,16 +460,22 @@ fillValue pick = fmap renderValue . fillV
     fillV (VList vs)   = VList <$> traverse fillV vs
     fillV (VAttr fs)   = VAttr <$> traverse (\(k, v) -> (k,) <$> fillV v) fs
     fillV (VHole ht h) = pick h >>= coerce ht h
-    fillV (VTail h) = do
+    fillV (VTail mht h) = do
       -- The program value's whitespace tokens, each stripped of trailing
       -- sentence punctuation, become one VList. An empty tail is a loud Left:
       -- a tail hole binds "the rest of the line", and the matcher already
       -- rejects a zero-token rest, so reaching here empty is a shape mismatch.
+      -- 'Nothing' keeps the original string elements; @'Just' ht@ coerces each
+      -- token the way a bare @<value:ht>@ would, so @<value.tail:pkg>@ yields a
+      -- list of @pkgs.<token>@ derivations (one line of package names becomes
+      -- one list of packages).
       tok <- pick h
       let toks = map stripTailPunct (filter (not . T.null) (T.words tok))
       if null toks
         then Left ("the value hole <" <> h <> ".tail> matched no tokens; there is nothing left on the line to fill it")
-        else Right (VList (map (VStr . (: []) . PLit) toks))
+        else case mht of
+          Nothing -> Right (VList (map (VStr . (: []) . PLit) toks))
+          Just ht -> VList <$> traverse (coerce ht h) toks
     fillV v            = Right v
     fillP (PHole h) = PLit <$> pick h
     fillP p         = Right p
@@ -464,10 +492,23 @@ fillValue pick = fmap renderValue . fillV
       _       -> Left (holeError h "bool" tok)
     coerce HPath h tok =
       let p = T.strip tok in if validPathLit p then Right (VPath p) else Left (holeError h "path" tok)
+    -- A package name from a program token: split on '.' (so a dotted attr path
+    -- like python311Packages.requests is one derivation) and gate every
+    -- segment through 'okSeg'. Program text can never alter the path: a space,
+    -- operator, '${', or non-identifier char fails loud here.
+    coerce HPkg h tok =
+      let p = T.strip tok
+          segs = T.splitOn "." p
+       in if not (T.null p) && all okSeg segs
+            then Right (VRef (RPkg ("pkgs" : segs)))
+            else Left (pkgHoleError h tok)
 
     holeError h ty tok =
       "the value hole <" <> h <> ":" <> ty
         <> "> was filled with something that is not a " <> ty <> ": " <> tok
+    pkgHoleError h tok =
+      "the value hole <" <> h <> ":pkg> was filled with a token that is not a valid "
+        <> "package name (letters, digits, '-', '_', and dots only): " <> tok
 
 -- | Strip trailing sentence punctuation from a token. A twin of
 -- 'Lips.Kernel.Lang.Pattern.stripTrailingPunct', duplicated here so the value

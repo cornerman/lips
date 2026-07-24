@@ -270,7 +270,7 @@ main = hspec $ do
       let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated
                   [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
           tailRule = MapRule "r" Fact ["install", "<pkg>"]
-                   [ Emit ["environment","systemPackages"] (VTail "value") ]
+                   [ Emit ["environment","systemPackages"] (VTail Nothing "value") ]
           prog = T.unlines [ "install htop, ripgrep.", "install tmux." ]
           modeOf = mergeModeOf [tailRule]
       case crystallize "f" [pat] prog of
@@ -279,6 +279,26 @@ main = hspec $ do
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right mod_ -> mod_ `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" \"tmux\" ];"
+
+    it "end-to-end C+pkg: a line of package names realizes to a list of derivations" $ do
+      -- The package-derivation tail: <value.tail:pkg> fills each token to a
+      -- pkgs.<token> derivation, so one line of package names becomes one
+      -- VList of derivations. Realize emits them bare (a Nix list holds
+      -- derivations), so the module carries [ pkgs.htop pkgs.ripgrep pkgs.tmux ],
+      -- the shape environment.systemPackages demands. This is the capability
+      -- the string-tail form above could not express (it would emit strings).
+      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact Stated
+                  [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
+          tailRule = MapRule "r" Fact ["install", "<pkg>"]
+                   [ Emit ["environment","systemPackages"] (VTail (Just HPkg) "value") ]
+          prog = T.unlines [ "install htop, ripgrep.", "install tmux." ]
+          modeOf = mergeModeOf [tailRule]
+      case crystallize "f" [pat] prog of
+        Left e  -> expectationFailure ("crystallize failed: " <> show e)
+        Right base -> case runBase modeOf assembleSubject 100 (map toRule [tailRule]) [] base of
+          Left e     -> expectationFailure ("run failed: " <> show e)
+          Right mod_ -> mod_ `shouldSatisfy`
+            T.isInfixOf "environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];"
 
   describe "refinement (spec 2.4, 4)" $ do
     let oblige = (mk "o1" "row" "row->txn" Stated) { dKind = Oblige }
@@ -1476,13 +1496,58 @@ main = hspec $ do
     -- tokens (trailing sentence punctuation stripped). The whole rhs becomes
     -- one list, so a single line carrying many items is aggregatable with B.
     it "a <value.tail> rhs parses and renders canonically" $ do
-      parseValue "<value.tail>" `shouldBe` Right (VTail "value")
-      renderValue (VTail "value") `shouldBe` "<value.tail>"
+      parseValue "<value.tail>" `shouldBe` Right (VTail Nothing "value")
+      renderValue (VTail Nothing "value") `shouldBe` "<value.tail>"
     it "fillValue on a tail hole splits the program value into a VList of tokens" $
-      fillValue (const (Right "htop, ripgrep, tmux.")) (VTail "value")
+      fillValue (const (Right "htop, ripgrep, tmux.")) (VTail Nothing "value")
         `shouldBe` Right "[ \"htop\" \"ripgrep\" \"tmux\" ]"
     it "an empty program value for a tail hole fails loud" $
-      fillValue (const (Right "")) (VTail "value") `shouldSatisfy` isLeft
+      fillValue (const (Right "")) (VTail Nothing "value") `shouldSatisfy` isLeft
+
+    -- A package-derivation hole: a program token naming a package becomes a
+    -- pkgs.<token> derivation, not a string. This is the bridge the value
+    -- grammar was missing (a program-name token -> a derivation ref), so a
+    -- line of package names realizes to a list of derivations for an option
+    -- like environment.systemPackages. Injection-safe: each segment is gated
+    -- by okSeg, so program text can never alter the pkgs path.
+    it "a <value:pkg> hole parses, renders canonically, and round-trips" $ do
+      parseValue "<value:pkg>"      `shouldBe` Right (VHole HPkg "value")
+      parseValue "<value.2:pkg>"    `shouldBe` Right (VHole HPkg "value.2")
+      renderValue (VHole HPkg "value") `shouldBe` "<value:pkg>"
+      fmap renderValue (parseValue "<value:pkg>") `shouldBe` Right "<value:pkg>"
+    it "a <value.tail:pkg> tail parses, renders canonically, and round-trips" $ do
+      parseValue "<value.tail:pkg>" `shouldBe` Right (VTail (Just HPkg) "value")
+      renderValue (VTail (Just HPkg) "value") `shouldBe` "<value.tail:pkg>"
+      fmap renderValue (parseValue "<value.tail:pkg>") `shouldBe` Right "<value.tail:pkg>"
+    it "a bare pkg hole fills one token to a pkgs.<token> derivation" $ do
+      fillValue (const (Right "npm")) (VHole HPkg "value")
+        `shouldBe` Right "${pkgs.npm}"
+      fillValue (const (Right "python311Packages.requests")) (VHole HPkg "value")
+        `shouldBe` Right "${pkgs.python311Packages.requests}"
+    it "a pkg-tail fills a line of names to a VList of pkgs.<name> derivations" $ do
+      fillValue (const (Right "npm yarn bun")) (VTail (Just HPkg) "value")
+        `shouldBe` Right "[ ${pkgs.npm} ${pkgs.yarn} ${pkgs.bun} ]"
+      renderRealized <$> parseValue "[ ${pkgs.npm} ${pkgs.yarn} ${pkgs.bun} ]"
+        `shouldBe` Right "[ pkgs.npm pkgs.yarn pkgs.bun ]"
+    it "a filled pkg hole realizes bare (a derivation in a list, not a string)" $ do
+      case fillValue (const (Right "npm")) (VHole HPkg "value") of
+        Right stored -> renderRealized <$> parseValue stored `shouldBe` Right "pkgs.npm"
+        Left e       -> expectationFailure ("fillValue failed: " ++ show e)
+    it "a pkg hole rejects a token that is not a valid package name" $ do
+      fillValue (const (Right "ev;il"))     (VHole HPkg "value") `shouldSatisfy` isLeft
+      fillValue (const (Right "../etc"))    (VHole HPkg "value") `shouldSatisfy` isLeft
+      fillValue (const (Right "a${b"))      (VHole HPkg "value") `shouldSatisfy` isLeft
+      fillValue (const (Right "npm ev;il")) (VTail (Just HPkg) "value") `shouldSatisfy` isLeft
+    it "an empty token for a pkg hole fails loud" $
+      fillValue (const (Right "")) (VHole HPkg "value") `shouldSatisfy` isLeft
+    it "a pkg hole references a derivation (flagged by valueRefsDerivation)" $ do
+      valueRefsDerivation (VHole HPkg "value")       `shouldBe` True
+      valueRefsDerivation (VTail (Just HPkg) "value") `shouldBe` True
+      valueRefsDerivation (VTail Nothing "value")    `shouldBe` False
+      valueRefsDerivation (VHole HInt "value")        `shouldBe` False
+    it "a list of pkgs refs grounds against a listOf-package option (kernel stays domain-blind)" $
+      valueMatches (OTListOf (OTOther "package")) (VList [VRef (RPkg ["pkgs","npm"])])
+        `shouldBe` True
 
   -- The system prompt is pinned into the generation id, so it is a versioned
   -- artifact; this guards its load-bearing clauses against silent drift.
@@ -1500,6 +1565,8 @@ main = hspec $ do
         , "pattern|match|demand|expect|because"
         , "because-note"
         , "reserved segment <self>"
+        , "PACKAGE NAMES"
+        , "<value.tail:pkg>"
         , "same line-shape appearing in different programs is a SINGLE"
         ]
 
@@ -1781,10 +1848,11 @@ genValue = sized go
       , (1, pure VNull)
       , (1, VFloat <$> elements [0.0, 1.5, 3.14, -2.5, 100.0, 0.25])
       , (1, VPath  <$> genPath)
-      , (2, VHole  <$> elements [HInt, HBool, HFloat, HPath] <*> genHole)
+      , (2, VHole  <$> elements [HInt, HBool, HFloat, HPath, HPkg] <*> genHole)
       , (1, VRef   <$> oneof [ RPkg . ("pkgs" :) <$> listOf1 refSeg, RArt <$> refSeg ])
       , (2, VAttr  <$> resize (n `div` 3) (listOf1 ((,) <$> genAttrKey <*> go (n `div` 3))))
-      , (1, pure (VTail "value"))
+      , (1, pure (VTail Nothing "value"))
+      , (1, VTail <$> pure (Just HPkg) <*> pure "value")
       ]
     genPath = do
       pre  <- elements ["/", "./", "../"]

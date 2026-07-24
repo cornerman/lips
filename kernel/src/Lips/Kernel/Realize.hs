@@ -120,8 +120,8 @@ renderModule winners = do
     -- future path that let one slip through is caught here rather than
     -- rendering the literal "<value.tail>" into a module (renderRealized's
     -- catch-all would otherwise emit it).
-    isUnfilledTail (VTail _) = True
-    isUnfilledTail _         = False
+    isUnfilledTail (VTail _ _) = True
+    isUnfilledTail _           = False
 
 rootedAtArtifact :: Subject -> Bool
 rootedAtArtifact (Subject ("artifact" : _)) = True
