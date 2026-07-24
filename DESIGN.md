@@ -378,6 +378,29 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Round-trip closure of the value and engine-path grammars.** The closed
+  grammars now satisfy `parse . render = id` over generated inputs, pinned by
+  QuickCheck properties (the meta-gap that let holes survive). Three holes the
+  properties surfaced are closed. (1) Engine-path *render* is escape-aware:
+  `renderAttrPath` (`Lips.Kernel.Engine.Data`) escapes `.` and `\` in a path
+  segment, mirroring the base `joinSubject`, and is used by `renderEmit`,
+  `renderRuleBody`/`renderDemandBody` (subjects), and `Expect.dotted` (option
+  path and from-subject) -- so a literal dotted key
+  (`environment.etc."my.route".text`) round-trips where plain `intercalate`.
+  shredded it into two segments. This is the symmetric sibling of the prior
+  quote-aware *parse* fix: parse normalizes a quoted key to bare, render escapes
+  a literal dot. Existing engines are byte-identical (plain segments render
+  unchanged). (2) Attrset keys accept `-` and `'` (`pAttrKey` now matches
+  `Realize.isBareIdent`), so a hyphenated submodule field is a valid `VAttr` key.
+  (3) A `VPath` value inside an attrset (`{ n = ../a; }`) round-trips: `pPath`
+  now stops at `;` and `}` (attrset terminators) as well as `]` and whitespace,
+  instead of folding the field separator into the path (rejected by
+  `validPathLit`). The value round-trip property (`parseValue . renderValue ==
+  id`) now generates `VAttr` (incl. hyphen keys) -- the constructor landed last
+  milestone but was absent from the generator, which is why hyphen keys slipped;
+  a parallel rule/expect dotted-segment round-trip property pins the engine
+  path layer. Verified 195/195, `-Wall` clean, all 9 examples `check` clean.
+
 - **Quote-aware attribute-path split (rule + expect).** The engine path split
   (a rule emit path, an expect option path, and the demand/rule subjects) is
   now quote/escape-aware, the engine analogue of the base
