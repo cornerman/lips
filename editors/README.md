@@ -6,11 +6,15 @@ language's patterns, diagnostics from `diagnose`). Configure it once; every
 program you mint gets tooling for free. It is pure of AI and offline, like
 `run`.
 
-`lips` must be on `PATH` (`nix build` then add `result/bin`, or use the
-devshell). Programs are named `<instance>.<language>.lips`: the uniform `.lips`
-extension is what every editor associates on (so this setup needs no
-per-language configuration), and the server reads the shared `<language>.lang`
-beside the program (e.g. `ledger.backup.lips` -> `backup.lang`).
+`lips` must be on `PATH`. On NixOS / home-manager, add the flake package
+once: `home.packages = [ inputs.lips.packages.${pkgs.system}.default ];`.
+Elsewhere, `nix build` then add `result/bin`, or use the devshell. Once `lips`
+is on PATH the server (`lips lsp`) is available to every editor below with no
+per-language configuration.
+
+Programs are named `<instance>.<language>.lips`: the uniform `.lips`
+extension is what every editor associates on, and the server reads the shared
+`<language>.lang` beside the program (e.g. `ledger.backup.lips` -> `backup.lang`).
 
 ## Neovim (built-in LSP)
 
