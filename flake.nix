@@ -25,7 +25,7 @@
       });
 
       # The reference `lips` CLI, built from the deliverable in kernel/.
-      # `nix run . -- print examples/ledger.backup.lips`.
+      # `nix run . -- compile examples/ledger.backup.lips`.
       packages = forAll (pkgs: {
         default = pkgs.runCommand "lips"
           { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper pkgs.installShellFiles ]; } ''

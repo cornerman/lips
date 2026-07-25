@@ -2,21 +2,26 @@
 
 -- | The @lips@ CLI (crystallization plan).
 --
+-- Every path it reads or writes comes from 'Lips.Identity': a program sits
+-- alone beside a folder named after its language, which holds everything the
+-- machine wrote (see that module for the shape).
+--
 --   * @lips generate [model] \<program\>@ is the one AI step: the model mints a
 --     /language/ (patterns) for the loose program; the kernel crystallizes the
 --     program with it and validates by a full run; only then are the language
---     (@\<program\>.lang@), the crystal witness (@\<program\>.decisions@), and
---     the generation record written.
+--     (@\<language\>/\<language\>.lang@), the crystal witness
+--     (@\<language\>/out/\<instance\>.decisions@), and the generation record
+--     written.
 --   * @lips compile \<program\>@ takes the loose program directly. It verifies
---     the committed @.expect@ contract, then crystallizes with
---     @\<program\>.lang@ and realizes into a DIRECTORY (@default.nix@ plus a
---     staged @artifacts/@), deterministically, with no AI. If the language is
+--     the committed @.expect@ contract, then crystallizes with the language's
+--     @.lang@ and realizes into a DIRECTORY (@default.nix@ plus a staged
+--     @artifacts/@), deterministically, with no AI. If the language is
 --     missing, the program escaped it, or the module drops a promised value,
 --     it fails loud (and names @generate@ where that is the remedy).
---   * @lips run \<program\>@ goes one step further and literally runs the
---     realized module: it wraps it in a NixOS system and boots it as a local
---     QEMU VM (a Heile-Welt simulation of the target machine; the host is
---     never mutated). Host deployment stays a separate, explicit step.
+--   * @lips check \<program\>@ is the gate alone: diagnostics plus the
+--     committed @.expect@ contract against the realized module, offline.
+--   * Running is not a lips verb: @compile@ prints the stock @nix@ commands
+--     over the compiled directory, and the user picks one.
 module Main (main) where
 
 import           Control.Exception  (IOException, try)
@@ -77,21 +82,21 @@ main = do
     Lsp         -> runLsp
 
 -- | @compile@: verify the program's committed contract, then crystallize +
--- realize and materialize a DIRECTORY -- default @<program without .lips>/@, or
+-- realize and materialize a DIRECTORY -- default @<language>/out/<instance>/@, or
 -- @--out <dir>@ -- holding @default.nix@ plus a staged @artifacts/@ tree. A
 -- directory, not stdout, so an engine with artifacts is complete and
--- @imports = [ ./<dir> ]@ resolves default.nix. The output is derived, never
--- committed (gitignore it, like .decisions).
+-- @imports = [ ./<dir> ]@ resolves default.nix. The output is derived, and it
+-- lands inside the language's @out/@, which 'ensureDerived' makes
+-- self-ignoring, so it never gets committed by accident.
 --
--- The behavioral gate runs FIRST (the same one @check@ and @run@ run), so
--- compile never materializes a module that dropped a pinned value: a misroute
--- an offline edit can introduce fails loud here instead of importing a
--- silently-wrong config. Nix is the compile target, so the gate's @nix eval@
--- is no new dependency (every compile invocation already runs through nix, and
--- the output is only meaningful where nix runs); the output stays bit-identical
--- and deterministic, the gate only refuses a bad one.
--- The output directory is derived, never committed (gitignore it, like
--- .decisions). Beside @default.nix@ it writes @flake.nix@ (the addressable
+-- The behavioral gate runs FIRST (the same one @check@ runs), so compile never
+-- materializes a module that dropped a pinned value: a misroute an offline edit
+-- can introduce fails loud here instead of importing a silently-wrong config.
+-- Nix is the compile target, so the gate's @nix eval@ is no new dependency
+-- (every compile invocation already runs through nix, and the output is only
+-- meaningful where nix runs); the output stays bit-identical and deterministic,
+-- the gate only refuses a bad one.
+-- Beside @default.nix@ it writes @flake.nix@ (the addressable
 -- entry) and, when the program declares artifacts, @artifact.nix@ (the
 -- buildable derivations, extracted from the same ground base as the module).
 -- Then it prints the exact @nix@ commands that run it: running a lips program
@@ -592,7 +597,8 @@ mkTempDir = do
   pure (T.unpack (T.strip (T.pack out)))
 
 -- | Write minted source files under @<root>/<artifact>/<relpath>@. Used to
--- persist to @<program>.artifacts@ and to stage into a temp module dir.
+-- persist to the language folder's @artifacts/@ and to stage into a temp
+-- module dir.
 writeSources :: FilePath -> [SourceFile] -> IO ()
 writeSources root = mapM_ one
   where
@@ -601,8 +607,8 @@ writeSources root = mapM_ one
       callCommand ("mkdir -p " <> shq (parentDir p))
       TIO.writeFile p (sfContent sf)
 
--- | Stage a program's committed @<file>.artifacts@ tree into @dst@ (the temp
--- module's @artifacts/@). A no-op when the program has no artifacts.
+-- | Stage a language's committed @<language>/artifacts@ tree into @dst@ (the
+-- temp module's @artifacts/@). A no-op when the program has no artifacts.
 stageFromDisk :: FilePath -> FilePath -> IO ()
 stageFromDisk file dst = do
   _ <- (try (readProcessWithExitCode "cp" ["-rT", artifactsPath file, dst] "")

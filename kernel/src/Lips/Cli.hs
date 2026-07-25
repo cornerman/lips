@@ -113,5 +113,5 @@ compileOpts :: Parser CompileOpts
 compileOpts = CompileOpts
   <$> optional (strOption
         (long "out" <> short 'o' <> metavar "DIR"
-          <> help "Output directory (default: <program without extension>)."))
+          <> help "Output directory (default: <language>/out/<instance>)."))
   <*> programArg

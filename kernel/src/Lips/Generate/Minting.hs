@@ -44,7 +44,7 @@ import Lips.Kernel.Lang.Pattern     (Pattern)
 
 -- | A generated source file for an artifact: its artifact name, the relative
 -- path within the artifact's source tree, and the verbatim content. Written to
--- @<program>.artifacts/<name>/<path>@ and staged at @./artifacts/<name>@ for
+-- @<language>/artifacts/<name>/<path>@ and staged at @./artifacts/<name>@ for
 -- the build (artifacts plan, option 1).
 data SourceFile = SourceFile
   { sfArtifact :: Text
@@ -423,7 +423,8 @@ assemble items =
 expectsOf :: [EngineItem] -> [Expect]
 expectsOf items = [e | ItemExpect e <- items]
 
--- | The minted artifact source files (written beside the program).
+-- | The minted artifact source files (written into the language folder's
+-- @artifacts/@, committed and reviewable).
 sourcesOf :: [EngineItem] -> [SourceFile]
 sourcesOf items = [s | ItemSource s <- items]
 
