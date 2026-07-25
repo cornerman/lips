@@ -93,8 +93,8 @@ change behavior on purpose you delete the `.expect` file and regenerate, and
 that diff is your semantic changelog.
 
 **Steer the mint (optional).** To express taste about *how* the engine gets
-built, put a plain-text `backup/backup.direction` file in the language folder
-(named by the language, so it is shared): "prefer restic over rsync", "no docker", "secrets
+built, put a plain-text `backup.direction` file beside your programs (you write
+it, so it lives with your own files; named by the language, so it is shared): "prefer restic over rsync", "no docker", "secrets
 via env files". It shapes generate
 only, and stays advisory: preferences about mechanism, never requirements.
 Anything that *must* hold belongs in the program or its tests, not here. The
@@ -141,14 +141,15 @@ listing shows what you own and nothing else:
 
     ledger.backup.lips          <- yours
     photos.backup.lips          <- yours
+    backup.direction            <- yours (optional taste for the mint)
     backup/                     <- the machine's, all of it
-      backup.lang backup.expect backup.generation backup.direction
+      backup.lang backup.expect backup.generation
       artifacts/
       out/                      <- derived; lips writes out/.gitignore itself
         ledger.decisions  ledger/
         photos.decisions  photos/
 
-The four language files are shared by every `*.backup.lips` program; what sits
+The three minted language files are shared by every `*.backup.lips` program; what sits
 under `out/` is per instance, derived, and safe to delete.
 
 | File | Author | Role | In git |
@@ -156,7 +157,7 @@ under `out/` is per instance, derived, and safe to delete.
 | `ledger.backup.lips` | you | the program (instance `ledger`), the only real source | yes |
 | `backup/backup.lang` | AI, once | the engine (grammar + rules + tests), shared by the language | yes |
 | `backup/backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
-| `backup/backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
+| `backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
 | `backup/backup.generation` | machine | receipt of the exact AI call, shared | yes |
 | `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
 | `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |

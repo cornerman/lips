@@ -76,12 +76,13 @@ kernel bug; a missing domain fact is the engine's job.
   Full: `just check` (needs KVM), `just check-expect`.
 - The suite and app must stay `-Wall` clean.
 - Nix flakes see only git-tracked files: `git add` before `nix build`/`nix run`.
-- Layout: programs (`*.lips`) sit alone in their directory; everything the
-  machine writes for a language goes in `<language>/` beside them --
-  `<language>.lang`, `.expect`, `.generation`, `.direction`, `artifacts/`
-  (committed) and `out/` (derived: `<instance>.decisions`, compiled module
-  dirs). lips writes `out/.gitignore` (`*`) itself. `Lips.Identity` is the
-  only place that knows these paths.
+- Layout: one rule -- a directory listing shows what a human owns and nothing
+  else. Human-written files sit at the top level (programs `*.lips`, optional
+  `<language>.direction`); everything the machine writes for a language goes in
+  `<language>/` beside them -- `<language>.lang`, `.expect`, `.generation`,
+  `artifacts/` (committed) and `out/` (derived: `<instance>.decisions`, compiled
+  module dirs). lips writes `out/.gitignore` (`*`) itself. `Lips.Identity` is
+  the only place that knows these paths.
 - Model gateway: `pi -p -nt --no-session --model <provider/id>` reading the
   prompt from stdin; `pi` is deliberately not in the dev shell (it is the
   user's harness and carries auth).

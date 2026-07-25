@@ -1736,8 +1736,10 @@ main = hspec $ do
       langPath       prog `shouldBe` "examples/backup/backup.lang"
       expectPath     prog `shouldBe` "examples/backup/backup.expect"
       generationPath prog `shouldBe` "examples/backup/backup.generation"
-      directionPath  prog `shouldBe` "examples/backup/backup.direction"
       artifactsPath  prog `shouldBe` "examples/backup/artifacts"
+    it "keeps the human-written direction at the top level, beside the programs" $ do
+      directionPath prog `shouldBe` "examples/backup.direction"
+      directionPath "examples/photos.backup.lips" `shouldBe` directionPath prog
       langPath "examples/photos.backup.lips" `shouldBe` langPath prog
     it "keeps derived output under out/, so one gitignore rule covers it" $ do
       decisionsPath prog `shouldBe` "examples/backup/out/ledger.decisions"

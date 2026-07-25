@@ -11,17 +11,18 @@
 -- language (@examples/backup/@) and shared by every @*.backup.lips@ program:
 --
 -- > examples/
--- >   ledger.backup.lips        <- yours (the only files at this level)
--- >   photos.backup.lips
+-- >   ledger.backup.lips        <- yours
+-- >   photos.backup.lips        <- yours
+-- >   backup.direction          <- yours (taste steering the mint, optional)
 -- >   backup/                   <- everything the machine writes
--- >     backup.lang backup.expect backup.generation backup.direction
+-- >     backup.lang backup.expect backup.generation
 -- >     artifacts/
 -- >     out/                    <- derived, gitignored by one rule
 -- >       ledger.decisions
 -- >       ledger/               <- compiled module dir (default.nix, flake.nix)
 --
--- The split is the point: a listing separates what a human owns (@*.lips@)
--- from what the machine derived, and the path says which is which. Inside the
+-- The split is the point: a listing separates what a human owns from what the
+-- machine wrote, and the path says which is which. Inside the
 -- folder the four language files keep the language prefix, so a basename stays
 -- self-describing in an editor tab or a grep hit; the instance-derived names
 -- under @out/@ drop it, because the folder already supplies it.
@@ -105,9 +106,13 @@ expectPath = langLevel "expect"
 generationPath :: FilePath -> FilePath
 generationPath = langLevel "generation"
 
--- | The shared owner-taste file for the mint: @examples/backup/backup.direction@.
+-- | The owner's taste steering the mint: @examples/backup.direction@. A human
+-- writes it, so it sits at the TOP level with the programs, not in the machine's
+-- folder -- the one rule that governs this layout is that a directory listing
+-- shows what a human owns and nothing else. It is language-scoped (shared by
+-- every instance), hence named by the language rather than the instance.
 directionPath :: FilePath -> FilePath
-directionPath = langLevel "direction"
+directionPath file = takeDirectory file </> languageName file <.> "direction"
 
 -- | The shared minted-source directory: @examples/backup/artifacts@. A
 -- directory inside the language folder, so it needs no prefix to stay

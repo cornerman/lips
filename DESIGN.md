@@ -644,8 +644,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `attrsOf` `"*"` wildcard -- so multiplicity rides Nix's native module merge,
   not a lips mechanism (`services.restic.backups.ledger.*` and `...photos.*`
   coexist). `.lang`/`.expect`/`.generation`/`.direction` are language-level
-  (named by the language) and live, with `artifacts/`, in a folder named after
-  the language beside the programs (`examples/backup/backup.lang`); everything
+  (named by the language); the three the machine writes live, with `artifacts/`,
+  in a folder named after the language beside the programs
+  (`examples/backup/backup.lang`), while the human-written `.direction` stays at
+  the top level with the programs (`examples/backup.direction`) -- the layout's
+  single rule is that a listing shows what a human owns and nothing else, so
+  authorship, not scope, decides where a file sits. Everything
   derived goes under that folder's `out/` (`out/ledger.decisions`, the compiled
   module dir `out/ledger/`), which lips makes self-ignoring by writing
   `out/.gitignore` holding `*`. The split is the readable form of the project's
@@ -1078,8 +1082,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   nowhere" is a non-thing; each distribution format is its own realize output
   shape) and the DEPLOY axis (import `default.nix` into `~/nixos` on `wolf`,
   persistent and privileged -- the headline missing proof).
-- **Direction file (done).** Optional owner taste for the mint: per-program
-  `<program>.direction`, plain text, appended to the minting prompt when
+- **Direction file (done).** Optional owner taste for the mint: per-language
+  `<language>.direction`, plain text, appended to the minting prompt when
   present. Sharp boundary: the program states what must be true; direction
   states what to prefer (mechanism taste: restic vs rsync, no docker, secrets
   via env files). Direction never carries obligations -- anything that must
@@ -1089,11 +1093,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   enters the system prompt, which the `.generation` record embeds verbatim, so
   it enters `genId`. `compile`/`run`/`check` never see it. Also softens mechanism
   churn across regenerations (same taste, stable mechanisms). Pure composition
-  in `Minting.promptWithDirection`; `generate` reads `<program>.direction` and
+  in `Minting.promptWithDirection`; `generate` reads `<language>.direction` and
   passes the composed prompt to both `callPi` and `record`; `Record` unchanged.
   A repo-wide direction file was rejected (ambiguous search root, comes from
   nowhere); ambient `AGENTS.md` is deliberately excluded (the mint is hermetic
-  via `pi -nc`), so this per-program file is the sole owner-taste channel.
+  via `pi -nc`), so this per-language file is the sole owner-taste channel.
 - **Gap report (`<program>.gap`).** When generate refuses because physics is
   missing (deduce-or-fail on an inexpressible need), the refusal must be a
   shippable artifact, not a mood: refused lines, the missing capability
