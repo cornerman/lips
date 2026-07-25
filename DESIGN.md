@@ -379,6 +379,28 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **CLI: `--lang-dir`, sharing a language across directories.** `compile` and
+  `check` gain an optional `--lang-dir DIR` flag that redirects only where
+  they READ the four committed language files (`.lang`/`.expect`/
+  `.generation`/`artifacts/`); derived output (`out/<instance>.decisions`,
+  the compiled module dir) still lands under the program's OWN directory, so
+  a borrowing program never writes into the lending one. `DIR`'s basename
+  must equal the program's own declared language (from its `.lips`
+  filename) or it fails loud naming both sides, before any file IO against
+  `DIR` runs -- deduce-or-fail, the same posture as a missing `.lang`.
+  `generate` and `lsp` are untouched: a shared language is always minted
+  beside the programs that grow it. `Lips.Identity` gains a pure resolver
+  (`resolveLangDir`) and explicit-directory path functions (`langPathIn`,
+  `expectPathIn`, `generationPathIn`, `artifactsPathIn`); `Lips.Cli`'s
+  `Check` verb becomes a `CheckOpts` record (mirroring `CompileOpts`) so both
+  parse the flag identically. Verified by conformance tests (the resolver's
+  match/mismatch/trailing-slash cases, both subcommands' CLI parsing) and a
+  manual end-to-end run (a program copied into its own directory with no
+  sibling language folder fails loud without the flag, succeeds and writes
+  only local output with `--lang-dir` pointing at a shared one, and a
+  mismatched folder name is rejected naming both sides). Spec:
+  `docs/superpowers/specs/2026-07-26-lang-dir-flag-design.md`.
+
 - **CLI: optparse-applicative parser, tab-completion for free.** `lips`'s
   argument parsing (`Lips.Generate.Args`'s hand-rolled loop, including the
   `looksLikeModel` heuristic that guessed whether a bare positional was a
