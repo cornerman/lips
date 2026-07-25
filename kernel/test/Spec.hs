@@ -104,25 +104,25 @@ main = hspec $ do
 
   describe "compile argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info compileOpts idm)
-    it "defaults --out and --lang-dir to Nothing" $
+    it "defaults --out and --lang to Nothing" $
       parseArgs ["a.backup.lips"]
         `shouldBe` Just (CompileOpts Nothing "a.backup.lips" Nothing)
-    it "reads --lang-dir in any position, alongside --out" $ do
-      parseArgs ["--lang-dir", "services/a/backup", "a.backup.lips"]
+    it "reads --lang in any position, alongside --out" $ do
+      parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
         `shouldBe` Just (CompileOpts Nothing "a.backup.lips" (Just "services/a/backup"))
-      parseArgs ["--out", "dir", "--lang-dir", "services/a/backup", "a.backup.lips"]
+      parseArgs ["--out", "dir", "--lang", "services/a/backup", "a.backup.lips"]
         `shouldBe` Just (CompileOpts (Just "dir") "a.backup.lips" (Just "services/a/backup"))
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 
   describe "check argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info checkOpts idm)
-    it "defaults --lang-dir to Nothing" $
+    it "defaults --lang to Nothing" $
       parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts "a.backup.lips" Nothing)
-    it "reads --lang-dir in any position" $ do
-      parseArgs ["--lang-dir", "services/a/backup", "a.backup.lips"]
+    it "reads --lang in any position" $ do
+      parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
         `shouldBe` Just (CheckOpts "a.backup.lips" (Just "services/a/backup"))
-      parseArgs ["a.backup.lips", "--lang-dir", "services/a/backup"]
+      parseArgs ["a.backup.lips", "--lang", "services/a/backup"]
         `shouldBe` Just (CheckOpts "a.backup.lips" (Just "services/a/backup"))
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
@@ -1775,7 +1775,7 @@ main = hspec $ do
     it "the shorthand puts the singleton under the language's own name" $
       compiledPath "examples/backup.lips" `shouldBe` "examples/backup/out/backup"
 
-  describe "--lang-dir resolution (Lips.Identity.resolveLangDir)" $ do
+  describe "--lang resolution (Lips.Identity.resolveLangDir)" $ do
     let prog = "services/b/photos.backup.lips"
     it "with no override, resolves to the sibling langDir" $
       resolveLangDir prog Nothing `shouldBe` Right (langDir prog)

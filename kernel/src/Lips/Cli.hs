@@ -52,7 +52,7 @@ data CompileOpts = CompileOpts
   , coLangDir :: Maybe FilePath
   } deriving (Eq, Show)
 
--- | Everything @check@ needs: the program, plus the same @--lang-dir@
+-- | Everything @check@ needs: the program, plus the same @--lang@
 -- override @compile@ takes (same meaning: read-only, does not move derived
 -- output).
 data CheckOpts = CheckOpts
@@ -155,7 +155,7 @@ generateOpts defConf = GenerateOpts
           <> help "Model id to use (default: pi's own configured default)."))
   <*> some (strArgument (metavar "PROGRAM..." <> completer programCompleter))
 
--- | @--lang-dir@: read the committed language files (.lang/.expect/
+-- | @--lang@: read the committed language files (.lang/.expect/
 -- .generation/artifacts) from this directory instead of the program's sibling
 -- folder. Never affects where derived output (out/) is written -- that stays
 -- under the program's own directory. No short alias: a deliberate, occasional
@@ -164,7 +164,7 @@ generateOpts defConf = GenerateOpts
 -- 'Lips.Identity.resolveLangDir' enforces that and fails loud on mismatch.
 langDirOpt :: Parser (Maybe FilePath)
 langDirOpt = optional (strOption
-  (long "lang-dir" <> metavar "DIR"
+  (long "lang" <> metavar "DIR"
     <> help "Read the language's committed files from DIR instead of the program's sibling folder (must be named after the program's language)."))
 
 compileOpts :: Parser CompileOpts

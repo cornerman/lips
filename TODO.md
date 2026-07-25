@@ -2,26 +2,44 @@
 
 ## Next up (priority order)
 
-1. **Behavioral gate enforced at every deterministic verb — DONE (2026-07-24).**
-   `check` is the gate alone; `compile` gates then writes; `run` gates then
-   boots (nixos `runVm` and `compileLoose` both call the same gate and die on a
-   violation before their side effect; home-manager `run` gates too). So the
-   headline offline verb never emits or boots a module that dropped a pinned
-   value (Failproof: the safe path is the obvious path). Nix is the compile
-   target, so the gate's `nix eval` is no new dependency and the emitted module
-   stays bit-identical. See DESIGN §13 Partial entry.
+1. **Mint tooling** — plan
+   `docs/superpowers/plans/2026-07-26-mint-tooling-plan.md`. The mint stops
+   guessing: extract the gate into `Lips.Generate.Gate`, add `lips options`
+   (schema lookup) and `lips dry-run` (rehearse a draft engine against that
+   exact gate), ship a pi extension exposing those two tools and nothing else,
+   bound the loop with `--rounds N` (default 8, stated to the model and
+   enforced by the tool), and record the whole transcript in `.generation`.
 
-2. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
+2. **Mint expression channels** — plan
+   `docs/superpowers/plans/2026-07-26-mint-expression-channels-plan.md`. Two
+   new block kinds: `report` (required, exactly one) written to
+   `<language>/README.md`, so a human reviews prose instead of `.lang`; and
+   `gap`, a kernel capability the mint found missing, surfaced on both the
+   success and the refusal path. Regeneration also sees the previous engine,
+   report and contract, so vocabulary stays stable across mints.
+
+3. **Mint prompt rewrite** — plan
+   `docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md`. Move the
+   prompt out of escaped Haskell literals into `assets/mint/*.md` embedded with
+   `file-embed` (byte-identical first), then rewrite it for the agent doing the
+   job: where it sits, the machine its engine drives stage by stage, the
+   verify-and-iterate loop, the output contract, one reference subsection per
+   construct with each prohibition stated once, design guidance, two worked
+   examples, a self-review checklist. A suite guard parses every fenced
+   `lips-engine` example block, so an example cannot outlive its grammar.
+
+4. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
    When `generate` refuses because physics is missing, write a machine-readable
    artifact (refused lines, missing capability / extension point, minimal repro,
    model+prompt fingerprint) instead of on-screen-only text. Operationalizes the
-   cross-repo escalation workflow (DESIGN Doctrine).
+   cross-repo escalation workflow (DESIGN Doctrine). Item 3 supplies the
+   producer (the `gap` block); this item is only the file writer.
 
-3. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
+5. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
    Wire one realized module into `~/nixos` on `wolf`. Reduced to "import one
    file"; proves survival on a real system, not just a VM boot.
 
-4. **Template grammar completeness** (completeness plan Target 2). The value
+6. **Template grammar completeness** (completeness plan Target 2). The value
    grammar is complete-by-construction over the Nix value algebra minus
    computation; the template grammar is only "complete over observed line
    shapes" — a weaker, honest claim. Missing capture forms: unquoted multi-token

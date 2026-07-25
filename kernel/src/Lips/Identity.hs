@@ -139,7 +139,7 @@ compiledPath file = outDir file </> T.unpack (instanceName file)
 
 -- | An explicit-directory variant of 'langLevel': the caller supplies the
 -- directory (already resolved, e.g. via 'resolveLangDir') instead of it being
--- re-derived from @file@. Used by @compile@\/@check@ when @--lang-dir@
+-- re-derived from @file@. Used by @compile@\/@check@ when @--lang@
 -- overrides the sibling convention.
 langLevelIn :: FilePath -> String -> FilePath -> FilePath
 langLevelIn dir ext file = dir </> languageName file <.> ext
@@ -163,21 +163,21 @@ artifactsPathIn :: FilePath -> FilePath -> FilePath
 artifactsPathIn dir _file = dir </> "artifacts"
 
 -- | Resolve the directory @compile@\/@check@ read the four committed language
--- files from. @Nothing@ (no @--lang-dir@) keeps today's sibling convention
+-- files from. @Nothing@ (no @--lang@) keeps today's sibling convention
 -- ('langDir'). @Just d@ must be a folder named after the program's OWN
 -- declared language (its @.lips@ filename is the one place that names it);
 -- otherwise this fails loud, naming both sides, before any file IO runs
 -- against @d@ -- deduce-or-fail, the same posture as a missing @.lang@.
 -- A trailing separator on @d@ is tolerated ('dropTrailingPathSeparator')
--- so @--lang-dir services/a/backup/@ matches exactly as
--- @--lang-dir services/a/backup@ does.
+-- so @--lang services/a/backup/@ matches exactly as
+-- @--lang services/a/backup@ does.
 resolveLangDir :: FilePath -> Maybe FilePath -> Either Text FilePath
 resolveLangDir file Nothing  = Right (langDir file)
 resolveLangDir file (Just d0)
   | takeFileName d == lang = Right d
   | otherwise = Left $ T.pack file <> " is written in ." <> T.pack lang
       <> ", but " <> T.pack d0 <> " is named ." <> T.pack (takeFileName d)
-      <> ".\n\n\8594 point --lang-dir at a folder named " <> T.pack lang
+      <> ".\n\n\8594 point --lang at a folder named " <> T.pack lang
       <> ", or rename the program."
   where lang = languageName file
         d    = dropTrailingPathSeparator d0

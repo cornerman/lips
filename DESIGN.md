@@ -379,8 +379,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
-- **CLI: `--lang-dir`, sharing a language across directories.** `compile` and
-  `check` gain an optional `--lang-dir DIR` flag that redirects only where
+- **CLI: `--lang`, sharing a language across directories.** `compile` and
+  `check` gain an optional `--lang DIR` flag that redirects only where
   they READ the four committed language files (`.lang`/`.expect`/
   `.generation`/`artifacts/`); derived output (`out/<instance>.decisions`,
   the compiled module dir) still lands under the program's OWN directory, so
@@ -397,9 +397,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   match/mismatch/trailing-slash cases, both subcommands' CLI parsing) and a
   manual end-to-end run (a program copied into its own directory with no
   sibling language folder fails loud without the flag, succeeds and writes
-  only local output with `--lang-dir` pointing at a shared one, and a
+  only local output with `--lang` pointing at a shared one, and a
   mismatched folder name is rejected naming both sides). Spec:
-  `docs/superpowers/specs/2026-07-26-lang-dir-flag-design.md`.
+  `docs/superpowers/specs/2026-07-26-lang-dir-flag-design.md` (flag was later
+  renamed from `--lang-dir` to `--lang` for symmetry with `--out`).
 
 - **CLI: optparse-applicative parser, tab-completion for free.** `lips`'s
   argument parsing (`Lips.Generate.Args`'s hand-rolled loop, including the
