@@ -29,7 +29,7 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
-import Lips.Cli (Command (..), GenerateOpts (..), CompileOpts (..), cliParserInfo, generateOpts, compileOpts)
+import Lips.Cli (GenerateOpts (..), generateOpts)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
