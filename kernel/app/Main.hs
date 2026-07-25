@@ -20,7 +20,7 @@
 module Main (main) where
 
 import           Control.Exception  (IOException, try)
-import           Control.Monad      (forM, forM_)
+import           Control.Monad      (forM, forM_, unless)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -28,12 +28,13 @@ import qualified Data.Text.IO       as TIO
 import           System.Environment (lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, stderr, stdout)
-import           System.FilePath    (dropExtension, takeFileName, (</>))
+import           System.Directory   (doesPathExist)
+import           System.FilePath    (takeFileName, (</>))
 import           System.Process     (callCommand, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
-import           Lips.Identity                 (artifactsPath, decisionsPath, directionPath, expectPath, generationPath, instanceName, langPath, languageName)
+import           Lips.Identity                 (artifactsPath, compiledPath, decisionsPath, directionPath, expectPath, generationPath, instanceName, langDir, langPath, languageName, outDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
@@ -106,17 +107,30 @@ compileLoose mout file = do
   case validate file eng program of
     Left f                 -> die (printFail file f)
     Right (_, nixMod, art) -> do
-      let outDir = maybe (dropExtension file) id mout
-      callCommand ("mkdir -p " <> shq outDir)
-      TIO.writeFile (outDir </> "default.nix") nixMod
-      stageFromDisk file (outDir </> "artifacts")
+      let dir = maybe (compiledPath file) id mout
+      ensureDerived file
+      callCommand ("mkdir -p " <> shq dir)
+      TIO.writeFile (dir </> "default.nix") nixMod
+      stageFromDisk file (dir </> "artifacts")
       artNames <- case art of
         Nothing            -> pure []
-        Just (body, names) -> TIO.writeFile (outDir </> "artifact.nix") body >> pure names
-      TIO.writeFile (outDir </> "flake.nix") (flakeText target (not (null artNames)))
-      TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack outDir)
+        Just (body, names) -> TIO.writeFile (dir </> "artifact.nix") body >> pure names
+      TIO.writeFile (dir </> "flake.nix") (flakeText target (not (null artNames)))
+      TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack dir)
       TIO.hPutStrLn stderr "run it with nix over the compiled dir:"
-      mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames outDir)
+      mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames dir)
+
+-- | Create a language's derived subtree and make it ignore itself: @out/@ gets
+-- a @.gitignore@ holding @*@. lips writes that rule rather than asking the
+-- user's repo to carry one, so derived output (crystal witnesses, compiled
+-- module dirs) stays untracked wherever a program lives, with no setup.
+-- Written once; an existing file is left alone, so a user can edit it.
+ensureDerived :: FilePath -> IO ()
+ensureDerived file = do
+  callCommand ("mkdir -p " <> shq (outDir file))
+  let ign = outDir file </> ".gitignore"
+  there <- doesPathExist ign
+  unless there (TIO.writeFile ign "*\n")
 
 -- | The world an engine was minted for, read from its committed .generation
 -- record (the @target:@ line). An engine minted before targets existed has no
@@ -350,10 +364,16 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
       let rec = record model target confidence prompt corpus reply
+      -- The language folder holds every minted and derived file; create it (and
+      -- its derived out/ subtree) before writing, so a first mint beside a bare
+      -- program just works.
+      callCommand ("mkdir -p " <> shq (langDir rep))
       TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
       TIO.writeFile (generationPath rep) rec
       writeSources (artifactsPath rep) minted
-      forM_ validated $ \(f, base, _) -> TIO.writeFile (decisionsPath f) (renderBase base)
+      forM_ validated $ \(f, base, _) -> do
+        ensureDerived f
+        TIO.writeFile (decisionsPath f) (renderBase base)
       -- Bootstrap the contract on first generation only; keep the committed
       -- spec stable across regenerations.
       maybe (TIO.writeFile (expectPath rep) (renderExpect mintedExpects))

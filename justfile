@@ -30,14 +30,14 @@ check-expect:
     #!/usr/bin/env bash
     set -euo pipefail
     # Programs are <instance>.<language>.lips (the .lips marker is what every
-    # editor and language server associates); the sidecars (<language>.lang
-    # etc.) share a base name, so glob the programs by the .lips extension.
+    # editor and language server associates) and are the only files at this
+    # level: everything minted lives in the <language>/ folder beside them.
     for p in examples/*.lips; do
       nix run . -- check "$p"
     done
 
 # Deterministic realize: program + .lang -> a module directory (default.nix +
-# artifacts/), no model, offline. Writes <program without .lips>/ by default.
+# artifacts/), no model, offline. Writes <language>/out/<instance>/ by default.
 compile program:
     nix run . -- compile "{{program}}"
 

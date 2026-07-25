@@ -1,6 +1,6 @@
 # Expose lips programs in a directory as flake module outputs, labeled by the
 # world each engine was minted for. The label is read from the committed
-# <language>.generation record (the `target:` line), so a program lands under
+# <language>/<language>.generation record (the `target:` line), so a program lands under
 # nixosModules or homeManagerModules automatically. The realized module is
 # DERIVED by running `lips compile` in a derivation (offline, deterministic);
 # the program and its .lang are the only committed inputs. Each output value is
@@ -16,24 +16,29 @@ let
     in { instance = builtins.elemAt parts 0;
          language = builtins.elemAt parts 1; };
 
+  # Everything minted for a language sits in one folder beside the programs
+  # (Lips.Identity.langDir): <dir>/<language>/.
+  langDir = language: dir + "/${language}";
+
   # The world the engine was minted for, from its committed .generation record.
   # No record, or no target line (an engine minted before targets): nixos.
   targetOf = language:
-    let genFile = dir + "/${language}.generation";
+    let genFile = langDir language + "/${language}.generation";
     in if builtins.pathExists genFile
           && lib.hasInfix "target: home-manager" (builtins.readFile genFile)
        then "home-manager" else "nixos";
 
-  # Artifacts are language-named (Lips.Identity.artifactsPath -> <language>.artifacts).
-  # Stage them into the build cwd beside the program so `lips compile` finds and
-  # stages them itself into $out/artifacts.
+  # Reproduce the on-disk shape in the build cwd -- program at top level, engine
+  # and artifacts in the language folder -- so `lips compile` finds them by the
+  # same paths and stages the artifacts itself into $out/artifacts.
   realize = name: p:
-    let artifactsSrc = dir + "/${p.language}.artifacts";
+    let artifactsSrc = langDir p.language + "/artifacts";
         hasArtifacts = builtins.pathExists artifactsSrc;
     in pkgs.runCommand "lips-${p.instance}-module" { } ''
+      mkdir -p ${p.language}
       cp ${dir + "/${name}"} ${name}
-      cp ${dir + "/${p.language}.lang"} ${p.language}.lang
-      ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}.artifacts"}
+      cp ${langDir p.language + "/${p.language}.lang"} ${p.language}/${p.language}.lang
+      ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}/artifacts"}
       ${lips}/bin/lips compile --out "$out" ${name}
     '';
 

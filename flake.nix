@@ -104,9 +104,12 @@
             lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
             # Deterministic tail only: crystallize + run the committed example
             # with its committed minted language. No AI in this derivation.
+            # The engine lives in the language folder beside the program
+            # (Lips.Identity), so reproduce that shape in the build cwd.
             realized = pkgs.runCommand "lips-backup-module" { } ''
+              mkdir -p backup
               cp ${./examples/ledger.backup.lips} ledger.backup.lips
-              cp ${./examples/backup.lang} backup.lang
+              cp ${./examples/backup/backup.lang} backup/backup.lang
               ${lips}/bin/lips compile --out "$out" ledger.backup.lips
             '';
           in
@@ -157,9 +160,10 @@
             # Realize into a DIRECTORY: the module plus its source tree, so the
             # module's relative `src = ./artifacts/<name>` resolves at import.
             realized = pkgs.runCommand "lips-hello-module" { } ''
+              mkdir -p http
               cp ${./examples/hello.http.lips} hello.http.lips
-              cp ${./examples/http.lang} http.lang
-              cp -r ${./examples/http.artifacts} http.artifacts
+              cp ${./examples/http/http.lang} http/http.lang
+              cp -r ${./examples/http/artifacts} http/artifacts
               ${lips}/bin/lips compile --out "$out" hello.http.lips
             '';
           in

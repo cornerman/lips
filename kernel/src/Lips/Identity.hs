@@ -6,9 +6,25 @@
 -- and language-server handle (one extension every tool associates -- vim,
 -- VS Code, Emacs), the segment before it names the shared lips language, and
 -- what precedes THAT is the instance. So @examples/ledger.backup.lips@ is
--- instance @ledger@ in language @backup@, and its language artifacts live
--- beside it named by the language (@examples/backup.lang@), shared by every
--- @*.backup.lips@ program.
+-- instance @ledger@ in language @backup@, and everything the machine writes
+-- for that language lives in ONE folder beside the program, named by the
+-- language (@examples/backup/@) and shared by every @*.backup.lips@ program:
+--
+-- > examples/
+-- >   ledger.backup.lips        <- yours (the only files at this level)
+-- >   photos.backup.lips
+-- >   backup/                   <- everything the machine writes
+-- >     backup.lang backup.expect backup.generation backup.direction
+-- >     artifacts/
+-- >     out/                    <- derived, gitignored by one rule
+-- >       ledger.decisions
+-- >       ledger/               <- compiled module dir (default.nix, flake.nix)
+--
+-- The split is the point: a listing separates what a human owns (@*.lips@)
+-- from what the machine derived, and the path says which is which. Inside the
+-- folder the four language files keep the language prefix, so a basename stays
+-- self-describing in an editor tab or a grep hit; the instance-derived names
+-- under @out/@ drop it, because the folder already supplies it.
 --
 -- The instance is optional: @backup.lips@ (just @\<language\>.lips@) is the
 -- singleton shorthand, its instance name defaulting to the language
@@ -27,8 +43,11 @@ module Lips.Identity
   , expectPath
   , generationPath
   , directionPath
+  , langDir
+  , outDir
   , artifactsPath
   , decisionsPath
+  , compiledPath
   ) where
 
 import           Data.Text       (Text)
@@ -55,32 +74,55 @@ instanceName p = T.pack $ case takeExtension (core p) of
   "" -> takeFileName (core p)   -- default: instance = language
   _  -> takeBaseName (core p)   -- the basename before the language extension
 
--- | A language-level sidecar path, named by the language and shared by every
--- program in it: @examples/ledger.backup@ + @lang@ -> @examples/backup.lang@.
-langLevel :: String -> FilePath -> FilePath
-langLevel ext file = takeDirectory file </> languageName file <.> ext
+-- | The one folder holding everything minted or derived for a program's
+-- language: @examples/ledger.backup.lips@ -> @examples/backup@.
+langDir :: FilePath -> FilePath
+langDir file = takeDirectory file </> languageName file
 
--- | The shared grammar: @examples/backup.lang@.
+-- | The derived subtree inside the language folder: @examples/backup/out@.
+-- Kept apart from the committed files so one rule covers every derived thing,
+-- whatever the instances are called -- and lips writes that rule itself, as an
+-- @out/.gitignore@ holding @*@, so no repo has to be configured to keep derived
+-- output untracked.
+outDir :: FilePath -> FilePath
+outDir file = langDir file </> "out"
+
+-- | A language-level sidecar path, named by the language and shared by every
+-- program in it: @examples/ledger.backup.lips@ + @lang@ ->
+-- @examples/backup/backup.lang@.
+langLevel :: String -> FilePath -> FilePath
+langLevel ext file = langDir file </> languageName file <.> ext
+
+-- | The shared grammar: @examples/backup/backup.lang@.
 langPath :: FilePath -> FilePath
 langPath = langLevel "lang"
 
--- | The shared behavioral contract: @examples/backup.expect@.
+-- | The shared behavioral contract: @examples/backup/backup.expect@.
 expectPath :: FilePath -> FilePath
 expectPath = langLevel "expect"
 
--- | The shared mint record: @examples/backup.generation@.
+-- | The shared mint record: @examples/backup/backup.generation@.
 generationPath :: FilePath -> FilePath
 generationPath = langLevel "generation"
 
--- | The shared owner-taste file for the mint: @examples/backup.direction@.
+-- | The shared owner-taste file for the mint: @examples/backup/backup.direction@.
 directionPath :: FilePath -> FilePath
 directionPath = langLevel "direction"
 
--- | The shared minted-source directory: @examples/backup.artifacts@.
+-- | The shared minted-source directory: @examples/backup/artifacts@. A
+-- directory inside the language folder, so it needs no prefix to stay
+-- unambiguous.
 artifactsPath :: FilePath -> FilePath
-artifactsPath = langLevel "artifacts"
+artifactsPath file = langDir file </> "artifacts"
 
 -- | The per-instance crystal witness (derived, gitignored), named after the
--- program so instances never collide: @examples/ledger.backup.decisions@.
+-- instance so instances never collide:
+-- @examples/backup/out/ledger.decisions@.
 decisionsPath :: FilePath -> FilePath
-decisionsPath = (<.> "decisions")
+decisionsPath file = outDir file </> T.unpack (instanceName file) <.> "decisions"
+
+-- | Where @compile@ materializes the module directory by default (derived,
+-- gitignored): @examples/backup/out/ledger@, so the address a user runs is
+-- @path:examples/backup/out/ledger#vm@.
+compiledPath :: FilePath -> FilePath
+compiledPath file = outDir file </> T.unpack (instanceName file)

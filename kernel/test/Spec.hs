@@ -1701,13 +1701,21 @@ main = hspec $ do
     it "the <language>.lips shorthand defaults the instance to the language" $ do
       languageName "examples/backup.lips" `shouldBe` "backup"
       instanceName "examples/backup.lips" `shouldBe` "backup"
-    it "names language-level sidecars by the language, shared across instances" $ do
-      langPath       prog `shouldBe` "examples/backup.lang"
-      expectPath     prog `shouldBe` "examples/backup.expect"
-      generationPath prog `shouldBe` "examples/backup.generation"
+    it "puts every machine-written file in one folder named by the language" $ do
+      langPath       prog `shouldBe` "examples/backup/backup.lang"
+      expectPath     prog `shouldBe` "examples/backup/backup.expect"
+      generationPath prog `shouldBe` "examples/backup/backup.generation"
+      directionPath  prog `shouldBe` "examples/backup/backup.direction"
+      artifactsPath  prog `shouldBe` "examples/backup/artifacts"
       langPath "examples/photos.backup.lips" `shouldBe` langPath prog
-    it "names the crystal witness per instance (never collides)" $
-      decisionsPath prog `shouldBe` "examples/ledger.backup.lips.decisions"
+    it "keeps derived output under out/, so one gitignore rule covers it" $ do
+      decisionsPath prog `shouldBe` "examples/backup/out/ledger.decisions"
+      compiledPath  prog `shouldBe` "examples/backup/out/ledger"
+    it "never collides between instances of one language" $ do
+      compiledPath "examples/photos.backup.lips"
+        `shouldNotBe` compiledPath prog
+    it "the shorthand puts the singleton under the language's own name" $
+      compiledPath "examples/backup.lips" `shouldBe` "examples/backup/out/backup"
 
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $

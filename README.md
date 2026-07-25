@@ -51,7 +51,7 @@ A program is named `<instance>.<language>.lips` and read right to left. The
 `.lips` extension is the constant marker every editor and language server keys
 on (one extension, so vim, VS Code, Emacs, and Helix all recognize a program
 with no per-language setup). lips ships that language server: `lips lsp` is one
-domain-blind, offline process that reads the `.lang` beside any program and
+domain-blind, offline process that reads the `.lang` in the language folder and
 gives completion (the language's own patterns as snippets) and live diagnostics
 (an unread line is an error, an open question a warning), with no per-language
 configuration. Editor glue for neovim, vim, VS Code, and Helix lives in
@@ -93,8 +93,8 @@ change behavior on purpose you delete the `.expect` file and regenerate, and
 that diff is your semantic changelog.
 
 **Steer the mint (optional).** To express taste about *how* the engine gets
-built, put a plain-text `backup.direction` file beside the language (named by the
-language, so it is shared): "prefer restic over rsync", "no docker", "secrets
+built, put a plain-text `backup/backup.direction` file in the language folder
+(named by the language, so it is shared): "prefer restic over rsync", "no docker", "secrets
 via env files". It shapes generate
 only, and stays advisory: preferences about mechanism, never requirements.
 Anything that *must* hold belongs in the program or its tests, not here. The
@@ -116,7 +116,7 @@ With direnv, run `direnv allow` once. Otherwise prefix each command with
 
     just compile examples/ledger.backup.lips # loose text -> module dir + flake (offline)
     # compile prints the nix commands to run it, e.g.:
-    #   nix run path:examples/ledger.backup#vm     # throwaway QEMU boot of the system (needs KVM)
+    #   nix run path:examples/backup/out/ledger#vm # throwaway QEMU boot of the system (needs KVM)
     just generate path/to/my.backup.lips     # mint a language for your program (AI, needs pi)
     just test                                # conformance suite
 
@@ -124,7 +124,7 @@ Open `examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and run
 `just compile` again. The module updates with no AI. Then add a sentence the
 language does not know and watch it fail loud, pointing you back to `generate`.
 To see reuse, look at `examples/photos.backup.lips`: a second instance of the
-same `backup` language, sharing `backup.lang`.
+same `backup` language, sharing `examples/backup/backup.lang`.
 
 Sometimes intent needs a program written, not just a package configured.
 `examples/hello.http.lips` asks for a small HTTP server; its engine builds
@@ -135,19 +135,32 @@ flake check compiles it and boots the service in a VM.
 
 ## The Files
 
-For a program `ledger.backup.lips`, everything else sits beside it. The four
-language artifacts are named by the language (`backup.*`) and shared by every
-`*.backup.lips` program; the program and its crystal witness are per instance.
-You own the first line; the machine writes the rest.
+Your programs are the only files in your directory; everything the machine
+writes for a language goes into one folder named after it. So a directory
+listing shows what you own and nothing else:
+
+    ledger.backup.lips          <- yours
+    photos.backup.lips          <- yours
+    backup/                     <- the machine's, all of it
+      backup.lang backup.expect backup.generation backup.direction
+      artifacts/
+      out/                      <- derived; lips writes out/.gitignore itself
+        ledger.decisions  ledger/
+        photos.decisions  photos/
+
+The four language files are shared by every `*.backup.lips` program; what sits
+under `out/` is per instance, derived, and safe to delete.
 
 | File | Author | Role | In git |
 |------|--------|------|--------|
 | `ledger.backup.lips` | you | the program (instance `ledger`), the only real source | yes |
-| `backup.lang` | AI, once | the engine (grammar + rules + tests), shared by the language | yes |
-| `backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
-| `backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
-| `backup.generation` | machine | receipt of the exact AI call, shared | yes |
-| `ledger.backup.lips.decisions` | machine | the machine's reading of this program | no (cache) |
+| `backup/backup.lang` | AI, once | the engine (grammar + rules + tests), shared by the language | yes |
+| `backup/backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
+| `backup/backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
+| `backup/backup.generation` | machine | receipt of the exact AI call, shared | yes |
+| `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
+| `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
+| `backup/out/ledger/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |
 
 Everything the machine writes is traceable. Each `.lang` line ends in
 `@gen:<fingerprint>`, the hash of the AI call recorded in `.generation`. And

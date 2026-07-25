@@ -644,7 +644,14 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `attrsOf` `"*"` wildcard -- so multiplicity rides Nix's native module merge,
   not a lips mechanism (`services.restic.backups.ledger.*` and `...photos.*`
   coexist). `.lang`/`.expect`/`.generation`/`.direction` are language-level
-  (named by the language), `.decisions` per instance; `generate` takes several
+  (named by the language) and live, with `artifacts/`, in a folder named after
+  the language beside the programs (`examples/backup/backup.lang`); everything
+  derived goes under that folder's `out/` (`out/ledger.decisions`, the compiled
+  module dir `out/ledger/`), which lips makes self-ignoring by writing
+  `out/.gitignore` holding `*`. The split is the readable form of the project's
+  central claim: a directory listing shows the human-owned `*.lips` programs and
+  nothing else, and the path alone says whether a file is owned, minted, or
+  derived. `.decisions` is per instance; `generate` takes several
   programs and gates the whole set (crystallize + committed `.expect`) as the
   regeneration corpus. Kernel additions: the `<self>` binding in rule emit
   paths, rule rhs values (a `<self>` string piece and a `${artifact.<self>}`
