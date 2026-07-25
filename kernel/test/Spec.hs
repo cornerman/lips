@@ -29,7 +29,7 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
-import Lips.Cli (GenerateOpts (..), generateOpts, programCompleter)
+import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), generateOpts, compileOpts, checkOpts, programCompleter)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, getTemporaryDirectory)
@@ -99,6 +99,31 @@ main = hspec $ do
         `shouldBe` Just (GenerateOpts Nixos 0.7 False False (Just "anthropic/claude") ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
+    it "fails with no program at all" $
+      parseArgs [] `shouldBe` Nothing
+
+  describe "compile argument parsing (Lips.Cli)" $ do
+    let parseArgs = getParseResult . execParserPure defaultPrefs (info compileOpts idm)
+    it "defaults --out and --lang-dir to Nothing" $
+      parseArgs ["a.backup.lips"]
+        `shouldBe` Just (CompileOpts Nothing "a.backup.lips" Nothing)
+    it "reads --lang-dir in any position, alongside --out" $ do
+      parseArgs ["--lang-dir", "services/a/backup", "a.backup.lips"]
+        `shouldBe` Just (CompileOpts Nothing "a.backup.lips" (Just "services/a/backup"))
+      parseArgs ["--out", "dir", "--lang-dir", "services/a/backup", "a.backup.lips"]
+        `shouldBe` Just (CompileOpts (Just "dir") "a.backup.lips" (Just "services/a/backup"))
+    it "fails with no program at all" $
+      parseArgs [] `shouldBe` Nothing
+
+  describe "check argument parsing (Lips.Cli)" $ do
+    let parseArgs = getParseResult . execParserPure defaultPrefs (info checkOpts idm)
+    it "defaults --lang-dir to Nothing" $
+      parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts "a.backup.lips" Nothing)
+    it "reads --lang-dir in any position" $ do
+      parseArgs ["--lang-dir", "services/a/backup", "a.backup.lips"]
+        `shouldBe` Just (CheckOpts "a.backup.lips" (Just "services/a/backup"))
+      parseArgs ["a.backup.lips", "--lang-dir", "services/a/backup"]
+        `shouldBe` Just (CheckOpts "a.backup.lips" (Just "services/a/backup"))
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 

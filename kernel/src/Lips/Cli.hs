@@ -11,9 +11,11 @@ module Lips.Cli
   ( Command (..)
   , GenerateOpts (..)
   , CompileOpts (..)
+  , CheckOpts (..)
   , cliParserInfo
   , generateOpts
   , compileOpts
+  , checkOpts
   , programCompleter
   ) where
 
@@ -40,10 +42,22 @@ data GenerateOpts = GenerateOpts
 
 -- | Everything @compile@ needs. Exactly one program -- unlike @generate@'s
 -- @some@, no forced symmetry: compile realizes into a single output
--- directory, it does not read a corpus.
+-- directory, it does not read a corpus. @coLangDir@ overrides where the
+-- committed language files are read from (default: sibling of the program,
+-- see 'Lips.Identity.resolveLangDir'); it never affects where compile WRITES
+-- (that stays under the program's own directory).
 data CompileOpts = CompileOpts
-  { coOut  :: Maybe FilePath
-  , coFile :: FilePath
+  { coOut     :: Maybe FilePath
+  , coFile    :: FilePath
+  , coLangDir :: Maybe FilePath
+  } deriving (Eq, Show)
+
+-- | Everything @check@ needs: the program, plus the same @--lang-dir@
+-- override @compile@ takes (same meaning: read-only, does not move derived
+-- output).
+data CheckOpts = CheckOpts
+  { ceFile    :: FilePath
+  , ceLangDir :: Maybe FilePath
   } deriving (Eq, Show)
 
 -- | The four lips verbs, all visible/documented via 'hsubparser' (lsp was
@@ -51,7 +65,7 @@ data CompileOpts = CompileOpts
 data Command
   = Generate GenerateOpts
   | Compile CompileOpts
-  | Check FilePath
+  | Check CheckOpts
   | Lsp
   deriving (Eq, Show)
 
@@ -73,7 +87,7 @@ cliParser defConf = hsubparser
        (info (Compile <$> compileOpts)
              (progDesc "Realize into a directory (flake.nix + default.nix + artifacts/) and print the nix commands that run it."))
   <> command "check"
-       (info (Check <$> programArg)
+       (info (Check <$> checkOpts)
              (progDesc "Verify the program still produces what it promised."))
   <> command "lsp"
        (info (pure Lsp)
@@ -141,9 +155,27 @@ generateOpts defConf = GenerateOpts
           <> help "Model id to use (default: pi's own configured default)."))
   <*> some (strArgument (metavar "PROGRAM..." <> completer programCompleter))
 
+-- | @--lang-dir@: read the committed language files (.lang/.expect/
+-- .generation/artifacts) from this directory instead of the program's sibling
+-- folder. Never affects where derived output (out/) is written -- that stays
+-- under the program's own directory. No short alias: a deliberate, occasional
+-- override, not a fast-typed everyday flag (the same judgment as --renew).
+-- The folder must be named after the program's own declared language;
+-- 'Lips.Identity.resolveLangDir' enforces that and fails loud on mismatch.
+langDirOpt :: Parser (Maybe FilePath)
+langDirOpt = optional (strOption
+  (long "lang-dir" <> metavar "DIR"
+    <> help "Read the language's committed files from DIR instead of the program's sibling folder (must be named after the program's language)."))
+
 compileOpts :: Parser CompileOpts
 compileOpts = CompileOpts
   <$> optional (strOption
         (long "out" <> short 'o' <> metavar "DIR"
           <> help "Output directory (default: <language>/out/<instance>)."))
   <*> programArg
+  <*> langDirOpt
+
+checkOpts :: Parser CheckOpts
+checkOpts = CheckOpts
+  <$> programArg
+  <*> langDirOpt
