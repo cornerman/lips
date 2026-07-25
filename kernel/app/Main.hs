@@ -39,8 +39,8 @@ import           System.Process     (callCommand, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
-import           Lips.Identity                 (artifactsPath, compiledPath, decisionsPath, directionPath, expectPath, generationPath, instanceName, langDir, langPath, languageName, outDir)
-import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), cliParserInfo)
+import           Lips.Identity                 (artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
+import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
@@ -77,8 +77,8 @@ main = do
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
     Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goFiles go)
-    Compile co  -> compileLoose (coOut co) (coFile co)
-    Check f     -> checkLoose f
+    Compile co  -> compileLoose (coOut co) (coLangDir co) (coFile co)
+    Check co    -> checkLoose (ceLangDir co) (ceFile co)
     Lsp         -> runLsp
 
 -- | @compile@: verify the program's committed contract, then crystallize +
@@ -103,27 +103,28 @@ main = do
 -- is not a lips verb, it is stock @nix@ over this directory, so compile emits
 -- the handles and names the commands (only those the program's shape supports,
 -- so no impossible command is ever shown -- deduce-or-fail).
-compileLoose :: Maybe FilePath -> FilePath -> IO ()
-compileLoose mout file = do
-  checkLoose file
+compileLoose :: Maybe FilePath -> Maybe FilePath -> FilePath -> IO ()
+compileLoose mout mLangDir file = do
+  dir <- either die pure (resolveLangDir file mLangDir)
+  checkLoose mLangDir file
   program <- readProgramOrDie file
-  eng     <- loadLangOrDie file
-  target  <- readRecordedTarget file
+  eng     <- loadLangOrDie dir file
+  target  <- readRecordedTarget dir file
   case validate file eng program of
     Left f                 -> die (printFail file f)
     Right (_, nixMod, art) -> do
-      let dir = maybe (compiledPath file) id mout
+      let outDirPath = maybe (compiledPath file) id mout
       ensureDerived file
-      callCommand ("mkdir -p " <> shq dir)
-      TIO.writeFile (dir </> "default.nix") nixMod
-      stageFromDisk file (dir </> "artifacts")
+      callCommand ("mkdir -p " <> shq outDirPath)
+      TIO.writeFile (outDirPath </> "default.nix") nixMod
+      stageFromDisk dir file (outDirPath </> "artifacts")
       artNames <- case art of
         Nothing            -> pure []
-        Just (body, names) -> TIO.writeFile (dir </> "artifact.nix") body >> pure names
-      TIO.writeFile (dir </> "flake.nix") (flakeText target (not (null artNames)))
-      TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack dir)
+        Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
+      TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)))
+      TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack outDirPath)
       TIO.hPutStrLn stderr "run it with nix over the compiled dir:"
-      mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames dir)
+      mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the
@@ -140,9 +141,9 @@ ensureDerived file = do
 -- | The world an engine was minted for, read from its committed .generation
 -- record (the @target:@ line). An engine minted before targets existed has no
 -- such line and defaults to nixos, so old engines keep working.
-readRecordedTarget :: FilePath -> IO Target
-readRecordedTarget file = do
-  m <- tryRead (generationPath file)
+readRecordedTarget :: FilePath -> FilePath -> IO Target
+readRecordedTarget dir file = do
+  m <- tryRead (generationPathIn dir file)
   pure $ case m of
     Nothing  -> defaultTarget
     Just src -> case [ t | l <- T.lines src
@@ -155,10 +156,11 @@ readRecordedTarget file = do
 -- its realized module, deterministically (no AI). This is the offline guardian
 -- of the @.expect@ spec; @generate@ runs the same check before accepting an
 -- engine, and the flake check shells this per example.
-checkLoose :: FilePath -> IO ()
-checkLoose file = do
+checkLoose :: Maybe FilePath -> FilePath -> IO ()
+checkLoose mLangDir file = do
+  dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
-  eng     <- loadLangOrDie file
+  eng     <- loadLangOrDie dir file
   -- First phase, pure and offline: how the program sits in its language.
   -- Always shown, so authoring is never blind; the behavioral gate runs only
   -- once the program crystallizes cleanly and completely.
@@ -175,20 +177,20 @@ checkLoose file = do
              (T.pack file <> " is incomplete while these questions stay open.")
              []
              "→ answer them by stating the detail in the program.")
-      else expectGate file eng program
+      else expectGate dir file eng program
   where
     escapes Matched{} = False
     escapes _         = True
 
 -- | The behavioral gate: the committed @.expect@ contract against the realized
 -- module. Reached only after diagnostics confirm the program crystallizes.
-expectGate :: FilePath -> EngineData -> Text -> IO ()
-expectGate file eng program = do
-  expSrc <- tryRead (expectPath file)
+expectGate :: FilePath -> FilePath -> EngineData -> Text -> IO ()
+expectGate dir file eng program = do
+  expSrc <- tryRead (expectPathIn dir file)
   case expSrc of
     Nothing  -> TIO.putStrLn
       (T.pack file <> ": crystallizes cleanly; no behavioral contract yet ("
-        <> T.pack (expectPath file) <> " is missing, written by generate).")
+        <> T.pack (expectPathIn dir file) <> " is missing, written by generate).")
     Just src -> case readExpect src of
       Left es       -> die (unreadable file ".expect" es)
       Right expects
@@ -199,7 +201,7 @@ expectGate file eng program = do
         Right (base, nixMod, _) -> do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
-          res <- runExpects (stageFromDisk file) (map (bindSelfExpect (instanceName file)) expects) base nixMod
+          res <- runExpects (stageFromDisk dir file) (map (bindSelfExpect (instanceName file)) expects) base nixMod
           case res of
             Right () -> TIO.putStrLn (T.pack file <> ": all "
                           <> tshow (length expects) <> " checks pass.")
@@ -232,10 +234,11 @@ renderDiagnosis file d = T.intercalate "\n" (headline : map row (diagLines d) ++
                        : ["  - " <> q | q <- diagOpen d]
     subjectPath (Subject segs) = T.intercalate "." segs
 
--- | Load and parse a program's @.lang@, or fail loud naming @generate@.
-loadLangOrDie :: FilePath -> IO EngineData
-loadLangOrDie file = do
-  let langFile = langPath file
+-- | Load and parse a program's @.lang@ (found under @dir@), or fail loud
+-- naming @generate@.
+loadLangOrDie :: FilePath -> FilePath -> IO EngineData
+loadLangOrDie dir file = do
+  let langFile = langPathIn dir file
   msrc <- tryRead langFile
   case msrc of
     Nothing  -> die (report
@@ -607,11 +610,12 @@ writeSources root = mapM_ one
       callCommand ("mkdir -p " <> shq (parentDir p))
       TIO.writeFile p (sfContent sf)
 
--- | Stage a language's committed @<language>/artifacts@ tree into @dst@ (the
--- temp module's @artifacts/@). A no-op when the program has no artifacts.
-stageFromDisk :: FilePath -> FilePath -> IO ()
-stageFromDisk file dst = do
-  _ <- (try (readProcessWithExitCode "cp" ["-rT", artifactsPath file, dst] "")
+-- | Stage a language's committed @artifacts@ tree (found under @dir@) into
+-- @dst@ (the temp module's @artifacts/@). A no-op when the program has no
+-- artifacts.
+stageFromDisk :: FilePath -> FilePath -> FilePath -> IO ()
+stageFromDisk dir file dst = do
+  _ <- (try (readProcessWithExitCode "cp" ["-rT", artifactsPathIn dir file, dst] "")
           :: IO (Either IOException (ExitCode, String, String)))
   pure ()
 
