@@ -29,7 +29,8 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
-import Lips.Generate.Args (parseGenerate)
+import Lips.Cli (Command (..), GenerateOpts (..), CompileOpts (..), cliParserInfo, generateOpts, compileOpts)
+import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
@@ -61,31 +62,41 @@ winnerAssertion s = fmap dAssertion . Map.lookup s
 
 main :: IO ()
 main = hspec $ do
-  describe "generate argument parsing (--target, --confidence, model)" $ do
+  describe "generate argument parsing (Lips.Cli)" $ do
+    let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
     it "defaults target to nixos, confidence to the default, renew/verbose off" $
-      parseGenerate 0.7 ["ledger.backup.lips"]
-        `shouldBe` Just (Nixos, 0.7, False, False, Nothing, ["ledger.backup.lips"])
+      parseArgs ["ledger.backup.lips"]
+        `shouldBe` Just (GenerateOpts Nixos 0.7 False False Nothing ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
-      parseGenerate 0.7 ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (HomeManager, 0.7, False, False, Nothing, ["a.backup.lips"])
+      parseArgs ["--target", "home-manager", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts HomeManager 0.7 False False Nothing ["a.backup.lips"])
     it "rejects an unknown target" $
-      parseGenerate 0.7 ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
-    it "keeps model detection and multiple programs" $
-      parseGenerate 0.7 ["anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (Nixos, 0.7, False, False, Just "anthropic/claude", ["a.backup.lips", "b.backup.lips"])
+      parseArgs ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
+    it "reads an explicit --model alongside multiple programs" $
+      parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
+        `shouldBe` Just (GenerateOpts Nixos 0.7 False False (Just "anthropic/claude") ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
-      parseGenerate 0.7 ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (HomeManager, 0.9, False, False, Nothing, ["a.backup.lips"])
+      parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts HomeManager 0.9 False False Nothing ["a.backup.lips"])
+    it "rejects an out-of-range confidence" $
+      parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
     it "reads --renew in any position" $ do
-      parseGenerate 0.7 ["--renew", "a.backup.lips"]
-        `shouldBe` Just (Nixos, 0.7, True, False, Nothing, ["a.backup.lips"])
-      parseGenerate 0.7 ["a.backup.lips", "--renew"]
-        `shouldBe` Just (Nixos, 0.7, True, False, Nothing, ["a.backup.lips"])
-    it "reads --verbose in any position" $ do
-      parseGenerate 0.7 ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (Nixos, 0.7, False, True, Nothing, ["a.backup.lips"])
-      parseGenerate 0.7 ["a.backup.lips", "--verbose"]
-        `shouldBe` Just (Nixos, 0.7, False, True, Nothing, ["a.backup.lips"])
+      parseArgs ["--renew", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts Nixos 0.7 True False Nothing ["a.backup.lips"])
+      parseArgs ["a.backup.lips", "--renew"]
+        `shouldBe` Just (GenerateOpts Nixos 0.7 True False Nothing ["a.backup.lips"])
+    it "reads -v/--verbose in any position" $ do
+      parseArgs ["--verbose", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts Nixos 0.7 False True Nothing ["a.backup.lips"])
+      parseArgs ["a.backup.lips", "-v"]
+        `shouldBe` Just (GenerateOpts Nixos 0.7 False True Nothing ["a.backup.lips"])
+    it "reads -m as the short alias for --model" $
+      parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts Nixos 0.7 False False (Just "anthropic/claude") ["a.backup.lips"])
+    it "rejects a duplicate --model (fail loud, not last-wins)" $
+      parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
+    it "fails with no program at all" $
+      parseArgs [] `shouldBe` Nothing
 
   describe "realization target (Lips.Nix.Target)" $ do
     it "parses the two world slugs and rejects others" $ do
