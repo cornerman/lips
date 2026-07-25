@@ -600,8 +600,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   module system). The flake helper `lib.modulesFromDir { pkgs; dir; }` exposes
   each `*.lips` in a directory under `nixosModules.<instance>` /
   `homeManagerModules.<instance>` by its recorded world, built by a `compile`
-  derivation. `Lips.Nix.Target` holds the closed `Target` type; `Lips.Generate.Args`
-  the pure flag parser. Design in
+  derivation. `Lips.Nix.Target` holds the closed `Target` type; `Lips.Cli`
+  the flag parser (`optparse-applicative`, since the CLI migration above).
+  Design in
   `docs/superpowers/specs/2026-07-22-realization-target-design.md` (its §10-11
   cover kubenix/terranix as further targets and the target-vs-solution-kind
   axis: `nix run`/`shell`/`develop` are a different axis — a new realize output
