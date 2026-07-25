@@ -25,7 +25,7 @@ import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           System.Environment (getArgs, lookupEnv)
+import           System.Environment (lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, stderr, stdout)
 import           System.FilePath    (dropExtension, takeFileName, (</>))
@@ -34,7 +34,8 @@ import           System.Process     (callCommand, readProcessWithExitCode)
 import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
 import           Lips.Identity                 (artifactsPath, decisionsPath, directionPath, expectPath, generationPath, instanceName, langPath, languageName)
-import           Lips.Generate.Args     (parseGenerate)
+import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), cliParserInfo)
+import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
@@ -67,39 +68,12 @@ defaultConfidence = 0.7
 
 main :: IO ()
 main = do
-  args <- getArgs
-  case args of
-    ["compile", file]                -> compileLoose Nothing file
-    ["compile", "--out", dir, file]  -> compileLoose (Just dir) file
-    ["check", file]              -> checkLoose file
-    ["lsp"]              -> runLsp
-    ("generate" : rest)  -> case parseGenerate defaultConfidence rest of
-      Just (target, conf, renew, verbose, mmodel, fs) -> generate target conf renew verbose mmodel fs
-      Nothing                         -> usage >> exitFailure
-    _                    -> usage >> exitFailure
-
--- | Parse @generate@ arguments: optional @--confidence <0..1>@ and
--- @--model <id>@ flags in any position, then @[model] <program-file>...@ --
--- one or more programs (all of one language, checked later). A malformed
--- threshold, a duplicate model, or no program fails loud (returns Nothing).
-usage :: IO ()
-usage = do
-  -- The tool's name is fixed. getProgName would leak the Nix wrapper's real
-  -- target (.lips-unwrapped), so name it directly.
-  let name = "lips" :: Text
-  TIO.hPutStr stderr $ T.unlines
-    [ "lips turns an <instance>.<language> program, written in your own plain lines, into a NixOS configuration."
-    , ""
-    , "usage:"
-    , "  " <> name <> " generate [--target nixos|home-manager] [--confidence <0..1>] [--renew] [--verbose] [--model <id>|model] <program>..."
-    , "      Mint the language from one or more example programs and verify each."
-    , "      The one step that uses AI. --verbose echoes the raw model reply."
-    , "  " <> name <> " compile [--out <dir>] <program>"
-    , "      Realize into a directory (flake.nix + default.nix + artifacts/) and"
-    , "      print the nix commands that run it (nix run/build over the dir)."
-    , "  " <> name <> " check <program>"
-    , "      Verify the program still produces what it promised."
-    ]
+  cmd <- execParser (cliParserInfo defaultConfidence)
+  case cmd of
+    Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goFiles go)
+    Compile co  -> compileLoose (coOut co) (coFile co)
+    Check f     -> checkLoose f
+    Lsp         -> runLsp
 
 -- | @compile@: verify the program's committed contract, then crystallize +
 -- realize and materialize a DIRECTORY -- default @<program without .lips>/@, or
@@ -272,7 +246,9 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
 generate :: Target -> Double -> Bool -> Bool -> Maybe String -> [FilePath] -> IO ()
-generate _ _ _ _ _ [] = usage >> exitFailure
+-- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
+-- construction. Kept only so this function stays total (-Wall incomplete-patterns).
+generate _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
 generate target confidence renew verbose mmodel files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
