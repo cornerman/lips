@@ -48,16 +48,16 @@ data GenerateOpts = GenerateOpts
 -- (that stays under the program's own directory).
 data CompileOpts = CompileOpts
   { coOut     :: Maybe FilePath
-  , coFile    :: FilePath
   , coLangDir :: Maybe FilePath
+  , coFile    :: FilePath
   } deriving (Eq, Show)
 
 -- | Everything @check@ needs: the program, plus the same @--lang@
 -- override @compile@ takes (same meaning: read-only, does not move derived
 -- output).
 data CheckOpts = CheckOpts
-  { ceFile    :: FilePath
-  , ceLangDir :: Maybe FilePath
+  { ceLangDir :: Maybe FilePath
+  , ceFile    :: FilePath
   } deriving (Eq, Show)
 
 -- | The four lips verbs, all visible/documented via 'hsubparser' (lsp was
@@ -172,10 +172,10 @@ compileOpts = CompileOpts
   <$> optional (strOption
         (long "out" <> short 'o' <> metavar "DIR"
           <> help "Output directory (default: <language>/out/<instance>)."))
-  <*> programArg
   <*> langDirOpt
+  <*> programArg
 
 checkOpts :: Parser CheckOpts
 checkOpts = CheckOpts
-  <$> programArg
-  <*> langDirOpt
+  <$> langDirOpt
+  <*> programArg

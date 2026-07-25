@@ -106,24 +106,24 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info compileOpts idm)
     it "defaults --out and --lang to Nothing" $
       parseArgs ["a.backup.lips"]
-        `shouldBe` Just (CompileOpts Nothing "a.backup.lips" Nothing)
+        `shouldBe` Just (CompileOpts Nothing Nothing "a.backup.lips")
     it "reads --lang in any position, alongside --out" $ do
       parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CompileOpts Nothing "a.backup.lips" (Just "services/a/backup"))
+        `shouldBe` Just (CompileOpts Nothing (Just "services/a/backup") "a.backup.lips")
       parseArgs ["--out", "dir", "--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CompileOpts (Just "dir") "a.backup.lips" (Just "services/a/backup"))
+        `shouldBe` Just (CompileOpts (Just "dir") (Just "services/a/backup") "a.backup.lips")
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 
   describe "check argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info checkOpts idm)
     it "defaults --lang to Nothing" $
-      parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts "a.backup.lips" Nothing)
+      parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts Nothing "a.backup.lips")
     it "reads --lang in any position" $ do
       parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CheckOpts "a.backup.lips" (Just "services/a/backup"))
+        `shouldBe` Just (CheckOpts (Just "services/a/backup") "a.backup.lips")
       parseArgs ["a.backup.lips", "--lang", "services/a/backup"]
-        `shouldBe` Just (CheckOpts "a.backup.lips" (Just "services/a/backup"))
+        `shouldBe` Just (CheckOpts (Just "services/a/backup") "a.backup.lips")
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 
