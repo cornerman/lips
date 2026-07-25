@@ -1750,6 +1750,32 @@ main = hspec $ do
     it "the shorthand puts the singleton under the language's own name" $
       compiledPath "examples/backup.lips" `shouldBe` "examples/backup/out/backup"
 
+  describe "--lang-dir resolution (Lips.Identity.resolveLangDir)" $ do
+    let prog = "services/b/photos.backup.lips"
+    it "with no override, resolves to the sibling langDir" $
+      resolveLangDir prog Nothing `shouldBe` Right (langDir prog)
+    it "accepts an override folder named after the program's language" $
+      resolveLangDir prog (Just "services/a/backup")
+        `shouldBe` Right "services/a/backup"
+    it "tolerates a trailing slash on the override" $
+      resolveLangDir prog (Just "services/a/backup/")
+        `shouldBe` Right "services/a/backup"
+    it "rejects an override folder named after a different language, naming both sides" $ do
+      case resolveLangDir prog (Just "services/a/archival") of
+        Right d  -> expectationFailure ("expected Left, got Right " ++ show d)
+        Left msg -> do
+          msg `shouldSatisfy` T.isInfixOf "backup"
+          msg `shouldSatisfy` T.isInfixOf "archival"
+
+  describe "explicit-directory path functions (Lips.Identity.*In)" $ do
+    let prog = "services/b/photos.backup.lips"
+        dir  = "services/a/backup"
+    it "reads the four committed files from the given directory, not the sibling" $ do
+      langPathIn       dir prog `shouldBe` "services/a/backup/backup.lang"
+      expectPathIn     dir prog `shouldBe` "services/a/backup/backup.expect"
+      generationPathIn dir prog `shouldBe` "services/a/backup/backup.generation"
+      artifactsPathIn  dir prog `shouldBe` "services/a/backup/artifacts"
+
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $
       readDecision "d1 fact x supreme \"a\"" `shouldSatisfy` isLeft
