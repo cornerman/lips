@@ -4,8 +4,9 @@
 -- real invocations, --help text, and --bash/--zsh/--fish-completion-script all
 -- derive from the same source and can never drift apart -- unlike a
 -- hand-rolled parser plus a separately hand-maintained completion script.
--- Kept free of IO: this module only builds the Parser value; Main.hs runs it
--- and dispatches. See docs/superpowers/specs/2026-07-25-cli-completion-design.md.
+-- Kept free of program logic: this module only builds the Parser value (its
+-- only IO is the tab-completion listing below); Main.hs runs it and
+-- dispatches. See docs/superpowers/specs/2026-07-25-cli-completion-design.md.
 module Lips.Cli
   ( Command (..)
   , GenerateOpts (..)
@@ -13,9 +14,14 @@ module Lips.Cli
   , cliParserInfo
   , generateOpts
   , compileOpts
+  , programCompleter
   ) where
 
+import Control.Monad      (filterM)
+import Data.List          (isPrefixOf, isSuffixOf)
 import Options.Applicative
+import System.Directory    (doesDirectoryExist, listDirectory)
+import System.FilePath     (splitFileName, (</>))
 import Text.Read          (readMaybe)
 
 import Lips.Nix.Target (Target (..), defaultTarget, parseTarget)
@@ -75,7 +81,33 @@ cliParser defConf = hsubparser
   )
 
 programArg :: Parser FilePath
-programArg = strArgument (metavar "PROGRAM")
+programArg = strArgument (metavar "PROGRAM" <> completer programCompleter)
+
+-- | Tab completion for PROGRAM arguments. optparse-applicative answers every
+-- completion itself, so the shells' own filename completion never runs: an
+-- argument without a completer completes to nothing at all. A plain file
+-- completer would be wrong the other way, offering the machine-written
+-- neighbours (@.lang@, @.expect@, @.generation@, @out\/@) as if a human could
+-- pass them. So list exactly what lips accepts: @*.lips@ programs, plus
+-- directories to descend into. Listing it here (rather than via the
+-- bash-only @action "file"@) is what makes it work in bash, zsh and fish
+-- alike -- all three generated scripts ask the binary.
+programCompleter :: Completer
+programCompleter = mkCompleter $ \word -> do
+  -- splitFileName keeps the separator on the directory part and yields "./"
+  -- for a bare word, so @dir@ is always a listable path.
+  let (dir, base) = splitFileName word
+      -- Echo back paths in the shape the user typed: a bare word must not
+      -- grow a "./" prefix, or the completion would replace what they wrote.
+      shown n = if dir == "./" && not ("./" `isPrefixOf` word) then n else dir <> n
+      -- Hidden entries only when explicitly asked for, as shells do.
+      candidate n = base `isPrefixOf` n && (not ("." `isPrefixOf` n) || "." `isPrefixOf` base)
+  listable <- doesDirectoryExist dir
+  if not listable then pure [] else do
+    names <- filter candidate <$> listDirectory dir
+    dirs  <- filterM (doesDirectoryExist . (dir </>)) names
+    pure $ [shown n <> "/" | n <- dirs]
+        <> [shown n | n <- names, n `notElem` dirs, ".lips" `isSuffixOf` n]
 
 -- | @--target@'s reader: reuses the existing 'parseTarget', so the CLI and
 -- the @.generation@ record stay the single source of truth for target slugs.
@@ -107,7 +139,7 @@ generateOpts defConf = GenerateOpts
   <*> optional (strOption
         (long "model" <> short 'm' <> metavar "ID"
           <> help "Model id to use (default: pi's own configured default)."))
-  <*> some (strArgument (metavar "PROGRAM..."))
+  <*> some (strArgument (metavar "PROGRAM..." <> completer programCompleter))
 
 compileOpts :: Parser CompileOpts
 compileOpts = CompileOpts

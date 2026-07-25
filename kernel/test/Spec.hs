@@ -29,8 +29,12 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
-import Lips.Cli (GenerateOpts (..), generateOpts)
+import Lips.Cli (GenerateOpts (..), generateOpts, programCompleter)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
+import Options.Applicative.Types (Completer (..))
+import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, getTemporaryDirectory)
+import System.FilePath ((</>))
+import Data.List (sort)
 import Lips.Generate.Harness
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
@@ -97,6 +101,33 @@ main = hspec $ do
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
+
+  -- Tab completion must offer only what a human may pass: the .lips programs
+  -- and directories to descend into, never the machine-written neighbours.
+  describe "PROGRAM tab completion (Lips.Cli.programCompleter)" $ do
+    -- The fixture mirrors the on-disk layout: programs at the top level, the
+    -- machine's files inside <language>/.
+    let withFixture act = do
+          tmp <- getTemporaryDirectory
+          let root = tmp </> "lips-completer-spec"
+          createDirectoryIfMissing True (root </> "backup")
+          mapM_ (\f -> writeFile (root </> f) "")
+            [ "ledger.backup.lips", "photos.backup.lips", ".hidden.backup.lips" ]
+          mapM_ (\f -> writeFile (root </> "backup" </> f) "")
+            [ "backup.lang", "backup.expect" ]
+          r <- act root
+          removeDirectoryRecursive root
+          pure r
+            -- Completions come back as full paths; compare them root-relative.
+        completeIn root w = sort . map (drop (length root + 1))
+                            <$> runCompleter programCompleter (root <> "/" <> w)
+    it "offers .lips programs and directories, hiding machine files" $
+      withFixture (\root -> (,,) <$> completeIn root "" <*> completeIn root "led" <*> completeIn root "backup/")
+        `shouldReturn`
+          ( sort ["backup/", "ledger.backup.lips", "photos.backup.lips"]
+          , ["ledger.backup.lips"]
+          , [] )
+
 
   describe "realization target (Lips.Nix.Target)" $ do
     it "parses the two world slugs and rejects others" $ do

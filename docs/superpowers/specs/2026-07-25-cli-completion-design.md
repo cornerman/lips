@@ -99,11 +99,15 @@ Decisions and why:
 - `<program>` : `FilePath` (`strArgument`), no existence check at parse time —
   `readProgramOrDie` already gives a clean error if the path is wrong, and
   parse-time stat-ing would be a second, redundant failure path.
-  `optparse-applicative`'s file completer is deliberately not wired in
-  (`action "file"` is a `bash`/`zsh`-only convention with no portable fish
-  equivalent, and every path in this repo is `<instance>.<language>.lips`, a
-  shape the shell's own filename completion already narrows well enough via
-  plain file completion the shells provide regardless).
+  Completion comes from `Lips.Cli.programCompleter`, which lists `*.lips`
+  files plus directories to descend into. The earlier assumption that the
+  shells' own filename completion would fill the gap was wrong: the generated
+  scripts route every word to the binary, so an argument without a completer
+  completes to nothing. `action "file"` was rejected for two reasons: it is a
+  `bash`/`zsh`-only convention with no portable fish equivalent, and a bare
+  file completer would offer the machine-written neighbours (`.lang`,
+  `.expect`, `.generation`, `out/`) as if a human could pass them. Listing in
+  Haskell works in all three shells alike.
 - `--target` : `nixos | home-manager`, parsed by the existing
   `Lips.Nix.Target.parseTarget`; wrapped in an `eitherReader` so an unknown
   value fails through `optparse-applicative`'s own error path (a parse error,
