@@ -54,7 +54,7 @@ generate program model="":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -n "{{model}}" ]; then
-      nix run . -- generate "{{model}}" "{{program}}"
+      nix run . -- generate --model "{{model}}" "{{program}}"
     else
       nix run . -- generate "{{program}}"
     fi

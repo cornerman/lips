@@ -379,6 +379,25 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **CLI: optparse-applicative parser, tab-completion for free.** `lips`'s
+  argument parsing (`Lips.Generate.Args`'s hand-rolled loop, including the
+  `looksLikeModel` heuristic that guessed whether a bare positional was a
+  model id or a program file) is replaced by `Lips.Cli`, a single
+  `optparse-applicative` `Parser Command` covering all four verbs
+  (`generate`, `compile`, `check`, `lsp` -- `lsp` was reachable before but
+  absent from `--help`; now consistent). `-m/--model` is the only way to name
+  a model; short aliases `-t/--target`, `-o/--out`, `-v/--verbose` are added
+  (`--renew` stays long-only, a deliberate rare action). Because completion
+  scripts derive from the same `Parser` that parses real invocations, they
+  cannot drift the way a hand-maintained static script would --
+  `installShellCompletion` (nix packaging) ships bash/zsh/fish completions
+  generated from the built binary at package build time (`makeWrapper
+  --argv0 lips`, so `getProgName` -- used by both `--help` and the generated
+  completion scripts' function/compdef names -- reports `lips`, not the
+  wrapper's real target `.lips-unwrapped`). No change to any
+  `report`/`reportHead` domain error (they are downstream of a successful
+  parse). Spec: `docs/superpowers/specs/2026-07-25-cli-completion-design.md`.
+
 - **Run axis: running is not a lips verb, it is `nix` over the compiled dir.**
   `compile` emits `flake.nix` + `default.nix` (+ `artifact.nix` when there are
   artifacts) and prints the exact stock `nix` commands the program's shape
