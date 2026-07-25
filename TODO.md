@@ -37,7 +37,16 @@
 - **Artifacts: templated source** — source is a fixed blob baked at generate; a
   value that must appear inside the compiled program needs regeneration, not a
   `compile`-time flow. Also: dependency-fetching builders (cargo/vendor hashes)
-  untried.
+  untried. Concrete repro (2026, `server.lips` httpserver example): a route's
+  status/mimetype/body must land inside the compiled Go source per route
+  (keyed by `<path>`), but `source` heredocs are verbatim text with no holes
+  and no per-item (capture-keyed) binding into source text; `generate` rightly
+  refuses these three (confidence 0.35) rather than fake it. Needs a hole
+  syntax usable inside a `source` block, reusing the `<capture>` mechanism
+  already used for option paths, plus a decision on whether substitution is
+  generate-time (model renders the per-item structure) or a new realize-time
+  step.
+
 - **Language migration** — no diff/migration path when a `.lang` regenerates to
   a different shape.
 - **Multi-language composition** — the prototype runs one engine; composing
