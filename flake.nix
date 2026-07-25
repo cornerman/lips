@@ -27,7 +27,8 @@
       # The reference `lips` CLI, built from the deliverable in kernel/.
       # `nix run . -- print examples/ledger.backup.lips`.
       packages = forAll (pkgs: {
-        default = pkgs.runCommand "lips" { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper ]; } ''
+        default = pkgs.runCommand "lips"
+          { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper pkgs.installShellFiles ]; } ''
           cp -r ${./kernel}/. build && cd build
           mkdir -p "$out/bin"
           ghc -Wall -isrc -iapp app/Main.hs -outputdir "$TMPDIR/o" -o "$out/bin/.lips-unwrapped"
@@ -36,9 +37,24 @@
           # (a rev, not a store path), so nixpkgs never enters the closure of
           # print/run/check; only generate resolves and evaluates it. A caller
           # may override with LIPS_OPTIONS_JSON (a prebuilt options.json).
+          # --argv0 lips: getProgName (used by optparse-applicative for --help's
+          # usage line AND the generated completion scripts' function/compdef
+          # names) otherwise reports the wrapper's real target, .lips-unwrapped
+          # -- breaking `lips <TAB>` silently (the completion function would be
+          # registered under the wrong name).
           makeWrapper "$out/bin/.lips-unwrapped" "$out/bin/lips" \
+            --argv0 lips \
             --set-default LIPS_NIXPKGS_FLAKE "github:NixOS/nixpkgs/${nixpkgs.rev}" \
             --set-default LIPS_HM_FLAKE "github:nix-community/home-manager/${home-manager.rev}"
+          # Completion scripts derive from the SAME optparse-applicative Parser
+          # that parses real invocations (Lips.Cli), so they cannot drift from
+          # it the way a hand-maintained static script would. Generated from
+          # the just-built binary; hermetic (no network, no AI call -- these
+          # flags are a pure parser-introspection path, never reaching pi).
+          installShellCompletion --cmd lips \
+            --bash <($out/bin/lips --bash-completion-script $out/bin/lips) \
+            --zsh  <($out/bin/lips --zsh-completion-script  $out/bin/lips) \
+            --fish <($out/bin/lips --fish-completion-script $out/bin/lips)
         '';
       });
 
