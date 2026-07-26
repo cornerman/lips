@@ -101,28 +101,76 @@ Anything that *must* hold belongs in the program or its tests, not here. The
 file is optional; absent, nothing changes.
 
 ```mermaid
-flowchart LR
-    W["write<br><b>ledger.backup.lips</b>"]
-    W -->|"generate<br>(AI, once)"| E["engine + tests<br>verified, or nothing"]
-    W -->|"compile<br>(no AI, forever)"| M["module dir + flake<br>run via nix"]
-    E --> M
-    M -.->|"a line it cannot read"| W
+flowchart TD
+    W["<b>write</b> · you<br>ledger.backup.lips"]
+    Q{"does the language<br>read every line?"}
+    G["<b>lips generate</b> · AI, once per new wording<br>mints backup/backup.lang + backup.expect<br>written only if it compiles and the tests hold"]
+    C["<b>lips compile</b> · no AI, offline, bit-identical<br>backup/out/ledger/: default.nix + flake.nix"]
+    R["<b>nix run</b> …#vm · stock nix, no lips verb"]
+
+    W --> Q
+    Q -->|"no · the line fails loud"| G
+    G --> Q
+    Q -->|yes| C
+    C --> R
+    R -.->|"edit a value: straight through compile"| W
+    R -.->|"say something new: back to generate"| W
 ```
+
+A fourth verb stays outside the loop: `lips check <program>` re-verifies the
+committed `.expect` contract against the realized module, so you can gate the
+loop in CI.
+
+## Install
+
+Run the CLI without installing anything:
+
+    nix run github:cornerman/lips -- compile ledger.backup.lips
+
+To keep `lips` on your PATH, add the flake as an input:
+
+    inputs.lips.url = "github:cornerman/lips";
+
+Then, in NixOS `environment.systemPackages` or home-manager `home.packages`:
+
+    inputs.lips.packages.${pkgs.stdenv.hostPlatform.system}.default
+
+That one package is everything `compile`, `check`, and `lsp` need; they are
+offline and use only `nix` itself. `generate` additionally expects the `pi`
+binary on your PATH, authenticated against some provider: lips deliberately
+keeps it out of its own closure, because it is your harness and carries your
+credentials. lips calls it hermetically (`-p -nt -nc --no-session`), so no
+ambient `AGENTS.md`, extension, or skill of yours steers a mint; the system
+prompt lips sends is the only instruction, and it is hashed into
+`.generation`.
+
+To deploy a program, point `lib.modulesFromDir` at the directory holding your
+`.lips` files. It compiles each one in a derivation (offline, no AI) and labels
+it by the world its engine was minted for:
+
+    { inputs, pkgs, ... }:
+    let lips = inputs.lips.lib.modulesFromDir { inherit pkgs; dir = ./lips; };
+    in { imports = [ lips.nixosModules.ledger ]; }
+
+A home-manager engine appears under `lips.homeManagerModules.<instance>`
+instead. Nix flakes see only git-tracked files, so `git add` your program and
+its language folder before rebuilding.
 
 ## Try It
 
-With direnv, run `direnv allow` once. Otherwise prefix each command with
-`nix develop -c`.
+    git clone https://github.com/cornerman/lips && cd lips
+    nix run . -- compile examples/ledger.backup.lips  # plain lines -> module dir + flake
+    nix run . -- check   examples/ledger.backup.lips  # the committed contract still holds
 
-    just compile examples/ledger.backup.lips # loose text -> module dir + flake (offline)
-    # compile prints the nix commands to run it, e.g.:
-    #   nix run path:examples/backup/out/ledger#vm # throwaway QEMU boot of the system (needs KVM)
-    just generate path/to/my.backup.lips     # mint a language for your program (AI, needs pi)
-    just test                                # conformance suite
+`compile` prints the stock nix commands that run the result, e.g.
+`nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs
+KVM) or `nix build path:examples/backup/out/ledger#vm` to only check that it
+builds.
 
-Open `examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and run
-`just compile` again. The module updates with no AI. Then add a sentence the
-language does not know and watch it fail loud, pointing you back to `generate`.
+Open `examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and
+compile again. The module updates with no AI. Then add a sentence the language
+does not know and watch it fail loud, pointing you back to
+`lips generate my.backup.lips` (the only step that needs a model, via `pi`).
 To see reuse, look at `examples/photos.backup.lips`: a second instance of the
 same `backup` language, sharing `examples/backup/backup.lang`.
 
@@ -132,6 +180,10 @@ that server from generated Go source (a Nix `buildGoModule` derivation) and
 runs it as a service. The source is a committed, reviewable file beside the
 program; the build and run stay deterministic and offline. The `artifact-vm`
 flake check compiles it and boots the service in a VM.
+
+For hacking on lips itself, `just` is the command index: `just test` runs the
+conformance suite, `just check` the full verification. With direnv, run
+`direnv allow` once; otherwise prefix with `nix develop -c`.
 
 ## The Files
 
@@ -155,11 +207,11 @@ under `out/` is per instance, derived, and safe to delete.
 | File | Author | Role | In git |
 |------|--------|------|--------|
 | `ledger.backup.lips` | you | the program (instance `ledger`), the only real source | yes |
+| `backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
 | `backup/backup.lang` | AI, once | the engine (grammar + rules + tests), shared by the language | yes |
 | `backup/backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
-| `backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
-| `backup/backup.generation` | machine | receipt of the exact AI call, shared | yes |
 | `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
+| `backup/backup.generation` | machine | receipt of the exact AI call, shared | yes |
 | `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
 | `backup/out/ledger/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |
 
