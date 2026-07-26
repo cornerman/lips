@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the accreted mint prompt with one written for the agent that actually does the job: it explains where the agent sits in lips, how the machine it programs executes an engine, how to verify its own work with the two tools, what it may say, and how to review itself — with examples the conformance suite keeps true.
+**Goal:** Replace the accreted mint prompt with one written for the agent that actually does the job: it explains where the agent sits in lips, how the machine it programs executes an engine, how to ground its option names with the lookup tool, what it may say, and how to review itself, with examples the conformance suite keeps true.
 
-**Architecture:** The prompt stops being escaped Haskell string literals and becomes markdown under `assets/mint/`, embedded into the binary at compile time with `file-embed`. `Lips.Generate.Minting` keeps its public surface (`systemPromptFor`, `systemPrompt`, `promptWithDirection`, plus Plan A's `promptWithBudget`) and merely composes embedded documents. The rewrite lands in two moves: a byte-identical migration (no wording change, so any regression is provably mechanical), then the new text section by section. A new suite test extracts every fenced example block marked `lips-engine` from the prompt and requires the kernel to parse it, so a teaching example cannot outlive the grammar it teaches.
+**Architecture:** The prompt stops being escaped Haskell string literals and becomes markdown under `assets/mint/`, embedded into the binary at compile time with `file-embed`. `Lips.Generate.Minting` keeps its public surface (`systemPromptFor`, `systemPrompt`, `promptWithDirection`, plus Plan A's `promptWithTools`) and merely composes embedded documents. The rewrite lands in two moves: a byte-identical migration (no wording change, so any regression is provably mechanical), then the new text section by section. A new suite test extracts every fenced example block marked `lips-engine` from the prompt and requires the kernel to parse it, so a teaching example cannot outlive the grammar it teaches.
 
 **Tech Stack:** Haskell (GHC, `-Wall` clean), `file-embed`, `hspec`, Nix flakes.
 
@@ -16,7 +16,7 @@
 - The prompt is a versioned artifact pinned into `.generation` and `genId`; changing it changes every future stamp, which is expected and must be noted in the DESIGN ledger entry.
 - Examples in the prompt must parse: the suite enforces it.
 - The suite and app stay `-Wall` clean. Worktree `.worktrees/mint-prompt`, branch `feat/mint-prompt`.
-- Sequenced after Plans A and B, whose tools and block kinds the new text describes.
+- Sequenced after Plans A and B, whose lookup tool and block kinds the new text describes. The mint has exactly one tool, `lips_options`, and no tool that judges an engine: the prompt must never suggest the agent can rehearse, validate or commit anything, only that it can ask what an option is.
 
 ## File Structure
 
@@ -169,21 +169,21 @@ Content requirements, the pipeline end to end, in the kernel's own terms:
 6. `<self>` binds to the program's instance name at realize time; a `<capture>` segment binds per item and fans one rule out across an `attrsOf`; a rule emitting a list makes its subject aggregate across lines.
 7. Realization renders a NixOS module; lips parses it with `nix-instantiate --parse`, checks every option path and type against the pinned schema, and evaluates the module to test the expects.
 
-State plainly that each numbered stage is a place your engine can fail, and that `lips_dry_run` reports failures in exactly these terms.
+State plainly that each numbered stage is a place your engine can fail, and that a refusal names the stage in exactly these terms.
 
 Commit: `mint prompt: describe the machine the engine drives, stage by stage`.
 
 - [ ] **Step 3: Section 3, "How You Work"**
 
-Content requirements: draft the engine, then use the tools; `lips_options` to confirm every option path and type before you rely on memory; `lips_dry_run` to rehearse the whole gate; read the verdict, fix, repeat; the budget (Plan A) and that each result reports what remains; spend the last call verifying the exact text you will answer with; artifact sources are not staged in a rehearsal, so an artifact build is only exercised by the real gate; when the loop will not converge, do not improvise — answer with your best engine and a `gap` block.
+Content requirements: you act once, and lips then judges your engine with checks you cannot run yourself, so everything you can verify beforehand, verify. The one thing you can verify is an option: `lips_options` searches the pinned schema of the target world, a dotted prefix browses a namespace, a domain word finds one, and a broad query answers with the namespaces holding the matches so you ask again by name. Look up every path and type you are not certain of instead of recalling it, because a rule naming an option that does not exist or has the wrong type is rejected outright. State the limit of the tool in the same breath: it grounds NAMES, never VALUES, so being told an option exists is not permission to invent what fills it. When the programs do not state a value, the honest moves are a demand, a low confidence with a `because`, or a `gap`, and never an invention. An item below the confidence threshold and an unmet demand both refuse the mint on the spot, by design: they mean the programs underspecify something, and no cleverness of yours can add information the input does not carry.
 
-Commit: `mint prompt: teach the verify-and-iterate loop and its budget`.
+Commit: `mint prompt: teach the lookup tool and that it grounds names, not values`.
 
 - [ ] **Step 4: Section 4, "What You May Say"**
 
-Content requirements: the final message is items only, in the six line forms plus three block forms, no prose outside blocks; confidence is always token 1; ids pair a `because` note to its item; the `report` block is required, exactly one, and is what the human reads (say what the language reads, the vocabulary and why, the mechanism chosen and what was rejected, every value you had to invent, and what a program in this language must state); a `gap` block files a missing kernel capability with the line it blocks and a minimal repro; the final message must be exactly the engine text you last dry-ran green, plus report and gaps.
+Content requirements: the final message is items only, in the line forms plus the block forms, no prose outside blocks; confidence is always token 1; ids pair a `because` note to its item; the `report` block is required, exactly one, and is what the human reads (say what the language reads, the vocabulary and why, the mechanism chosen and what was rejected, every value you had to invent, and what a program in this language must state); a `gap` block files a missing kernel capability with the line it blocks and a minimal repro.
 
-Keep the grammar table from the current prompt verbatim in a fenced block, extended with `report` and `gap`.
+Keep the grammar table from the current prompt verbatim in a fenced block, extended with `report` and `gap` (Plan B). Say which items become the engine (`pattern`, `match`, `demand`), which become sibling artifacts (`expect`, `source`), and which are conversation only and never reach `.lang` (`because`, `report`, `gap`).
 
 Commit: `mint prompt: state the output contract once, including report and gap`.
 
@@ -211,13 +211,13 @@ Commit: `mint prompt: two verified worked examples, end to end`.
 
 - [ ] **Step 8: Section 8, the self-review checklist**
 
-A short numbered list the agent runs before answering: every line of every program matched by exactly one pattern; every decision mapped or a `concept`; every program value a hole; every option path confirmed with `lips_options`; every expect naming a value option, never a derivation; the last dry-run green and matching the text you are about to send; the report written; every invented value either demanded, low-confidence with a because, or named in the report.
+A short numbered list the agent runs before answering: every line of every program matched by exactly one pattern; every decision mapped or a `concept`; every program value a hole; every option path and type confirmed with `lips_options` rather than recalled; every expect naming a value option, never a derivation; the report written; every value you could not derive from the programs either demanded, low-confidence with a because, or named in the report.
 
 Commit: `mint prompt: a self-review checklist before the final answer`.
 
 - [ ] **Step 9: Update the pinned-clause test**
 
-Rewrite the clause list in `kernel/test/Spec.hs`'s "generate prompt is a pinned artifact" test to the new load-bearing sentences (keep `act exactly once`, `replace EVERY program value with a hole`, `refusal beats invention`; add `lips_dry_run`, `report block`, `gap`, and the section titles). Run the suite.
+Rewrite the clause list in `kernel/test/Spec.hs`'s "generate prompt is a pinned artifact" test to the new load-bearing sentences (keep `act exactly once`, `replace EVERY program value with a hole`, `refusal beats invention`; add `lips_options`, `report block`, `gap`, and the section titles). Run the suite.
 
 Commit: `test: pin the rewritten prompt's load-bearing clauses`.
 
@@ -228,7 +228,7 @@ Commit: `test: pin the rewritten prompt's load-bearing clauses`.
 **Files:**
 - Modify: `assets/mint/nixos.md`, `assets/mint/home-manager.md`, `assets/mint/direction.md`
 
-- [ ] **Step 1:** Rewrite each preamble to say what the world *is* (a whole machine as root; one user's `$HOME`, unprivileged), which namespaces belong to it, what `<self>` keys there, and that `lips_options --target <world>` searches exactly this world's schema.
+- [ ] **Step 1:** Rewrite each preamble to say what the world *is* (a whole machine as root; one user's `$HOME`, unprivileged), which namespaces belong to it, what `<self>` keys there, and that `lips_options` searches exactly this world's pinned schema.
 - [ ] **Step 2:** Keep the direction wrapper's two load-bearing sentences ("PREFERENCE, not requirement", "never let it override a value the program states"), which the suite pins.
 - [ ] **Step 3:** Run the suite; the home-manager clause test must still pass.
 - [ ] **Step 4: Commit**
@@ -262,7 +262,7 @@ git commit -am "docs: the mint prompt is a reviewable, example-verified document
 
 ## Self-Review
 
-- Spec coverage: markdown assets embedded with `file-embed` (Task 1), verified examples (Tasks 2, 3 Step 7), big-picture opening (Task 3 Step 1), the machine model that lets the agent reason instead of pattern-match (Step 2), the tool loop and budget (Step 3), output contract including Plan B's blocks (Step 4), per-construct reference with each prohibition stated once (Step 5), design guidance and regeneration stability (Step 6), self-review checklist (Step 8), world preambles (Task 4).
+- Spec coverage: markdown assets embedded with `file-embed` (Task 1), verified examples (Tasks 2, 3 Step 7), big-picture opening (Task 3 Step 1), the machine model that lets the agent reason instead of pattern-match (Step 2), the lookup tool and the names-not-values limit (Step 3), output contract including Plan B's blocks (Step 4), per-construct reference with each prohibition stated once (Step 5), design guidance and regeneration stability (Step 6), self-review checklist (Step 8), world preambles (Task 4).
 - The rewrite is split so a reviewer can reject one section; the migration is byte-identical first, so wording changes are never entangled with mechanism changes.
 - Names used consistently: `bodyDoc`, `nixosDoc`, `homeManagerDoc`, `directionDoc`, `fencedBlocks`, block tag `lips-engine`.
 </content>

@@ -16,7 +16,7 @@
 - Invariant 6 is untouched: `.lang` stamping and `genId` keep working; the report and gaps are minted text carried by the same recorded reply.
 - Layout rule: everything the machine writes for a language lives in `<language>/`. The report is `<language>/README.md`.
 - The suite and app stay `-Wall` clean. Small single-line commits; worktree `.worktrees/mint-channels`, branch `feat/mint-channels`.
-- Depends on Plan A only for the prompt's budget line; the parsing and writing here are independent and can land first if Plan A slips.
+- Independent of Plan A (`2026-07-26-mint-schema-tool-plan.md`) and may land in either order: Plan A touches the tool wiring and the record, this plan touches the reply grammar and the refusal. The only shared file is `kernel/app/Main.hs`, in different functions.
 
 ## File Structure
 
@@ -169,7 +169,7 @@ gapsOf :: [EngineItem] -> [Gap]
 gapsOf items = [g | ItemGap g <- items]
 ```
 
-Also exclude `ItemGap` and `ItemReport` from the confidence gate the way `ItemNote` already is (a gap is honest at low confidence by nature): in `Main`'s `unsure` filter, extend `notNote` to `carriesEngineMeaning`.
+Also exclude `ItemGap` and `ItemReport` from the confidence gate the way `ItemNote` already is (a gap is honest at low confidence by nature): in `Main`'s `unsure` filter, replace the local `notNote` with `carriesEngineMeaning`, exported from `Minting` as the one place that says which items the threshold governs, so a future item kind cannot silently fall under the gate by omission.
 
 - [ ] **Step 4: Run the test.** Expected: PASS.
 - [ ] **Step 5: Commit**

@@ -101,25 +101,31 @@ Anything that *must* hold belongs in the program or its tests, not here. The
 file is optional; absent, nothing changes.
 
 ```mermaid
-flowchart TD
-    W["<b>write</b> · you<br>ledger.backup.lips"]
-    Q{"does the language<br>read every line?"}
-    G["<b>lips generate</b> · AI, once per new wording<br>mints backup/backup.lang + backup.expect<br>written only if it compiles and the tests hold"]
-    C["<b>lips compile</b> · no AI, offline, bit-identical<br>backup/out/ledger/: default.nix + flake.nix"]
-    R["<b>nix run</b> …#vm · stock nix, no lips verb"]
+flowchart LR
+    W("<b>write</b><br>ledger.backup.lips")
+    C("<b>compile</b><br>no AI, forever")
+    R("<b>nix run</b><br>the running system")
+    G("<b>generate</b><br>AI, once")
 
-    W --> Q
-    Q -->|"no · the line fails loud"| G
-    G --> Q
-    Q -->|yes| C
-    C --> R
-    R -.->|"edit a value: straight through compile"| W
-    R -.->|"say something new: back to generate"| W
+    W ==> C ==> R
+    C -.->|"a line it cannot read"| G
+    G -.->|"engine + tests, verified"| C
+    R -.->|"say more, change a value"| W
+
+    classDef you fill:#eef2ff,stroke:#6366f1,stroke-width:2px,color:#1e1b4b
+    classDef det fill:#ecfdf5,stroke:#10b981,stroke-width:2px,color:#064e3b
+    classDef ai fill:#fff7ed,stroke:#f97316,stroke-width:2px,color:#7c2d12,stroke-dasharray:5 4
+    class W you
+    class C,R det
+    class G ai
+    linkStyle 0,1 stroke:#10b981,stroke-width:3px
+    linkStyle 2,3,4 stroke:#94a3b8,stroke-width:1.5px
 ```
 
-A fourth verb stays outside the loop: `lips check <program>` re-verifies the
-committed `.expect` contract against the realized module, so you can gate the
-loop in CI.
+The dashed edges are the whole discipline. Compiling an unreadable line fails
+loud and sends you to `generate`, the one AI step, which grows the language and
+hands the loop back; everything else is you editing text and compiling again. A
+fourth verb, `lips check`, re-verifies the committed tests in CI.
 
 ## Install
 
