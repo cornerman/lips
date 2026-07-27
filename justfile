@@ -64,6 +64,12 @@ generate program model="":
       nix run . -- generate "{{program}}"
     fi
 
+# Look an option path or a domain word up in the pinned schema: the same lookup
+# the mint gets through its one tool, so you can see exactly what it would read.
+# Read-only, no AI.
+options query target="nixos":
+    nix run . -- options --target "{{target}}" "{{query}}"
+
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
 vm-smoke:
     nix build .#checks.x86_64-linux.vm-smoke -L

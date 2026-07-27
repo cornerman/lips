@@ -32,6 +32,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
     lips compile examples/ingest.feed.lips    # deterministic: crystallize -> refine -> realize -> module dir (no AI)
     lips check   examples/ingest.feed.lips    # deterministic: the committed .expect contract must hold (no AI)
     lips lsp                                  # the domain-blind language server (stdio)
+    lips options services.restic              # read-only: option paths and types in the pinned schema (no AI)
     # (paths are relative to the repo root, where examples/ lives)
 
 Every path is derived from the program name by `Lips.Identity`: a program
@@ -91,7 +92,13 @@ text. The boundary is explicit in the code:
   pinned into the generation record) aborts the write (deduce-or-fail). The minted
   language is then validated by crystallizing the actual program and running it
   end to end; nothing is written unless the whole loop succeeds.
-- The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`).
+- The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`), which
+  runs pi hermetically by explicit subtraction and loads exactly one tool: the
+  `query_options` lookup of `assets/mint-tools.ts`, which shells back into the
+  `lips options` verb. The mint can therefore confirm an option name instead of
+  recalling it, but cannot read a file, run a command, or judge its own engine.
+  Every lookup and its answer land in the `.generation` record, so nothing the
+  model saw escapes `genId`.
 
 The whole engine is data: patterns (front half) and rules + demands (back
 half) all live in the one `.lang` file and are interpreted by generic kernel

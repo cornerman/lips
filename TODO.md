@@ -2,21 +2,7 @@
 
 ## Next up (priority order)
 
-1. **Mint schema tool** — plan
-   `docs/superpowers/plans/2026-07-26-mint-schema-tool-plan.md`. The mint stops
-   guessing option names and types: one shipped pi extension registers exactly
-   one tool, `query_options`, which shells out to a new read-only `lips options`
-   verb over the pinned schema. The answer's granularity adapts to the match set
-   (exact `path : type` leaves when few; namespaces ranked by match count when
-   many), because an alphabetical slice of a large match set hides the answer —
-   measured: `nginx` matches 1,514 paths whose first 40 alphabetically omit
-   `services.nginx` itself. `callPi` switches `-nt` to `-nbt` plus the extension
-   and keeps the hermetic subtraction, so that one tool is the mint's whole
-   world, and every lookup enters `.generation` (invariant 6: a tool result the
-   model read is an input). No tool judges an engine: informing is safe to
-   expose, deciding is not.
-
-2. **Mint prompt rewrite** — plan
+1. **Mint prompt rewrite** — plan
    `docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md`. Move the
    prompt out of escaped Haskell literals into `assets/mint/*.md` embedded with
    `file-embed` (byte-identical first), then rewrite it for the agent doing the
@@ -26,7 +12,7 @@
    examples, a self-review checklist. A suite guard parses every fenced
    `lips-engine` example block, so an example cannot outlive its grammar.
 
-3. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
+2. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
    When `generate` refuses because physics is missing, write a machine-readable
    artifact (refused lines, missing capability / extension point, minimal repro,
    model+prompt fingerprint) instead of on-screen-only text. Operationalizes the
@@ -34,11 +20,11 @@
    supplies the producer and prints on both paths; this item is only the file
    writer.
 
-4. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
+3. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
    Wire one realized module into `~/nixos` on `wolf`. Reduced to "import one
    file"; proves survival on a real system, not just a VM boot.
 
-5. **Template grammar completeness** (completeness plan Target 2). The value
+4. **Template grammar completeness** (completeness plan Target 2). The value
    grammar is complete-by-construction over the Nix value algebra minus
    computation; the template grammar is only "complete over observed line
    shapes" — a weaker, honest claim. Missing capture forms: unquoted multi-token
@@ -67,8 +53,8 @@
   that commits.
 
 - **Mint internet access** — a second `registerTool` beside `query_options`
-  (item 1), routing a question to a web search. pi has no built-in web tool, so
-  it is a custom tool either way, and the extension item 1 creates makes it a
+  (now landed), routing a question to a web search. pi has no built-in web tool, so
+  it is a custom tool either way, and `assets/mint-tools.ts` makes it a
   ~20-line addition. Argument for: the mint's world knowledge is today invisible
   training data that never enters `.generation`, whereas a recorded lookup is
   auditable evidence — the same move deduce-or-fail already makes for values.

@@ -80,6 +80,16 @@ and the tests for the language; pass several programs
 across them. lips refuses to write anything unless the engine actually compiles
 every program and the tests hold, so a bad mint costs you nothing.
 
+The mint has exactly one tool: it can look an option path and type up in the
+pinned schema of the target world, the same lookup `lips options <query>` gives
+you. So it confirms a name instead of recalling it, and every lookup it makes,
+with the answer it got, is written into `<language>.generation` and enters the
+generation id. The tool grounds names, never values: being told an option exists
+is no licence to invent what fills it, so a value your program does not state is
+still a demand or a refusal. Nothing lips exposes lets a mint judge its own
+engine, or run anything at all; the judging happens afterwards, offline, in
+lips itself.
+
 `--target nixos` (the default) or `--target home-manager` picks the world the
 engine is born into. The flag steers the mint into that world's option
 namespace (`services.*`, `boot.*`, `users.*` versus `programs.*`,
@@ -171,10 +181,14 @@ Rebuild, and `lips` is a command on your PATH. That one package is everything
 `compile`, `check`, and `lsp` need; they are offline and use only `nix`
 itself. `generate` additionally expects the `pi` binary on your PATH,
 authenticated against some provider: lips deliberately keeps it out of its own
-closure, because it is your harness and carries your credentials. lips calls
-it hermetically (`-p -nt -nc --no-session`), so no ambient `AGENTS.md`,
-extension, or skill of yours steers a mint; the system prompt lips sends is
-the only instruction, and it is hashed into `.generation`.
+closure, because it is your harness and carries your credentials. lips calls it
+hermetically, by explicit subtraction (`-p -nbt -nc --no-session
+--no-extensions --no-skills --no-prompt-templates`), so no ambient `AGENTS.md`,
+extension, skill or prompt template *of yours* steers a mint, and pi's built-in
+tools (read, bash, write, ...) are gone. What remains is the system prompt lips
+sends and the one schema-lookup tool lips loads on purpose, for that run only.
+Both are hashed into `.generation`, along with every answer the tool gave, so
+nothing the model saw is missing from the record.
 
 Prefer not to install anything yet? Run it straight from the flake instead:
 

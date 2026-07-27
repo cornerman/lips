@@ -467,6 +467,36 @@ but the loop around it is incomplete; "missing" means specced, not built.
   theory and citation in `docs/superpowers/survey/f-decision-calculus-theory.md`
   (seam 1).
 
+- **The mint is grounded by one schema lookup tool.** A mint may confirm an
+  option path and type instead of recalling it, through exactly one tool,
+  `query_options`, registered by a pi extension lips ships and loads per run
+  (`assets/mint-tools.ts`, loaded with `-e`, so a user's own pi never gains it).
+  It shells out to the read-only `lips options <query>` verb, so the model reads
+  exactly what a human reads and no second renderer can drift.
+  `Lips.Kernel.OptionType.answerQuery` adapts the answer's granularity to the
+  match set, which is the one part measured rather than reasoned: a cap-40
+  alphabetical slice HIDES the answer ("nginx" matches 1514 paths whose first 40
+  alphabetically are other services that merely mention nginx, with
+  `services.nginx` absent), so a large match set answers instead with the
+  namespaces holding the matches, ranked by match count, which puts
+  `services.nginx` first, `services.borgbackup` first for "backup", and
+  `services.postgresql` first for "postgres". `nearOptions` reuses the same rule
+  to answer a wrong path with the real leaves beside it. The mint invocation is
+  hermetic by explicit subtraction (`-nbt --no-extensions --no-skills
+  --no-prompt-templates -nc`) plus the one deliberate extension, with
+  `LIPS_MINT_TARGET` passed explicitly so a mint for one world can never be
+  answered from another world's schema. Every call and answer is recovered from
+  pi's `agent_end` messages (`Lips.Generate.PiJson.prTranscript`) into a
+  `--- tool transcript ---` section of the record, hence into `genId`: what the
+  mint was TOLD is an input, and invariant 6 admits no unrecorded input.
+  No tool judges an engine, and none runs anything: informing is safe to expose,
+  deciding is not, and the gate that decides runs once, offline, in Haskell after
+  the model is done. The prompt states the limit in the same breath as the tool
+  ("grounds NAMES, never VALUES"), so verifiable names do not license invented
+  values. Because both the prompt and the record's shape changed, every future
+  `@gen` stamp differs from the ones committed before this landed; existing
+  records still re-hash, since `genId` reads the committed file.
+
 - **Mint expression channels: `report` and `gap`.** The mint speaks to the
   human in two channels beside the engine, both riding the heredoc block
   syntax `source` already used (`Lips.Generate.Minting.mkBlock` dispatches on
