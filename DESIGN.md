@@ -28,6 +28,10 @@ Survey A/B/C/D).
 - **Generate**: the only AI step: building or evolving the engine for a
   program. Running the engine is deterministic and AI-free.
 
+(Name collision, for the record: "decision calculus" also names John D. C.
+Little's 1970 manager-facing modelling method in *Management Science* 16(8).
+Different field, unrelated content.)
+
 ## 1. Thesis
 
 AI produces software faster than humans can review mechanism-level diffs.
@@ -77,6 +81,34 @@ Kernel semantics, all of them:
    application of kind service must decide persistence"). An unmet demand is
    an **open question**, a first-class artifact in the base. A Solution is
    complete when no demands are open.
+
+**Merge runs before refinement, and nothing lets a rule's applicability depend
+on a refinement result.** Both halves are load-bearing. Priority-ordered
+rewriting, where a higher rule pre-empts a lower one and the pre-emption is
+decided mid-reduction, has no automatically well-defined semantics: Baeten,
+Bergstra and Klop, "Term Rewriting Systems with Priorities" (RTA 1987), had to
+restrict the class of systems to recover soundness. lips has priorities
+(strength) and rewriting (refinement) but keeps them in separate phases:
+`resolve` settles every subject by strength first, `refine` then rewrites a
+settled base by matching alone. Any future convenience that lets strength be
+read or reassigned during refinement walks into the 1987 problem and must be
+refused (Survey F, seam 1).
+
+**The lattice objection, and the answer.** CUE forbids overrides outright: its
+values form a lattice, combination is unification, and its authors argue that
+with override-based systems (GCL, Jsonnet, HCL, Kustomize) "finding a
+declaration for a concrete field value does not guarantee a final answer", so a
+reader must chase inheritance chains. The empirical rebuttal is NixOS itself:
+prioritized merge is not a thought experiment but the twenty-year production
+substrate of a whole distribution, and it works at a scale no lattice-only
+configuration language has reached. What makes chasing painful in the systems
+CUE names is not priority, it is missing provenance: they can tell you the
+winning value but not who lost, where, and why. lips carries provenance as
+kernel data (item 3), so the chain CUE fears is not chased by hand but listed
+mechanically: for any subject, the winner, every loser, and the source line of
+each. Nix's own worst override pain, the `<unknown-file>` message (Survey D),
+is exactly the case where its provenance is absent, which is the same claim
+from the other side. Priorities are affordable when provenance is total.
 
 Every refinement stage is again a decision base: inspectable, diffable,
 provenance-linked. The owner reviews the top; an auditor can walk any
@@ -350,7 +382,34 @@ machinery retargets beyond NixOS.
   existing Solutions migrate (decision-preserving transformations, versioned
   demands).
 - **Engine orthogonality check**: the concrete mechanism that flags
-  overlapping engine features.
+  overlapping engine features. Candidate answer from term rewriting:
+  critical-pair analysis over rule left-hand sides, run at the `generate`
+  gate. Orthogonal (left-linear, non-overlapping) systems are confluent
+  (Rosen 1973), so this turns the §4 promise into a theorem. The refiner
+  currently enforces the stronger, cruder property that at most one rule may
+  fire per decision (`Overlap`), which is sound but only detects overlap that
+  a concrete decision actually witnesses; critical pairs decide it statically.
+  See Survey F, seam 1.
+- **Conflict explanation**: today a conflict names two competing decisions. A
+  derived contradiction several refinement steps down needs the *minimal set
+  of program lines* that cannot hold together. Model-based diagnosis solved
+  this (Reiter 1987; Junker's QuickXplain, AAAI 2004) and strength already
+  supplies the preference order the algorithm needs. Survey F, seam 3.
+- **Does an obligation survive an override?** Merge groups by subject and
+  ignores kind, so a stronger decision erases a weaker one wholesale, taking
+  any obligation attached to that subject with it. Nickel's rule is the
+  opposite: a contract on a field constrains whatever later overrides it, so
+  `{foo | Number = 1} & {foo | force = "bar"}` fails. Deliberately unresolved:
+  no minted engine emits `Oblige`/`Forbid`/`Invariant` yet (they all emit
+  `Fact`), so building override-surviving obligations now would be
+  speculative. Recorded so the first engine that emits an obligation is
+  recognized as the moment to decide. Survey F, seam 2.
+- **Does specificity beat generality?** Strength is *lex superior* only (a
+  higher authority wins). Defeasible deontic logic also has *lex specialis*
+  (the more specific norm wins), which is what an author may expect when a
+  per-instance decision meets a language-wide default. Either adopt it as
+  physics or record the refusal; leaving it undecided invites surprise.
+  Survey F, seam 4.
 - ~~Naming~~: resolved. The project is **lips**: Lisp rearranged (same
   letters, one level up) and the organ where intent leaves the human as
   speech. Branded `lips-lang` where the bare word is taken.

@@ -119,13 +119,26 @@ declaration for a concrete field value does not guarantee a final answer", so a
 reader must chase inheritance chains and file orders. CUE's invariant is the
 opposite: *any concrete value you can see is the final value*.
 
-That is a direct challenge to lips. `DESIGN.md` §2.1 promotes NixOS priorities to
-kernel physics and calls that Nix's most credible fix; CUE's authors would answer
-that priorities are the disease. The honest reconciliation, and it is defensible: in
-lips the strength order is not authored, it is *structural* (system default < engine
-default < program), and a program is small enough to read whole, so the chain a CUE
-user must chase is one hop long and always points the same way. That answer belongs
-in DESIGN.md, because the objection will be raised.
+That reads as a direct challenge to lips, and the answer has two parts.
+
+First, the empirical one, which is the stronger: NixOS is the existence proof.
+Prioritized merge is not a hypothesis but the substrate of an entire distribution,
+running for twenty years at a scale no lattice-only configuration language has
+reached. A design objection that predicts unworkability has to explain the working
+system.
+
+Second, the diagnostic one: what actually hurts in the systems CUE names is not
+priority, it is missing provenance. GCL, Jsonnet, HCL and Kustomize can tell you the
+winning value but not who lost, where, and why, so a reader must reconstruct the
+chain by hand, and that reconstruction is the cost CUE is really pricing. Priorities
+are affordable exactly when provenance is total. Nix's own worst override pain, the
+`<unknown-file>` message (Survey D), is the case where its provenance goes missing,
+which is the same claim arriving from the other side. lips carries provenance as
+kernel data (§2.3), so for any subject the winner, every loser, and each source line
+are a query, not an investigation. Strength is also structural rather than authored
+(system default < engine default < program), so the order never has to be discovered.
+
+Both parts belong in DESIGN.md §2.1, because the objection will be raised.
 
 CUE's treatment of conflicting defaults is a steal, not a challenge: when two
 defaults conflict, CUE does not pick, it drops to the non-default value and requires
@@ -251,26 +264,36 @@ the wrong prior. One footnote in DESIGN.md disarms it.
 
 ## Learnings for lips
 
-Ranked by payoff over cost.
+Landed in DESIGN.md already:
 
-1. **Obligations must survive an override** (Nickel's contract-propagation rule).
-   Today a stronger decision erases a weaker one wholesale, taking any attached
-   obligation with it. Small kernel change, real correctness gain.
-2. **Implement engine orthogonality as critical-pair analysis** at the `generate`
-   gate. Closes §11's open question with a fifty-year-old algorithm instead of a
-   heuristic, and turns a promise into a theorem.
-3. **Report conflicts as minimal conflict sets** (QuickXplain). Deterministic,
-   domain-blind, and aimed straight at the comprehension-per-minute metric.
-4. **State the merge/rewrite separation as a kernel invariant**, citing
+1. **The merge/rewrite separation is now a stated kernel invariant** (§2), citing
    Baeten/Bergstra/Klop 1987: strength is resolved before refinement rewrites, and
-   no rule's applicability may depend on refinement results. Costs one paragraph;
+   no rule's applicability may depend on a refinement result. One paragraph;
    prevents a class of future feature that would break confluence subtly.
-5. **Answer CUE in DESIGN.md §2.1.** The lattice camp's objection to priorities is
-   published and good; lips's answer (structural strength, one hop, small readable
-   program) is also good, but it is currently unwritten.
+2. **The lattice objection is answered** (§2): NixOS is the existence proof that
+   prioritized merge works at scale, and total provenance is what makes the
+   override chain a query instead of an investigation.
+3. **Four open questions are recorded** (§11): critical-pair orthogonality,
+   minimal conflict explanation, obligation survival under override, and lex
+   specialis.
+
+Still open, ranked by payoff over cost:
+
+4. **Implement engine orthogonality as critical-pair analysis** at the `generate`
+   gate. The refiner today enforces the cruder dynamic property that at most one
+   rule fires per decision (`Overlap` in `Kernel/Refine.hs`), which is sound but
+   only catches an overlap some concrete decision witnesses. Critical pairs decide
+   it statically, before an engine is written to disk.
+5. **Report conflicts as minimal conflict sets** (QuickXplain). Deterministic,
+   domain-blind, and aimed straight at the comprehension-per-minute metric.
 6. **Check merge against the IC postulates** and record which are intended, which
    are violated, and why (arbitration over majority, with `Append` as the stated
    exception).
-7. **Decide on lex specialis.** Either adopt specificity-beats-generality as
-   physics, or record the refusal; do not leave it to be discovered.
-8. **Footnote Little 1970** so the name collision is visibly known, not missed.
+
+Deliberately *not* built: **obligation survival under override** (Nickel's
+contract-propagation rule). The gap is real in the code (`Base.resolve` groups by
+subject and `Kind` never drives merge, so a stronger decision takes any obligation
+on that subject with it), but no minted engine emits `Oblige`, `Forbid` or
+`Invariant` today; every rule in every committed `.lang` emits `Fact`. Building for
+an obligation nobody writes is speculative generality. Recorded in §11 so the first
+engine that emits an obligation is recognized as the moment to decide.
