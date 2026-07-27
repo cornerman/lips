@@ -437,6 +437,33 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **One name grammar: an artifact name composes literal text with `<self>` and
+  `<capture>`.** A name was a whole token in three places, so `<self>-core` --
+  a second build beside the instance's own -- could not exist. `parseRef`
+  refused `${artifact.<self>-core}` outright (the refusal a `claude-sonnet-5`
+  mint of `examples/board.lips` hit on its wrapper rule), while `bindSelf` and
+  `bindSelfValue` matched `<self>` by whole-token equality, so the emit path
+  `artifact.<self>-core.builder` PARSED (a path segment is opaque text) and
+  never filled. The grammar now lives once, in `Kernel/Capture.hs`
+  (`nameParse`, `nameTokens`, `fillName`): a name is literal identifier text
+  with `<token>` occurrences embedded, filled by occurrence wherever the
+  grammar admits a name -- emit-path segments, path literals, artifact-ref
+  names, in a string or as a whole value. `<self>` resolves per instance and a
+  capture per rule match, each pass leaving the other's tokens standing, so the
+  two share the fill helper and not the map. `valueCaptures` scans every
+  occurrence, so the mint-time gate catches an unbound capture embedded in a
+  name. Third bug, silent and pre-existing: nothing stopped an unfilled name
+  from reaching the module, since `artifactEntries` spliced any name segment
+  verbatim and the dangling-reference check compares names as TEXT, so an
+  unfilled ref matched its unfilled group and a module was emitted containing
+  `<self>-core = pkgs.buildGoModule {`. `realize` now fails `RBadArtifact`
+  naming the unbound token. The asymmetry was the bug: a capture already filled
+  embedded, `<self>` only whole, an artifact name neither -- and by "a
+  capability is complete only when it works everywhere the grammar admits it"
+  that is kernel physics, not a prompt problem (invariant 4). Extends
+  `TODO.md` item 1d; the prompt now offers the composed name, since a
+  capability the model is told nothing about is dead capability.
+
 - **Inert lines are reported (`diagInert`).** A line the language reads and then
   drops realizes nothing, so editing it changes no output and nothing said so.
   `Concept` is the only kind `realize` drops, so a `Concept`-only line is exactly

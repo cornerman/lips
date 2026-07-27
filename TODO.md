@@ -2,7 +2,12 @@
 
 ## Next up (priority order)
 
-0. **Mint `examples/greet.lips` (main is RED until this lands).** One line,
+0. ~~**Mint `examples/greet.lips`.**~~ DONE (ca09f97 committed
+   `examples/greet/`). `check-expect` and `lipsModules-eval` stay RED for the
+   three programs still without an engine (`examples/{board,habit,logscan}.lips`),
+   which is item 1's job. The original text follows for its target-shape notes.
+
+   One line,
    `install a command greet that prints "hello from lips"`, the smallest
    program that builds a runnable command. It is committed with no engine, so
    `just check-expect` and the `lipsModules-eval` flake check both fail: each
@@ -45,6 +50,12 @@
    d. **Templated source, two fresh repros** (extends the existing backlog item
       below): the command name must reach `pname` and the Go module inside the
       artifact, and source heredocs have no holes.
+      Half closed (see ledger §13, "One name grammar"): a composite artifact
+      name (`<self>-core`, `<name>-core`) is now physics, so the
+      compiled-core-plus-`writeShellApplication`-wrapper shape a mint reaches
+      for is writable, and an unfilled name fails loud at realize instead of
+      reaching the module. Still open: a hole inside a source heredoc, which is
+      the "source is a fixed blob" half.
 
    e. **A CLI engine has nothing to pin.** Every option it fills is
       derivation-valued, so its contract is necessarily empty, and an empty
