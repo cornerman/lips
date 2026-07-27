@@ -173,6 +173,10 @@ bindSelfValue name = go
     go (VList vs)             = VList (map go vs)
     go (VAttr fs)             = VAttr (map (\(k, v) -> (k, go v)) fs)
     go (VRef (RArt n))        = VRef (RArt (bound n))
+    -- A path literal is opaque text, so <self> inside one (an artifact's
+    -- args.src ./artifacts/<self>-core) fills here, the same occurrence fill a
+    -- capture already gets in 'bindCaptureValue'.
+    go (VPath p)              = VPath (bound p)
     go v                      = v
     piece PSelf               = PLit name
     piece (PArt n)            = PArt (bound n)

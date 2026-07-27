@@ -1096,6 +1096,23 @@ main = hspec $ do
                      [Subject ["services", "restic", "backups", "ledger", "paths"]]
         Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
 
+    -- <self> fills by OCCURRENCE in an emit path too, not only as a whole
+    -- segment: a program that builds a compiled core and a wrapper needs the
+    -- group artifact.<self>-core. Whole-segment equality let the path PARSE
+    -- (segments are opaque text) and never fill, so the literal "<self>-core"
+    -- travelled on toward realize -- a silent twin of the ref-name refusal.
+    it "binds <self> EMBEDDED in an emit-path segment" $ do
+      let selfRule = MapRule "r" Fact ["board", "command"]
+            [ Emit ["artifact", "<self>-core", "builder"] (VStr [PLit "buildGoModule"])
+            , Emit ["artifact", "<self>-core", "args", "src"] (VPath "./artifacts/<self>-core") ]
+          matched = (mk "d" "unused" "hi" Stated)
+                      { dSubject = Subject ["board", "command"], dKind = Fact }
+      case refine 100 [toRule (bindSelf "board" selfRule)] (fromList [matched]) of
+        Right b -> map (\x -> (dSubject x, dAssertion x)) (toList b) `shouldMatchList`
+          [ (Subject ["artifact", "board-core", "builder"], Assertion "\"buildGoModule\"")
+          , (Subject ["artifact", "board-core", "args", "src"], Assertion "./artifacts/board-core") ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
     it "bindSelf leaves a rule without <self> untouched" $
       bindSelf "ledger" rule `shouldBe` rule
 

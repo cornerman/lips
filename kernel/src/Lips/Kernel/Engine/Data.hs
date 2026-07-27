@@ -50,7 +50,7 @@ import qualified Data.Text      as T
 import qualified Data.Map.Strict as Map
 import           Data.Maybe      (mapMaybe)
 
-import Lips.Kernel.Capture         (captureName, fillCaptures, matchSubject)
+import Lips.Kernel.Capture         (captureName, fillCaptures, fillName, matchSubject, selfName)
 import Lips.Kernel.Engine.Value    (Value, bindCaptureValue, bindSelfValue, fillValue, holeIndex, parseValue, renderValue, valueCaptures)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
@@ -96,8 +96,11 @@ bindSelf :: Text -> MapRule -> MapRule
 bindSelf name mr = mr { mrEmits = map bindEmit (mrEmits mr) }
   where
     bindEmit e = e { emPath = map seg (emPath e), emRhs = bindSelfValue name (emRhs e) }
-    seg "<self>" = name
-    seg s        = s
+    -- Occurrence fill over the shared name grammar, so a COMPOSED segment
+    -- (artifact.<self>-core: a second build beside the instance's own) resolves
+    -- like a whole <self>. A <capture> in the same segment is left standing for
+    -- 'fillSeg' at match time; the two passes share the helper, not the map.
+    seg = fillName (\t -> if t == selfName then Just name else Nothing)
 
 -- | Interpret a minted rule with the kernel's generic refinement machinery.
 -- The emitted decisions are 'Meta' (mapped mechanisms); ids and provenance are
