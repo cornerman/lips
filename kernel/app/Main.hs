@@ -84,7 +84,7 @@ main = do
   mapM_ (`hSetEncoding` utf8) [stdout, stderr]
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
-    Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goFiles go)
+    Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coFile co)
     Check co    -> checkLoose (ceLangDir co) (ceFile co)
     Options oo  -> optionsQuery (ooTarget oo) (ooLimit oo) (T.pack (ooQuery oo))
@@ -287,11 +287,11 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Target -> Double -> Bool -> Bool -> Maybe String -> [FilePath] -> IO ()
+generate :: Target -> Double -> Bool -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
-generate _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate target confidence renew verbose mmodel files@(rep : _) = do
+generate _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
+generate target confidence renew verbose mmodel thinking files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -311,7 +311,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       -- case. The same set is the regeneration corpus below.
       corpus = T.intercalate "\n"
         [ "=== program " <> T.pack (takeFileName f) <> " ===\n" <> t | (f, t) <- progs ]
-  (reply, model, transcript) <- callPi mmodel prompt corpus target
+  (reply, model, transcript) <- callPi mmodel thinking prompt corpus target
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
   -- refusal already shows the offending lines). To stderr, leaving stdout the
@@ -401,7 +401,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
-      let rec = record model target confidence prompt corpus transcript reply
+      let rec = record model target (T.pack thinking) confidence prompt corpus transcript reply
       -- The language folder holds every minted and derived file; create it (and
       -- its derived out/ subtree) before writing, so a first mint beside a bare
       -- program just works.
@@ -633,8 +633,8 @@ nixParses nixModule = do
 -- omitted and pi's own configured default applies. Either way the json stream
 -- reports the model actually used, which the caller records, so provenance
 -- stays concrete without a model baked into the deliverable.
-callPi :: Maybe String -> Text -> Text -> Target -> IO (Text, Text, Text)
-callPi mmodel system userPrompt target = do
+callPi :: Maybe String -> String -> Text -> Text -> Target -> IO (Text, Text, Text)
+callPi mmodel thinking system userPrompt target = do
   -- The mint's one tool ships with the binary; without it a mint would have to
   -- recall option names instead of looking them up, which is the guessing this
   -- whole path exists to prevent. So a missing extension is fatal, not a
@@ -665,7 +665,10 @@ callPi mmodel system userPrompt target = do
       -- machine-readable in the reply.
       args = [ "-p", "-nbt", "-nc", "--no-extensions", "--no-skills"
              , "--no-prompt-templates", "--no-session", "--mode", "json"
-             , "--system-prompt", T.unpack system ]
+             , "--system-prompt", T.unpack system
+             -- --thinking is ALWAYS passed: an inherited reasoning level would
+             -- steer the mint without entering the record (invariant 6).
+             , "--thinking", thinking ]
                ++ extArgs ++ maybe [] (\m -> ["--model", m]) mmodel
   (code, out, err) <-
     readCreateProcessWithExitCode (proc "pi" args) { env = Just childEnv }

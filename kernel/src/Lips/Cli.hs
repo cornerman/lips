@@ -39,8 +39,18 @@ data GenerateOpts = GenerateOpts
   , goRenew      :: Bool
   , goVerbose    :: Bool
   , goModel      :: Maybe String
+  , goThinking   :: String
   , goFiles      :: [FilePath]
   } deriving (Eq, Show)
+
+-- | The reasoning level lips asks @pi@ for, ALWAYS passed explicitly. Unlike
+-- the model (omitted, so pi's own default applies and is read back), an
+-- unstated thinking level would be an ambient input steering the mint without
+-- entering the record, the same hole @-nc@ closed for ambient context files.
+-- Default @high@: a mint acts once, emits a whole engine against an exacting
+-- grammar, and a refused mint costs a full round, so reasoning is cheap here.
+defaultThinking :: String
+defaultThinking = "high"
 
 -- | Everything @compile@ needs. Exactly one program -- unlike @generate@'s
 -- @some@, no forced symmetry: compile realizes into a single output
@@ -167,6 +177,10 @@ generateOpts defConf = GenerateOpts
   <*> optional (strOption
         (long "model" <> short 'm' <> metavar "ID"
           <> help "Model id to use (default: pi's own configured default)."))
+  <*> strOption
+        (long "thinking" <> value defaultThinking
+          <> metavar "off|minimal|low|medium|high|xhigh|max"
+          <> help "Reasoning level to ask the model for (default: high). Recorded in .generation.")
   <*> some (strArgument (metavar "PROGRAM..." <> completer programCompleter))
 
 -- | @--lang@: read the committed language files (.lang/.expect/

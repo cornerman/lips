@@ -45,10 +45,14 @@ import           Lips.Nix.Target    (Target, targetSlug)
 -- corpus, and the reply is what it made of both. Being inside the record, it is
 -- inside 'genId', so an engine minted from a different answer is a different
 -- generation event even when prompt and corpus are identical (invariant 6).
-record :: Text -> Target -> Double -> Text -> Text -> Text -> Text -> Text
-record model target confidence sysPrompt program transcript reply = T.unlines
+-- The thinking level is an input like the model: it changes what the mint
+-- produces, so a record omitting it would not pin the event. lips always passes
+-- it explicitly, so nothing ambient can steer a mint unrecorded.
+record :: Text -> Target -> Text -> Double -> Text -> Text -> Text -> Text -> Text
+record model target thinking confidence sysPrompt program transcript reply = T.unlines
   [ "model: " <> model
   , "target: " <> targetSlug target
+  , "thinking: " <> thinking
   , "confidence-threshold: " <> T.pack (show confidence)
   , "--- system prompt ---", sysPrompt
   , "--- program (input) ---", program
