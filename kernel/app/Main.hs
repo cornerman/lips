@@ -56,6 +56,7 @@ import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
+import           Lips.Kernel.Engine.Overlap    (renderRuleOverlap, ruleOverlaps)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Flake                (flakeText, runCommands)
 import           Lips.Nix.Options              (parseNixOptionsJson)
@@ -336,6 +337,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       eng <- case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
         Left es -> die (validationReport rep ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
         Right e -> pure e
+      assertRulesOrthogonal rep eng
       assertOptionsAdmissible target rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
@@ -465,6 +467,21 @@ renderAnswer query ans = case ans of
 -- reread instead of acting on.
 plural :: Int -> Text -> Text
 plural n word = tshow n <> " " <> word <> (if n == 1 then "" else "s")
+
+-- | Orthogonality is checked statically, before an engine is written: two
+-- rules whose left-hand sides unify could claim one decision, so refinement
+-- would not be a function. The refiner enforces the same property at run time
+-- ('Lips.Kernel.Refine.Overlap'), but only for an overlap some concrete
+-- decision witnesses -- and an engine may ship an ambiguity no program in the
+-- corpus happens to hit, which then fails on the author's machine instead of
+-- here. Rejecting at the mint gate is where the defect is still cheap.
+assertRulesOrthogonal :: FilePath -> EngineData -> IO ()
+assertRulesOrthogonal file eng =
+  case ruleOverlaps (edRules eng) of
+    []  -> pure ()
+    ovs -> die (validationReport file
+      ("two of its rules claim the same decision, so it has no single reading:\n"
+        <> T.unlines (map (("  - " <>) . renderRuleOverlap) ovs)))
 
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
 -- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
