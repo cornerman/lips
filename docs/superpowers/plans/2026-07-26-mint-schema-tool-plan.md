@@ -523,11 +523,30 @@ git commit -am "generate: run the mint with exactly one tool and an explicit her
 - Test: `kernel/test/Spec.hs`
 
 **Interfaces:**
-- `PiReply` gains `prTranscript :: Text`, built from the stream's
-  `tool_execution_start` (`toolCallId`, `toolName`, `args`) and
-  `tool_execution_end` (`toolCallId`, `toolName`, `result`, `isError`) events,
-  in stream order, each result truncated at 4000 characters with a trailing
-  `… [truncated, N characters elided]`.
+- `PiReply` gains `prTranscript :: Text`, built from the `agent_end` messages
+  (not the `tool_execution_*` events), in order, each result truncated at 4000
+  characters with a trailing `… [truncated, N characters elided]`.
+
+**The encoding, measured, not assumed** (captured 2026-07-27 from a real
+`--mode json` run against `ollama/qwen3-coder:30b`; the event schema is pi's
+own, so the provider that answered is immaterial). Everything needed sits in
+`agent_end.messages`, which `parsePiReply` already walks for the reply text, so
+the transcript costs one more fold over a structure lips already decodes rather
+than a second traversal of the event stream:
+
+```jsonc
+// an assistant message's content block
+{ "type": "toolCall", "id": "call_nt7cy68t", "name": "query_options",
+  "arguments": { "query": "services.restic.backups" } }
+// a message of its own, role "toolResult"
+{ "role": "toolResult", "toolCallId": "call_nt7cy68t", "toolName": "query_options",
+  "content": [ { "type": "text", "text": "services.restic.backups : …" } ],
+  "details": {}, "isError": false, "timestamp": 1785157652548 }
+```
+
+The `tool_execution_end` event carries the same payload but wraps it one level
+deeper (`result.content[].text`, NOT a bare string as this plan first guessed),
+which is the second reason to prefer the `agent_end` route.
 - `record` gains a transcript parameter, written as a `--- tool transcript ---`
   section between the program corpus and the raw reply.
 
@@ -538,20 +557,20 @@ is not.
 
 - [ ] **Step 1: Write the failing test**
 
-```haskell
-    it "recovers what the mint looked up and what it was told" $ do
-      let ev = T.unlines
-            [ "{\"type\":\"tool_execution_start\",\"toolCallId\":\"t1\",\"toolName\":\"query_options\",\"args\":{\"query\":\"services.restic\"}}"
-            , "{\"type\":\"tool_execution_end\",\"toolCallId\":\"t1\",\"toolName\":\"query_options\",\"result\":\"services.restic.backups.*.paths : list of string\",\"isError\":false}"
-            ]
-      prTranscript (parsePiReply ev) `shouldSatisfy` T.isInfixOf "services.restic"
-      prTranscript (parsePiReply ev) `shouldSatisfy` T.isInfixOf "list of string"
-```
+Build the fixture from the captured `mint-stream.json`, so the test pins the
+shape pi actually emits (the `agent_end` message list above), not a sketch of
+it.
 
-Confirm the real event shape by capturing one `--mode json` stream first and
-adapt the fixture to the actual field names rather than trusting this sketch;
-`docs/json.md` documents the three `tool_execution_*` events but not the exact
-`result` encoding.
+- [ ] **Step 1b: The reply is the LAST assistant text, not every assistant text**
+
+`replyFrom` currently concatenates the text of *all* assistant messages, and
+says so in its haddock: "with tools disabled there is exactly one turn". Tools
+end that. A model that narrates before acting ("Let me look that option up.")
+would now have its narration concatenated in front of the engine, corrupting a
+reply that the engine parser then rejects for a reason that is not the model's
+fault. Take the text of the last assistant message and update the haddock to
+say why. A mint that split its engine across a tool call is malformed anyway,
+and the gate rejects it loudly.
 
 - [ ] **Step 2: Run and watch it fail.**
 

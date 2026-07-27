@@ -58,10 +58,21 @@ export default function (pi: ExtensionAPI) {
       const r = spawnSync(bin, ["options", "--target", target, params.query], {
         encoding: "utf8",
       });
-      // stderr carries lips' own deduce-or-fail remedies, which are as useful to
-      // the model as the answer itself, so both channels go back verbatim.
-      const text = [r.stdout ?? "", r.stderr ?? ""].filter(Boolean).join("\n");
-      return { content: [{ type: "text", text: text || "no output" }], details: {} };
+      // On success the answer alone goes back. lips writes progress to stderr
+      // ("building the schema from pinned flake..."), and appending that to a
+      // list of options corrupts it: asked to count the lines of a 26-option
+      // answer carrying two progress lines, a model answered 27. On failure the
+      // opposite holds -- stderr is where the deduce-or-fail remedy lives, and
+      // the model needs it to ask a better question.
+      const failed = r.status !== 0;
+      const text = (failed ? [r.stdout, r.stderr] : [r.stdout])
+        .filter(Boolean)
+        .join("\n");
+      return {
+        content: [{ type: "text", text: text || "no output" }],
+        details: {},
+        isError: failed,
+      };
     },
   });
 }
