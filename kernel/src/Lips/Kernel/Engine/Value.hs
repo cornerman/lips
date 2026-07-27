@@ -53,11 +53,12 @@ module Lips.Kernel.Engine.Value
   , holeIndex
   , valueRefsDerivation
   , valueArtifactNames
+  , parseHoleType
   ) where
 
 import           Data.Char       (isDigit, isSpace)
 import qualified Data.Map.Strict as Map
-import           Data.Maybe      (isJust, mapMaybe)
+import           Data.Maybe      (isJust, listToMaybe, mapMaybe)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
@@ -183,6 +184,20 @@ bindSelfValue name = go
     piece (PArt n) | n == selfToken = PArt name
     piece p                   = p
 
+-- | Every @\<capture\>@ inside a path literal, in order. @\<self\>@ is skipped
+-- for the same reason as elsewhere: it is not a capture.
+pathCaptures :: Text -> [Text]
+pathCaptures = go
+  where
+    go s = case T.breakOn "<" s of
+      (_, rest)
+        | T.null rest -> []
+        | otherwise   ->
+            let (nm, after) = T.breakOn ">" (T.drop 1 rest)
+             in if T.null after
+                  then []
+                  else [nm | nm /= "self", not (T.null nm)] ++ go (T.drop 1 after)
+
 -- | Resolve a @\<capture\>@ used as an artifact NAME to the key the rule's
 -- subject bound, the value-side twin of the emit-path fill in
 -- 'Lips.Kernel.Capture.fillCaptures'. A capture reaches a value two ways: as a
@@ -198,12 +213,25 @@ bindCaptureValue caps = go
     go (VList vs) = VList (map go vs)
     go (VAttr fs) = VAttr (map (\(k, v) -> (k, go v)) fs)
     go (VRef (RArt n)) = VRef (RArt (bound n))
+    -- A capture inside a path literal fills too, so args.src ./artifacts/<name>
+    -- resolves to the staged directory of the artifact this rule keyed.
+    go (VPath p)  = VPath (fillText p)
     go v          = v
     piece (PArt n) = PArt (bound n)
     piece p        = p
     bound n = case captureName n >>= (`Map.lookup` caps) of
       Just v  -> v
       Nothing -> n
+    fillText s = case T.breakOn "<" s of
+      (before, rest)
+        | T.null rest -> before
+        | otherwise   ->
+            let (nm, after) = T.breakOn ">" (T.drop 1 rest)
+             in if T.null after
+                  then s
+                  else case Map.lookup nm caps of
+                    Just v  -> before <> v <> fillText (T.drop 1 after)
+                    Nothing -> before <> "<" <> nm <> ">" <> fillText (T.drop 1 after)
 
 -- | Every capture name a value mentions: a string hole that is neither
 -- @\<value\>@ nor @\<value.N\>@, and an artifact reference named by a capture.
@@ -216,11 +244,19 @@ valueCaptures = go
     go (VStr ps)  = mapMaybe piece ps
     go (VList vs) = concatMap go vs
     go (VAttr fs) = concatMap (go . snd) fs
-    go (VRef (RArt n)) = maybe [] pure (captureName n)
+    go (VRef (RArt n)) = capOf n
+    -- A path literal is opaque text, so a capture inside it is not a 'Piece';
+    -- scanned here because an artifact's args.src is written ./artifacts/<name>,
+    -- and an unfilled one used to reach the module as the literal text "<name>".
+    go (VPath p)  = pathCaptures p
     go _          = []
     piece (PHole h) | h /= "value", not (isJust (holeIndex h)) = Just h
-    piece (PArt n)  = captureName n
+    piece (PArt n)  = listToMaybe (capOf n)
     piece _         = Nothing
+    -- <self> is <...>-shaped but is NOT a capture: it binds to the instance name
+    -- at realize time ('bindSelfValue'), so no rule subject binds it.
+    capOf n | n == selfToken = []
+            | otherwise      = maybe [] pure (captureName n)
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.

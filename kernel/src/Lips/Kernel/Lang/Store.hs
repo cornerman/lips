@@ -30,6 +30,7 @@ module Lips.Kernel.Lang.Store
   , patternToDecision
   , decisionToPattern
   , parsePatternBody
+  , parseTplTok
   ) where
 
 import           Data.List  (sortOn)
@@ -38,6 +39,7 @@ import qualified Data.Text  as T
 
 import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), parseDemandBody,
                              parseRuleBody, renderDemandBody, renderRuleBody)
+import Lips.Kernel.Engine.Value    (parseHoleType)
 import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Reader   (ParseError (..), readDecision, renderBase)
@@ -263,11 +265,25 @@ parseTplTok w
   -- the template side too, so a minted "<when>." is the hole <when> (live
   -- mints glue the line's final period onto the hole; kernel physics, not a
   -- prompt plea). A <name.tail> is the tail hole (binds the rest of the line).
-  | Just h <- holeName (stripTrailingPunct w) =
-      case T.stripSuffix ".tail" h of
-        Just name -> TTail name
-        Nothing   -> THole h
+  | Just h0 <- holeName (stripTrailingPunct w) =
+      let h = dropHoleType h0
+       in case T.stripSuffix ".tail" h of
+            Just name -> TTail name
+            Nothing   -> THole h
   | otherwise = TLit (normalizeToken w)
+
+-- | Drop a redundant @:type@ from a TEMPLATE hole name. A template hole binds a
+-- token of program TEXT, so a type annotation carries no information there, and
+-- rejecting @\<days:int\>@ would reject a form mints write naturally (two
+-- independent models wrote it, for a path and for a count). Degraded to the
+-- plain hole, exactly as 'Lips.Kernel.Engine.Value.stringHoleName' degrades the
+-- same annotation inside a string; a genuine option-type mismatch is still
+-- caught by option grounding. Only a RECOGNIZED type is dropped, so a colon
+-- that is part of a name is left alone rather than silently mangled.
+dropHoleType :: Text -> Text
+dropHoleType h = case T.breakOn ":" h of
+  (base, ty) | not (T.null ty), Just _ <- parseHoleType (T.drop 1 ty) -> base
+  _ -> h
 
 -- | Parse a holey string (literal text with @\<name\>@ holes) into parts.
 parseHoley :: Text -> [StrPart]

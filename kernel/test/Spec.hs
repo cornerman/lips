@@ -1179,6 +1179,34 @@ main = hspec $ do
       parseRuleBody "r7" "match fact cmd.<name>.msg => artifact.x.args.name \"\\\"<other>\\\"\""
         `shouldSatisfy` isLeft
 
+    -- <self> is <...>-shaped but is NOT a capture: it binds to the instance
+    -- name at realize time, so no rule subject binds it and the unbound-capture
+    -- check must skip it. Regression: the check rejected every
+    -- ${artifact.<self>} rule, a form the ledger documents as supported and no
+    -- committed example happened to use.
+    it "accepts <self> in an artifact reference, which is not a capture" $ do
+      let body = "match fact tool.command => artifact.<self>.args.pname \"\\\"<value>\\\"\""
+                   <> " ; home.packages \"[ ${artifact.<self>} ]\""
+      parseRuleBody "r5" body `shouldSatisfy` isRight
+
+    -- An artifact's source dir is written ./artifacts/<name>. A path literal is
+    -- opaque text, so the capture used to survive unfilled into the module as
+    -- the literal "./artifacts/<name>", which Nix then rejected for a trailing
+    -- slash: a silent-literal escape of exactly the kind the value grammar
+    -- exists to prevent.
+    it "fills a capture inside a path literal (an artifact's args.src)" $ do
+      let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
+                [ Emit ["artifact", "<name>", "args", "src"] (VPath "./artifacts/<name>") ]
+          d = (mk "d1" "unused" "hi" Stated)
+                { dSubject = Subject ["cmd", "logscan", "msg"] }
+      case refine 100 [toRule r] (fromList [d]) of
+        Right b -> map dAssertion (toList b) `shouldBe` [ Assertion "./artifacts/logscan" ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "rejects an unbound capture inside a path literal" $
+      parseRuleBody "r" "match fact x => artifact.a.args.src ./artifacts/<name>"
+        `shouldSatisfy` isLeft
+
     it "accepts value, value.N and a bound capture in one rule's values" $ do
       let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
                 [ Emit ["artifact", "<name>", "args", "name"] (VStr [PHole "name"])
@@ -1621,6 +1649,22 @@ main = hspec $ do
     -- so a Concept-only line is exactly the inert case. Reporting it is what
     -- keeps a mint from silencing an inconvenient line unnoticed
     -- (docs/gaps/README.md, finding 1: silent concept demotion).
+    -- A template hole binds program TEXT, so a redundant :type on it carries no
+    -- information. Two independent mints wrote <path:path> and <days:int> and
+    -- were rejected for a hole the emit could not find, so the grammar accepts
+    -- and degrades it (the same move already made for a typed hole in a string).
+    it "degrades a typed template hole to the plain hole" $ do
+      let engT = EngineData
+            { edPatterns = [ patOne "p2" [TLit "stored", TLit "in", THole "path"]
+                               Fact [SLit "habit.log"] [SHole "path"] ]
+            , edRules = [], edDemands = [] }
+          d = diagnose "f" engT "stored in /tmp/habits.tsv"
+      diagMatched d `shouldBe` 1
+      parseTplTok "<path:path>" `shouldBe` THole "path"
+      parseTplTok "<days:int>"  `shouldBe` THole "days"
+      -- a colon that is not a known type stays part of the name
+      parseTplTok "<a:b>"       `shouldBe` THole "a:b"
+
     it "reports a decorative (Concept-only) line as contributing nothing" $ do
       let engC = eng { edPatterns = edPatterns eng ++
                         [ patOne "p3" [TLit "feed", TLit "notes"]
