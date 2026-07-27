@@ -1858,6 +1858,11 @@ main = hspec $ do
         -- .direction file (docs/gaps/README.md, findings 1 and 4).
         , "A built program has an INTERFACE"
         , "Source is a FIXED BLOB with no holes"
+        -- Mechanism is the engine's job, not a gap, and an artifact name is a
+        -- literal or <self>, never a capture (docs/gaps/README.md, finding 2
+        -- and the greet builder-name-choice refusal).
+        , "A MECHANISM is not a gap at all"
+        , "The artifact NAME is a literal you write, or <self>"
         , "because-note"
         , "reserved segment <self>"
         , "PACKAGE NAMES"
