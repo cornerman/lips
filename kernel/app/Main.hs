@@ -300,7 +300,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       -- case. The same set is the regeneration corpus below.
       corpus = T.intercalate "\n"
         [ "=== program " <> T.pack (takeFileName f) <> " ===\n" <> t | (f, t) <- progs ]
-  (reply, model) <- callPi mmodel prompt corpus target
+  (reply, model, transcript) <- callPi mmodel prompt corpus target
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
   -- refusal already shows the offending lines). To stderr, leaving stdout the
@@ -390,7 +390,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
-      let rec = record model target confidence prompt corpus reply
+      let rec = record model target confidence prompt corpus transcript reply
       -- The language folder holds every minted and derived file; create it (and
       -- its derived out/ subtree) before writing, so a first mint beside a bare
       -- program just works.
@@ -622,7 +622,7 @@ nixParses nixModule = do
 -- omitted and pi's own configured default applies. Either way the json stream
 -- reports the model actually used, which the caller records, so provenance
 -- stays concrete without a model baked into the deliverable.
-callPi :: Maybe String -> Text -> Text -> Target -> IO (Text, Text)
+callPi :: Maybe String -> Text -> Text -> Target -> IO (Text, Text, Text)
 callPi mmodel system userPrompt target = do
   -- The mint's one tool ships with the binary; without it a mint would have to
   -- recall option names instead of looking them up, which is the guessing this
@@ -661,13 +661,16 @@ callPi mmodel system userPrompt target = do
       (T.unpack userPrompt)
   case code of
     ExitSuccess   -> do
-      let PiReply { prReply = reply, prModel = model } = parsePiReply (T.pack out)
+      let PiReply { prReply = reply, prModel = model, prTranscript = transcript } =
+            parsePiReply (T.pack out)
       if T.null reply
         then die (report "the AI model returned no usable reply." [] "→ run generate again.")
         -- pi always reports the model; an empty value would break provenance.
         else if T.null model
           then die (report "pi didn't report which model it used, so lips can't record provenance." [] "→ update pi, then run generate again.")
-          else pure (reply, model)
+          -- An empty transcript is legitimate: a mint that needed no lookup made
+          -- none. Only a MISSING record of one it did make would break invariant 6.
+          else pure (reply, model, transcript)
     ExitFailure c -> die (report
       ("lips couldn't run the AI model (pi exited " <> tshow c <> "):")
       (T.lines (T.pack err))

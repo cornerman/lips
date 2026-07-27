@@ -1355,20 +1355,29 @@ main = hspec $ do
             `shouldBe` []
 
     it "generation ids are deterministic and content-sensitive" $ do
-      let r  = record "m" Nixos 0.7 "sp" "prog" "reply"
-          r' = record "m" Nixos 0.7 "sp" "prog" "reply2"
-          rc = record "m" Nixos 0.5 "sp" "prog" "reply"
-          rt = record "m" HomeManager 0.7 "sp" "prog" "reply"
+      let r  = record "m" Nixos 0.7 "sp" "prog" "tt" "reply"
+          r' = record "m" Nixos 0.7 "sp" "prog" "tt" "reply2"
+          rc = record "m" Nixos 0.5 "sp" "prog" "tt" "reply"
+          rt = record "m" HomeManager 0.7 "sp" "prog" "tt" "reply"
+          rl = record "m" Nixos 0.7 "sp" "prog" "other lookup" "reply"
       genId r `shouldBe` genId r
       genId r `shouldNotBe` genId r'
       -- the confidence threshold is pinned: changing it changes the id
       genId r `shouldNotBe` genId rc
       -- the target world is pinned: changing it changes the id
       genId r `shouldNotBe` genId rt
+      -- what the mint was TOLD is an input: changing it changes the id
+      genId r `shouldNotBe` genId rl
       T.length (genId r) `shouldBe` 16
     it "writes the target slug into the record text" $
-      record "m" HomeManager 0.7 "sp" "prog" "reply"
+      record "m" HomeManager 0.7 "sp" "prog" "tt" "reply"
         `shouldSatisfy` T.isInfixOf "target: home-manager"
+    -- readRecordedTarget scans for the FIRST line starting with "target:", so
+    -- the headers must stay above every section a lookup answer could pollute.
+    it "keeps the headers above the tool transcript" $ do
+      let r = record "m" Nixos 0.7 "sp" "prog" "<- query_options\ntarget: not-this" "reply"
+      take 2 (T.lines r) `shouldBe` ["model: m", "target: nixos"]
+      r `shouldSatisfy` T.isInfixOf "--- tool transcript ---"
 
     it "emit grammar carries no strength: body parses and applies to a Stated fact" $
       -- A pattern reads a program line the human wrote, so the kernel fixes the
@@ -1852,7 +1861,30 @@ main = hspec $ do
     it "recovers the model pi actually used" $
       prModel (parsePiReply stream) `shouldBe` "anthropic/claude-opus-4-8"
     it "empty stream yields empty fields (caller fails loud)" $
-      parsePiReply "" `shouldBe` PiReply "" ""
+      parsePiReply "" `shouldBe` PiReply "" "" ""
+
+  -- What the mint LOOKED UP is an input to the mint, so invariant 6 requires it
+  -- in the record. The fixture is the shape pi really emits, captured from a
+  -- --mode json run on 2026-07-27, not a sketch of it.
+  describe "pi json stream parsing (tool transcript)" $ do
+    let stream = T.unlines
+          [ "{\"type\":\"agent_end\",\"messages\":[\
+            \{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"mint it\"}]},\
+            \{\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"toolCall\",\"id\":\"call_1\",\"name\":\"query_options\",\"arguments\":{\"query\":\"services.restic\"}}]},\
+            \{\"role\":\"toolResult\",\"toolCallId\":\"call_1\",\"toolName\":\"query_options\",\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"services.restic.backups.*.paths : list of string\"}]},\
+            \{\"role\":\"assistant\",\"model\":\"m\",\"content\":[{\"type\":\"text\",\"text\":\"pattern p 1.0\"}]}]}"
+          ]
+    it "records the query the mint asked and the answer it was given" $ do
+      let t = prTranscript (parsePiReply stream)
+      t `shouldSatisfy` T.isInfixOf "query_options"
+      t `shouldSatisfy` T.isInfixOf "services.restic"
+      t `shouldSatisfy` T.isInfixOf "list of string"
+    -- Tools end the one-assistant-message world: a model that narrates before
+    -- acting would otherwise get its narration glued in front of the engine.
+    it "takes the reply after the tool call, not the narration before it" $
+      prReply (parsePiReply stream) `shouldBe` "pattern p 1.0"
+    it "a stream with no tool call has an empty transcript" $
+      prTranscript (parsePiReply "") `shouldBe` ""
 
   describe "solution identity (plan 2026-07-22: <instance>.<language>.lips)" $ do
     let prog = "examples/ledger.backup.lips"

@@ -40,13 +40,19 @@ import           Lips.Nix.Target    (Target, targetSlug)
 -- event and enters 'genId': a re-mint targeting a different world yields a
 -- different id, so every engine line's @gen stamp pins the world it was minted
 -- for.
-record :: Text -> Target -> Double -> Text -> Text -> Text -> Text
-record model target confidence sysPrompt program reply = T.unlines
+-- The tool transcript sits between the corpus and the reply because that is
+-- where it belongs causally: what the mint was told is an input, like the
+-- corpus, and the reply is what it made of both. Being inside the record, it is
+-- inside 'genId', so an engine minted from a different answer is a different
+-- generation event even when prompt and corpus are identical (invariant 6).
+record :: Text -> Target -> Double -> Text -> Text -> Text -> Text -> Text
+record model target confidence sysPrompt program transcript reply = T.unlines
   [ "model: " <> model
   , "target: " <> targetSlug target
   , "confidence-threshold: " <> T.pack (show confidence)
   , "--- system prompt ---", sysPrompt
   , "--- program (input) ---", program
+  , "--- tool transcript ---", transcript
   , "--- raw reply ---", reply
   ]
 
