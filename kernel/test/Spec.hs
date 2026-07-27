@@ -1130,6 +1130,58 @@ main = hspec $ do
                 [ Emit ["environment", "etc", "<path>", "text"] (VStr [PHole "value"]) ]
       parseRuleBody "r" (renderRuleBody r) `shouldBe` Right r
 
+    -- Captures are first-class, not path-only: the same binding that fills an
+    -- emit PATH also fills a VALUE and an artifact-ref NAME. Without this a
+    -- program that names the thing it builds ("install a command greet") has no
+    -- expressible engine: the mint reaches for artifact.<cmd> / args.name
+    -- "<cmd>" and both were rejected (docs/gaps/README.md, finding 2).
+    it "fills a captured key into a rule's VALUE, not only its emit path" $ do
+      let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
+                [ Emit ["artifact", "<name>", "args", "name"] (VStr [PHole "name"]) ]
+          d  = (mk "d1" "unused" "hello there" Stated)
+                 { dSubject = Subject ["cmd", "greet", "msg"] }
+      case refine 100 [toRule r] (fromList [d]) of
+        Right b -> map (\x -> (dSubject x, dAssertion x)) (toList b) `shouldBe`
+                     [ (Subject ["artifact", "greet", "args", "name"], Assertion "\"greet\"") ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "fills a captured key into an ${artifact.<name>} build reference" $ do
+      let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
+                [ Emit ["environment", "systemPackages"] (VList [VRef (RArt "<name>")]) ]
+          d  = (mk "d1" "unused" "hi" Stated)
+                 { dSubject = Subject ["cmd", "greet", "msg"] }
+      case refine 100 [toRule r] (fromList [d]) of
+        Right b -> map dAssertion (toList b) `shouldBe` [ Assertion "[ ${artifact.greet} ]" ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "a value hole naming no capture and no value fails loud at refine" $ do
+      let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
+                [ Emit ["environment", "etc", "x", "text"] (VStr [PHole "typo"]) ]
+          d  = (mk "d1" "unused" "hi" Stated)
+                 { dSubject = Subject ["cmd", "greet", "msg"] }
+      refine 100 [toRule r] (fromList [d]) `shouldSatisfy` isLeft
+
+    it "${artifact.<name>} and a value capture round-trip through render/parse" $ do
+      let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
+                [ Emit ["artifact", "<name>", "args", "name"] (VStr [PHole "name"])
+                , Emit ["environment", "systemPackages"] (VList [VRef (RArt "<name>")]) ]
+      parseRuleBody "r" (renderRuleBody r) `shouldBe` Right r
+
+    -- The guard sits at the door every minted engine enters, where the subject
+    -- is in hand: a capture the subject never binds is rejected at parse, not
+    -- left to fire at refine on an author's machine.
+    it "rejects a value capture the rule's subject does not bind" $
+      parseRuleBody "r7" "match fact cmd.<name>.msg => artifact.x.args.name \"\\\"<other>\\\"\""
+        `shouldSatisfy` isLeft
+
+    it "accepts value, value.N and a bound capture in one rule's values" $ do
+      let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
+                [ Emit ["artifact", "<name>", "args", "name"] (VStr [PHole "name"])
+                , Emit ["artifact", "<name>", "args", "text"] (VStr [PHole "value"])
+                , Emit ["artifact", "<name>", "args", "v2"] (VStr [PHole "value.2"])
+                , Emit ["environment", "systemPackages"] (VList [VRef (RArt "<name>")]) ]
+      parseRuleBody "r" (renderRuleBody r) `shouldBe` Right r
+
     -- End to end: two routes in one program, each keyed by its own path, flow
     -- through crystallize -> refine -> realize into two DISTINCT keyed options
     -- (the collision the value-keyed-options gap caused is gone).
@@ -1780,8 +1832,14 @@ main = hspec $ do
     it "a typed hole inside a string degrades to its plain form" $ do
       parseValue "\"--keep-daily <value.2:int>\"" `shouldBe` parseValue "\"--keep-daily <value.2>\""
       parseValue "\"x <value:int> y\"" `shouldBe` parseValue "\"x <value> y\""
-    it "a genuinely unknown hole inside a string is still rejected" $
-      parseValue "\"x <bogus> y\"" `shouldSatisfy` isLeft
+    -- 'parseValue' alone cannot judge a hole name: <cmd> is a legal capture
+    -- when the rule's subject binds it, and parseValue never sees a subject.
+    -- So an identifier hole parses here and 'parseRuleBody' rejects the unbound
+    -- ones, where the subject is in hand (see the rule-parser tests above).
+    it "an identifier hole parses as a capture; the rule parser judges it" $
+      parseValue "\"x <bogus> y\"" `shouldBe` Right (VStr [PLit "x ", PHole "bogus", PLit " y"])
+    it "a hole name that is not an identifier is still rejected" $
+      parseValue "\"x <not a name> y\"" `shouldSatisfy` isLeft
     -- Capability C: a <value.tail> rhs fills to a VList of the program value's
     -- tokens (trailing sentence punctuation stripped). The whole rhs becomes
     -- one list, so a single line carrying many items is aggregatable with B.
@@ -1858,11 +1916,11 @@ main = hspec $ do
         -- .direction file (docs/gaps/README.md, findings 1 and 4).
         , "A built program has an INTERFACE"
         , "Source is a FIXED BLOB with no holes"
-        -- Mechanism is the engine's job, not a gap, and an artifact name is a
-        -- literal or <self>, never a capture (docs/gaps/README.md, finding 2
-        -- and the greet builder-name-choice refusal).
+        -- Mechanism is the engine's job, not a gap (the greet
+        -- builder-name-choice refusal), and a capture may key a build and fill
+        -- a value (docs/gaps/README.md, finding 2, closed in the kernel).
         , "A MECHANISM is not a gap at all"
-        , "The artifact NAME is a literal you write, or <self>"
+        , "or a <capture> the rule's subject binds"
         , "because-note"
         , "reserved segment <self>"
         , "PACKAGE NAMES"

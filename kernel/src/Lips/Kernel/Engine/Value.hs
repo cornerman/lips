@@ -48,15 +48,21 @@ module Lips.Kernel.Engine.Value
   , renderRealized
   , fillValue
   , bindSelfValue
+  , bindCaptureValue
+  , valueCaptures
   , holeIndex
   , valueRefsDerivation
   , valueArtifactNames
   ) where
 
-import           Data.Char      (isDigit, isSpace)
-import           Data.Text      (Text)
-import qualified Data.Text      as T
-import qualified Data.Text.Read as TR
+import           Data.Char       (isDigit, isSpace)
+import qualified Data.Map.Strict as Map
+import           Data.Maybe      (isJust, mapMaybe)
+import           Data.Text       (Text)
+import qualified Data.Text       as T
+import qualified Data.Text.Read  as TR
+
+import Lips.Kernel.Capture (captureName)
 
 -- | One piece of a string value. 'PRef' is a @${pkgs.<dotted-path>}@ package
 -- reference; 'PArt' is a @${artifact.<name>}@ reference to a program-derived
@@ -177,6 +183,45 @@ bindSelfValue name = go
     piece (PArt n) | n == selfToken = PArt name
     piece p                   = p
 
+-- | Resolve a @\<capture\>@ used as an artifact NAME to the key the rule's
+-- subject bound, the value-side twin of the emit-path fill in
+-- 'Lips.Kernel.Capture.fillCaptures'. A capture reaches a value two ways: as a
+-- string hole (handled by 'fillValue'\'s @pick@, since a hole is already a
+-- value slot) and as the name of an artifact reference, which is a NAME and so
+-- needs this structural pass, exactly as @\<self\>@ does. A capture the map
+-- does not bind is left alone, so the caller\'s own check reports it by name
+-- rather than a silent literal reaching realize.
+bindCaptureValue :: Map.Map Text Text -> Value -> Value
+bindCaptureValue caps = go
+  where
+    go (VStr ps)  = VStr (map piece ps)
+    go (VList vs) = VList (map go vs)
+    go (VAttr fs) = VAttr (map (\(k, v) -> (k, go v)) fs)
+    go (VRef (RArt n)) = VRef (RArt (bound n))
+    go v          = v
+    piece (PArt n) = PArt (bound n)
+    piece p        = p
+    bound n = case captureName n >>= (`Map.lookup` caps) of
+      Just v  -> v
+      Nothing -> n
+
+-- | Every capture name a value mentions: a string hole that is neither
+-- @\<value\>@ nor @\<value.N\>@, and an artifact reference named by a capture.
+-- The mint gate uses it to reject a rule whose value names a capture its
+-- subject never binds -- a defect no decision in the corpus need witness, so
+-- catching it statically beats waiting for it to fire on an author's machine.
+valueCaptures :: Value -> [Text]
+valueCaptures = go
+  where
+    go (VStr ps)  = mapMaybe piece ps
+    go (VList vs) = concatMap go vs
+    go (VAttr fs) = concatMap (go . snd) fs
+    go (VRef (RArt n)) = maybe [] pure (captureName n)
+    go _          = []
+    piece (PHole h) | h /= "value", not (isJust (holeIndex h)) = Just h
+    piece (PArt n)  = captureName n
+    piece _         = Nothing
+
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.
 holeIndex :: Text -> Maybe Int
@@ -186,9 +231,13 @@ holeIndex h = do
     Right (n, rest) | T.null rest, n >= 1 -> Just n
     _ -> Nothing
 
--- | A hole name is @value@ or @value.N@; nothing else binds.
+-- | A hole name is @value@, @value.N@, or a CAPTURE name the rule's subject
+-- binds (@\<cmd\>@ matching @cmd.\<cmd\>.msg@). The parser cannot tell a real
+-- capture from a typo, since it does not see the subject, so it accepts any
+-- identifier here and 'Lips.Kernel.Engine.Overlap.unboundCaptures' rejects the
+-- unbound ones at the mint gate, where the subject is in hand.
 validHoleName :: Text -> Bool
-validHoleName h = h == "value" || holeIndex h /= Nothing
+validHoleName h = h == "value" || holeIndex h /= Nothing || okSeg h
 
 -- | The plain hole name a string-context @\<...\>@ denotes, accepting a
 -- redundant @:type@ suffix. Inside a string the value is always text, so a
@@ -417,10 +466,14 @@ parseRef inside
       -- The reserved <self> names the program's OWN artifact (its instance
       -- name), resolved by 'bindSelfValue'; accepted here as the one
       -- non-identifier artifact name, symmetric with <self> in a path segment.
-      if okSeg name || name == selfToken
+      -- A <capture> is admitted too: the rule's subject binds it and
+      -- 'bindCaptureValue' resolves it before realize, so a build may be keyed
+      -- by a program value exactly as an option path may.
+      if okSeg name || name == selfToken || isJust (captureName name)
         then Right (RArt name)
         else Left ("${artifact.<name>} is not a valid build reference; the name after"
-                    <> " artifact. must be a plain identifier: ${" <> inside <> "}")
+                    <> " artifact. must be a plain identifier, <self>, or a <capture>"
+                    <> " the rule's subject binds: ${" <> inside <> "}")
   | otherwise = RPkg <$> pkgsRef inside
 
 -- | A single identifier segment: non-empty, letters\/digits\/@-@\/@_@ only.

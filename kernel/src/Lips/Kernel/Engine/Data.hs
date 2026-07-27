@@ -47,8 +47,11 @@ import           Data.Maybe     (isJust)
 import           Data.Text      (Text)
 import qualified Data.Text      as T
 
-import Lips.Kernel.Capture         (fillCaptures, matchSubject)
-import Lips.Kernel.Engine.Value    (Value, bindSelfValue, fillValue, holeIndex, parseValue, renderValue)
+import qualified Data.Map.Strict as Map
+import           Data.Maybe      (mapMaybe)
+
+import Lips.Kernel.Capture         (captureName, fillCaptures, matchSubject)
+import Lips.Kernel.Engine.Value    (Value, bindCaptureValue, bindSelfValue, fillValue, holeIndex, parseValue, renderValue, valueCaptures)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand   (Demand (..))
@@ -123,7 +126,9 @@ toRule mr =
       -- 'RewriteFailed', not a crash: 'print' is deterministic and edited
       -- programs must fail through the error channel, never by exception.
       p <- traverse (fillSeg caps) (emPath e)
-      a <- fillValue (pick val) (emRhs e)
+      -- Captures reach a value two ways: as an artifact-ref NAME (a structural
+      -- pass, like <self>) and as a string hole (through 'pick' below).
+      a <- fillValue (pick caps val) (bindCaptureValue caps (emRhs e))
       Right Decision
         { dId        = DecisionId ""
         , dSubject   = Subject p
@@ -137,15 +142,20 @@ toRule mr =
     -- shared primitive so rules, expects, and demands resolve captures alike.
     fillSeg caps seg = either (\r -> Left ("engine rule " <> mrId mr <> ": emit path " <> r))
                               Right (fillCaptures caps seg)
-    pick val "value" = Right val
-    pick val h
+    pick _ val "value" = Right val
+    pick caps val h
       | Just n <- holeIndex h =
           case drop (n - 1) (T.words val) of
             (w : _) -> Right w
             []      -> Left ("engine rule " <> mrId mr <> ": <" <> h
                                 <> "> out of range for value: " <> val)
-      -- Any other hole name was rejected at parse time; loud if it slips through.
-      | otherwise = Left ("engine rule emit: unknown hole <" <> h <> ">")
+      -- Otherwise the hole names a capture the subject bound, so the rule may
+      -- carry the key itself into a value (an artifact's args.name, a wrapper's
+      -- text) and not only into an option path.
+      | Just v <- Map.lookup h caps = Right v
+      | otherwise = Left ("engine rule " <> mrId mr <> ": <" <> h
+                            <> "> is neither <value>/<value.N> nor a capture"
+                            <> " bound by the subject")
 
 -- | Interpret a minted demand: satisfied when any decision matches the subject.
 -- 'matchSubject' means a family demand (@route.<path>.status@) is met by any
@@ -183,7 +193,15 @@ parseRuleBody rid body = do
   emits <- mapM (parseEmit . T.strip) (T.splitOn " ; " emitsPart)
   if null emits
     then Left (pre <> "rule emits nothing")
-    else Right (MapRule rid kind subj emits)
+    else do
+      -- A value hole is <value>/<value.N> or a CAPTURE this subject binds. The
+      -- subject is in hand right here, so an unbound name fails at the door
+      -- every minted engine enters, not later at refine on an author's machine.
+      let bound = mapMaybe captureName subj
+      case [ nm | e <- emits, nm <- valueCaptures (emRhs e), nm `notElem` bound ] of
+        (nm : _) -> Left (pre <> "<" <> nm <> "> is neither <value>/<value.N> nor a"
+                            <> " capture bound by the subject " <> renderAttrPath subj)
+        []       -> Right (MapRule rid kind subj emits)
   where
     pre = "rule " <> rid <> ": "
     parseEmit t = do
