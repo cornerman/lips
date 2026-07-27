@@ -201,17 +201,19 @@ The examples live in the repo, so clone it first:
 
     git clone https://github.com/cornerman/lips && cd lips
 
-    lips compile examples/ledger.backup.lips  # plain lines -> module dir + flake
-    just compile examples/ledger.backup.lips
+    lips compile examples/ledger.backup.lips # plain lines -> module dir + flake
+    # just compile examples/ledger.backup.lips
     # nix run . -- compile examples/ledger.backup.lips
 
-    lips check   examples/ledger.backup.lips  # the committed contract still holds
-    just check-program examples/ledger.backup.lips
+    lips check examples/ledger.backup.lips # the committed contract still holds
+    # just check examples/ledger.backup.lips
     # nix run . -- check examples/ledger.backup.lips
 
-`just` runs the same `nix run . --` underneath (commented above each recipe);
-reach for it only when hacking on lips itself inside the clone, since it has
-no meaning once `lips` is installed elsewhere.
+`just` mirrors each `lips` verb one-to-one, running the commented `nix`
+command shown beneath each recipe; reach for it only when hacking on lips
+itself inside the clone, since it has no meaning once `lips` is installed
+elsewhere. The full suite (every example's contract plus a VM boot) is a
+separate recipe, `just check-all`.
 
 `compile` prints the stock nix commands that run the result, e.g.
 `nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs

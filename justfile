@@ -20,7 +20,7 @@ test:
       -outputdir /tmp/lips-build -o /tmp/lips-spec && /tmp/lips-spec'
 
 # Full verification: conformance suite + VM boot of the realized module.
-check:
+check-all:
     nix flake check -L
 
 # Behavioral contracts: every example's .expect must hold against its realized
@@ -46,7 +46,8 @@ compile program:
 # system module). Run one of those printed commands to run the program.
 
 # Verify one program's committed behavioral contract against its realized module.
-check-program program:
+# Mirrors `lips check <program>` one-to-one; the full suite is `just check-all`.
+check program:
     nix run . -- check "{{program}}"
 
 # The one AI step: mint language+engine via pi, validate, write .lang/.decisions/.generation.
