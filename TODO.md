@@ -2,6 +2,26 @@
 
 ## Next up (priority order)
 
+0. **Mint the three CLI examples (main is RED until this lands).**
+   `examples/board.lips`, `examples/habit.lips` (both `--target home-manager`)
+   and `examples/logscan.lips` (`--target nixos`) are committed with their
+   `.direction` files but no engine, so `just check-expect` and the
+   `lipsModules-eval` flake check both fail: each iterates every
+   `examples/*.lips` and a program without its `<language>/` folder fails loud.
+   Run `lips generate` for each (local `ollama/qwen3-coder:30b` first, then
+   `anthropic/claude-sonnet-5`, then opus), `git add` the minted folders, and
+   confirm both checks green.
+
+   These are the first CLI-tool examples: an artifact that is a command a human
+   runs, not a service a machine runs. `board` and `habit` each need TWO
+   artifacts (a `buildGoModule` core plus a `writeShellApplication` wrapper
+   carrying the program's values as environment variables), because artifact
+   source has no holes, so configuration must ride the module the way
+   `hello.http` rides `systemd.services.<self>.environment`. A bare CLI has no
+   service to carry it, hence the wrapper. `lipsModules-eval` also needs its
+   comment and assertion updated: it claims every example is a nixos engine and
+   checks only `nixosModules`, which two of these three programs falsify.
+
 1. **Mint prompt rewrite** — plan
    `docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md`. Move the
    prompt out of escaped Haskell literals into `assets/mint/*.md` embedded with
