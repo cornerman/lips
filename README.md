@@ -200,8 +200,18 @@ its language folder before rebuilding.
 The examples live in the repo, so clone it first:
 
     git clone https://github.com/cornerman/lips && cd lips
+
     lips compile examples/ledger.backup.lips  # plain lines -> module dir + flake
+    just compile examples/ledger.backup.lips
+    # nix run . -- compile examples/ledger.backup.lips
+
     lips check   examples/ledger.backup.lips  # the committed contract still holds
+    just check-program examples/ledger.backup.lips
+    # nix run . -- check examples/ledger.backup.lips
+
+`just` runs the same `nix run . --` underneath (commented above each recipe);
+reach for it only when hacking on lips itself inside the clone, since it has
+no meaning once `lips` is installed elsewhere.
 
 `compile` prints the stock nix commands that run the result, e.g.
 `nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs
@@ -223,11 +233,11 @@ runs it as a service. The source is a committed, reviewable file beside the
 program; the build and run stay deterministic and offline. The `artifact-vm`
 flake check compiles it and boots the service in a VM.
 
-Hacking on lips itself, rather than using it, is a separate mode: the repo
+Developing on lips itself, rather than using it, is a separate mode: the repo
 clone above already gives you everything. `justfile` is the command index
-(`just` alone lists every recipe: `just test`, `just check`, ...); with direnv
-installed, `direnv allow` once wires the dev shell automatically, otherwise
-prefix commands with `nix develop -c`.
+(`just` alone lists every recipe); with direnv installed, `direnv allow` once
+wires the dev shell automatically, otherwise prefix commands with
+`nix develop -c` or run via `nix run .`.
 
 ## The Files
 
