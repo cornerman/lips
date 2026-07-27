@@ -1,0 +1,17 @@
+Build the tool from generated Go source with buildGoModule and a vendorHash of
+null, the same shape the http example uses. Name that artifact boardcore.
+
+The board file and the column names are configuration, not source. The
+compiled program reads them from the environment variables BOARD_FILE and
+BOARD_COLUMNS, so editing either value in the program flows through compile
+without regenerating the source. BOARD_COLUMNS is one string holding the
+column names as the program wrote them.
+
+Put the tool on PATH through a second artifact named board, built with
+writeShellApplication: its text exports those two variables and then execs
+${artifact.boardcore}/bin/boardcore with the caller's arguments, and
+home.packages holds that wrapper. Do not use a systemd service and do not set
+a session variable.
+
+Render the board with plain ANSI escape codes. No curses library and no
+external TUI library.

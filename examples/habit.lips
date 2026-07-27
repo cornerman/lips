@@ -1,0 +1,6 @@
+track daily habits from the terminal.
+the habit log is stored in /home/cornerman/notes/habits.tsv.
+each log line holds an ISO date and a habit name separated by a tab.
+print a heatmap of the last 365 days for the habit named on the command line.
+write the tool in go, using only the standard library with no external dependencies.
+install the tool as the command habit.

@@ -1,0 +1,16 @@
+Build the tool from generated Go source with buildGoModule and a vendorHash of
+null, the same shape the http example uses. Name that artifact habitcore.
+
+The log file is configuration, not source: the compiled program reads its path
+from the environment variable HABIT_LOG, so editing the path in the program
+flows through compile without regenerating the source. The log format and the
+heatmap window are structure, so they belong in the generated source.
+
+Put the tool on PATH through a second artifact named habit, built with
+writeShellApplication: its text exports HABIT_LOG and then execs
+${artifact.habitcore}/bin/habitcore with the caller's arguments, and
+home.packages holds that wrapper. Do not use a systemd service and do not set
+a session variable.
+
+Draw the heatmap with plain ANSI escape codes, one row per month. No curses
+library and no external TUI library.

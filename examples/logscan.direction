@@ -1,0 +1,10 @@
+Build the tool from generated Go source with buildGoModule and a vendorHash of
+null, the same shape the http example uses. Name the artifact logscan.
+
+This tool carries no configuration: every filter comes from the command line at
+runtime, so no environment variable and no wrapper are needed. Put the bare
+binary on PATH with environment.systemPackages holding ${artifact.logscan}. Do
+not use a systemd service.
+
+Read standard input line by line with the standard library JSON decoder. No
+external dependency of any kind.
