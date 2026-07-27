@@ -387,6 +387,27 @@ main = hspec $ do
           Right mod_ -> mod_ `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];"
 
+    it "end-to-end: N separate bullet facts each contribute one package via a singleton-list rhs" $ do
+      -- The "COMMON TRAP" case (Minting.hs): a heading followed by one bullet
+      -- per package, each bullet crystallizing to its OWN fact subject
+      -- (pkg.<name>). A rule mapping pkg.<name> must wrap its <value:pkg> hole
+      -- in a one-element list -- "[ <value:pkg> ]" -- so each contributor's rhs
+      -- is itself a VList (required both to pass the option schema's OTListOf
+      -- check and to trigger Append aggregation); a bare, unwrapped hole here
+      -- would satisfy neither, since its value shape is a single reference.
+      let pat = patOne "p" [TLit "-", THole "name"] Fact
+                  [SLit "pkg.", SHole "name"] [SHole "name"]
+          pkgRule = MapRule "r" Fact ["pkg", "<name>"]
+                   [ Emit ["environment","systemPackages"] (VList [VHole HPkg "value"]) ]
+          prog = T.unlines [ "- npm", "- bun", "- scala" ]
+          modeOf = mergeModeOf [pkgRule]
+      case crystallize "f" [pat] prog of
+        Left e  -> expectationFailure ("crystallize failed: " <> show e)
+        Right base -> case runBase modeOf assembleSubject 100 (map toRule [pkgRule]) [] base of
+          Left e     -> expectationFailure ("run failed: " <> show e)
+          Right mod_ -> mod_ `shouldSatisfy`
+            T.isInfixOf "environment.systemPackages = [ pkgs.npm pkgs.bun pkgs.scala ];"
+
   describe "refinement (spec 2.4, 4)" $ do
     let oblige = (mk "o1" "row" "row->txn" Stated) { dKind = Oblige }
         -- one rule: an Oblige expands into one Meta mechanism decision
