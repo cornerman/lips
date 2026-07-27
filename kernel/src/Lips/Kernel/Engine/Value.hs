@@ -363,9 +363,19 @@ pString = go [] T.empty
     go pieces acc s = case T.uncons s of
       Nothing -> Left "a string is not closed with a final quote"
       Just ('"', rest) -> Right (VStr (reverse (flush acc pieces)), rest)
+      -- \n, \t, \r are Nix control-character escapes, not a literal
+      -- backslash: store the ACTUAL control char (mirroring how \" and \\
+      -- store the actual quote\/backslash char), so 'escape' re-emits the
+      -- textual \n\/\t\/\r on render. Without this, a minted script's
+      -- newline (e.g. a shell script's \"line1\\nline2\") lost its backslash
+      -- here and rendered as a bare, meaningless "n" (see writeShellApplication
+      -- .text bug: "...bash\\ncurl..." realized to "...bashncurl...").
       Just ('\\', more) -> case T.uncons more of
-        Just (c, more') -> go pieces (T.snoc acc c) more'
-        Nothing         -> Left "a string ends on a stray backslash with nothing after it"
+        Just ('n', more') -> go pieces (T.snoc acc '\n') more'
+        Just ('t', more') -> go pieces (T.snoc acc '\t') more'
+        Just ('r', more') -> go pieces (T.snoc acc '\r') more'
+        Just (c, more')   -> go pieces (T.snoc acc c) more'
+        Nothing           -> Left "a string ends on a stray backslash with nothing after it"
       Just ('$', more)
         | Just body <- T.stripPrefix "{" more -> do
             let (inside, after) = T.breakOn "}" body
@@ -473,9 +483,20 @@ renderRealized (VAttr fs)       = "{ " <> T.unwords (map (\(k, v) -> k <> " = " 
 renderRealized v               = renderValue v
 
 -- | Escape text destined for the inside of a Nix string: quotes, backslashes,
--- and @${@ (which would otherwise open an interpolation -- the injection).
+-- @${@ (which would otherwise open an interpolation -- the injection), and the
+-- three control chars 'pString' unescapes on the way in (an actual
+-- newline\/tab\/CR, stored verbatim in a 'PLit' so a program value can carry
+-- one, is written back out as the textual @\n@\/@\t@\/@\r@ Nix escape --
+-- otherwise a real newline would break the single-line quoted string).
+-- Backslash-doubling runs first so a genuine backslash in the text is not
+-- mistaken for one of these escapes on the way back through 'parseValue'.
 escape :: Text -> Text
-escape = T.replace "${" "\\${" . T.replace "\"" "\\\"" . T.replace "\\" "\\\\"
+escape = T.replace "${" "\\${"
+       . T.replace "\"" "\\\""
+       . T.replace "\r" "\\r"
+       . T.replace "\t" "\\t"
+       . T.replace "\n" "\\n"
+       . T.replace "\\" "\\\\"
 
 -- | Fill every hole with (a selection from) the program value and render.
 -- The @pick@ selector is itself fallible (an out-of-range @\<value.N\>@ is a

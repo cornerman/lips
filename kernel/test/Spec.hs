@@ -1757,6 +1757,23 @@ main = hspec $ do
     it "a bare identifier rhs is rejected (only closed value forms parse)" $
       property $ forAll bareWord $ \w -> parseValue w `shouldSatisfy` isLeft
 
+    -- Regression: a minted rule wrote a shell script's newline as the Nix
+    -- textual escape \n (the two chars backslash, n). The old backslash
+    -- handling in 'pString' treated ANY \<char> as "drop the backslash, keep
+    -- the char", so \n became a bare, meaningless "n" -- a real
+    -- writeShellApplication .text minted this way realized to a one-line
+    -- script with the newline silently deleted ("...bashncurl..."). \n\/\t\/\r
+    -- must instead store the actual control char and round-trip back through
+    -- 'renderValue' as the same textual escape.
+    it "backslash-n/t/r inside a string round-trip as real control chars, not a bare letter" $ do
+      parseValue "\"a\\nb\"" `shouldBe` Right (VStr [PLit "a\nb"])
+      parseValue "\"a\\tb\"" `shouldBe` Right (VStr [PLit "a\tb"])
+      parseValue "\"a\\rb\"" `shouldBe` Right (VStr [PLit "a\rb"])
+      renderValue (VStr [PLit "a\nb"]) `shouldBe` "\"a\\nb\""
+      -- The exact failing shape: a shebang line then a command, one script.
+      parseValue "\"#!/usr/bin/env bash\\ncurl -s wttr.in\\n\""
+        `shouldBe` Right (VStr [PLit "#!/usr/bin/env bash\ncurl -s wttr.in\n"])
+
     -- Grammar completeness: inside a string the value is text, so a redundant
     -- :type on a hole is meaningless and degrades to the plain hole rather
     -- than being rejected (a form the mint writes naturally for a number).
