@@ -9,6 +9,13 @@ around exactly those words and gives you its compiler for free; from then on it
 turns your intent into a running system deterministically, with no AI in the
 loop.
 
+What it compiles to is Nix: a module of `path = value` assignments that some
+`evalModules` consumes. NixOS is one such world, home-manager another, and you
+pick which one at mint time with `--target`. The axis is open, because every
+world emits the same module shape and differs only in the option vocabulary its
+rules name (terranix and kubenix are the candidates queued behind the two that
+ship today).
+
 The point is to keep what a human owns small enough to read. AI now writes code
 faster than anyone can review it, so lips shrinks the reviewed artifact to a few
 lines of meaning and makes everything the machine derives from them reproducible
@@ -26,11 +33,11 @@ You start by writing plainly what you want:
 
 That file is already a valid program. When you run `generate` once, a model
 reads your lines and mints a small **engine**: the grammar that reads sentences
-like yours, the rules that map them to real NixOS options, and tests that pin
+like yours, the rules that map them to real options of your target world, and tests that pin
 your values. In other words, the wording you chose defines a little language
 for your problem, and lips hands you the compiler for it.
 
-From then on the AI is gone. `compile` turns your text into a NixOS module
+From then on the AI is gone. `compile` turns your text into a Nix module
 offline and bit-identical, every time. Edit a path or a number and compile
 again; the change flows straight through. The language you grew stays yours to write
 in, and the compiler keeps working without a model ever running again.
@@ -73,11 +80,24 @@ and the tests for the language; pass several programs
 across them. lips refuses to write anything unless the engine actually compiles
 every program and the tests hold, so a bad mint costs you nothing.
 
+`--target nixos` (the default) or `--target home-manager` picks the world the
+engine is born into. The flag steers the mint into that world's option
+namespace (`services.*`, `boot.*`, `users.*` versus `programs.*`,
+`systemd.user.*`, `home.file.*`) and grounds every minted option path against
+that world's own schema, so a path that does not exist there is refused before
+anything is written. Nothing translates between worlds: a user-service backup
+is a different intent, minted into a different engine. The choice is recorded
+in `backup.generation` and enters the generation id, so re-minting for another
+world is a distinct, `.expect`-gated event.
+
 **Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
-your text into a directory holding `default.nix` (the NixOS module, for import
+your text into a directory holding `default.nix` (the Nix module, for import
 and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory
-runnable. Running is not a lips verb: `compile` prints the exact stock `nix`
-commands over that directory, and you pick one. A program that builds an
+runnable. `compile` reads the recorded world to decide what that flake offers:
+a NixOS engine gets a bootable VM, a home-manager engine gets the module and an
+import hint, since there is no machine to boot. Running is not a lips verb:
+`compile` prints the exact stock `nix` commands over that directory, and you
+pick one. A program that builds an
 artifact prints `nix run …#artifact.<name>` (run the binary bare) and
 `nix shell …#artifact.<name>`; a system module prints `nix run …#vm`
 (a throwaway QEMU boot of the whole system) and `nix build …#vm` (build it
@@ -217,7 +237,7 @@ under `out/` is per instance, derived, and safe to delete.
 | `backup/backup.lang` | AI, once | the engine (grammar + rules + tests), shared by the language | yes |
 | `backup/backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
 | `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
-| `backup/backup.generation` | machine | receipt of the exact AI call, shared | yes |
+| `backup/backup.generation` | machine | receipt of the exact AI call and its target world, shared | yes |
 | `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
 | `backup/out/ledger/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |
 
