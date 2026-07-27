@@ -1,0 +1,2 @@
+Configuration reaches the tool through the environment, not baked into
+generated source.

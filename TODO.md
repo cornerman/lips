@@ -2,25 +2,59 @@
 
 ## Next up (priority order)
 
-0. **Mint the three CLI examples (main is RED until this lands).**
-   `examples/board.lips`, `examples/habit.lips` (both `--target home-manager`)
-   and `examples/logscan.lips` (`--target nixos`) are committed with their
-   `.direction` files but no engine, so `just check-expect` and the
-   `lipsModules-eval` flake check both fail: each iterates every
-   `examples/*.lips` and a program without its `<language>/` folder fails loud.
-   Run `lips generate` for each (local `ollama/qwen3-coder:30b` first, then
-   `anthropic/claude-sonnet-5`, then opus), `git add` the minted folders, and
-   confirm both checks green.
+0. **Mint `examples/greet.lips` (main is RED until this lands).** One line,
+   `install a command greet that prints "hello from lips"`, the smallest
+   program that builds a runnable command. It is committed with no engine, so
+   `just check-expect` and the `lipsModules-eval` flake check both fail: each
+   iterates every `examples/*.lips` and a program without its `<language>/`
+   folder fails loud. Mint it, `git add examples/greet`, confirm both green.
 
-   These are the first CLI-tool examples: an artifact that is a command a human
-   runs, not a service a machine runs. `board` and `habit` each need TWO
-   artifacts (a `buildGoModule` core plus a `writeShellApplication` wrapper
-   carrying the program's values as environment variables), because artifact
-   source has no holes, so configuration must ride the module the way
-   `hello.http` rides `systemd.services.<self>.environment`. A bare CLI has no
-   service to carry it, hence the wrapper. `lipsModules-eval` also needs its
-   comment and assertion updated: it claims every example is a nixos engine and
-   checks only `nixosModules`, which two of these three programs falsify.
+   The target engine shape is already proven offline by hand: one
+   `writeShellApplication` artifact and one option path, realizing to
+   `environment.systemPackages = [ artifact.greet ]`, with
+   `nix run …#artifact.greet` printing the program's text. No compiler, no
+   `vendorHash`, no source file. The mint must write NO `.expect` assertion:
+   the only option the engine fills is derivation-valued, and
+   `uncheckableExpects` rightly refuses an assertion on such an option (see
+   `docs/gaps/README.md` finding 5, which is that guard followed through to its
+   uncomfortable conclusion).
+
+1. **CLI-tool physics** — evidence and analysis in `docs/gaps/README.md`, with
+   `docs/gaps/{board,habit,logscan}.lips` as committed repros. Six mints on
+   2026-07-27 (three programs x qwen3-coder:30b and claude-sonnet-5) produced no
+   engine and six findings. Ranked:
+
+   a. **Silent concept demotion (deduce-or-fail's blind spot).** A program line
+      the engine cannot honor gets absorbed as a `Concept`, which does not
+      realize, so editing that line changes nothing and nothing says so. The
+      mint reported this itself, unprompted, on two of three programs. lips
+      fails loud on a line it cannot READ and silently on a line it reads and
+      declines to honor. Same family as the `VTail` decision (emitting a literal
+      instead of failing was rejected); this is that hole one level up.
+
+   b. **Capture-keyed artifact names.** `${artifact.<name>}` rejects a hole, so
+      a build cannot be keyed by a program value the way an option can be
+      ("Value-keyed options" is done; artifacts were left out). The natural
+      engine for "install a command called X" is unwritable. Most contained fix
+      of the six, and it unblocks the whole CLI class mechanically.
+
+   c. **Language branching.** No way to branch a builder on a captured language
+      token, so `write the tool in go` either hardcodes `buildGoModule` (and
+      silently keeps it when the word changes, per finding a) or becomes
+      decoration. Branching is computation, so this is glue or it is permanently
+      out of scope with a loud failure as the honest answer.
+
+   d. **Templated source, two fresh repros** (extends the existing backlog item
+      below): the command name must reach `pname` and the Go module inside the
+      artifact, and source heredocs have no holes.
+
+   e. **A CLI engine has nothing to pin.** Every option it fills is
+      derivation-valued, so its contract is necessarily empty, and an empty
+      contract passes vacuously. Invariant 5 has no force for this class.
+
+   f. **Two hole namespaces, one syntax** (pattern holes named by the template
+      vs the rule side's fixed `<value>`). A weaker model confuses them
+      reliably, which makes it a format question, not a prompt question.
 
 1. **Mint prompt rewrite** — plan
    `docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md`. Move the
