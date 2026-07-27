@@ -29,7 +29,7 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
-import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), generateOpts, compileOpts, checkOpts, programCompleter)
+import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, getTemporaryDirectory)
@@ -126,6 +126,19 @@ main = hspec $ do
       parseArgs ["a.backup.lips", "--lang", "services/a/backup"]
         `shouldBe` Just (CheckOpts (Just "services/a/backup") "a.backup.lips")
     it "fails with no program at all" $
+      parseArgs [] `shouldBe` Nothing
+
+  describe "options argument parsing (Lips.Cli)" $ do
+    let parseArgs = getParseResult . execParserPure defaultPrefs (info optionsOpts idm)
+    it "defaults to the default target and cap" $
+      parseArgs ["services.restic"]
+        `shouldBe` Just (OptionsOpts Nixos 40 "services.restic")
+    it "takes a target, a limit and a query" $
+      parseArgs ["--target", "home-manager", "--limit", "10", "services.restic"]
+        `shouldBe` Just (OptionsOpts HomeManager 10 "services.restic")
+    it "rejects an unknown target, like generate does" $
+      parseArgs ["--target", "darwin", "services.restic"] `shouldBe` Nothing
+    it "fails with no query at all" $
       parseArgs [] `shouldBe` Nothing
 
   -- Tab completion must offer only what a human may pass: the .lips programs

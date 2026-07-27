@@ -12,10 +12,12 @@ module Lips.Cli
   , GenerateOpts (..)
   , CompileOpts (..)
   , CheckOpts (..)
+  , OptionsOpts (..)
   , cliParserInfo
   , generateOpts
   , compileOpts
   , checkOpts
+  , optionsOpts
   , programCompleter
   ) where
 
@@ -60,12 +62,21 @@ data CheckOpts = CheckOpts
   , ceFile    :: FilePath
   } deriving (Eq, Show)
 
--- | The four lips verbs, all visible/documented via 'hsubparser' (lsp was
+-- | Everything @options@ needs. A read-only schema lookup: which world's
+-- schema to search, how many entries an answer may print, and the query.
+data OptionsOpts = OptionsOpts
+  { ooTarget :: Target
+  , ooLimit  :: Int
+  , ooQuery  :: String
+  } deriving (Eq, Show)
+
+-- | The lips verbs, all visible/documented via 'hsubparser' (lsp was
 -- previously reachable but absent from --help; now consistent with the rest).
 data Command
   = Generate GenerateOpts
   | Compile CompileOpts
   | Check CheckOpts
+  | Options OptionsOpts
   | Lsp
   deriving (Eq, Show)
 
@@ -89,6 +100,9 @@ cliParser defConf = hsubparser
   <> command "check"
        (info (Check <$> checkOpts)
              (progDesc "Verify the program still produces what it promised."))
+  <> command "options"
+       (info (Options <$> optionsOpts)
+             (progDesc "Look up option paths and types in the pinned schema. Read-only, no AI."))
   <> command "lsp"
        (info (pure Lsp)
              (progDesc "Run the lips language server (stdio)."))
@@ -179,3 +193,21 @@ checkOpts :: Parser CheckOpts
 checkOpts = CheckOpts
   <$> langDirOpt
   <*> programArg
+
+-- | @--limit@'s reader: a positive entry cap. Zero or negative would make
+-- every answer empty, which is a malformed invocation, not a narrow search.
+limitReader :: ReadM Int
+limitReader = eitherReader $ \s -> case readMaybe s of
+  Just n | n > 0 -> Right n
+  _              -> Left (s <> " is not a positive entry limit")
+
+optionsOpts :: Parser OptionsOpts
+optionsOpts = OptionsOpts
+  <$> option targetReader
+        (long "target" <> short 't' <> value defaultTarget
+          <> metavar "nixos|home-manager" <> help "Which world's schema to search (default: nixos).")
+  <*> option limitReader
+        (long "limit" <> value 40
+          <> metavar "N" <> help "Maximum entries to print (default: 40).")
+  <*> strArgument
+        (metavar "QUERY" <> help "A dotted option prefix, or any substring of a path.")

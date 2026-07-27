@@ -41,7 +41,7 @@ import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (readmePath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
-import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), cliParserInfo)
+import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects)
@@ -56,7 +56,7 @@ import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
-import           Lips.Kernel.OptionType        (checkEmits, renderOptionError)
+import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Flake                (flakeText, runCommands)
 import           Lips.Nix.Options              (parseNixOptionsJson)
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
@@ -80,6 +80,7 @@ main = do
     Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coFile co)
     Check co    -> checkLoose (ceLangDir co) (ceFile co)
+    Options oo  -> optionsQuery (ooTarget oo) (ooLimit oo) (T.pack (ooQuery oo))
     Lsp         -> runLsp
 
 -- | @compile@: verify the program's committed contract, then crystallize +
@@ -413,6 +414,55 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
         (m : _) -> TIO.putStr m
         []      -> pure ()
 
+-- | @options@: look a query up in the target world's pinned option schema and
+-- print the answer. This verb is both a human's lookup and the target of the
+-- mint's one tool (@query_options@), so what a human reads here is exactly what
+-- the model is told -- there is no second, model-facing renderer to drift.
+--
+-- It never calls a model (invariant 1 holds trivially: no model runs anywhere
+-- but generate) and it never writes anything.
+optionsQuery :: Target -> Int -> Text -> IO ()
+optionsQuery target limit query = do
+  schemaPath <- ensureOptionSchema target ("options " <> query)
+  mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
+  bytes <- case mbytes of
+    Left e -> die (report
+      ("lips can't read the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
+      [tshow e]
+      "\226\134\146 run it again.")
+    Right b -> pure b
+  case parseNixOptionsJson bytes of
+    Left why -> die (report
+      ("lips can't parse the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
+      [why]
+      "\226\134\146 run it again.")
+    -- Exit 0 even for Nowhere: "no option matches that" is a valid answer to a
+    -- question, not a failure of the command.
+    Right schema -> TIO.putStr (renderAnswer query (answerQuery limit query schema))
+
+-- | Render a lookup for a reader who must decide what to ask NEXT, which is why
+-- a namespace answer says how to drill in and a miss suggests how to re-word.
+renderAnswer :: Text -> Answer -> Text
+renderAnswer query ans = case ans of
+  Leaves ls -> T.unlines
+    [ dotted p <> " : " <> renderOptionType t | (p, t) <- ls ]
+  -- Deliberately ASCII: this text is read by a model as well as a human, and
+  -- lips' existing non-ASCII escapes render as mojibake under a UTF-8 locale
+  -- (see the arrow in 'report').
+  Namespaces ns hidden -> T.unlines $
+    [ dotted p <> " (" <> plural n "option" <> ")" | (p, n) <- ns ]
+      ++ [ "... and " <> plural hidden "more namespace" <> "." | hidden > 0 ]
+      ++ [ "Ask again with one of these paths to see its options." ]
+  Nowhere -> T.unlines
+    [ "no option matches " <> query
+    , "Try a shorter query, or a different word for the same thing."
+    ]
+
+-- | @3 options@ but @1 option@: a count a reader trips over is a count they
+-- reread instead of acting on.
+plural :: Int -> Text -> Text
+plural n word = tshow n <> " " <> word <> (if n == 1 then "" else "s")
+
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
 -- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
 -- @LIPS_OPTIONS_JSON@ (the justfile wires it from the flake). An unset variable
@@ -421,7 +471,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
 -- specifics live in 'Lips.Nix.Options'.
 assertOptionsAdmissible :: Target -> FilePath -> EngineData -> IO ()
 assertOptionsAdmissible target file eng = do
-  schemaPath <- ensureOptionSchema target file
+  schemaPath <- ensureOptionSchema target ("generate " <> T.pack file)
   mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
   case mbytes of
     Left e -> die (report
@@ -444,10 +494,13 @@ assertOptionsAdmissible target file eng = do
 -- Otherwise build it lazily from the pinned nixpkgs baked into
 -- @LIPS_NIXPKGS_FLAKE@ (set by the packaged binary). The build is announced,
 -- since the first one evaluates the whole NixOS manual (~11 MB) before nix
--- caches it; every later generate is a store cache hit. Only generate pays
--- this -- print\/run\/check never touch the schema.
-ensureOptionSchema :: Target -> FilePath -> IO FilePath
-ensureOptionSchema target file = do
+-- caches it; every later generate is a store cache hit. Only generate and the
+-- read-only @options@ lookup pay this -- compile\/check never touch the schema.
+--
+-- @remedy@ is the invocation to suggest when the schema cannot be had; it is a
+-- parameter because this function serves two verbs and knows about neither.
+ensureOptionSchema :: Target -> Text -> IO FilePath
+ensureOptionSchema target remedy = do
   override <- lookupEnv "LIPS_OPTIONS_JSON"
   case override of
     Just p  -> pure p
@@ -461,9 +514,9 @@ ensureOptionSchema target file = do
       mflake <- lookupEnv envVar
       case mflake of
         Nothing -> die (report
-          ("lips can't check the setup's options: no " <> targetSlug target <> " option schema source is configured.")
+          ("lips can't read the setup's options: no " <> targetSlug target <> " option schema source is configured.")
           ["neither LIPS_OPTIONS_JSON nor " <> T.pack envVar <> " is set."]
-          "\226\134\146 run the packaged lips: nix run . -- generate <program> (it bakes the pinned flakes).")
+          ("\226\134\146 run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
         Just flakeref -> do
           TIO.hPutStrLn stderr
             ("checking options against the " <> targetSlug target
@@ -474,9 +527,14 @@ ensureOptionSchema target file = do
             [ "build", "--impure", "--no-link", "--print-out-paths"
             , "--expr", T.unpack (schemaExpr target flakeref) ] "")
           case built of
-            Left e -> die (nixMissing file "build the option schema" "generate" (tshow (e :: IOException)))
-            Right (ExitFailure _, _, err) -> die (validationReport file
-              ("lips couldn't build the " <> targetSlug target <> " option schema:\n" <> T.pack err))
+            Left e -> die (report
+              "lips needs nix to build the option schema, but couldn't run it:"
+              (T.lines (tshow (e :: IOException)))
+              ("\226\134\146 install nix, or run lips through it: nix run . -- " <> remedy))
+            Right (ExitFailure _, _, err) -> die (report
+              ("lips couldn't build the " <> targetSlug target <> " option schema:")
+              (T.lines (T.pack err))
+              ("\226\134\146 run it again: nix run . -- " <> remedy))
             Right (ExitSuccess, out, _) ->
               pure (T.unpack (T.strip (T.pack out)) <> T.unpack subPath)
 
