@@ -1608,6 +1608,22 @@ main = hspec $ do
       diagTotal d `shouldBe` 1
       diagMatched d `shouldBe` 1
 
+    -- A line the engine reads and then drops contributes NOTHING to the output,
+    -- so editing it changes nothing. 'Concept' is the only kind realize drops,
+    -- so a Concept-only line is exactly the inert case. Reporting it is what
+    -- keeps a mint from silencing an inconvenient line unnoticed
+    -- (docs/gaps/README.md, finding 1: silent concept demotion).
+    it "reports a decorative (Concept-only) line as contributing nothing" $ do
+      let engC = eng { edPatterns = edPatterns eng ++
+                        [ patOne "p3" [TLit "feed", TLit "notes"]
+                            Concept [SLit "notes"] [SLit "feed notes"] ] }
+          d = diagnose "f" engC "feed notes\nthe bank drops csv files into inbox/."
+      map fst (diagInert d) `shouldBe` [1]
+
+    it "does not call a realizing line decorative" $ do
+      let d = diagnose "f" eng "the bank drops csv files into inbox/."
+      diagInert d `shouldBe` []
+
     it "derives one completion snippet per pattern, holes as numbered tab-stops" $
       case completionItems (edPatterns eng) of
         (i0 : i1 : _) -> do

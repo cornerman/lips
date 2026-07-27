@@ -226,7 +226,8 @@ expectGate dir file eng program = do
 -- the open questions. Pure view over 'diagnose'; a future editor paints the
 -- same outcomes as squiggles.
 renderDiagnosis :: FilePath -> Diagnosis -> Text
-renderDiagnosis file d = T.intercalate "\n" (headline : map row (diagLines d) ++ openBlock)
+renderDiagnosis file d =
+  T.intercalate "\n" (headline : map row (diagLines d) ++ inertBlock ++ openBlock)
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
@@ -237,6 +238,16 @@ renderDiagnosis file d = T.intercalate "\n" (headline : map row (diagLines d) ++
       "  line " <> tshow n <> "  no match  \"" <> t <> "\""
     row (Ambiguous n _ ids) =
       "  line " <> tshow n <> "  ambiguous " <> T.intercalate "," ids
+    -- A line the language reads and then drops realizes nothing, so editing it
+    -- changes nothing. Naming it is the point: a heading is legitimately
+    -- decorative, but so is a line the mint quietly declined to honor, and only
+    -- the author can tell which this is.
+    inertBlock
+      | null (diagInert d) = []
+      | otherwise =
+          "" : ("decorative, realizing nothing (" <> tshow (length (diagInert d))
+                  <> ") -- editing these changes no output:")
+              : ["  line " <> tshow n <> "  \"" <> t <> "\"" | (n, t) <- diagInert d]
     openBlock
       | null (diagOpen d) = []
       | otherwise = "" : ("open questions (" <> tshow (length (diagOpen d)) <> "):")

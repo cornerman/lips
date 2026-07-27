@@ -10,6 +10,13 @@
 -- matched (which pattern, which decision), unmatched (the line escapes the
 -- language), ambiguous (several patterns match). Then the open questions: the
 -- language's demands not yet answered by the matched decisions. Then coverage.
+--
+-- Plus the INERT lines: a line the language reads and then drops, so it
+-- contributes nothing to the realized output and editing it changes nothing.
+-- Reading a line and silently ignoring it is the one failure lips cannot
+-- otherwise catch (an unmapped non-'Concept' decision fails the build loud, and
+-- an unreadable line is 'Unmatched'), so it is surfaced here rather than left
+-- for an author to discover by editing a sentence and seeing no effect.
 module Lips.Kernel.Lang.Diagnose
   ( Diagnosis (..)
   , diagnose
@@ -18,6 +25,7 @@ module Lips.Kernel.Lang.Diagnose
 import           Data.Text (Text)
 
 import Lips.Kernel.Base            (fromList)
+import Lips.Kernel.Decision        (Decision (..), Kind (..))
 import Lips.Kernel.Demand          (Demand (..), openQuestions)
 import Lips.Kernel.Engine.Data     (toDemand)
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..), classifyLines)
@@ -29,6 +37,7 @@ data Diagnosis = Diagnosis
   , diagOpen    :: [Text]        -- ^ unmet demands, verbatim questions
   , diagTotal   :: Int           -- ^ non-skipped lines considered
   , diagMatched :: Int           -- ^ how many lines crystallized (one line may yield several decisions)
+  , diagInert   :: [(Int, Text)] -- ^ lines that realize nothing: line no and source text
   }
   deriving (Eq, Show)
 
@@ -46,4 +55,17 @@ diagnose file eng src =
         , diagOpen    = open
         , diagTotal   = length outcomes
         , diagMatched = length [() | Matched{} <- outcomes]
+        , diagInert   = inertLines outcomes
         }
+
+-- | The lines that realize nothing. 'Concept' is the only kind realize drops
+-- ('Lips.Kernel.Run' filters it before the anti-MDA guard), so a line whose
+-- every decision is a 'Concept' is exactly the inert case. A line mixing a
+-- 'Concept' with a realizing decision is NOT inert: part of it reaches output.
+inertLines :: [LineOutcome] -> [(Int, Text)]
+inertLines outcomes =
+  [ (n, txt)
+  | Matched n txt _ decs <- outcomes
+  , not (null decs)
+  , all ((== Concept) . dKind) decs
+  ]
