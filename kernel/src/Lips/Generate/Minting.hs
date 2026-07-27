@@ -22,11 +22,15 @@ module Lips.Generate.Minting
   , promptWithDirection
   , EngineItem (..)
   , SourceFile (..)
+  , Gap (..)
   , ItemCandidate (..)
   , parseEngineCandidates
   , assemble
   , expectsOf
   , sourcesOf
+  , reportOf
+  , gapsOf
+  , carriesEngineMeaning
   , uncheckableExpects
   ) where
 
@@ -53,6 +57,17 @@ data SourceFile = SourceFile
   }
   deriving (Eq, Show)
 
+-- | The capability the mint found missing: a slug naming it, and the body
+-- naming the line it blocked plus a minimal repro. A gap is not an excuse, it
+-- is a bug filed against the kernel in the model's own words (invariant 4 -- a
+-- mint that needs gymnastics means the physics is short, and the fix belongs
+-- in the kernel, never in the prompt or in hand-edited output).
+data Gap = Gap
+  { gapSlug :: Text
+  , gapBody :: Text
+  }
+  deriving (Eq, Show)
+
 -- | One minted item: an engine part (pattern, rule, demand), a behavioral
 -- assertion (the @.expect@ contract), or a generated source file (an artifact's
 -- source, a separate committed file, not part of the engine).
@@ -66,7 +81,30 @@ data EngineItem
   -- engine meaning (dropped by 'assemble'\/'expectsOf'\/'sourcesOf'); it only
   -- feeds the refusal message, keyed by the id it shares with its item.
   | ItemNote Text
+  -- | The language explained in plain words, written to @<language>/README.md@
+  -- so a human reviewing a mint reads prose instead of reverse-engineering the
+  -- @.lang@. Exactly one per mint (the requirement is enforced by @generate@).
+  | ItemReport Text
+  -- | A kernel capability the mint lacked; surfaced on both the success and
+  -- the refusal path, so a dead mint yields a work item instead of a shrug.
+  | ItemGap Gap
   deriving (Eq, Show)
+
+-- | Which items the confidence gate governs: those that carry engine meaning.
+-- Prose channels (a because-note, the report, a gap) are exempt -- a gap is
+-- honest at low confidence by nature, and no prose may refuse a mint whose
+-- engine is sure. Stated here, once, so a future item kind cannot slip under
+-- the gate by omission at the call site.
+carriesEngineMeaning :: EngineItem -> Bool
+carriesEngineMeaning i = case i of
+  ItemNote _   -> False
+  ItemReport _ -> False
+  ItemGap _    -> False
+  ItemPattern _ -> True
+  ItemRule _    -> True
+  ItemDemand _  -> True
+  ItemExpect _  -> True
+  ItemSource _  -> True
 
 -- | An item the model proposes, with the confidence it attaches to it.
 -- @icLine@ retains the raw minted line verbatim (@<confidence> <id> <body>@)
@@ -408,11 +446,11 @@ parseEngineCandidates reply = go (T.lines reply) [] []
   where
     go [] errs cands = (reverse errs, reverse cands)
     go (l : ls) errs cands
-      | Just prefix <- sourceHeader l =
+      | Just prefix <- blockHeader l =
           let (content, rest) = break (\x -> T.strip x == closeMarker) ls
            in case rest of
                 [] -> go [] (("unterminated source block (missing " <> closeMarker <> "): " <> T.strip l) : errs) cands
-                (_ : rest') -> case mkSource prefix (T.strip l) (T.intercalate "\n" content) of
+                (_ : rest') -> case mkBlock prefix (T.strip l) (T.intercalate "\n" content) of
                   Left e  -> go rest' (e : errs) cands
                   Right c -> go rest' errs (c : cands)
       | ignorable (T.strip l) = go ls errs cands
@@ -427,21 +465,28 @@ parseEngineCandidates reply = go (T.lines reply) [] []
 closeMarker :: Text
 closeMarker = "lips>>>"
 
--- | A source-block header ends with the open marker @<<<lips@; return the
--- prefix before it (@<confidence> <id> source <name> <relpath>@) to parse.
-sourceHeader :: Text -> Maybe Text
-sourceHeader l = T.stripSuffix "<<<lips" (T.stripEnd (T.strip l))
+-- | A block header ends with the open marker @<<<lips@; return the prefix
+-- before it (@<confidence> <id> <keyword> ...@) to parse.
+blockHeader :: Text -> Maybe Text
+blockHeader l = T.stripSuffix "<<<lips" (T.stripEnd (T.strip l))
 
--- | Parse a source-block header prefix and pair it with its collected content.
-mkSource :: Text -> Text -> Text -> Either Text ItemCandidate
-mkSource prefix rawHeader content = do
-  (confTok, r1) <- firstToken prefix ("empty source header: " <> rawHeader)
-  (idTok, r2)   <- firstToken r1 ("no id in source header: " <> rawHeader)
+-- | Parse a block header and pair it with its collected content. Three block
+-- kinds share the heredoc, so anything verbatim (program source, prose, a bug
+-- report) rides it without escaping: @source <name> <relpath>@, @report@,
+-- @gap <slug>@.
+mkBlock :: Text -> Text -> Text -> Either Text ItemCandidate
+mkBlock prefix rawHeader content = do
+  (confTok, r1) <- firstToken prefix ("empty block header: " <> rawHeader)
+  (idTok, r2)   <- firstToken r1 ("no id in block header: " <> rawHeader)
   conf          <- parseConfidence confTok
-  case T.words r2 of
-    ["source", name, relpath] ->
-      Right (ItemCandidate (ItemSource (SourceFile name relpath content)) (Confidence conf) rawHeader idTok)
-    _ -> Left ("source header must be '<confidence> <id> source <name> <relpath> <<<lips': " <> rawHeader)
+  item <- case T.words r2 of
+    ["source", name, relpath] -> Right (ItemSource (SourceFile name relpath content))
+    ["report"]                -> Right (ItemReport content)
+    ["gap", slug]             -> Right (ItemGap (Gap slug content))
+    _ -> Left ("block header must be '<confidence> <id> source <name> <relpath>', \
+               \'<confidence> <id> report' or '<confidence> <id> gap <slug>', \
+               \followed by '<<<lips': " <> rawHeader)
+  Right (ItemCandidate item (Confidence conf) rawHeader idTok)
 
 -- | Group parsed items into an engine (the @.lang@ artifact). Expects are not
 -- part of the engine; see 'expectsOf'.
@@ -461,6 +506,17 @@ expectsOf items = [e | ItemExpect e <- items]
 -- @artifacts/@, committed and reviewable).
 sourcesOf :: [EngineItem] -> [SourceFile]
 sourcesOf items = [s | ItemSource s <- items]
+
+-- | The language explained in the mint's own words (the @README.md@ body).
+-- The first report wins; @generate@ refuses a mint that has none.
+reportOf :: [EngineItem] -> Maybe Text
+reportOf items = case [r | ItemReport r <- items] of
+  (r : _) -> Just r
+  []      -> Nothing
+
+-- | The kernel capabilities this mint found missing.
+gapsOf :: [EngineItem] -> [Gap]
+gapsOf items = [g | ItemGap g <- items]
 
 -- | The expects that name an option a rule fills with a package or artifact
 -- reference (a derivation, not a program value). A containment check against

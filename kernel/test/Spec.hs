@@ -36,7 +36,7 @@ import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, get
 import System.FilePath ((</>))
 import Data.List (sort)
 import Lips.Generate.Harness
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, uncheckableExpects, EngineItem (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
 import Lips.Generate.Record (genId, record)
@@ -709,6 +709,30 @@ main = hspec $ do
           c `shouldBe` "fn main() {\n    # not a comment: real content\n\n    println!(\"hi\");\n}"
         _ -> expectationFailure "expected exactly one source file"
       length cs `shouldBe` 3
+
+    it "a report block carries the mint's prose verbatim" $ do
+      let reply = "0.9 d1 report <<<lips\n# The backup language\n\nreads two shapes.\nlips>>>\n"
+          (errs, cs) = parseEngineCandidates reply
+      errs `shouldBe` []
+      reportOf (map icItem cs) `shouldBe` Just "# The backup language\n\nreads two shapes."
+      assemble (map icItem cs) `shouldBe` assemble []
+
+    it "a gap block names a missing kernel capability and its repro" $ do
+      let reply = T.unlines
+            [ "0.4 g1 gap templated-source <<<lips"
+            , "blocked line: - /hi => status 200"
+            , "source heredocs have no holes, so a per-route body cannot reach the source."
+            , "lips>>>"
+            ]
+          (errs, cs) = parseEngineCandidates reply
+      errs `shouldBe` []
+      map gapSlug (gapsOf (map icItem cs)) `shouldBe` ["templated-source"]
+
+    it "exempts report and gap from the confidence gate, like a because-note" $ do
+      -- A gap is honest at low confidence by nature, and prose is not engine
+      -- meaning: neither may refuse a mint the engine itself is sure of.
+      map carriesEngineMeaning [ItemReport "p", ItemGap (Gap "g" "b"), ItemNote "n"]
+        `shouldBe` [False, False, False]
 
     it "reports an unterminated source block" $ do
       let reply = T.unlines [ "0.9 s1 source srv main.rs <<<lips", "content with no closer" ]
