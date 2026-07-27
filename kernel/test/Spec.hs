@@ -1762,6 +1762,9 @@ main = hspec $ do
       expectPath     prog `shouldBe` "examples/backup/backup.expect"
       generationPath prog `shouldBe` "examples/backup/backup.generation"
       artifactsPath  prog `shouldBe` "examples/backup/artifacts"
+    it "the language's minted explanation is the folder's README.md" $ do
+      readmePath prog          `shouldBe` "examples/backup/README.md"
+      readmePath "examples/backup.lips" `shouldBe` "examples/backup/README.md"
     it "keeps the human-written direction at the top level, beside the programs" $ do
       directionPath prog `shouldBe` "examples/backup.direction"
       directionPath "examples/photos.backup.lips" `shouldBe` directionPath prog

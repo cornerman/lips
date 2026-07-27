@@ -44,6 +44,7 @@ module Lips.Identity
   , expectPath
   , generationPath
   , directionPath
+  , readmePath
   , langDir
   , outDir
   , artifactsPath
@@ -118,6 +119,13 @@ generationPath = langLevel "generation"
 -- every instance), hence named by the language rather than the instance.
 directionPath :: FilePath -> FilePath
 directionPath file = takeDirectory file </> languageName file <.> "direction"
+
+-- | The language explained in the mint's own words: @examples/backup/README.md@.
+-- Named README rather than @<language>.md@ because it is prose for a human, and
+-- README is the one filename every reader and forge already resolves to "read
+-- this first"; its first line warns that the next mint overwrites it.
+readmePath :: FilePath -> FilePath
+readmePath file = langDir file </> "README.md"
 
 -- | The shared minted-source directory: @examples/backup/artifacts@. A
 -- directory inside the language folder, so it needs no prefix to stay
