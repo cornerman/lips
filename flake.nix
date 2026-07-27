@@ -42,10 +42,18 @@
           # names) otherwise reports the wrapper's real target, .lips-unwrapped
           # -- breaking `lips <TAB>` silently (the completion function would be
           # registered under the wrong name).
+          # The mint's one tool, shipped with the binary rather than installed
+          # into the user's pi: lips loads it per run with `-e`, so the tool
+          # exists inside a mint and nowhere else. LIPS_BIN points the extension
+          # back at this same wrapper, so a lookup answers with what THIS lips
+          # says, not whatever `lips` happens to be on PATH.
+          install -Dm444 ${./assets/mint-tools.ts} "$out/share/lips/mint-tools.ts"
           makeWrapper "$out/bin/.lips-unwrapped" "$out/bin/lips" \
             --argv0 lips \
             --set-default LIPS_NIXPKGS_FLAKE "github:NixOS/nixpkgs/${nixpkgs.rev}" \
-            --set-default LIPS_HM_FLAKE "github:nix-community/home-manager/${home-manager.rev}"
+            --set-default LIPS_HM_FLAKE "github:nix-community/home-manager/${home-manager.rev}" \
+            --set-default LIPS_MINT_TOOLS "$out/share/lips/mint-tools.ts" \
+            --set-default LIPS_BIN "$out/bin/lips"
           # Completion scripts derive from the SAME optparse-applicative Parser
           # that parses real invocations (Lips.Cli), so they cannot drift from
           # it the way a hand-maintained static script would. Generated from
