@@ -1823,7 +1823,20 @@ main = hspec $ do
         , "ONLY the item's value"
         , "same line-shape appearing in different programs is a SINGLE"
         , "Rules must be orthogonal"
+        , "query_options"
+        , "look it up"
+        , "grounds NAMES, never VALUES"
         ]
+
+  -- The tool grounds option NAMES. The one thing it must not become is a
+  -- licence to invent the VALUE that fills a name it just confirmed.
+  describe "mint prompt states the lookup tool (and its limit)" $ do
+    it "names the tool and when to reach for it, in both worlds" $
+      mapM_ (\p -> mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
+              [ "query_options", "look it up", "grounds NAMES, never VALUES" ])
+            [ systemPromptFor Nixos, systemPromptFor HomeManager ]
+    it "repeats that a confirmed option is not a licence to invent its value" $
+      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "refusal beats invention"
 
   -- The optional per-program .direction file steers mint taste. It must ride
   -- on top of the fixed prompt (so it enters genId) and carry the guard that
