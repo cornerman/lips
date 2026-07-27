@@ -158,26 +158,30 @@ fourth verb, `lips check`, re-verifies the committed tests in CI.
 
 ## Install
 
-Run the CLI without installing anything:
-
-    nix run github:cornerman/lips -- compile ledger.backup.lips
-
-To keep `lips` on your PATH, add the flake as an input:
+Add the flake as an input:
 
     inputs.lips.url = "github:cornerman/lips";
 
-Then, in NixOS `environment.systemPackages` or home-manager `home.packages`:
+Then add the package to NixOS `environment.systemPackages` or home-manager
+`home.packages`:
 
     inputs.lips.packages.${pkgs.stdenv.hostPlatform.system}.default
 
-That one package is everything `compile`, `check`, and `lsp` need; they are
-offline and use only `nix` itself. `generate` additionally expects the `pi`
-binary on your PATH, authenticated against some provider: lips deliberately
-keeps it out of its own closure, because it is your harness and carries your
-credentials. lips calls it hermetically (`-p -nt -nc --no-session`), so no
-ambient `AGENTS.md`, extension, or skill of yours steers a mint; the system
-prompt lips sends is the only instruction, and it is hashed into
-`.generation`.
+Rebuild, and `lips` is a command on your PATH. That one package is everything
+`compile`, `check`, and `lsp` need; they are offline and use only `nix`
+itself. `generate` additionally expects the `pi` binary on your PATH,
+authenticated against some provider: lips deliberately keeps it out of its own
+closure, because it is your harness and carries your credentials. lips calls
+it hermetically (`-p -nt -nc --no-session`), so no ambient `AGENTS.md`,
+extension, or skill of yours steers a mint; the system prompt lips sends is
+the only instruction, and it is hashed into `.generation`.
+
+Prefer not to install anything yet? Run it straight from the flake instead:
+
+    nix run github:cornerman/lips -- compile ledger.backup.lips
+
+Everywhere below assumes `lips` is installed; substitute
+`nix run github:cornerman/lips --` for `lips` if you are trying it this way.
 
 To deploy a program, point `lib.modulesFromDir` at the directory holding your
 `.lips` files. It compiles each one in a derivation (offline, no AI) and labels
@@ -193,9 +197,11 @@ its language folder before rebuilding.
 
 ## Try It
 
+The examples live in the repo, so clone it first:
+
     git clone https://github.com/cornerman/lips && cd lips
-    nix run . -- compile examples/ledger.backup.lips  # plain lines -> module dir + flake
-    nix run . -- check   examples/ledger.backup.lips  # the committed contract still holds
+    lips compile examples/ledger.backup.lips  # plain lines -> module dir + flake
+    lips check   examples/ledger.backup.lips  # the committed contract still holds
 
 `compile` prints the stock nix commands that run the result, e.g.
 `nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs
@@ -217,9 +223,11 @@ runs it as a service. The source is a committed, reviewable file beside the
 program; the build and run stay deterministic and offline. The `artifact-vm`
 flake check compiles it and boots the service in a VM.
 
-For hacking on lips itself, `just` is the command index: `just test` runs the
-conformance suite, `just check` the full verification. With direnv, run
-`direnv allow` once; otherwise prefix with `nix develop -c`.
+Hacking on lips itself, rather than using it, is a separate mode: the repo
+clone above already gives you everything. `justfile` is the command index
+(`just` alone lists every recipe: `just test`, `just check`, ...); with direnv
+installed, `direnv allow` once wires the dev shell automatically, otherwise
+prefix commands with `nix develop -c`.
 
 ## The Files
 
