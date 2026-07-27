@@ -32,7 +32,7 @@ import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
-import           System.IO          (hFlush, stderr, stdout)
+import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (doesPathExist)
 import           System.FilePath    (takeFileName, (</>))
 import           System.Process     (callCommand, readProcessWithExitCode)
@@ -75,6 +75,12 @@ defaultConfidence = 0.7
 
 main :: IO ()
 main = do
+  -- lips' messages carry non-ASCII (the "→" every remedy line opens with), and
+  -- the handle encoding otherwise follows the ambient locale: under LANG=C a
+  -- write would die with "cannot encode character", turning a helpful error
+  -- into a crash. Pin UTF-8 so what lips prints does not depend on the
+  -- environment it is run from. (@lsp@ sets its own binary mode afterwards.)
+  mapM_ (`hSetEncoding` utf8) [stdout, stderr]
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
     Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goFiles go)
@@ -429,13 +435,13 @@ optionsQuery target limit query = do
     Left e -> die (report
       ("lips can't read the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
       [tshow e]
-      "\226\134\146 run it again.")
+      "→ run it again.")
     Right b -> pure b
   case parseNixOptionsJson bytes of
     Left why -> die (report
       ("lips can't parse the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
       [why]
-      "\226\134\146 run it again.")
+      "→ run it again.")
     -- Exit 0 even for Nowhere: "no option matches that" is a valid answer to a
     -- question, not a failure of the command.
     Right schema -> TIO.putStr (renderAnswer query (answerQuery limit query schema))
@@ -446,12 +452,9 @@ renderAnswer :: Text -> Answer -> Text
 renderAnswer query ans = case ans of
   Leaves ls -> T.unlines
     [ dotted p <> " : " <> renderOptionType t | (p, t) <- ls ]
-  -- Deliberately ASCII: this text is read by a model as well as a human, and
-  -- lips' existing non-ASCII escapes render as mojibake under a UTF-8 locale
-  -- (see the arrow in 'report').
   Namespaces ns hidden -> T.unlines $
     [ dotted p <> " (" <> plural n "option" <> ")" | (p, n) <- ns ]
-      ++ [ "... and " <> plural hidden "more namespace" <> "." | hidden > 0 ]
+      ++ [ "… and " <> plural hidden "more namespace" <> "." | hidden > 0 ]
       ++ [ "Ask again with one of these paths to see its options." ]
   Nowhere -> T.unlines
     [ "no option matches " <> query
@@ -477,12 +480,12 @@ assertOptionsAdmissible target file eng = do
     Left e -> die (report
       ("lips can't read the NixOS option schema at " <> T.pack schemaPath <> ":")
       [tshow e]
-      "\226\134\146 run generate again.")
+      "→ run generate again.")
     Right bytes -> case parseNixOptionsJson bytes of
       Left why -> die (report
         ("lips can't parse the NixOS option schema at " <> T.pack schemaPath <> ":")
         [why]
-        "\226\134\146 run generate again.")
+        "→ run generate again.")
       Right schema -> case checkEmits schema (edRules eng) of
         []   -> pure ()
         errs -> die (validationReport file
@@ -516,7 +519,7 @@ ensureOptionSchema target remedy = do
         Nothing -> die (report
           ("lips can't read the setup's options: no " <> targetSlug target <> " option schema source is configured.")
           ["neither LIPS_OPTIONS_JSON nor " <> T.pack envVar <> " is set."]
-          ("\226\134\146 run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
+          ("→ run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
         Just flakeref -> do
           TIO.hPutStrLn stderr
             ("checking options against the " <> targetSlug target
@@ -530,11 +533,11 @@ ensureOptionSchema target remedy = do
             Left e -> die (report
               "lips needs nix to build the option schema, but couldn't run it:"
               (T.lines (tshow (e :: IOException)))
-              ("\226\134\146 install nix, or run lips through it: nix run . -- " <> remedy))
+              ("→ install nix, or run lips through it: nix run . -- " <> remedy))
             Right (ExitFailure _, _, err) -> die (report
               ("lips couldn't build the " <> targetSlug target <> " option schema:")
               (T.lines (T.pack err))
-              ("\226\134\146 run it again: nix run . -- " <> remedy))
+              ("→ run it again: nix run . -- " <> remedy))
             Right (ExitSuccess, out, _) ->
               pure (T.unpack (T.strip (T.pack out)) <> T.unpack subPath)
 
