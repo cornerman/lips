@@ -1813,6 +1813,7 @@ main = hspec $ do
         , "NO EXPECT FOR A PACKAGE OR BUILD"
         , "ONLY the item's value"
         , "same line-shape appearing in different programs is a SINGLE"
+        , "Rules must be orthogonal"
         ]
 
   -- The optional per-program .direction file steers mint taste. It must ride
