@@ -167,6 +167,49 @@ both sides, which is exactly lips §2.2. Two observations:
   (rationale, provenance notes) needs a defined merge, or it will grow the same
   wart.
 
+### Shipped Strength Calculi and How They Decayed
+
+Merge-by-strength has mass deployments outside configuration languages, and
+their failure modes are the empirical case against a free-floating priority
+number. CSS cascade specificity plus `!important`, Drools' `salience`, and
+XACML's rule-combining algorithms (deny-overrides, first-applicable) are each a
+shipped decision calculus; each has an infamous decay story, and the shape is
+the same in all three. Priority is an unstructured integer any author may set
+at any site, so it stops expressing *who has authority* and becomes a debugging
+tool: raise the number until the value wins. The chain then encodes nothing.
+
+Inversion (what would guarantee lips fails the same way): let engines or
+programs author strength directly. lips's defense is that strength is
+structural (system default < engine default < program) and not writable as a
+number, which no shipped system in this list has. Worth keeping deliberate
+rather than accidental.
+
+OMG's **DMN** is the counter-example that standardized the problem instead of
+suffering it: decision tables carry an explicit *hit policy* (UNIQUE, PRIORITY,
+FIRST, COLLECT, ...) declaring per table what happens when several rules fire.
+lips's equivalent is `MergeMode` (`Replace`/`Append`), derived from the option
+schema rather than authored, which is the stronger version of the same idea.
+Architecture Decision Records (Nygard, 2011) are the prose ancestor of the
+decision-as-artifact move: subject, choice, rationale, provenance, reviewable
+in isolation, but with no execution semantics.
+
+### Other Neighbours, Briefly
+
+**Pkl** (Apple) and **KCL** amend-and-override in the Jsonnet lineage, weaker
+theory than CUE or Nickel but real deployment data on how override chains rot.
+**System Initiative** (Adam Jacob) models infrastructure as a reactive
+hypergraph with *qualifications*, continuously re-answered checks over each
+asset; that is close in spirit to lips's assumption decisions with statuses,
+and the only entry here that treats "is this still true?" as a live property
+rather than a build-time one.
+
+One same-architecture cousin turned up outside configuration entirely:
+**Taprun** (taprun.dev) compiles a browser-automation flow once with a model
+and replays it deterministically, advertising zero LLM calls at runtime. No DSL
+ambition, no domain-blind kernel, but the identical bet, independently made,
+and its FAQ already answers lips's regenerate door in miniature ("what happens
+when the site changes?").
+
 ## Seam 3: Conflict Reporting Is Model-Based Diagnosis
 
 lips reports a conflict as two decisions with both provenances. For two directly

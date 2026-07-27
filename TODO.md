@@ -102,6 +102,33 @@
 - **Heile-Welt coping** — no mechanism yet; reality mismatches (GPU present,
   driver loads) surface at runtime, outside the kernel's determinism boundary.
 
+### From survey F (theory under the calculus)
+
+All four trace to `docs/superpowers/survey/f-decision-calculus-theory.md`; the
+first has landed, these are the rest, ranked.
+
+- **Minimal conflict explanation (QuickXplain).** A conflict names two competing
+  decisions today. When the contradiction is derived several refinement steps
+  down, the author needs the smallest set of *program lines* that cannot hold
+  together. Junker (AAAI 2004) computes it in a logarithmic number of
+  consistency checks, and strength already supplies the preference order the
+  algorithm needs. Deterministic, domain-blind, offline; sized like the overlap
+  milestone.
+- **Static pattern overlap** — the pattern-layer sibling of the rule overlap
+  check that landed. `crystallize` reports `Overlapping` dynamically, so a
+  language can ship two templates no example line separates. Harder half:
+  templates are token sequences with multi-token tail holes, not fixed-length
+  tuples, so unification is not the same three lines.
+- **Merge against the IC postulates.** Record which of Konieczny & Pino Pérez's
+  merging postulates lips's merge satisfies, which it violates and why
+  (arbitration over majority, with `Append` as the stated exception). A written
+  audit, not code.
+- **Two decisions to make before they surprise someone**: whether an obligation
+  survives an override (Nickel propagates contracts onto the winner; lips drops
+  them — deferred deliberately, no engine emits obligations yet), and whether
+  specificity beats generality (*lex specialis*; strength is *lex superior*
+  only). Both recorded in DESIGN.md §11.
+
 ## Housekeeping / smells
 
 - `stripTailPunct` (`Kernel/Engine/Value.hs`) duplicates `stripTrailingPunct`
