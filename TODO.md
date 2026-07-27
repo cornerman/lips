@@ -16,16 +16,7 @@
    model read is an input). No tool judges an engine: informing is safe to
    expose, deciding is not.
 
-2. **Mint expression channels** — plan
-   `docs/superpowers/plans/2026-07-26-mint-expression-channels-plan.md`. Two
-   new block kinds: `report` (required, exactly one) written to
-   `<language>/README.md`, so a human reviews prose instead of `.lang`; and
-   `gap`, a kernel capability the mint found missing, surfaced on both the
-   success and the refusal path. Regeneration also sees the previous engine,
-   report and contract, so vocabulary stays stable across mints. Independent of
-   item 1 and may land in either order.
-
-3. **Mint prompt rewrite** — plan
+2. **Mint prompt rewrite** — plan
    `docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md`. Move the
    prompt out of escaped Haskell literals into `assets/mint/*.md` embedded with
    `file-embed` (byte-identical first), then rewrite it for the agent doing the
@@ -35,18 +26,19 @@
    examples, a self-review checklist. A suite guard parses every fenced
    `lips-engine` example block, so an example cannot outlive its grammar.
 
-4. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
+3. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
    When `generate` refuses because physics is missing, write a machine-readable
    artifact (refused lines, missing capability / extension point, minimal repro,
    model+prompt fingerprint) instead of on-screen-only text. Operationalizes the
-   cross-repo escalation workflow (DESIGN Doctrine). Item 2 supplies the
-   producer (the `gap` block); this item is only the file writer.
+   cross-repo escalation workflow (DESIGN Doctrine). The `gap` block already
+   supplies the producer and prints on both paths; this item is only the file
+   writer.
 
-5. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
+4. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
    Wire one realized module into `~/nixos` on `wolf`. Reduced to "import one
    file"; proves survival on a real system, not just a VM boot.
 
-6. **Template grammar completeness** (completeness plan Target 2). The value
+5. **Template grammar completeness** (completeness plan Target 2). The value
    grammar is complete-by-construction over the Nix value algebra minus
    computation; the template grammar is only "complete over observed line
    shapes" — a weaker, honest claim. Missing capture forms: unquoted multi-token

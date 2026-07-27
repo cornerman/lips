@@ -24,6 +24,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |
 | `Lips.Generate.Record` | section 5 | the pinned generation record and its content id; every minted `.lang` line is stamped `@gen:<id>` |
 | `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + whole-engine candidate parser (pure) |
+| `Lips.Generate.Readme` | section 5 | the mint's `report` and `gap` blocks rendered as `<language>/README.md`, the human's review artifact |
 
 ## The Loop
 

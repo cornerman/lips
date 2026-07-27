@@ -379,6 +379,28 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Mint expression channels: `report` and `gap`.** The mint speaks to the
+  human in two channels beside the engine, both riding the heredoc block
+  syntax `source` already used (`Lips.Generate.Minting.mkBlock` dispatches on
+  the keyword). `report` is required, exactly one per mint: plain-language
+  prose explaining the language just built, rendered by
+  `Lips.Generate.Readme.renderReadme` to `<language>/README.md`
+  (`Lips.Identity.readmePath`), opening with a line saying every mint
+  overwrites it. A mint that ships no report is refused by a structural guard
+  in `generate`, so the channel cannot rot into an optional pleasantry.
+  `gap` (zero or more) names a kernel capability the mint lacked, the line it
+  blocked and a repro; gaps print on the success path (as slugs, pointing at
+  the README) and in the refusal (in full, tagged "this is a lips bug, not
+  your program"). Neither channel is gated by confidence: `Minting` exports
+  `carriesEngineMeaning` as the single place that says which items the
+  threshold governs, so a future item kind cannot slip under it by omission.
+  A gap is invariant 4 made mechanical -- a mint needing gymnastics files a
+  kernel bug rather than working around the physics. Not built: the
+  regeneration context (showing a re-mint the previous engine, report and
+  contract) from the same plan, deliberately deferred while a mint acts
+  exactly once. Plan:
+  `docs/superpowers/plans/2026-07-26-mint-expression-channels-plan.md`.
+
 - **CLI: `--lang`, sharing a language across directories.** `compile` and
   `check` gain an optional `--lang DIR` flag that redirects only where
   they READ the four committed language files (`.lang`/`.expect`/

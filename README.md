@@ -221,7 +221,7 @@ listing shows what you own and nothing else:
     photos.backup.lips          <- yours
     backup.direction            <- yours (optional taste for the mint)
     backup/                     <- the machine's, all of it
-      backup.lang backup.expect backup.generation
+      backup.lang backup.expect backup.generation README.md
       artifacts/
       out/                      <- derived; lips writes out/.gitignore itself
         ledger.decisions  ledger/
@@ -236,6 +236,7 @@ under `out/` is per instance, derived, and safe to delete.
 | `backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
 | `backup/backup.lang` | AI, once | the engine (grammar + rules + tests), shared by the language | yes |
 | `backup/backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
+| `backup/README.md` | AI, once | the language explained in plain words, your review artifact | yes |
 | `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
 | `backup/backup.generation` | machine | receipt of the exact AI call and its target world, shared | yes |
 | `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
