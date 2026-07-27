@@ -39,11 +39,12 @@ import           System.Process     (callCommand, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
-import           Lips.Identity                 (artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
+import           Lips.Generate.Readme   (renderReadme)
+import           Lips.Identity                 (readmePath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (EngineItem (..), ItemCandidate (..), SourceFile (..), assemble, expectsOf, parseEngineCandidates, promptWithDirection, sourcesOf, uncheckableExpects)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (genId, record)
 import           Lips.Kernel.Base       (Conflict (..), Base)
@@ -306,12 +307,21 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       notes = [(icId c, r) | c <- candidates, ItemNote r <- [icItem c]]
       -- Deduce-or-fail: the programs are the only source of truth, so an item
       -- the model cannot confidently derive means they underspecify it.
-      unsure = [c | c <- candidates, notNote (icItem c)
+      unsure = [c | c <- candidates, carriesEngineMeaning (icItem c)
                   , let Confidence x = icConfidence c, x < confidence]
-      notNote i = case i of { ItemNote _ -> False; _ -> True }
+      gaps = gapsOf (map icItem candidates)
   if not (null errs) || not (null unsure)
-    then die (refusalReport rep confidence errs unsure notes)
+    then die (refusalReport rep confidence errs unsure notes gaps)
     else do
+      -- A mint without an explanation is incomplete: the human's review
+      -- artifact is the report, not the .lang. A structural guard, so the
+      -- channel cannot rot into an optional pleasantry the model skips.
+      reportBody <- case reportOf (map icItem candidates) of
+        Just b | not (T.null (T.strip b)) -> pure b
+        _ -> die (report
+          ("the mint for ." <> T.pack lang <> " came back without a report block.")
+          ["lips needs the language explained in plain words before it commits it."]
+          ("\8594 run generate again: lips generate " <> T.pack rep))
       let eng0 = assemble (map icItem candidates)
       -- Validate the engine EXACTLY as it will be persisted: render to .lang and
       -- read it back, so any render/read round-trip drift is caught at mint
@@ -378,6 +388,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       callCommand ("mkdir -p " <> shq (langDir rep))
       TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
       TIO.writeFile (generationPath rep) rec
+      TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
       writeSources (artifactsPath rep) minted
       forM_ validated $ \(f, base, _) -> do
         ensureDerived f
@@ -391,6 +402,12 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
         [ "lips set up ." <> T.pack lang <> " from " <> tshow (length files)
             <> " program(s) and verified each produces a valid NixOS configuration."
         , "" ]
+        ++ take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ]
+        ++ [ "\8594 read the whole account: " <> T.pack (readmePath rep) ]
+        ++ (if null gaps then [] else
+             [ "", "lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":" ]
+             ++ [ "  - " <> gapSlug g | g <- gaps ])
+        ++ [ "" ]
         ++ [ "→ preview:  lips compile " <> T.pack f | (f, _, _) <- validated ]
       case [ m | (f, _, m) <- validated, f == rep ] of
         (m : _) -> TIO.putStr m
@@ -727,11 +744,22 @@ nixEvalFailed file cmd detail = report
 
 -- | generate couldn't build a setup: either lines lips couldn't read (a
 -- capability may be missing) or values the program leaves underspecified.
-refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> [(Text, Text)] -> Text
-refusalReport file _threshold errs unsure notes = T.intercalate "\n" $
+refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> [(Text, Text)] -> [Gap] -> Text
+refusalReport file _threshold errs unsure notes gaps = T.intercalate "\n" $
   ["lips couldn't build a setup for " <> T.pack file <> "."]
-    ++ grammar ++ underspecified
+    ++ grammar ++ underspecified ++ missing
   where
+    -- A dead mint that names the capability it lacked yields a work item
+    -- rather than a shrug: the gap is a kernel bug in the model's own words.
+    missing
+      | null gaps = []
+      | otherwise =
+          [ "", "The mint says lips is missing a capability here:" ]
+          ++ concat [ ("  - " <> gapSlug g)
+                        : [ "      " <> l | l <- T.lines (T.strip (gapBody g)) ]
+                    | g <- gaps ]
+          ++ [ ""
+             , "→ this is a lips bug, not your program. Please report the text above." ]
     grammar
       | null errs = []
       | otherwise =

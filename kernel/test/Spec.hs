@@ -36,6 +36,7 @@ import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, get
 import System.FilePath ((</>))
 import Data.List (sort)
 import Lips.Generate.Harness
+import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
@@ -733,6 +734,14 @@ main = hspec $ do
       -- meaning: neither may refuse a mint the engine itself is sure of.
       map carriesEngineMeaning [ItemReport "p", ItemGap (Gap "g" "b"), ItemNote "n"]
         `shouldBe` [False, False, False]
+
+    it "the README warns it is generated, carries the prose and lists the gaps" $ do
+      let out = renderReadme "backup" "reads three shapes."
+                  [Gap "templated-source" "no holes in source blocks"]
+      out `shouldSatisfy` T.isInfixOf "lips generate"
+      out `shouldSatisfy` T.isInfixOf "reads three shapes."
+      out `shouldSatisfy` T.isInfixOf "templated-source"
+      renderReadme "backup" "prose" [] `shouldSatisfy` (not . T.isInfixOf "Known Gaps")
 
     it "reports an unterminated source block" $ do
       let reply = T.unlines [ "0.9 s1 source srv main.rs <<<lips", "content with no closer" ]
