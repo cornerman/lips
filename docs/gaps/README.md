@@ -11,8 +11,12 @@ They stay committed because each one is a repro. Move a program back into
 | Program | Target | Blocked by |
 |---|---|---|
 | `logscan.lips` | nixos | behavior-as-source, templated source |
-| `board.lips` | home-manager | capture-keyed artifact names |
-| `habit.lips` | home-manager | capture-keyed artifact names, language branching |
+| `board.lips` | home-manager | ~~capture-keyed artifact names~~ (closed; retry the mint) |
+| `habit.lips` | home-manager | ~~capture-keyed artifact names~~ (closed), language branching |
+
+Finding 2 is closed in the kernel, so `board` and `habit` are worth re-minting;
+what blocked them mechanically is gone. `logscan` remains blocked on findings 1
+and 4, which are design work.
 
 ## What Was Run
 
@@ -58,7 +62,11 @@ Two candidate remedies, neither designed yet:
 
 Findings 3 and 4 below are the same disease in smaller form.
 
-## Finding 2: Capture-Keyed Artifact Names
+## Finding 2: Capture-Keyed Artifact Names (CLOSED)
+
+Closed in the kernel: a capture now keys an artifact and fills a value. See the
+ledger entry "Captures are first-class". The original report follows, since it
+is what drove the fix.
 
 `claude-sonnet-5` hit this on both `board.lips` and `habit.lips`, phrasing it
 the same way each time:

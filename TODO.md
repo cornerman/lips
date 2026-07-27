@@ -32,11 +32,9 @@
       declines to honor. Same family as the `VTail` decision (emitting a literal
       instead of failing was rejected); this is that hole one level up.
 
-   b. **Capture-keyed artifact names.** `${artifact.<name>}` rejects a hole, so
-      a build cannot be keyed by a program value the way an option can be
-      ("Value-keyed options" is done; artifacts were left out). The natural
-      engine for "install a command called X" is unwritable. Most contained fix
-      of the six, and it unblocks the whole CLI class mechanically.
+   b. ~~**Capture-keyed artifact names.**~~ CLOSED (see ledger §13). A capture
+      now keys an artifact and fills a value, so `install a command greet that
+      prints "..."` is writable and both values flow from the sentence.
 
    c. **Language branching.** No way to branch a builder on a captured language
       token, so `write the tool in go` either hardcodes `buildGoModule` (and

@@ -437,6 +437,44 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Captures are first-class: a capture keys a build and fills a value.** A
+  `<name>` capture reached the emit PATH only, so a rule could key an nginx
+  vhost by a program value but could not key a BUILD by one, and could not carry
+  the captured key into a value at all. Both are now physics: `parseRef` admits
+  `${artifact.<capture>}` beside a literal name and `<self>`,
+  `bindCaptureValue` (`Kernel/Engine/Value.hs`) resolves a capture used as an
+  artifact NAME the way `bindSelfValue` resolves `<self>`, and `toRule`'s `pick`
+  resolves a value hole that names a bound capture, so one rule matching
+  `cmd.<name>.msg` may emit `artifact.<name>.builder`,
+  `artifact.<name>.args.name "<name>"` and `environment.systemPackages
+  "[ ${artifact.<name>} ]"`. This is what makes a program that NAMES the thing
+  it builds expressible: `install a command greet that prints "..."` realizes to
+  an `artifact.greet` keyed by the program's own word, so editing the sentence
+  renames the command and changes its output through `compile`, with no model.
+  Before this the only spelling that worked keyed the build off `<self>`, i.e.
+  off the FILENAME, so the program's first value was decorative.
+  Two findings drove it, both filed by a mint against itself, on three separate
+  programs (`docs/gaps/README.md`, findings 1 and 2): the model reached for
+  `artifact.<cmd>` and `args.name "<cmd>"` every time, because that is the
+  natural engine, and the kernel refused. Per invariant 4 the fix belonged in
+  the kernel, not in a prompt telling the model to avoid the shape; the prompt
+  paragraph that did so was reverted in the same branch.
+  Placement decision: `parseValue` cannot judge a hole name, since it never sees
+  a subject, so it now accepts any identifier hole, and `parseRuleBody` rejects
+  the unbound ones where the subject IS in hand -- one door, the one every
+  minted engine enters, naming the rule and the offending capture. A sibling
+  static check in `Engine/Overlap.hs` was built first and then deleted as
+  redundant surface (every production rule is parsed).
+  Verified by seven conformance tests (value fill, artifact-ref fill, round
+  trip, unbound rejection at the rule parser, identifier-hole acceptance at
+  `parseValue`, non-identifier rejection), 304 examples green, `-Wall` clean,
+  all nine committed examples compiling to BYTE-IDENTICAL modules (diffed old
+  binary against new), and proven live end to end: a hand-written
+  capture-keyed engine realizes `pkgs.writeShellApplication { name = "greet";
+  text = "echo hello from lips"; }`, `nix run` prints the program's text, and
+  editing the program to `install a command hello that prints "captures are
+  first-class"` re-realizes to a renamed command with new output, offline.
+
 - **Static rule orthogonality (critical pairs at the mint gate).** `generate`
   now rejects an engine whose rules could claim one decision, before the engine
   is written. `Lips.Kernel.Engine.Overlap.ruleOverlaps` treats each rule's
