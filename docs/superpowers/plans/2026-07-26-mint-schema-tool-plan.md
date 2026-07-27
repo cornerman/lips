@@ -79,6 +79,40 @@ match a word is the namespace *about* that thing; one or two matches means a
 consumer that merely references it. Pure counting, no word list, no spelling
 model, domain-blind.
 
+## Execution Order and the One Checkpoint
+
+Agreed before starting, so the risky parts are not entangled with the cheap ones.
+
+1. **Tasks 1 and 2 first, then stop.** Both are pure Haskell with fast tests and
+   no dependency on `nix`, `pi`, or the extension, so they land quickly and carry
+   no unverified assumption.
+2. **Checkpoint: a human reads real output.** Run `lips options` against the
+   pinned schema and look at the actual answers before anything is built on top:
+
+   ```bash
+   nix run . -- options services.restic.backups   # expect exact leaves with types
+   nix run . -- options backup                     # expect namespaces, restic among them
+   nix run . -- options nginx                      # expect services.nginx ranked first
+   nix run . -- options nosuchthing                # expect a clean "no match"
+   ```
+
+   The adaptive answer shape is the one decision in this plan that came from
+   measurement rather than from principle (see the section above), so it gets a
+   human eye at the point where changing it is still free. If the ranking reads
+   badly, fix it here, not after Task 3 wires an extension around it.
+3. **Tasks 3 to 7 after the checkpoint passes.** These need `nix build` and a
+   real `pi` run, and they carry the plan's two unverified assumptions, both
+   flagged in place: the exact spelling of pi's `--no-extensions` /
+   `--no-skills` / `--no-prompt-templates` flags (Task 4), and the `result`
+   encoding of the `tool_execution_end` event (Task 5). Capture one real
+   `--mode json` stream and read it before writing Task 5's parser.
+
+**Work in the worktree, never in the main tree.** On 2026-07-26 a concurrent
+session editing `README.md` in the shared tree committed with `git add -A` and
+swept unrelated staged work into two of its commits (`1f7bbf0`, `e834e85`),
+which were pushed before it was noticed. Nothing was lost, but the messages no
+longer describe their contents. The worktree is not a formality.
+
 ## Global Constraints
 
 - The kernel is domain-blind: the new helpers are path arithmetic and counting
