@@ -14,9 +14,13 @@
 --   * artifact rungs (@exec@, @shell@): run\/build the buildable derivation
 --     directly. Present only when the program declares an @artifact.\<name\>@.
 --     Bare by construction -- no init runs, so no service and no service env.
---   * system rung (@vm@): evaluate @.\/default.nix@ through the NixOS module
---     system and boot the result in QEMU (real systemd, all services). nixos
---     only -- home-manager has no machine to boot. There is deliberately no
+--   * system rungs (@vm@, @shell@): evaluate @.\/default.nix@ through the NixOS
+--     module system and take two things off that one evaluation -- boot the
+--     result in QEMU (@vm@: real systemd, all services), or enter a dev shell
+--     holding what the config puts on the system PATH (@shell@). Both are
+--     DERIVED from the config, never declared by the program, which is why
+--     they are always present. nixos only -- home-manager has no machine to
+--     boot and @compile@ never evaluates a home config. There is deliberately no
 --     @container@ (systemd-nspawn) rung: running a real init is inherently
 --     privileged, so a light rootless \"run the system\" does not exist; nspawn
 --     was fragile and bought nothing @vm@ does not (see the run-axis spec).
@@ -57,11 +61,12 @@ flakeText target hasArtifacts = T.unlines $
   , "      forSystems = nixpkgs.lib.genAttrs systems;"
   , "      pkgsFor = system: import nixpkgs { inherit system; };"
   ]
-  ++ nixosBuildsLet target
+  ++ nixosBuildsLet target hasArtifacts
   ++ [ "    in {" ]
   ++ moduleOutput target
   ++ packagesOutput target hasArtifacts
   ++ appsOutput target
+  ++ devShellsOutput target
   ++ [ "    };"
      , "}"
      ]
@@ -77,23 +82,44 @@ moduleOutput HomeManager = [ "      homeManagerModules.default = import ./defaul
 -- boot) reference the SAME vm\/toplevel. This is the @nix build \<x\>@ vs
 -- @nix run \<x\>@ duality: a rung is one derivation reachable two ways, never
 -- two definitions. home-manager has no machine, so it emits nothing here.
-nixosBuildsLet :: Target -> [Text]
-nixosBuildsLet HomeManager = []
-nixosBuildsLet Nixos =
+nixosBuildsLet :: Target -> Bool -> [Text]
+nixosBuildsLet HomeManager _ = []
+nixosBuildsLet Nixos hasArtifacts =
   [ "      nixosBuilds = system:"
   , "        let"
-  , "          evalConfig = extra: import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
+  , "          evalNixos = extra: mods: import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
   , "            inherit system;"
-  , "            modules = extra ++ [ ./default.nix ];"
+  , "            modules = extra ++ mods;"
   , "          };"
+  , "          evalConfig = extra: evalNixos extra [ ./default.nix ];"
+    -- Both shell evals carry the same stub, so the subtraction stays symmetric
+    -- and neither warns about an unset stateVersion.
+  , "          shellStub = { system.stateVersion = \"24.11\"; };"
   , "          # A fixed hostname so the VM boot script has a fixed name to run."
   , "          vm = (evalConfig ["
   , "            (nixpkgs + \"/nixos/modules/virtualisation/qemu-vm.nix\")"
   , "            { system.stateVersion = \"24.11\"; networking.hostName = \"lips\";"
   , "              virtualisation.graphics = false; users.users.root.password = \"\"; }"
   , "          ]).config.system.build.vm;"
-  , "        in { inherit vm; };"
+    -- The shell rung off the same evaluation: what the config puts on the
+    -- system PATH is exactly what a shell for this program should hold. Only
+    -- environment.systemPackages is forced, so no VM/bootloader option has to
+    -- be satisfied.
+    -- The shell rung off the same evaluation. A bare NixOS eval already carries
+    -- the whole base system (systemd, grub, coreutils, ...) in
+    -- environment.systemPackages, so subtract an empty config's list: what
+    -- remains is exactly what THIS program adds to the system PATH.
+  , "          basePackages = (evalNixos [ shellStub ] []).config.environment.systemPackages;"
+  , "          shell = (pkgsFor system).mkShell {"
+  , "            packages = nixpkgs.lib.subtractLists basePackages"
+  , "              (evalConfig [ shellStub ]).config.environment.systemPackages" <> shellArtifacts <> ";"
+  , "          };"
+  , "        in { inherit vm shell; };"
   ]
+  where
+    shellArtifacts
+      | hasArtifacts = " ++ builtins.attrValues (import ./artifact.nix { pkgs = pkgsFor system; })"
+      | otherwise    = ""
 
 -- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
 -- activate). Artifacts sit under the @artifact.\<name\>@ namespace (so a
@@ -126,6 +152,16 @@ appsOutput Nixos =
   , "        });"
   ]
 
+-- | @devShells@ (@nix develop \<x\>@ enters), nixos only. @default@ so the
+-- command needs no attribute: @nix develop path:\<dir\>@.
+devShellsOutput :: Target -> [Text]
+devShellsOutput HomeManager = []
+devShellsOutput Nixos =
+  [ "      devShells = forSystems (system: {"
+  , "        default = (nixosBuilds system).shell;"
+  , "      });"
+  ]
+
 -- | The exact commands to print after a successful compile, so the human sees
 -- only rungs the program's shape supports (deduce-or-fail: no impossible
 -- command is ever shown). @dir@ is the output directory; commands use
@@ -136,14 +172,21 @@ runCommands target artNames dir =
   concatMap artifactLines artNames ++ systemLines target
   where
     ref suffix = "path:" <> T.pack dir <> "#" <> suffix
+    -- One column for the label, one for the verb, so the flake refs line up
+    -- however long a verb or an artifact name is.
+    cmd label verb target' note =
+      "  " <> T.justifyLeft 23 ' ' (label <> ":") <> " "
+        <> T.justifyLeft 12 ' ' ("nix " <> verb) <> target' <> note
     artifactLines n =
-      [ "  run the " <> n <> " binary:   nix run   " <> ref ("artifact." <> n)
-      , "  build it:              nix build " <> ref ("artifact." <> n)
-      , "  a shell with it:       nix shell " <> ref ("artifact." <> n)
+      [ cmd ("run the " <> n <> " binary") "run"   (ref ("artifact." <> n)) ""
+      , cmd "build it"                     "build" (ref ("artifact." <> n)) ""
+      , cmd "a shell with it"              "shell" (ref ("artifact." <> n)) ""
       ]
     systemLines Nixos =
-      [ "  run in a VM:           nix run   " <> ref "vm" <> "   (full system, all services; needs KVM)"
-      , "  build the system:      nix build " <> ref "vm" <> "   (checks it builds; no KVM)"
+      [ cmd "run in a VM"      "run"     (ref "vm") "   (full system, all services; needs KVM)"
+      , cmd "build the system" "build"   (ref "vm") "   (checks it builds; no KVM)"
+      -- The shell rung needs no attribute: it is devShells.default.
+      , cmd "a shell of its tools" "develop" ("path:" <> T.pack dir) "   (what the config puts on PATH)"
       ]
     -- home-manager has no machine to boot: a module is imported into a home
     -- config, not run standalone. Name that instead of a build that can't work.

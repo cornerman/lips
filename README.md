@@ -100,9 +100,18 @@ import hint, since there is no machine to boot. Running is not a lips verb:
 pick one. A program that builds an
 artifact prints `nix run …#artifact.<name>` (run the binary bare) and
 `nix shell …#artifact.<name>`; a system module prints `nix run …#vm`
-(a throwaway QEMU boot of the whole system) and `nix build …#vm` (build it
-without booting, no KVM -- the "does it build" check). The host is never
-touched. (A portable OCI image for shipping a server is a future *package*
+(a throwaway QEMU boot of the whole system), `nix build …#vm` (build it
+without booting, no KVM -- the "does it build" check), and `nix develop …`
+(a shell holding the tools the program adds to the system PATH). The host is
+never touched.
+
+The shell is derived, never declared. `compile` evaluates the module once and
+subtracts a bare NixOS config's `environment.systemPackages` from your own, so
+what is left is exactly what your program contributes, plus anything it built.
+For `ledger.backup.lips` that is `restic-ledger`, the wrapper that runs your
+backup with your repository and credentials already set; for `hello.http.lips`
+it is the `helloserver` binary its engine compiled. You get your program's tools
+in your hands without booting a machine. (A portable OCI image for shipping a server is a future *package*
 axis, `dockerTools`-built, not a way to run locally.)
 
 You then edit freely. Value and wording changes covered by your language run
@@ -190,8 +199,9 @@ its language folder before rebuilding.
 
 `compile` prints the stock nix commands that run the result, e.g.
 `nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs
-KVM) or `nix build path:examples/backup/out/ledger#vm` to only check that it
-builds.
+KVM), `nix build path:examples/backup/out/ledger#vm` to only check that it
+builds, or `nix develop path:examples/backup/out/ledger` for a shell with
+`restic-ledger` on PATH.
 
 Open `examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and
 compile again. The module updates with no AI. Then add a sentence the language

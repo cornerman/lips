@@ -1099,14 +1099,26 @@ but the loop around it is incomplete; "missing" means specced, not built.
   command, `runVm`, `bootVm`, `vmExpr`, and home-manager `runEvalOnly` are
   deleted -- net negative code, the VM-boot logic now lives as data in the
   emitted flake.
-  The three rungs are stock `nix` over the dir (commands use `path:<dir>#…`
+  The four rungs are stock `nix` over the dir (commands use `path:<dir>#…`
   because the dir is derived/gitignored and `path:` copies it verbatim, past
   flake's git rules): `nix run …#artifact.<name>` (exec: the artifact binary,
   bare -- no init, so no service/env), `nix shell …#artifact.<name>` (the
   binary on PATH), and `nix run …#vm` (a throwaway QEMU boot of the whole
   system, real systemd, all services). `nix build …#vm` produces the boot
   script without booting -- building needs no KVM, so it is the cheap "does the
-  whole system build" check. A `container` (systemd-nspawn) rung was considered
+  whole system build" check. The fourth rung is `nix develop <dir>`
+  (`devShells.default`, so it needs no attribute): a `pkgs.mkShell` holding the
+  packages the program adds to the system PATH, plus its artifacts. Like `vm`
+  it is DERIVED from the module, never declared -- the program says nothing
+  about a shell, so the rung is always present. Its content comes from
+  subtracting a bare NixOS eval's `environment.systemPackages` (which already
+  carries the whole base system: systemd, grub, coreutils) from the program's
+  own list; both evals carry the same `stateVersion` stub so the subtraction
+  stays symmetric. Proven live: `ledger.backup` yields `restic-ledger` (the
+  service's own wrapper, repo and credentials baked in) and `hello.http` yields
+  `helloserver`, so the shell is a useful witness for a plain system module
+  too, with no machine booted. home-manager gets no shell rung for the same
+  reason it gets no `vm`: `compile` never evaluates a home config. A `container` (systemd-nspawn) rung was considered
   and REJECTED: running a real init is inherently privileged (root, machined/
   nsresourced, networking), so a light rootless "run the system" does not exist;
   a hand-rolled nspawn was fragile and bought nothing `vm` does not, and the
