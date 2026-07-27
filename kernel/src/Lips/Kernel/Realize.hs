@@ -28,6 +28,7 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve)
+import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
                                   valueArtifactNames)
@@ -176,7 +177,18 @@ artifactEntries arts = do
   let groups = Map.toList (Map.fromListWith (++) [(n, [sd]) | (n, sd) <- named])
   concat <$> traverse entry groups
   where
-    withName sd@(Subject ("artifact" : n : _), _) = Right (n, sd)
+    -- An artifact name is a template (literal text with <self>/<capture>
+    -- occurrences); by the time realize runs, both binding passes have gone, so
+    -- any token left is a name nothing ever bound. Stop here: the attrset key
+    -- is spliced into Nix verbatim, and the dangling-reference check compares
+    -- names as text, so an unfilled ref matches its unfilled group and would
+    -- pass. This guard is the only thing between an unbound name and a module
+    -- containing the literal "<self>-core = pkgs.buildGoModule {".
+    withName sd@(Subject ("artifact" : n : _), _) = case nameTokens n of
+      (t : _) -> Left (RBadArtifact n ("artifact name reached realize with the token <" <> t
+                                        <> "> unfilled; a <self> binds per instance and a"
+                                        <> " <capture> per rule match, so this name was never bound"))
+      []      -> Right (n, sd)
     withName (Subject segs, _) =
       Left (RBadArtifact (T.intercalate "." segs) "artifact decision has no <name> segment")
     entry (n, parts) = do

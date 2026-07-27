@@ -637,6 +637,23 @@ main = hspec $ do
       let pkgList = [ (mk "e" "x" "[ ${pkgs.foo.artifact.bar} ]" Stated) { dSubject = Subject ["environment","systemPackages"] } ]
       realizeReplace (fromList pkgList) `shouldSatisfy` isRight
 
+    -- A name that reached realize still carrying a <token> was never bound (a
+    -- rule whose <self> or <capture> nothing filled). Nothing used to stop it:
+    -- artifactEntries took any name segment verbatim, and the dangling check
+    -- compares ref names to group names TEXTUALLY, so an unfilled ref and an
+    -- unfilled group agreed and the literal "<self>-core = pkgs.buildGoModule"
+    -- was written into the module. Fail loud instead, naming the name.
+    it "fails loud on an artifact name that reached realize unfilled" $ do
+      let unfilled =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","<self>-core","builder"] }
+            , (mk "e" "x" "[ ${artifact.<self>-core} ]" Stated) { dSubject = Subject ["environment","systemPackages"] }
+            ]
+      realizeReplace (fromList unfilled) `shouldBe`
+        Left (RBadArtifact "<self>-core" "artifact name reached realize with the token <self> unfilled; a <self> binds per instance and a <capture> per rule match, so this name was never bound")
+      -- the same guard on the standalone artifact.nix path
+      realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList unfilled)
+        `shouldSatisfy` isLeft
+
     it "fails loud (typed) on a malformed artifact group (no builder)" $
       let noBuilder = [ (mk "p" "x" "\"srv\"" Stated) { dSubject = Subject ["artifact","srv","args","pname"] } ]
        in realizeReplace (fromList noBuilder) `shouldBe` Left (RBadArtifact "srv" "no builder")
