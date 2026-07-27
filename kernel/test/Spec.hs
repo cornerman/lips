@@ -24,6 +24,7 @@ import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
+import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Value
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
@@ -1651,6 +1652,63 @@ main = hspec $ do
     it "a decision no rule matches is ground; an emitted Meta decision is a fixpoint" $ do
       isGround rules (mk "z" "unmatched" "" Stated)              `shouldBe` True
       isGround rules ((mk "m" "a" "" Stated) { dKind = Meta })    `shouldBe` True
+
+  -- Static orthogonality: two rule left-hand sides that COULD claim one subject
+  -- are a defect even when no program witnesses it (survey F, seam 1). The
+  -- refiner's dynamic 'Overlap' only fires when some decision hits both.
+  describe "rule overlap (critical pairs over rule left-hand sides, spec 4)" $ do
+    let emit = [ Emit ["x"] (VBool True) ]
+        rule i k s = MapRule i k s emit
+
+    it "two rules with the same kind and subject overlap" $
+      ruleOverlaps [rule "r1" Fact ["a", "b"], rule "r2" Fact ["a", "b"]]
+        `shouldBe` [RuleOverlap "r1" "r2" ["a", "b"]]
+
+    it "a capture overlaps a literal at the same position, witnessed by the literal" $
+      ruleOverlaps [rule "r1" Fact ["route", "<path>", "status"]
+                   , rule "r2" Fact ["route", "home", "status"]]
+        `shouldBe` [RuleOverlap "r1" "r2" ["route", "home", "status"]]
+
+    it "two captures overlap, witnessed by the still-open family" $
+      ruleOverlaps [rule "r1" Fact ["route", "<path>"], rule "r2" Fact ["route", "<key>"]]
+        `shouldBe` [RuleOverlap "r1" "r2" ["route", "<path>"]]
+
+    it "different kinds never overlap (the refiner matches kind first)" $
+      ruleOverlaps [rule "r1" Fact ["a"], rule "r2" Oblige ["a"]] `shouldBe` []
+
+    it "different lengths never overlap (a subject match is length-exact)" $
+      ruleOverlaps [rule "r1" Fact ["a"], rule "r2" Fact ["a", "b"]] `shouldBe` []
+
+    it "distinct literals at one position separate the rules" $
+      ruleOverlaps [rule "r1" Fact ["a", "p"], rule "r2" Fact ["a", "q"]] `shouldBe` []
+
+    -- A repeated capture constrains: <a>.<a> matches only equal segments, so
+    -- pairing it with p.q is NOT an overlap. Reporting one would reject a
+    -- legitimate engine, so the check unifies rather than compares positionwise.
+    it "a repeated capture does not overlap a pair of distinct literals" $
+      ruleOverlaps [rule "r1" Fact ["x", "<a>", "<a>"], rule "r2" Fact ["x", "p", "q"]]
+        `shouldBe` []
+
+    it "a repeated capture does overlap equal literals" $
+      ruleOverlaps [rule "r1" Fact ["x", "<a>", "<a>"], rule "r2" Fact ["x", "p", "p"]]
+        `shouldBe` [RuleOverlap "r1" "r2" ["x", "p", "p"]]
+
+    it "a rule never overlaps itself, and each pair is reported once" $
+      ruleOverlaps [rule "r1" Fact ["a"], rule "r2" Fact ["a"], rule "r3" Fact ["a"]]
+        `shouldBe` [ RuleOverlap "r1" "r2" ["a"]
+                   , RuleOverlap "r1" "r3" ["a"]
+                   , RuleOverlap "r2" "r3" ["a"]
+                   ]
+
+    -- The point of a STATIC check: this pair is invisible to the refiner until
+    -- a program happens to state a route, and then it fails at compile time on
+    -- the author's machine instead of at mint time on the engine.
+    it "catches an overlap no decision in the base witnesses" $ do
+      let r1 = rule "r1" Fact ["route", "<path>", "status"]
+          r2 = rule "r2" Fact ["route", "<name>", "status"]
+      refine 100 (map toRule [r1, r2]) (fromList [mk "d1" "unrelated" "" Stated])
+        `shouldBe` Right (fromList [mk "d1" "unrelated" "" Stated])
+      map roLeft (ruleOverlaps [r1, r2]) `shouldBe` ["r1"]
 
   -- The value language's two guarantees, as properties over generated inputs:
   -- canonical round-trip, and injection made unrepresentable.
