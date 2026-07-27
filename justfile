@@ -20,7 +20,11 @@ test:
       -outputdir /tmp/lips-build -o /tmp/lips-spec && /tmp/lips-spec'
 
 # Full verification: conformance suite + VM boot of the realized module.
-check-all:
+# This is the CI gate (nothing calls it automatically yet -- run it by hand
+# before a merge); named `ci`, not `check*`, since it is not the same check
+# as `lips check` (that one program-vs-contract verb is the `check` recipe
+# and `check-expect` below, both host-side and KVM-free).
+ci:
     nix flake check -L
 
 # Behavioral contracts: every example's .expect must hold against its realized
@@ -46,7 +50,7 @@ compile program:
 # system module). Run one of those printed commands to run the program.
 
 # Verify one program's committed behavioral contract against its realized module.
-# Mirrors `lips check <program>` one-to-one; the full suite is `just check-all`.
+# Mirrors `lips check <program>` one-to-one; the full suite is `just ci`.
 check program:
     nix run . -- check "{{program}}"
 

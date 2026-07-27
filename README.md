@@ -209,11 +209,13 @@ The examples live in the repo, so clone it first:
     # just check examples/ledger.backup.lips
     # nix run . -- check examples/ledger.backup.lips
 
-`just` mirrors each `lips` verb one-to-one, running the commented `nix`
-command shown beneath each recipe; reach for it only when hacking on lips
-itself inside the clone, since it has no meaning once `lips` is installed
-elsewhere. The full suite (every example's contract plus a VM boot) is a
-separate recipe, `just check-all`.
+The two commented lines under each command are for reference, not to run:
+`just <verb>` is the equivalent recipe and `nix run . -- <verb>` the raw
+invocation it wraps. Both only make sense when hacking on lips itself inside
+the clone; once `lips` is installed elsewhere, `just` has no meaning there.
+The full suite (conformance tests, module eval, and a VM boot) is a separate
+recipe, `just ci`; nothing invokes it automatically yet, so run it yourself
+before a merge.
 
 `compile` prints the stock nix commands that run the result, e.g.
 `nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs
