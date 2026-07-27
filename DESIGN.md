@@ -437,6 +437,27 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Inert lines are reported (`diagInert`).** A line the language reads and then
+  drops realizes nothing, so editing it changes no output and nothing said so.
+  `Concept` is the only kind `realize` drops, so a `Concept`-only line is exactly
+  the inert case; `diagnose` now lists them and `check`/`compile` print them
+  under "decorative, realizing nothing -- editing these changes no output". A
+  heading is legitimately decorative, but so is a line a mint quietly declined to
+  honor, and only the author can tell which; naming both is the honest move.
+  This closes the visibility half of the silent-demotion finding
+  (`docs/gaps/README.md` finding 1). No committed engine emits a `Concept` yet,
+  so nothing changes for today's examples.
+
+- **The reasoning level is pinned (`--thinking`, default `high`).** `generate`
+  passed no thinking flag, so pi's default applied, inherited from the caller's
+  environment, steering the mint without entering `.generation` or `genId` -- the
+  same hole `-nc` closed for ambient context files. It is now always passed
+  explicitly and recorded as a `thinking:` line, so it enters the id. Unlike the
+  model (deliberately not baked in: omitted, then read back), an omitted
+  thinking level cannot be read back reliably, so explicit-always is the fix.
+  Default `high` because a mint acts once against an exacting grammar and a
+  refusal costs a whole round.
+
 - **Captures are first-class: a capture keys a build and fills a value.** A
   `<name>` capture reached the emit PATH only, so a rule could key an nginx
   vhost by a program value but could not key a BUILD by one, and could not carry

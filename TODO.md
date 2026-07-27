@@ -24,13 +24,13 @@
    2026-07-27 (three programs x qwen3-coder:30b and claude-sonnet-5) produced no
    engine and six findings. Ranked:
 
-   a. **Silent concept demotion (deduce-or-fail's blind spot).** A program line
-      the engine cannot honor gets absorbed as a `Concept`, which does not
-      realize, so editing that line changes nothing and nothing says so. The
-      mint reported this itself, unprompted, on two of three programs. lips
-      fails loud on a line it cannot READ and silently on a line it reads and
-      declines to honor. Same family as the `VTail` decision (emitting a literal
-      instead of failing was rejected); this is that hole one level up.
+   a. **Silent concept demotion (deduce-or-fail's blind spot).** VISIBILITY
+      DONE (`diagInert`, ledger §13): `check` now names the lines that realize
+      nothing. Still open, the harder half: nothing stops a mint demoting an
+      assertion to decoration in the first place, and a compiled artifact does
+      not record which program lines its source depends on, so an edit to one of
+      them still compiles to an unchanged binary. Candidate: record the source's
+      line dependencies at mint and fail loud when one changes.
 
    b. ~~**Capture-keyed artifact names.**~~ CLOSED (see ledger §13). A capture
       now keys an artifact and fills a value, so `install a command greet that
