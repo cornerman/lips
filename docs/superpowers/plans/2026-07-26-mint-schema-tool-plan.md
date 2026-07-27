@@ -8,7 +8,7 @@ looked up enters `.generation`, so what grounded the engine becomes auditable
 instead of invisible training data.
 
 **Architecture:** One shipped pi extension (`assets/mint-tools.ts`) registers
-exactly one tool, `lips_options`, which shells out to a new read-only
+exactly one tool, `query_options`, which shells out to a new read-only
 `lips options` verb. The answer's *shape* adapts to the match set: few matches
 answer as exact `path : type` leaves, many answer as a namespace breakdown ranked
 by match count. `callPi` runs pi with built-in tools and ambient configuration
@@ -138,7 +138,7 @@ longer describe their contents. The worktree is not a formality.
 
 ## File Structure
 
-- Create `assets/mint-tools.ts` — the pi extension registering `lips_options`
+- Create `assets/mint-tools.ts` — the pi extension registering `query_options`
   and nothing else.
 - Modify `kernel/src/Lips/Kernel/OptionType.hs` — add `Answer`, `answerQuery`,
   `nearOptions`; export `dotted` and `renderOptionType`.
@@ -348,8 +348,9 @@ git commit -m "cli: add lips options, the schema lookup behind the mint's tool"
 
 **Interfaces:**
 - Consumes env: `LIPS_BIN` (absolute path to the lips binary),
-  `LIPS_MINT_TARGET` (`nixos` | `home-manager`).
-- Registers exactly one tool: `lips_options({ query })`.
+  `LIPS_MINT_TARGET` (`nixos` | `home-manager`). Both are required: the
+  extension refuses to load when either is unset (see Step 1's rationale).
+- Registers exactly one tool: `query_options({ query })`.
 
 The real pi API (verified against `docs/extensions.md`): a default-exported
 factory taking `ExtensionAPI`, `parameters` as a TypeBox schema, and
@@ -371,12 +372,27 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawnSync } from "node:child_process";
 
-const bin = process.env.LIPS_BIN ?? "lips";
-const target = process.env.LIPS_MINT_TARGET ?? "nixos";
+// No default target. A silent fallback would be a lie generator: if the target
+// ever fails to reach this child, the mint would search the NixOS schema while
+// generating a home-manager engine and every answer it got would be confidently
+// wrong -- exactly the guessing invariant 2 exists to prevent. Fail at load, not
+// per call, so the run dies before the model reads anything.
+function required(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`lips mint tool: ${name} is unset; run the packaged lips (nix run . -- generate <program>)`);
+  return v;
+}
+
+const bin = required("LIPS_BIN");
+const target = required("LIPS_MINT_TARGET");
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
-    name: "lips_options",
+    // The tool name states the action, because a name is the first thing the
+    // model reads; a `lips_` prefix would be noise to it. The CLI verb stays the
+    // bare noun `options`, matching generate/compile/check/lsp. The two names do
+    // not have to agree, and aligning them would cost the one-word verb pattern.
+    name: "query_options",
     label: "Options",
     description:
       "Look up option paths and their types in the pinned schema of the target " +
@@ -480,7 +496,7 @@ semantics above must survive any renaming.
 git add . && just generate examples/hello.http.lips
 ```
 Expected: the mint still writes an engine, and pi's json stream shows
-`tool_execution_start` events naming `lips_options`.
+`tool_execution_start` events naming `query_options`.
 
 - [ ] **Step 3: Commit**
 
@@ -517,8 +533,8 @@ is not.
 ```haskell
     it "recovers what the mint looked up and what it was told" $ do
       let ev = T.unlines
-            [ "{\"type\":\"tool_execution_start\",\"toolCallId\":\"t1\",\"toolName\":\"lips_options\",\"args\":{\"query\":\"services.restic\"}}"
-            , "{\"type\":\"tool_execution_end\",\"toolCallId\":\"t1\",\"toolName\":\"lips_options\",\"result\":\"services.restic.backups.*.paths : list of string\",\"isError\":false}"
+            [ "{\"type\":\"tool_execution_start\",\"toolCallId\":\"t1\",\"toolName\":\"query_options\",\"args\":{\"query\":\"services.restic\"}}"
+            , "{\"type\":\"tool_execution_end\",\"toolCallId\":\"t1\",\"toolName\":\"query_options\",\"result\":\"services.restic.backups.*.paths : list of string\",\"isError\":false}"
             ]
       prTranscript (parsePiReply ev) `shouldSatisfy` T.isInfixOf "services.restic"
       prTranscript (parsePiReply ev) `shouldSatisfy` T.isInfixOf "list of string"
@@ -544,7 +560,7 @@ the world by scanning for the first line starting with `target:`.
 ```bash
 just generate examples/ledger.backup.lips
 head -1 examples/backup/backup.lang        # @gen:<id>
-grep -c "lips_options" examples/backup/backup.generation
+grep -c "query_options" examples/backup/backup.generation
 ```
 Confirm `<id>` equals `genId` of the written `.generation`.
 
@@ -571,7 +587,7 @@ git commit -am "record: pin the mint's schema lookups beside its reply"
 
 ```haskell
     it "the prompt names the lookup tool and when to use it" $ do
-      systemPrompt `shouldSatisfy` T.isInfixOf "lips_options"
+      systemPrompt `shouldSatisfy` T.isInfixOf "query_options"
       systemPrompt `shouldSatisfy` T.isInfixOf "look it up"
 ```
 
@@ -639,5 +655,5 @@ git commit -am "docs: the mint is grounded by one schema lookup tool"
   the `query` reply item, `Lips.Generate.Gate`. Rejected permanently:
   `lips dry-run`.
 - Names used consistently: `Answer`, `Leaves`, `Namespaces`, `Nowhere`,
-  `answerQuery`, `nearOptions`, `OptionsOpts`, `optionsQuery`, `lips_options`,
+  `answerQuery`, `nearOptions`, `OptionsOpts`, `optionsQuery`, `query_options`,
   `prTranscript`, `promptWithTools`.

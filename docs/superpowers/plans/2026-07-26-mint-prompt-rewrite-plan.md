@@ -16,7 +16,7 @@
 - The prompt is a versioned artifact pinned into `.generation` and `genId`; changing it changes every future stamp, which is expected and must be noted in the DESIGN ledger entry.
 - Examples in the prompt must parse: the suite enforces it.
 - The suite and app stay `-Wall` clean. Worktree `.worktrees/mint-prompt`, branch `feat/mint-prompt`.
-- Sequenced after Plans A and B, whose lookup tool and block kinds the new text describes. The mint has exactly one tool, `lips_options`, and no tool that judges an engine: the prompt must never suggest the agent can rehearse, validate or commit anything, only that it can ask what an option is.
+- Sequenced after Plans A and B, whose lookup tool and block kinds the new text describes. The mint has exactly one tool, `query_options`, and no tool that judges an engine: the prompt must never suggest the agent can rehearse, validate or commit anything, only that it can ask what an option is.
 
 ## File Structure
 
@@ -175,7 +175,7 @@ Commit: `mint prompt: describe the machine the engine drives, stage by stage`.
 
 - [ ] **Step 3: Section 3, "How You Work"**
 
-Content requirements: you act once, and lips then judges your engine with checks you cannot run yourself, so everything you can verify beforehand, verify. The one thing you can verify is an option: `lips_options` searches the pinned schema of the target world, a dotted prefix browses a namespace, a domain word finds one, and a broad query answers with the namespaces holding the matches so you ask again by name. Look up every path and type you are not certain of instead of recalling it, because a rule naming an option that does not exist or has the wrong type is rejected outright. State the limit of the tool in the same breath: it grounds NAMES, never VALUES, so being told an option exists is not permission to invent what fills it. When the programs do not state a value, the honest moves are a demand, a low confidence with a `because`, or a `gap`, and never an invention. An item below the confidence threshold and an unmet demand both refuse the mint on the spot, by design: they mean the programs underspecify something, and no cleverness of yours can add information the input does not carry.
+Content requirements: you act once, and lips then judges your engine with checks you cannot run yourself, so everything you can verify beforehand, verify. The one thing you can verify is an option: `query_options` searches the pinned schema of the target world, a dotted prefix browses a namespace, a domain word finds one, and a broad query answers with the namespaces holding the matches so you ask again by name. Look up every path and type you are not certain of instead of recalling it, because a rule naming an option that does not exist or has the wrong type is rejected outright. State the limit of the tool in the same breath: it grounds NAMES, never VALUES, so being told an option exists is not permission to invent what fills it. When the programs do not state a value, the honest moves are a demand, a low confidence with a `because`, or a `gap`, and never an invention. An item below the confidence threshold and an unmet demand both refuse the mint on the spot, by design: they mean the programs underspecify something, and no cleverness of yours can add information the input does not carry.
 
 Commit: `mint prompt: teach the lookup tool and that it grounds names, not values`.
 
@@ -211,13 +211,13 @@ Commit: `mint prompt: two verified worked examples, end to end`.
 
 - [ ] **Step 8: Section 8, the self-review checklist**
 
-A short numbered list the agent runs before answering: every line of every program matched by exactly one pattern; every decision mapped or a `concept`; every program value a hole; every option path and type confirmed with `lips_options` rather than recalled; every expect naming a value option, never a derivation; the report written; every value you could not derive from the programs either demanded, low-confidence with a because, or named in the report.
+A short numbered list the agent runs before answering: every line of every program matched by exactly one pattern; every decision mapped or a `concept`; every program value a hole; every option path and type confirmed with `query_options` rather than recalled; every expect naming a value option, never a derivation; the report written; every value you could not derive from the programs either demanded, low-confidence with a because, or named in the report.
 
 Commit: `mint prompt: a self-review checklist before the final answer`.
 
 - [ ] **Step 9: Update the pinned-clause test**
 
-Rewrite the clause list in `kernel/test/Spec.hs`'s "generate prompt is a pinned artifact" test to the new load-bearing sentences (keep `act exactly once`, `replace EVERY program value with a hole`, `refusal beats invention`; add `lips_options`, `report block`, `gap`, and the section titles). Run the suite.
+Rewrite the clause list in `kernel/test/Spec.hs`'s "generate prompt is a pinned artifact" test to the new load-bearing sentences (keep `act exactly once`, `replace EVERY program value with a hole`, `refusal beats invention`; add `query_options`, `report block`, `gap`, and the section titles). Run the suite.
 
 Commit: `test: pin the rewritten prompt's load-bearing clauses`.
 
@@ -228,7 +228,7 @@ Commit: `test: pin the rewritten prompt's load-bearing clauses`.
 **Files:**
 - Modify: `assets/mint/nixos.md`, `assets/mint/home-manager.md`, `assets/mint/direction.md`
 
-- [ ] **Step 1:** Rewrite each preamble to say what the world *is* (a whole machine as root; one user's `$HOME`, unprivileged), which namespaces belong to it, what `<self>` keys there, and that `lips_options` searches exactly this world's pinned schema.
+- [ ] **Step 1:** Rewrite each preamble to say what the world *is* (a whole machine as root; one user's `$HOME`, unprivileged), which namespaces belong to it, what `<self>` keys there, and that `query_options` searches exactly this world's pinned schema.
 - [ ] **Step 2:** Keep the direction wrapper's two load-bearing sentences ("PREFERENCE, not requirement", "never let it override a value the program states"), which the suite pins.
 - [ ] **Step 3:** Run the suite; the home-manager clause test must still pass.
 - [ ] **Step 4: Commit**

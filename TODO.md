@@ -5,7 +5,7 @@
 1. **Mint schema tool** — plan
    `docs/superpowers/plans/2026-07-26-mint-schema-tool-plan.md`. The mint stops
    guessing option names and types: one shipped pi extension registers exactly
-   one tool, `lips_options`, which shells out to a new read-only `lips options`
+   one tool, `query_options`, which shells out to a new read-only `lips options`
    verb over the pinned schema. The answer's granularity adapts to the match set
    (exact `path : type` leaves when few; namespaces ranked by match count when
    many), because an alphabetical slice of a large match set hides the answer —
@@ -66,7 +66,7 @@
   rehearsal verb is a second call site for the gate and can drift from the gate
   that commits.
 
-- **Mint internet access** — a second `registerTool` beside `lips_options`
+- **Mint internet access** — a second `registerTool` beside `query_options`
   (item 1), routing a question to a web search. pi has no built-in web tool, so
   it is a custom tool either way, and the extension item 1 creates makes it a
   ~20-line addition. Argument for: the mint's world knowledge is today invisible
