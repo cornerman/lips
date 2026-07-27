@@ -202,7 +202,7 @@ nearOptions :: Int -> [Text] -> OptionSchema -> Answer
 Also export the already-private `dotted` and `renderOptionType`, which the verb
 needs for rendering.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```haskell
   describe "schema lookup (what the mint may ask)" $ do
@@ -230,12 +230,12 @@ needs for rendering.
         , (["services","restic","backups","*","repository"], OTString) ]
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 Run: `cd kernel && ghc -Wall -isrc -itest test/Spec.hs -outputdir /tmp/lips-build -o /tmp/lips-spec`
 Expected: FAIL, `Variable not in scope: answerQuery`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Match by `dotted` prefix first, substring second. When the match count is within
 the cap emit `Leaves` sorted by path; otherwise group each match by its first
@@ -244,9 +244,9 @@ ascending, take the cap, and report how many groups were hidden. Keep everything
 case-sensitive: option names are lowercase-dotted by convention and the kernel
 must not invent a casing rule.
 
-- [ ] **Step 4: Run the tests.** Expected: PASS.
+- [x] **Step 4: Run the tests.** Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kernel/src/Lips/Kernel/OptionType.hs kernel/test/Spec.hs
@@ -276,7 +276,7 @@ must decide what to ask next:
 - `Nowhere`: `no option matches <q>` plus a line suggesting a shorter or
   differently worded query.
 
-- [ ] **Step 1: Write the failing parser test**
+- [x] **Step 1: Write the failing parser test**
 
 ```haskell
     it "options takes a target, a limit and a query" $
@@ -284,9 +284,9 @@ must decide what to ask next:
         `shouldBe` Just (Options (OptionsOpts Nixos 10 "services.restic"))
 ```
 
-- [ ] **Step 2: Run and watch it fail.** Expected: `Data constructor not in scope: Options`.
+- [x] **Step 2: Run and watch it fail.** Expected: `Data constructor not in scope: Options`.
 
-- [ ] **Step 3: Add the grammar**
+- [x] **Step 3: Add the grammar**
 
 ```haskell
 data OptionsOpts = OptionsOpts
@@ -313,16 +313,16 @@ and the subcommand:
              (progDesc "Look up option paths and types in the pinned schema. Read-only, no AI."))
 ```
 
-- [ ] **Step 4: Run the test.** Expected: PASS.
+- [x] **Step 4: Run the test.** Expected: PASS.
 
-- [ ] **Step 5: Implement the verb**
+- [x] **Step 5: Implement the verb**
 
 Reuse `ensureOptionSchema` and `parseNixOptionsJson`, then render the `Answer`.
 Exit 0 even for `Nowhere`: "no match" is a valid answer to a question, not a
 failure of the command. Note in the haddock that this verb is both the mint's
 tool target and a human's lookup, and that it never calls a model.
 
-- [ ] **Step 6: Verify by hand**
+- [x] **Step 6: Verify by hand**
 
 ```bash
 nix run . -- options services.restic.backups     # exact leaves with types
@@ -330,7 +330,7 @@ nix run . -- options backup                       # namespaces, restic among the
 nix run . -- options nginx                        # services.nginx ranked first
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add kernel/src/Lips/Cli.hs kernel/app/Main.hs kernel/test/Spec.hs
@@ -356,7 +356,7 @@ factory taking `ExtensionAPI`, `parameters` as a TypeBox schema, and
 `execute(toolCallId, params, signal, onUpdate, ctx)` returning
 `{ content: [{ type: "text", text }], details: {} }`.
 
-- [ ] **Step 1: Write the extension**
+- [x] **Step 1: Write the extension**
 
 ```typescript
 // The ONLY action a lips mint may take. pi runs the mint with built-in tools and
@@ -415,7 +415,7 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-- [ ] **Step 2: Install it in the package**
+- [x] **Step 2: Install it in the package**
 
 In `flake.nix`, inside the `packages.default` builder, after the binary is built:
 
@@ -430,13 +430,13 @@ and extend the wrapper:
     --set-default LIPS_BIN "$out/bin/lips" \
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 git add . && nix build . && ls result/share/lips/mint-tools.ts
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add assets/mint-tools.ts flake.nix
@@ -454,7 +454,7 @@ git commit -m "mint: ship the pi extension exposing exactly one schema lookup to
 - `callPi :: Maybe String -> Text -> Text -> Target -> IO (Text, Text, Text)` —
   reply, model, and transcript.
 
-- [ ] **Step 1: Change the invocation**
+- [x] **Step 1: Change the invocation**
 
 Replace `-nt` (all tools off) with `-nbt` (built-ins off, extension tools kept)
 and load the extension, keeping the hermetic subtraction explicit:
@@ -498,7 +498,7 @@ documents this exact pairing. The extension needs no `npm install` and no
 the `node:` built-ins to every extension it loads (`docs/extensions.md`,
 "Available Imports"), so a bare `.ts` at a store path is self-sufficient.
 
-- [ ] **Step 2: Verify end to end**
+- [x] **Step 2: Verify end to end**
 
 ```bash
 git add . && just generate examples/hello.http.lips
@@ -506,7 +506,7 @@ git add . && just generate examples/hello.http.lips
 Expected: the mint still writes an engine, and pi's json stream shows
 `tool_execution_start` events naming `query_options`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -am "generate: run the mint with exactly one tool and an explicit hermetic environment"
@@ -555,13 +555,13 @@ the mint, so invariant 6 requires it in the record. It is also the point of the
 tool, since a lookup the model performed is evidence, where a fact it recalled
 is not.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Build the fixture from the captured `mint-stream.json`, so the test pins the
 shape pi actually emits (the `agent_end` message list above), not a sketch of
 it.
 
-- [ ] **Step 1b: The reply is the LAST assistant text, not every assistant text**
+- [x] **Step 1b: The reply is the LAST assistant text, not every assistant text**
 
 `replyFrom` currently concatenates the text of *all* assistant messages, and
 says so in its haddock: "with tools disabled there is exactly one turn". Tools
@@ -572,17 +572,17 @@ fault. Take the text of the last assistant message and update the haddock to
 say why. A mint that split its engine across a tool call is malformed anyway,
 and the gate rejects it loudly.
 
-- [ ] **Step 2: Run and watch it fail.**
+- [x] **Step 2: Run and watch it fail.**
 
-- [ ] **Step 3: Implement** `prTranscript`, walking the decoded events in order
+- [x] **Step 3: Implement** `prTranscript`, walking the decoded events in order
 and rendering each call and result.
 
-- [ ] **Step 4: Write it into the record** and update the existing
+- [x] **Step 4: Write it into the record** and update the existing
 `record`/`genId` tests (`kernel/test/Spec.hs:1311`) to the new arity. Keep the
 header lines (`model:`, `target:`, …) first, because `readRecordedTarget` finds
 the world by scanning for the first line starting with `target:`.
 
-- [ ] **Step 5: Verify the stamp still re-hashes**
+- [x] **Step 5: Verify the stamp still re-hashes**
 
 ```bash
 just generate examples/ledger.backup.lips
@@ -591,7 +591,7 @@ grep -c "query_options" examples/backup/backup.generation
 ```
 Confirm `<id>` equals `genId` of the written `.generation`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -am "record: pin the mint's schema lookups beside its reply"
@@ -610,7 +610,7 @@ git commit -am "record: pin the mint's schema lookups beside its reply"
   `promptWithDirection`'s caller (or composed inside it, matching how the world
   preamble is composed today).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```haskell
     it "the prompt names the lookup tool and when to use it" $ do
@@ -618,9 +618,9 @@ git commit -am "record: pin the mint's schema lookups beside its reply"
       systemPrompt `shouldSatisfy` T.isInfixOf "look it up"
 ```
 
-- [ ] **Step 2: Run and watch it fail.**
+- [x] **Step 2: Run and watch it fail.**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Content requirements, stated once and plainly: the tool exists and searches the
 pinned schema of the target world; use a dotted prefix to browse a namespace and
@@ -635,10 +635,10 @@ low confidence with a `because`, or nothing at all).
 That last clause is the one that matters: the tool must not become a licence to
 guess *values* just because *names* are now verifiable.
 
-- [ ] **Step 4: Run the tests.** Expected: PASS. Also update the pinned-clause
+- [x] **Step 4: Run the tests.** Expected: PASS. Also update the pinned-clause
 list in the "generate prompt is a pinned artifact" test.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -am "mint prompt: state the schema lookup tool and that it grounds names, not values"
@@ -650,7 +650,7 @@ git commit -am "mint prompt: state the schema lookup tool and that it grounds na
 
 **Files:** `README.md`, `DESIGN.md` (§13), `kernel/README.md`, `TODO.md`, `justfile`
 
-- [ ] **Step 1: README** — in "Generate (once, AI)", say the mint may look up
+- [x] **Step 1: README** — in "Generate (once, AI)", say the mint may look up
 option paths and types in the pinned schema, that this is its only tool, and that
 every lookup is recorded in `.generation`.
 
@@ -662,20 +662,51 @@ every lookup is recorded in `.generation`.
   one tool lips loads on purpose whose every call is hashed into `.generation`.
   That sentence is the promise the hermeticity argument rests on, so it must not
   overstate.
-- [ ] **Step 2: DESIGN §13** — Done entry: the mint is grounded by a schema
+- [x] **Step 2: DESIGN §13** — Done entry: the mint is grounded by a schema
 lookup tool. Name `answerQuery`'s adaptive granularity and why (an alphabetical
 slice hides the answer), the single-tool extension, the hermetic invocation, and
 the recorded transcript. Note that every future `@gen` stamp changes because the
 prompt and the record shape changed. State that no tool judges an engine.
-- [ ] **Step 3: kernel/README.md** — note the new `options` verb.
-- [ ] **Step 4: TODO.md** — the round loop moves to the backlog with its
+- [x] **Step 3: kernel/README.md** — note the new `options` verb.
+- [x] **Step 4: TODO.md** — the round loop moves to the backlog with its
 reasoning; the gap-report item now has a producer only once Plan B lands.
-- [ ] **Step 5: justfile** — add an `options` recipe mirroring `generate`.
-- [ ] **Step 6: Commit**
+- [x] **Step 5: justfile** — add an `options` recipe mirroring `generate`.
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -am "docs: the mint is grounded by one schema lookup tool"
 ```
+
+## Outcome (landed 2026-07-27)
+
+All seven tasks landed. Three things the plan did not foresee, kept here because
+each was a wrong assumption caught by measurement rather than by review:
+
+1. **`tool_execution_end.result` is not a string** but
+   `{content:[{type:"text",text}],details:{}}`, and the whole transcript is
+   available in `agent_end.messages` (an assistant `toolCall` block plus a
+   `role: "toolResult"` message), which `parsePiReply` already walks. The
+   transcript costs one fold, not a second traversal.
+2. **The extension leaked lips' stderr into the answer.** Merging both channels
+   appended "building it from pinned flake..." progress lines to a list of
+   options; asked to count the lines of a 26-option answer, the model said 27.
+   Now stdout alone on success, stderr only when the lookup failed (where the
+   remedy lives), with `isError` from the exit status.
+3. **`PiJson.replyFrom` concatenated every assistant message**, documented as
+   safe because "with tools disabled there is exactly one turn". Tools end that:
+   a model narrating before acting would have its narration glued in front of the
+   engine. It now takes the last assistant message's text.
+
+Also fixed in passing: seven remedy strings wrote `→` as raw UTF-8 bytes
+smuggled in as `Char`s, rendering as `â` under a UTF-8 locale, and the literal
+arrows elsewhere would crash under `LANG=C`. `main` now pins both handles to
+UTF-8.
+
+Verification standing: the fast suite is 285 examples green and the flake builds
+with the extension installed. A full `just generate` end to end is still
+unproven, because the Anthropic workspace is out of usage and pi cannot run
+nested in the agent sandbox; the ollama capture proved the flag set, the
+extension load, and one real `query_options` round trip.
 
 ## Self-Review
 
