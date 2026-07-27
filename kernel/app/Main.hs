@@ -30,12 +30,12 @@ import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           System.Environment (lookupEnv)
+import           System.Environment (getEnvironment, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (doesPathExist)
 import           System.FilePath    (takeFileName, (</>))
-import           System.Process     (callCommand, readProcessWithExitCode)
+import           System.Process     (CreateProcess (..), callCommand, proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
@@ -300,7 +300,7 @@ generate target confidence renew verbose mmodel files@(rep : _) = do
       -- case. The same set is the regeneration corpus below.
       corpus = T.intercalate "\n"
         [ "=== program " <> T.pack (takeFileName f) <> " ===\n" <> t | (f, t) <- progs ]
-  (reply, model) <- callPi mmodel prompt corpus
+  (reply, model) <- callPi mmodel prompt corpus target
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
   -- refusal already shows the offending lines). To stderr, leaving stdout the
@@ -622,16 +622,42 @@ nixParses nixModule = do
 -- omitted and pi's own configured default applies. Either way the json stream
 -- reports the model actually used, which the caller records, so provenance
 -- stays concrete without a model baked into the deliverable.
-callPi :: Maybe String -> Text -> Text -> IO (Text, Text)
-callPi mmodel system userPrompt = do
+callPi :: Maybe String -> Text -> Text -> Target -> IO (Text, Text)
+callPi mmodel system userPrompt target = do
+  -- The mint's one tool ships with the binary; without it a mint would have to
+  -- recall option names instead of looking them up, which is the guessing this
+  -- whole path exists to prevent. So a missing extension is fatal, not a
+  -- silent downgrade to a weaker mint.
+  -- An EMPTY variable counts as unset: lookupEnv reports Just "" for it, which
+  -- would hand pi a bare @-e ""@ and fail somewhere less obvious.
+  toolsPath <- lookupEnv "LIPS_MINT_TOOLS"
+  extArgs <- case toolsPath of
+    Just p | not (null p) -> pure ["-e", p]
+    _ -> die (report
+      "lips can't run the mint: its tool extension is not installed."
+      ["LIPS_MINT_TOOLS is unset."]
+      "→ run the packaged lips: nix run . -- generate <program>")
+  -- The extension reads the world to search from the environment, and refuses
+  -- to load without it: a mint for one world must never be answered from
+  -- another world's schema.
+  parentEnv <- getEnvironment
+  let childEnv = ("LIPS_MINT_TARGET", T.unpack (targetSlug target))
+        : filter ((/= "LIPS_MINT_TARGET") . fst) parentEnv
+      -- Hermetic by explicit subtraction: -nbt drops pi's built-in tools (read,
+      -- bash, edit, write, grep, find, ls -- none of which the mint may touch),
+      -- --no-extensions/--no-skills/--no-prompt-templates drop whatever the user
+      -- happens to have installed, -nc drops ambient AGENTS.md/CLAUDE.md context
+      -- files (global, and walking up from cwd). What remains is the one tool
+      -- this run loads on purpose, so the mint's world equals what the record
+      -- pins -- no input steers generation without entering genId's hash.
+      -- --mode json: so the model pi resolved, and every lookup it made, are
+      -- machine-readable in the reply.
+      args = [ "-p", "-nbt", "-nc", "--no-extensions", "--no-skills"
+             , "--no-prompt-templates", "--no-session", "--mode", "json"
+             , "--system-prompt", T.unpack system ]
+               ++ extArgs ++ maybe [] (\m -> ["--model", m]) mmodel
   (code, out, err) <-
-    readProcessWithExitCode "pi"
-      -- -nc: the mint must be hermetic. pi otherwise injects ambient AGENTS.md/CLAUDE.md
-      -- context files (global + walking up from cwd) - inputs that would steer generation
-      -- without entering the .generation record or the genId hash.
-      -- --mode json: so the model pi resolved is machine-readable in the reply.
-      ([ "-p", "-nt", "-nc", "--no-session", "--mode", "json", "--system-prompt", T.unpack system ]
-        ++ maybe [] (\m -> ["--model", m]) mmodel)
+    readCreateProcessWithExitCode (proc "pi" args) { env = Just childEnv }
       (T.unpack userPrompt)
   case code of
     ExitSuccess   -> do
