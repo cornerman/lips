@@ -14,8 +14,14 @@ module Lips.Kernel.OptionType
   , valueMatches
   , checkEmits
   , renderOptionError
+  , renderOptionType
+  , dotted
+  , Answer (..)
+  , answerQuery
+  , nearOptions
   ) where
 
+import qualified Data.List       as List
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -184,3 +190,77 @@ renderOptionError (TypeMismatch rid p t _) =
 
 dotted :: [Text] -> Text
 dotted = T.intercalate "."
+
+-- | What a schema lookup answers with. The shape follows the match set, because
+-- one shape lies: an alphabetical slice of a large match set hides the obvious
+-- answer behind alphabetically earlier noise. Measured against the pinned NixOS
+-- schema, "nginx" matches 1514 paths whose first 40 alphabetically are all OTHER
+-- services that merely mention nginx, with services.nginx itself absent. So a
+-- large match set answers with WHERE the matches live, ranked by how many each
+-- namespace holds: a namespace with many matches is the one ABOUT the word, a
+-- namespace with one or two merely references it.
+data Answer
+  = Leaves     [([Text], OptionType)]  -- ^ few enough to name exactly, with types
+  | Nowhere                            -- ^ no match at all
+  | Namespaces [([Text], Int)] Int     -- ^ where the matches live, heaviest
+                                       --   first, plus how many namespaces the
+                                       --   cap hid
+  deriving (Eq, Show)
+
+-- | Look a query up in a schema. A dotted prefix browses a namespace; anything
+-- else is a substring search over the dotted paths, which is what lets a caller
+-- that knows a domain word but not the namespace find it ("backup" reaches
+-- services.restic.backups, because the caller chose a good word).
+--
+-- Grouping depth for a large match set is one segment below what was asked
+-- about, floored at 2: a world's depth-1 partition is a dozen buckets and never
+-- discriminates, so 2 is the shallowest informative grouping.
+--
+-- Case-sensitive throughout: option names are lowercase-dotted by convention,
+-- and the kernel must not invent a casing rule for a target it knows nothing
+-- about.
+answerQuery :: Int -> Text -> OptionSchema -> Answer
+answerQuery cap q schema
+  | null matches          = Nowhere
+  | length matches <= cap = Leaves (List.sortOn fst matches)
+  | otherwise             = Namespaces (take cap groups) (length groups - cap)
+  where
+    segments = T.splitOn "." q
+    entries  = Map.toList schema
+    -- Segment-wise, not string-wise: a string prefix would report the leaf
+    -- @…backups.*.paths@ as an answer to the wrong path @…backups.*.path@,
+    -- which is precisely the mistake 'nearOptions' exists to correct.
+    byPrefix = [ e | e@(k, _) <- entries, segments `List.isPrefixOf` k ]
+    matches
+      | not (null byPrefix) = byPrefix
+      | otherwise           = [ e | e@(k, _) <- entries, q `T.isInfixOf` dotted k ]
+    depth  = max 2 (length segments + 1)
+    groups = List.sortOn (\(p, n) -> (negate n, p))
+           . Map.toList
+           . Map.fromListWith (+)
+           $ [ (take depth k, 1 :: Int) | (k, _) <- matches ]
+
+-- | Options near a path the schema does not have. Walk the path's own prefixes
+-- from longest to shortest and answer at the first one that matches something,
+-- so a rule naming @services.x.backups.*.path@ is answered with the real leaves
+-- under @services.x.backups.*@. Reuses 'answerQuery', so a wrong LEAF yields
+-- exact leaves while a wrong NAMESPACE yields the breakdown: same rule, no
+-- second renderer.
+--
+-- The full path is deliberately not tried: it is already known to be absent, and
+-- asking would fall through to the substring search, which would answer a wrong
+-- leaf with the single near-spelling instead of the whole namespace beside it.
+nearOptions :: Int -> [Text] -> OptionSchema -> Answer
+nearOptions cap path schema =
+  case [ a | p <- prefixes, let a = answerQuery cap (dotted p) schema, a /= Nowhere ] of
+    (a : _) -> a
+    []      -> Nowhere
+  where
+    -- 'drop 1 . inits' skips the empty prefix (which would match everything);
+    -- 'dropLast' keeps the absent path itself out of the walk.
+    prefixes = reverse (drop 1 (List.inits (dropLast path)))
+
+-- | 'init' that is total: the empty list has no last element to drop.
+dropLast :: [a] -> [a]
+dropLast [] = []
+dropLast xs = init xs

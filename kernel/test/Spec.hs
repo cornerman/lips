@@ -2033,6 +2033,30 @@ main = hspec $ do
       map renderOptionError (checkEmits sch [good, bad])
         `shouldBe` ["rule r2: unknown NixOS option services.restic.backups.x.nonsuch"]
 
+  describe "schema lookup (what the mint may ask)" $ do
+    let sch = Map.fromList
+          [ (["services","restic","backups","*","paths"], OTListOf OTString)
+          , (["services","restic","backups","*","repository"], OTString)
+          , (["services","nginx","enable"], OTBool)
+          ]
+    it "a dotted prefix with few matches answers with exact leaves and types" $
+      answerQuery 40 "services.restic" sch `shouldBe` Leaves
+        [ (["services","restic","backups","*","paths"], OTListOf OTString)
+        , (["services","restic","backups","*","repository"], OTString) ]
+    it "a bare word falls back to substring search" $
+      answerQuery 40 "nginx" sch `shouldBe` Leaves [(["services","nginx","enable"], OTBool)]
+    -- The load-bearing case: a large match set must NOT be an alphabetical
+    -- slice, or the namespace the word is about disappears.
+    it "too many matches answer with the namespaces, heaviest first" $
+      answerQuery 2 "services" sch `shouldBe`
+        Namespaces [ (["services","restic"], 2), (["services","nginx"], 1) ] 0
+    it "an unmatched query says so rather than guessing" $
+      answerQuery 40 "nosuchthing" sch `shouldBe` Nowhere
+    it "a wrong leaf is answered with the real leaves beside it" $
+      nearOptions 40 ["services","restic","backups","*","path"] sch `shouldBe` Leaves
+        [ (["services","restic","backups","*","paths"], OTListOf OTString)
+        , (["services","restic","backups","*","repository"], OTString) ]
+
   -- The NixOS-specific translation from optionsJSON's human type strings to the
   -- generic OptionType. Lives outside the kernel; the kernel never sees this
   -- wording.
