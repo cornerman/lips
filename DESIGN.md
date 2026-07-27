@@ -381,15 +381,14 @@ machinery retargets beyond NixOS.
 - **Language/engine migration**: when a language's semantics change, how
   existing Solutions migrate (decision-preserving transformations, versioned
   demands).
-- **Engine orthogonality check**: the concrete mechanism that flags
-  overlapping engine features. Candidate answer from term rewriting:
-  critical-pair analysis over rule left-hand sides, run at the `generate`
-  gate. Orthogonal (left-linear, non-overlapping) systems are confluent
-  (Rosen 1973), so this turns the §4 promise into a theorem. The refiner
-  currently enforces the stronger, cruder property that at most one rule may
-  fire per decision (`Overlap`), which is sound but only detects overlap that
-  a concrete decision actually witnesses; critical pairs decide it statically.
-  See Survey F, seam 1.
+- ~~**Engine orthogonality check**~~: resolved for rules. Critical-pair
+  analysis over rule left-hand sides runs at the `generate` gate
+  (`Lips.Kernel.Engine.Overlap`; ledger §13). Still open for the *pattern*
+  layer: `crystallize` reports `Overlapping` when a line matches two templates,
+  which is again dynamic, so a language can ship two templates that no example
+  line separates. Template unification is the harder half (token sequences with
+  multi-token tail holes, not fixed-length tuples) and no live mint has needed
+  it yet.
 - **Conflict explanation**: today a conflict names two competing decisions. A
   derived contradiction several refinement steps down needs the *minimal set
   of program lines* that cannot hold together. Model-based diagnosis solved
@@ -437,6 +436,36 @@ built and tested in `kernel/` on `main`; "partial" means the mechanism exists
 but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
+
+- **Static rule orthogonality (critical pairs at the mint gate).** `generate`
+  now rejects an engine whose rules could claim one decision, before the engine
+  is written. `Lips.Kernel.Engine.Overlap.ruleOverlaps` treats each rule's
+  left-hand side as what it is -- a kind plus a flat, fixed-length subject
+  pattern over literals and `<name>` captures -- and asks the classical
+  critical-pair question: do two left-hand sides unify? This is the static
+  sibling of `Lips.Kernel.Refine`'s `Overlap`, which is dynamic and therefore
+  blind to an ambiguity no decision in the corpus witnesses: two rules on
+  `route.<path>.status` and `route.<name>.status` are indistinguishable for
+  every route that could exist, yet a corpus stating no route refines clean and
+  ships the defect, which then fails at compile time on an author's machine in a
+  program that did nothing wrong. Unification, not a positionwise comparison,
+  because a repeated capture constrains: `x.<a>.<a>` matches only equal trailing
+  segments, so pairing it with `x.p.q` is NOT an overlap and reporting one would
+  reject a sound engine (a false rejection costs as much as a missed defect,
+  since a mint gate must pass every sound engine). The report names both rules
+  and the unified subject family that witnesses the clash
+  (`rules r1 and r2 both match route.<path>.status`), which is what the model
+  needs on the regenerate door. The mint prompt now states rule orthogonality
+  beside the pattern orthogonality it already stated, so the model is told the
+  rule and the kernel enforces it (a structural guard, with the prompt as
+  convergence help, never as the guarantee). Verified by ten conformance tests
+  (literal/literal, capture/literal, capture/capture witness naming, kind
+  separation, length separation, the non-linear false-positive case both ways,
+  pair enumeration, and an overlap no base witnesses) and empirically against
+  all seven committed engines, which are all orthogonal, so the gate rejects
+  nothing that works today. Closes the §11 open question of the same name;
+  theory and citation in `docs/superpowers/survey/f-decision-calculus-theory.md`
+  (seam 1).
 
 - **Mint expression channels: `report` and `gap`.** The mint speaks to the
   human in two channels beside the engine, both riding the heredoc block
