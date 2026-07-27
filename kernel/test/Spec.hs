@@ -1159,6 +1159,35 @@ main = hspec $ do
         Right b -> map dAssertion (toList b) `shouldBe` [ Assertion "[ ${artifact.greet} ]" ]
         Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
 
+    -- Composed names fill by OCCURRENCE, the same way a capture fills an emit
+    -- path segment: <self> per instance (bindSelf), a capture per rule match.
+    -- A wrapper artifact referencing its own compiled core is the motivating
+    -- shape (two artifacts, one program).
+    it "fills <self> inside a COMPOSED artifact-ref name" $ do
+      let r = MapRule "r" Fact ["cli", "output"]
+                [ Emit ["environment", "systemPackages"] (VList [VRef (RArt "<self>-core")])
+                , Emit ["artifact", "<self>", "args", "text"]
+                       (VStr [PLit "exec ", PArt "<self>-core", PLit "/bin/core"]) ]
+          d = (mk "d" "unused" "hi" Stated) { dSubject = Subject ["cli", "output"], dKind = Fact }
+      case refine 100 [toRule (bindSelf "board" r)] (fromList [d]) of
+        Right b -> map (\x -> (dSubject x, dAssertion x)) (toList b) `shouldMatchList`
+          [ (Subject ["environment", "systemPackages"], Assertion "[ ${artifact.board-core} ]")
+          , (Subject ["artifact", "board", "args", "text"]
+            , Assertion "\"exec ${artifact.board-core}/bin/core\"") ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "fills a capture inside a COMPOSED artifact-ref name" $ do
+      let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
+                [ Emit ["environment", "systemPackages"] (VList [VRef (RArt "<name>-core")]) ]
+          d = (mk "d" "unused" "hi" Stated) { dSubject = Subject ["cmd", "greet", "msg"] }
+      case refine 100 [toRule r] (fromList [d]) of
+        Right b -> map dAssertion (toList b) `shouldBe` [ Assertion "[ ${artifact.greet-core} ]" ]
+        Left e  -> expectationFailure ("unexpected refine error: " ++ show e)
+
+    it "rejects a COMPOSED artifact name whose capture the subject does not bind" $
+      parseRuleBody "r" "match fact cmd.<name>.msg => environment.systemPackages \"[ ${artifact.<other>-core} ]\""
+        `shouldSatisfy` isLeft
+
     it "a value hole naming no capture and no value fails loud at refine" $ do
       let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
                 [ Emit ["environment", "etc", "x", "text"] (VStr [PHole "typo"]) ]
@@ -1349,6 +1378,25 @@ main = hspec $ do
         Right (VStr [PArt "<self>", PLit "/bin/x"])
       fmap renderValue (parseValue "\"<self>\"")          `shouldBe` Right "\"<self>\""
       fmap renderValue (parseValue "${artifact.<self>}")  `shouldBe` Right "${artifact.<self>}"
+
+    -- An artifact NAME is one grammar everywhere: literal text with <self> and
+    -- <capture> occurrences embedded, not a single whole token. A program that
+    -- builds two artifacts (a compiled core, a wrapper around it) needs
+    -- ${artifact.<self>-core}; the whole-token check refused it, so the shape
+    -- was unwritable (docs/gaps board.lips, rule r4).
+    it "parses and round-trips a COMPOSED artifact name (<self>/<capture> plus literal text)" $ do
+      parseValue "${artifact.<self>-core}" `shouldBe` Right (VRef (RArt "<self>-core"))
+      parseValue "${artifact.<name>-core}" `shouldBe` Right (VRef (RArt "<name>-core"))
+      parseValue "\"${artifact.<self>-core}/bin/core\"" `shouldBe`
+        Right (VStr [PArt "<self>-core", PLit "/bin/core"])
+      fmap renderValue (parseValue "${artifact.<self>-core}")
+        `shouldBe` Right "${artifact.<self>-core}"
+
+    it "still rejects an artifact name that is not identifier text plus <token>s" $ do
+      parseValue "${artifact.<self> core}"  `shouldSatisfy` isLeft
+      parseValue "${artifact.<self}"        `shouldSatisfy` isLeft
+      parseValue "${artifact.a<>b}"         `shouldSatisfy` isLeft
+      parseValue "${artifact.}"             `shouldSatisfy` isLeft
 
     it "a bare ${pkgs}/${artifact} reference stands as a value (a list of derivations)" $ do
       -- honest Nix: runtimeInputs/systemPackages are lists of packages, not

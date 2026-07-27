@@ -58,12 +58,12 @@ module Lips.Kernel.Engine.Value
 
 import           Data.Char       (isDigit, isSpace)
 import qualified Data.Map.Strict as Map
-import           Data.Maybe      (isJust, listToMaybe, mapMaybe)
+import           Data.Maybe      (isJust)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
-import Lips.Kernel.Capture (captureName)
+import Lips.Kernel.Capture (NamePiece (..), fillName, nameParse, nameTokens, selfName)
 
 -- | One piece of a string value. 'PRef' is a @${pkgs.<dotted-path>}@ package
 -- reference; 'PArt' is a @${artifact.<name>}@ reference to a program-derived
@@ -159,12 +159,6 @@ valueArtifactNames (VAttr fs)        = concatMap (valueArtifactNames . snd) fs
 valueArtifactNames (VRef (RArt n))   = [n]
 valueArtifactNames _                 = []
 
--- | The reserved instance-name token as it appears as an artifact name
--- (@${artifact.<self>}@). Kept as one literal so the parser and 'bindSelfValue'
--- agree on the exact spelling.
-selfToken :: Text
-selfToken = "<self>"
-
 -- | Resolve the reserved @\<self\>@ token inside a value to the instance name,
 -- the value-side twin of the option-path segment binding in
 -- 'Lips.Kernel.Engine.Data.bindSelf'. A @'PSelf'@ string piece becomes the
@@ -178,25 +172,20 @@ bindSelfValue name = go
     go (VStr ps)              = VStr (map piece ps)
     go (VList vs)             = VList (map go vs)
     go (VAttr fs)             = VAttr (map (\(k, v) -> (k, go v)) fs)
-    go (VRef (RArt n)) | n == selfToken = VRef (RArt name)
+    go (VRef (RArt n))        = VRef (RArt (bound n))
     go v                      = v
     piece PSelf               = PLit name
-    piece (PArt n) | n == selfToken = PArt name
+    piece (PArt n)            = PArt (bound n)
     piece p                   = p
+    -- Occurrence fill over the shared name grammar, so a COMPOSED name
+    -- (<self>-core: the instance's own build, suffixed) resolves like a whole
+    -- <self>. A capture in the same name is left standing for the match pass.
+    bound = fillName (\t -> if t == selfName then Just name else Nothing)
 
--- | Every @\<capture\>@ inside a path literal, in order. @\<self\>@ is skipped
--- for the same reason as elsewhere: it is not a capture.
+-- | Every @\<capture\>@ inside a path literal or a name, in order. @\<self\>@
+-- is skipped for the same reason as elsewhere: it is not a capture.
 pathCaptures :: Text -> [Text]
-pathCaptures = go
-  where
-    go s = case T.breakOn "<" s of
-      (_, rest)
-        | T.null rest -> []
-        | otherwise   ->
-            let (nm, after) = T.breakOn ">" (T.drop 1 rest)
-             in if T.null after
-                  then []
-                  else [nm | nm /= "self", not (T.null nm)] ++ go (T.drop 1 after)
+pathCaptures = filter (/= selfName) . nameTokens
 
 -- | Resolve a @\<capture\>@ used as an artifact NAME to the key the rule's
 -- subject bound, the value-side twin of the emit-path fill in
@@ -215,23 +204,14 @@ bindCaptureValue caps = go
     go (VRef (RArt n)) = VRef (RArt (bound n))
     -- A capture inside a path literal fills too, so args.src ./artifacts/<name>
     -- resolves to the staged directory of the artifact this rule keyed.
-    go (VPath p)  = VPath (fillText p)
+    go (VPath p)  = VPath (bound p)
     go v          = v
     piece (PArt n) = PArt (bound n)
     piece p        = p
-    bound n = case captureName n >>= (`Map.lookup` caps) of
-      Just v  -> v
-      Nothing -> n
-    fillText s = case T.breakOn "<" s of
-      (before, rest)
-        | T.null rest -> before
-        | otherwise   ->
-            let (nm, after) = T.breakOn ">" (T.drop 1 rest)
-             in if T.null after
-                  then s
-                  else case Map.lookup nm caps of
-                    Just v  -> before <> v <> fillText (T.drop 1 after)
-                    Nothing -> before <> "<" <> nm <> ">" <> fillText (T.drop 1 after)
+    -- Occurrence fill over the shared name grammar: a capture may be the whole
+    -- name or embedded in it (<name>-core), and an unbound token is left
+    -- standing so the caller reports it by name.
+    bound = fillName (`Map.lookup` caps)
 
 -- | Every capture name a value mentions: a string hole that is neither
 -- @\<value\>@ nor @\<value.N\>@, and an artifact reference named by a capture.
@@ -241,7 +221,7 @@ bindCaptureValue caps = go
 valueCaptures :: Value -> [Text]
 valueCaptures = go
   where
-    go (VStr ps)  = mapMaybe piece ps
+    go (VStr ps)  = concatMap piece ps
     go (VList vs) = concatMap go vs
     go (VAttr fs) = concatMap (go . snd) fs
     go (VRef (RArt n)) = capOf n
@@ -250,13 +230,14 @@ valueCaptures = go
     -- and an unfilled one used to reach the module as the literal text "<name>".
     go (VPath p)  = pathCaptures p
     go _          = []
-    piece (PHole h) | h /= "value", not (isJust (holeIndex h)) = Just h
-    piece (PArt n)  = listToMaybe (capOf n)
-    piece _         = Nothing
-    -- <self> is <...>-shaped but is NOT a capture: it binds to the instance name
-    -- at realize time ('bindSelfValue'), so no rule subject binds it.
-    capOf n | n == selfToken = []
-            | otherwise      = maybe [] pure (captureName n)
+    piece (PHole h) | h /= "value", not (isJust (holeIndex h)) = [h]
+    piece (PArt n)  = capOf n
+    piece _         = []
+    -- Every capture the name mentions, whole or embedded (<cmd>-core names two
+    -- pieces, one of them a capture). <self> is <...>-shaped but is NOT a
+    -- capture: it binds to the instance name at realize time ('bindSelfValue'),
+    -- so no rule subject binds it and 'pathCaptures' drops it.
+    capOf = pathCaptures
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.
@@ -476,7 +457,7 @@ pString = go [] T.empty
           -- <self> is the reserved instance name (bound at realize), not a
           -- program-value hole; recognized here so a rule can name the
           -- program's own build/app inside a string.
-          else if hole == "self"
+          else if hole == selfName
             then go (PSelf : flush acc pieces) T.empty (T.drop 1 after)
           else
             case stringHoleName hole of
@@ -505,12 +486,27 @@ parseRef inside
       -- A <capture> is admitted too: the rule's subject binds it and
       -- 'bindCaptureValue' resolves it before realize, so a build may be keyed
       -- by a program value exactly as an option path may.
-      if okSeg name || name == selfToken || isJust (captureName name)
+      if okName name
         then Right (RArt name)
         else Left ("${artifact.<name>} is not a valid build reference; the name after"
-                    <> " artifact. must be a plain identifier, <self>, or a <capture>"
-                    <> " the rule's subject binds: ${" <> inside <> "}")
+                    <> " artifact. is identifier text (letters, digits, - and _) with"
+                    <> " <self> or a <capture> the rule's subject binds embedded"
+                    <> " anywhere in it, e.g. ${artifact.<self>-core}: ${" <> inside <> "}")
   | otherwise = RPkg <$> pkgsRef inside
+
+-- | An artifact NAME: non-empty text in the shared name grammar
+-- ('Lips.Kernel.Capture.nameParse'), whose literal parts are identifier text.
+-- So @core@, @\<self\>@, @\<cmd\>@ and @\<self\>-core@ are all names, while a
+-- space, an unterminated @\<@ or an empty @\<\>@ is not. One grammar, because a
+-- program that builds a core and a wrapper around it must be able to name both.
+okName :: Text -> Bool
+okName name = case nameParse name of
+  Left _       -> False
+  Right []     -> False
+  Right pieces -> all okPiece pieces
+  where
+    okPiece (NLit t) = okSeg t
+    okPiece (NTok _) = True
 
 -- | A single identifier segment: non-empty, letters\/digits\/@-@\/@_@ only.
 okSeg :: Text -> Bool
