@@ -1853,6 +1853,11 @@ main = hspec $ do
         , "demand <subject>"
         , "expect <option.path> from <subject>"
         , "pattern|match|demand|expect|because"
+        -- A built program has an interface, and source has no holes: both are
+        -- universal physics, so they belong here and not in a per-language
+        -- .direction file (docs/gaps/README.md, findings 1 and 4).
+        , "A built program has an INTERFACE"
+        , "Source is a FIXED BLOB with no holes"
         , "because-note"
         , "reserved segment <self>"
         , "PACKAGE NAMES"
