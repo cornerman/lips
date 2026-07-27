@@ -101,9 +101,8 @@ Agreed before starting, so the risky parts are not entangled with the cheap ones
    human eye at the point where changing it is still free. If the ranking reads
    badly, fix it here, not after Task 3 wires an extension around it.
 3. **Tasks 3 to 7 after the checkpoint passes.** These need `nix build` and a
-   real `pi` run, and they carry the plan's two unverified assumptions, both
-   flagged in place: the exact spelling of pi's `--no-extensions` /
-   `--no-skills` / `--no-prompt-templates` flags (Task 4), and the `result`
+   real `pi` run. Of the plan's two unverified assumptions the first is now
+   settled against pi 0.82.0 (see Task 4); what remains is the `result`
    encoding of the `tool_execution_end` event (Task 5). Capture one real
    `--mode json` stream and read it before writing Task 5's parser.
 
@@ -486,9 +485,18 @@ Pass `LIPS_MINT_TARGET` (and inherit `LIPS_BIN`) to the child by switching from
 `readProcessWithExitCode` to `readCreateProcessWithExitCode (proc "pi" args)`
 with an explicit `env`.
 
-Confirm `--no-extensions`, `--no-skills` and `--no-prompt-templates` against
-`docs/usage.md` before finishing, and adapt the flag names if they differ; the
-semantics above must survive any renaming.
+Flag spellings verified against pi 0.82.0 (`docs/usage.md:211-228`,
+`README.md:581-600`): `--no-builtin-tools`/`-nbt`, `--no-extensions`,
+`--no-skills`, `--no-prompt-templates`, `--no-context-files`/`-nc`. Re-confirm
+if the pinned pi moves; the semantics above must survive any renaming.
+
+`-e` loads for the current run only, so the tool exists inside lips' mint and
+nowhere else: the user's own pi sessions never gain `query_options`, and
+`--no-extensions` keeps the user's extensions out of the mint. `README.md:600`
+documents this exact pairing. The extension needs no `npm install` and no
+`package.json`: pi supplies `@earendil-works/pi-coding-agent`, `typebox` and
+the `node:` built-ins to every extension it loads (`docs/extensions.md`,
+"Available Imports"), so a bare `.ts` at a store path is self-sufficient.
 
 - [ ] **Step 2: Verify end to end**
 
@@ -626,6 +634,15 @@ git commit -am "mint prompt: state the schema lookup tool and that it grounds na
 - [ ] **Step 1: README** — in "Generate (once, AI)", say the mint may look up
 option paths and types in the pinned schema, that this is its only tool, and that
 every lookup is recorded in `.generation`.
+
+  Also correct the install paragraph (`README.md:172-177`), which goes stale the
+  moment Task 4 lands: it advertises `-p -nt -nc --no-session` and promises that
+  "no ambient `AGENTS.md`, extension, or skill of yours steers a mint". The
+  invocation becomes `-nbt` plus explicit subtraction plus one lips-owned
+  extension, so the honest claim narrows to "no extension *of yours*", plus the
+  one tool lips loads on purpose whose every call is hashed into `.generation`.
+  That sentence is the promise the hermeticity argument rests on, so it must not
+  overstate.
 - [ ] **Step 2: DESIGN §13** — Done entry: the mint is grounded by a schema
 lookup tool. Name `answerQuery`'s adaptive granularity and why (an alphabetical
 slice hides the answer), the single-tool extension, the hermetic invocation, and
