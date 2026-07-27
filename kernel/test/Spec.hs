@@ -2071,6 +2071,9 @@ main = hspec $ do
         -- a value (docs/gaps/README.md, finding 2, closed in the kernel).
         , "A MECHANISM is not a gap at all"
         , "or a <capture> the rule's subject binds"
+        -- A composed name is kernel physics now, so the prompt must offer it:
+        -- a capability the model is told nothing about is dead capability.
+        , "A name may COMPOSE literal text with <self> or a <capture>"
         , "because-note"
         , "reserved segment <self>"
         , "PACKAGE NAMES"
