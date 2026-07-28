@@ -20,22 +20,38 @@
    `nix run …#artifact.greet` printing the program's text. No compiler, no
    `vendorHash`, no source file. The mint must write NO `.expect` assertion:
    the only option the engine fills is derivation-valued, and
-   `uncheckableExpects` rightly refuses an assertion on such an option (see
-   `docs/gaps/README.md` finding 5, which is that guard followed through to its
+   `uncheckableExpects` rightly refuses an assertion on such an option (see the
+   gap report's finding 5, `git show ca09f97^:docs/gaps/README.md`, which is that guard followed through to its
    uncomfortable conclusion).
 
-1. **CLI-tool physics** — evidence and analysis in `docs/gaps/README.md`, with
-   `docs/gaps/{board,habit,logscan}.lips` as committed repros. Six mints on
+1. **CLI-tool physics** — evidence and analysis in the gap report (deleted with
+   `ca09f97`; read it with `git show ca09f97^:docs/gaps/README.md`), with
+   `examples/{board,habit,logscan}.lips` as committed repros. Six mints on
    2026-07-27 (three programs x qwen3-coder:30b and claude-sonnet-5) produced no
    engine and six findings. Ranked:
 
-   a. **Silent concept demotion (deduce-or-fail's blind spot).** VISIBILITY
-      DONE (`diagInert`, ledger §13): `check` now names the lines that realize
-      nothing. Still open, the harder half: nothing stops a mint demoting an
-      assertion to decoration in the first place, and a compiled artifact does
-      not record which program lines its source depends on, so an edit to one of
-      them still compiles to an unchanged binary. Candidate: record the source's
-      line dependencies at mint and fail loud when one changes.
+   a. **Silent concept demotion (deduce-or-fail's blind spot).** Two halves
+      landed (ledger §13): `diagInert` names the lines that realize nothing, and
+      `droppedValues` makes a word the language reads and then discards a static
+      defect, refused at the mint gate and reported per line for engines already
+      committed. Three cases stay open:
+      (i) a PARTIAL drop — a rule reading `<value.1>` of a value built from two
+      holes silently drops the second; a sound static map from holes to token
+      positions is the missing piece (a multi-token capture breaks the naive one).
+      (ii) a per-hole DECORATIVE report — a hole demoted to a `Concept` on a line
+      that otherwise realizes is invisible, since `diagInert` works per line. No
+      committed engine emits a `Concept`, so this has no call site yet.
+      (iii) a compiled artifact still records no dependency on the program lines
+      its baked source came from, so an edit to one of them compiles to an
+      unchanged binary. Candidate: record the source's line dependencies at mint
+      and fail loud when one changes.
+      Two committed engines now name their own defect under (the closed half of)
+      this item and need a re-mint that cannot pass until 1c or a `gap` answers
+      them: `examples/http` (`<lang>` read into a steer, rule emits the literal
+      `buildGoModule`) and `examples/postgres` (`<dbname>` bound in *who owns the
+      app database* and emitted nowhere, while the rule asserts the constant
+      `ensureDBOwnership = true`; NixOS `ensureUsers` may have no option that can
+      honor a foreign database, which would make it a `gap`, not a rule fix).
 
    b. ~~**Capture-keyed artifact names.**~~ CLOSED (see ledger §13). A capture
       now keys an artifact and fills a value, so `install a command greet that

@@ -472,7 +472,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   heading is legitimately decorative, but so is a line a mint quietly declined to
   honor, and only the author can tell which; naming both is the honest move.
   This closes the visibility half of the silent-demotion finding
-  (`docs/gaps/README.md` finding 1). No committed engine emits a `Concept` yet,
+  (gap report finding 1, `git show ca09f97^:docs/gaps/README.md`). No committed
+  engine emits a `Concept` yet,
   so nothing changes for today's examples.
 
 - **The reasoning level is pinned (`--thinking`, default `high`).** `generate`
@@ -502,7 +503,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   Before this the only spelling that worked keyed the build off `<self>`, i.e.
   off the FILENAME, so the program's first value was decorative.
   Two findings drove it, both filed by a mint against itself, on three separate
-  programs (`docs/gaps/README.md`, findings 1 and 2): the model reached for
+  programs (gap report findings 1 and 2,
+  `git show ca09f97^:docs/gaps/README.md`): the model reached for
   `artifact.<cmd>` and `args.name "<cmd>"` every time, because that is the
   natural engine, and the kernel refused. Per invariant 4 the fix belonged in
   the kernel, not in a prompt telling the model to avoid the shape; the prompt
@@ -552,6 +554,49 @@ but the loop around it is incomplete; "missing" means specced, not built.
   nothing that works today. Closes the §11 open question of the same name;
   theory and citation in `docs/superpowers/survey/f-decision-calculus-theory.md`
   (seam 1).
+
+- **A discarded program word is a static defect (`droppedValues`).** A line lips
+  READS is not thereby honored: a rule may match the fact it produces and emit
+  only constants, so the program's word governs nothing and editing it changes no
+  output, while the sentence still reads as load-bearing. A mint filed this
+  against itself while minting a CLI tool -- "the same rule would wrongly still
+  emit buildGoModule ... the existing example works only because nobody edits
+  that word" -- and named this check as the honest fix.
+  `Lips.Kernel.Engine.Reach.droppedValues` decides it statically, per template
+  hole: run the pattern's own substitution with markers (so the check sees the
+  very segments `crystallize` will build, never a second copy of that rule), find
+  the rules whose left-hand side unifies with the decision the hole feeds
+  (`subjectsUnify`, extracted from the overlap check so one unification answers
+  both questions), and ask whether any of them carries the word -- by reading the
+  decision's value (`valueUsesAssertion`: `<value>`/`<value.N>`) or by naming the
+  aligned subject capture in an emit path or value. A hole no realizing emit
+  mentions at all is reported too: that word dies at crystallize.
+  `generate` refuses such an engine at the gate beside orthogonality; `check` and
+  `compile` report it per PROGRAM LINE (`diagInert`'s sibling `diagDropped`), so
+  the engines committed before the gate existed name their own defect where the
+  author can see it. Where alignment is not statically decidable the answer is
+  "carried", since the gate must pass every sound engine: a literal rule segment
+  means the word selects the rule (so it governs), an emit no rule matches is the
+  build's existing loud failure, and a segment mixing literal text with a hole is
+  treated as a plain variable.
+  This closes the enforcement half of the silent-demotion finding whose
+  visibility half `diagInert` closed: a word the language reads is now either
+  used, or declared decoration and reported as such. Verified by eleven
+  conformance tests (both real repros, presence-match and indexed-hole and
+  subject-capture non-defects, a literal rule segment, an unmentioned hole, a
+  decorative hole, no matching rule, and the rendered message) plus two diagnose
+  tests, 339 examples green, `-Wall` clean, and empirically over all nine
+  committed engines: seven clean, and three defects named, one of them previously
+  unknown. `examples/http` reads `go` into a steer whose rule emits the literal
+  `buildGoModule`; the untracked `board` mint does the same; and `examples/postgres`
+  binds `<dbname>` in *provision a user named app who owns the app database* and
+  emits it nowhere, while its rule asserts the constant `ensureDBOwnership =
+  true` (which in NixOS means "the database named after the user"), so a program
+  naming a different database would realize wrongly and silently. All three are
+  now open capability questions instead of silent engine bugs, tracked in
+  `TODO.md` item 1a; two deliberate non-goals are recorded there too (a partial
+  drop, where a rule reads `<value.1>` of a value built from two holes, and a
+  per-hole decorative report).
 
 - **The mint is grounded by one schema lookup tool.** A mint may confirm an
   option path and type instead of recalling it, through exactly one tool,
