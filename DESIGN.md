@@ -389,6 +389,23 @@ machinery retargets beyond NixOS.
   line separates. Template unification is the harder half (token sequences with
   multi-token tail holes, not fixed-length tuples) and no live mint has needed
   it yet.
+- ~~**Branching on a captured word**~~: resolved as permanently out of scope,
+  and the resolution is a distinction, not a mechanism. A word in a program
+  either FILLS A VALUE (a port, a path, a message), which belongs in a hole so
+  edits flow with no regeneration, or it SELECTS A MECHANISM (which builder,
+  which service), which belongs in the pattern template as a LITERAL. No value
+  in the closed grammar can carry a builder choice, and branching a rule on a
+  captured word is computation, so the mechanism-selecting word cannot be a
+  hole; spelled literally, editing it stops the line matching, `check` fails
+  loud with "grow the language", and a fresh mint picks the mechanism the new
+  word asks for. Regeneration IS the branch, and the `.lang` is disposable by
+  design, so nothing is lost. The `droppedValues` gate (§13) makes the wrong
+  shape unrepresentable in practice: a hole bound and then ignored is refused,
+  which is what used to let an engine keep `buildGoModule` after the program
+  said `rust`. Verified offline before deciding: a hand-written engine spelling
+  `in go` literally is clean under the gate and crystallizes 2 of 2 lines, and
+  the same program edited to `rust` reports `no match` and exits 1 naming
+  `lips generate`.
 - **Conflict explanation**: today a conflict names two competing decisions. A
   derived contradiction several refinement steps down needs the *minimal set
   of program lines* that cannot hold together. Model-based diagnosis solved
@@ -597,6 +614,24 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `TODO.md` item 1a; two deliberate non-goals are recorded there too (a partial
   drop, where a rule reads `<value.1>` of a value built from two holes, and a
   per-hole decorative report).
+
+- **A mechanism-selecting word is a template literal (TODO 1c closed).** The
+  prompt told the mint to "replace EVERY program value with a hole", which is
+  right for a value and wrong for a word naming a mechanism: told to hole every
+  varying word, a mint bound `<lang>` from *write the tool in go*, then had no
+  way to branch a builder on it and emitted the constant `buildGoModule`, so the
+  word became decoration. That is finding 3's silent bug, and its cause was one
+  over-general sentence in the prompt. The sentence now splits the two cases,
+  and the `MECHANISM` bullet carries the consequence: a mechanism-selecting word
+  stays a LITERAL token of the template, editing it stops the line matching, and
+  regeneration is the branch. The gate's refusal message names all three
+  remedies (use the word, spell it literally, read it as a concept), since a
+  refusal that does not say what to write costs a whole round. No kernel change:
+  the shape was always expressible (`examples/postgres`'s `p1` is an all-literal
+  template feeding a constant rule) and the `droppedValues` gate now makes the
+  dishonest alternative unrepresentable. The prompt-invariant guard pins both
+  halves of the split, so neither can drift back out silently. See §11,
+  "Branching on a captured word".
 
 - **The mint is grounded by one schema lookup tool.** A mint may confirm an
   option path and type instead of recalling it, through exactly one tool,

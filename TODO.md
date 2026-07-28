@@ -57,11 +57,15 @@
       now keys an artifact and fills a value, so `install a command greet that
       prints "..."` is writable and both values flow from the sentence.
 
-   c. **Language branching.** No way to branch a builder on a captured language
-      token, so `write the tool in go` either hardcodes `buildGoModule` (and
-      silently keeps it when the word changes, per finding a) or becomes
-      decoration. Branching is computation, so this is glue or it is permanently
-      out of scope with a loud failure as the honest answer.
+   c. ~~**Language branching.**~~ CLOSED by design (ledger §13, DESIGN §11): a
+      word that SELECTS a mechanism is a template LITERAL, not a hole, so editing
+      it stops the line matching and `check` fails loud naming `lips generate`.
+      Regeneration is the branch; the `.lang` is disposable by design. The
+      `droppedValues` gate refuses the dishonest alternative (a hole bound and
+      ignored), the prompt now states the split, and the gate's refusal names all
+      three remedies. No kernel change was needed: the shape was always
+      expressible. What remains is empirical -- re-mint the engines that predate
+      the split (see item 1a's list).
 
    d. **Templated source, two fresh repros** (extends the existing backlog item
       below): the command name must reach `pname` and the Go module inside the
