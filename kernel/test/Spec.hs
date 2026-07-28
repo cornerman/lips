@@ -2192,7 +2192,12 @@ main = hspec $ do
     it "states its load-bearing invariants" $
       mapM_ (\clause -> systemPrompt `shouldSatisfy` T.isInfixOf clause)
         [ "act exactly once"
-        , "replace EVERY program value with a hole"
+        -- Both halves of the hole/literal split are load-bearing: a VALUE gets a
+        -- hole so edits flow, a MECHANISM-selecting word stays a template
+        -- literal so editing it demands a fresh language instead of governing
+        -- nothing (TODO 1c, closed by design).
+        , "replace every program VALUE with a hole"
+        , "SELECTS A MECHANISM is not a value"
         , "refusal beats invention"
         , "pure data"
         , "No functions"

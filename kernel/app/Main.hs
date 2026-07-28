@@ -511,16 +511,25 @@ assertRulesOrthogonal file eng =
 -- binds and then discards makes a program line look load-bearing while changing
 -- nothing, and no later stage can notice (the module it realizes is perfectly
 -- valid Nix). So it is rejected here, where the engine is still rejectable.
--- Two honest ways out: carry the word (read it with <value> or the aligned
--- capture), or state that it carries no value of its own by reading the line as
--- a concept -- which `check` then reports as decoration.
+-- Three honest ways out, named in the report because a refusal that does not
+-- say what to write costs a whole round: carry the word (read it with <value>
+-- or the aligned capture), spell it as a template LITERAL when it selects a
+-- mechanism no value can carry (a builder, a service), or read the line as a
+-- concept when it truly carries nothing -- which `check` then reports as
+-- decoration.
 assertValuesReach :: FilePath -> EngineData -> IO ()
 assertValuesReach file eng =
   case droppedValues (edPatterns eng) (edRules eng) of
     []  -> pure ()
     dvs -> die (validationReport file
       ("it reads words from the program and then discards them:\n"
-        <> T.unlines (map (("  - " <>) . renderDroppedValue) dvs)))
+        <> T.unlines (map (("  - " <>) . renderDroppedValue) dvs)
+        <> "\nEach one wants one of three fixes: use the word (a <value>/<value.N>\n"
+        <> "hole, or the capture aligned with the subject segment it fills); or, if\n"
+        <> "it SELECTS a mechanism no value can carry (a builder, a service), spell\n"
+        <> "it as a literal token of the template, so editing it stops the line\n"
+        <> "matching and asks for a fresh language instead of governing nothing; or,\n"
+        <> "if the line truly carries no value, read it as a concept."))
 
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
 -- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
