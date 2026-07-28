@@ -76,6 +76,20 @@
       for is writable, and an unfilled name fails loud at realize instead of
       reaching the module. Still open: a hole inside a source heredoc, which is
       the "source is a fixed blob" half.
+      **Third repro, and the first with a workaround attached** (`logscan` mint,
+      2026-07-28, claude-sonnet-5, thinking max): needing the captured command
+      name inside `go.mod` (which it had to write as `module app`), the mint
+      renamed the built binary from a shell loop smuggled into a build argument --
+      `args.postInstall "for n in $out/bin/*; do if [ $n != $out/bin/<value> ];
+      then mv $n $out/bin/<value>; fi; done"`. The value grammar forbids
+      computation, but a build arg is an opaque string, so shell walks straight
+      through it. By invariant 4 this is the signal that the fix belongs in the
+      format (a hole inside `source`), not in the output: a human reading that
+      line would flag it. The mint did not file a gap for it ("No gaps.
+      postInstall and home.packages are ordinary derivation/option mechanics"),
+      so it is recorded here by hand. Note this is the mint's own answer to the
+      question 1d asks -- how a program's word reaches inside a compiled
+      artifact -- and it answers it with shell.
 
    e. **A CLI engine has nothing to pin** — no longer theoretical: it shipped a
       broken build. The first `board` mint (2026-07-28, claude-sonnet-5) emitted
