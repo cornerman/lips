@@ -1755,6 +1755,33 @@ main = hspec $ do
           d = diagnose "f" engC "feed notes\nthe bank drops csv files into inbox/."
       map fst (diagInert d) `shouldBe` [1]
 
+    -- The http engine's real shape: a steer whose rule emits a constant. The
+    -- author needs the LINE named, not the pattern id the mint chose.
+    it "names a line whose word the engine reads and discards" $ do
+      let engD = EngineData
+            { edPatterns =
+                [ patOne "p3" [TLit "write", TLit "the", TLit "server", TLit "in", THole "lang"]
+                    Steer [SLit "server.language"] [SHole "lang"] ]
+            , edRules = [ MapRule "r3" Steer ["server", "language"]
+                            [ Emit ["environment", "etc", "builder", "text"]
+                                   (VStr [PLit "buildGoModule"]) ] ]
+            , edDemands = []
+            }
+      diagDropped (diagnose "f" engD "write the server in go")
+        `shouldBe` [(1, "write the server in go", ["lang"])]
+
+    it "reports no dropped word when the rule reads the value" $ do
+      let engK = EngineData
+            { edPatterns =
+                [ patOne "p3" [TLit "write", TLit "the", TLit "server", TLit "in", THole "lang"]
+                    Steer [SLit "server.language"] [SHole "lang"] ]
+            , edRules = [ MapRule "r3" Steer ["server", "language"]
+                            [ Emit ["environment", "etc", "builder", "text"]
+                                   (VStr [PHole "value"]) ] ]
+            , edDemands = []
+            }
+      diagDropped (diagnose "f" engK "write the server in go") `shouldBe` []
+
     it "does not call a realizing line decorative" $ do
       let d = diagnose "f" eng "the bank drops csv files into inbox/."
       diagInert d `shouldBe` []

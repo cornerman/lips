@@ -228,7 +228,7 @@ expectGate dir file eng program = do
 -- same outcomes as squiggles.
 renderDiagnosis :: FilePath -> Diagnosis -> Text
 renderDiagnosis file d =
-  T.intercalate "\n" (headline : map row (diagLines d) ++ inertBlock ++ openBlock)
+  T.intercalate "\n" (headline : map row (diagLines d) ++ inertBlock ++ droppedBlock ++ openBlock)
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
@@ -249,6 +249,17 @@ renderDiagnosis file d =
           "" : ("decorative, realizing nothing (" <> tshow (length (diagInert d))
                   <> ") -- editing these changes no output:")
               : ["  line " <> tshow n <> "  \"" <> t <> "\"" | (n, t) <- diagInert d]
+    -- A word the language binds and no rule carries: the line looks
+    -- load-bearing and is not, so editing that word changes nothing. The gate
+    -- refuses such an engine now; this names it for engines committed earlier.
+    droppedBlock
+      | null (diagDropped d) = []
+      | otherwise =
+          "" : ("read and discarded (" <> tshow (length (diagDropped d))
+                  <> ") -- these words reach no output:")
+              : [ "  line " <> tshow n <> "  \"" <> t <> "\"  <"
+                    <> T.intercalate "> <" hs <> ">"
+                | (n, t, hs) <- diagDropped d ]
     openBlock
       | null (diagOpen d) = []
       | otherwise = "" : ("open questions (" <> tshow (length (diagOpen d)) <> "):")
