@@ -1944,6 +1944,29 @@ main = hspec $ do
 
   -- The value language's two guarantees, as properties over generated inputs:
   -- canonical round-trip, and injection made unrepresentable.
+  -- A rhs either reads the matched decision's assertion or it does not; the
+  -- dropped-value check ('Engine.Reach') turns that answer into a gate, so it
+  -- is pinned here on its own.
+  describe "valueUsesAssertion (does a rhs read the matched decision's value)" $ do
+    let v t = case parseValue t of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test value: " <> e))
+
+    it "sees <value> in a string" $
+      valueUsesAssertion (v "\"echo <value>\"") `shouldBe` True
+
+    it "sees an indexed <value.N>" $
+      valueUsesAssertion (v "\"[ \\\"--keep-<value.2> <value.1>\\\" ]\"") `shouldBe` True
+
+    it "sees a hole nested in a list" $
+      valueUsesAssertion (v "[ \"<value>\" ]") `shouldBe` True
+
+    it "does not see a constant" $
+      valueUsesAssertion (v "\"buildGoModule\"") `shouldBe` False
+
+    it "does not count a subject capture as reading the value" $
+      valueUsesAssertion (v "\"<name>\"") `shouldBe` False
+
   describe "value language (round-trip and injection safety, spec: closed rhs)" $ do
     it "parseValue . renderValue == id for canonical values" $
       property $ forAll genValue $ \v -> parseValue (renderValue v) === Right v

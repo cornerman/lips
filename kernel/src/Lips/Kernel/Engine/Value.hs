@@ -50,6 +50,7 @@ module Lips.Kernel.Engine.Value
   , bindSelfValue
   , bindCaptureValue
   , valueCaptures
+  , valueUsesAssertion
   , holeIndex
   , valueRefsDerivation
   , valueArtifactNames
@@ -242,6 +243,30 @@ valueCaptures = go
     -- capture: it binds to the instance name at realize time ('bindSelfValue'),
     -- so no rule subject binds it and 'pathCaptures' drops it.
     capOf = pathCaptures
+
+-- | Does this rhs read the MATCHED decision's assertion? True for a
+-- @\<value\>@ or @\<value.N\>@ hole anywhere inside it (a string piece, a bare
+-- typed hole, a tail hole), recursing into lists and attrsets. The dual of
+-- 'valueCaptures', which reports the capture names and deliberately skips
+-- these two.
+--
+-- A 'VPath' is not scanned: 'fillValue' leaves a path untouched (only
+-- 'bindCaptureValue' and 'bindSelfValue' rewrite one), so a @\<value\>@ written
+-- inside a path never receives the matched assertion. Answering False there
+-- keeps the answer honest -- a caller asking "does the program's word reach
+-- this option" must not be told yes by a hole nothing fills.
+valueUsesAssertion :: Value -> Bool
+valueUsesAssertion = go
+  where
+    go (VStr ps)    = any piece ps
+    go (VList vs)   = any go vs
+    go (VAttr fs)   = any (go . snd) fs
+    go (VHole _ h)  = assertionHole h
+    go (VTail _ h)  = assertionHole h
+    go _            = False
+    piece (PHole h) = assertionHole h
+    piece _         = False
+    assertionHole h = h == "value" || isJust (holeIndex h)
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.
