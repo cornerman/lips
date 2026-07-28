@@ -25,6 +25,7 @@ import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Overlap
+import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Value
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
 import Lips.Kernel.OptionType
@@ -1955,6 +1956,80 @@ main = hspec $ do
       refine 100 (map toRule [r1, r2]) (fromList [mk "d1" "unrelated" "" Stated])
         `shouldBe` Right (fromList [mk "d1" "unrelated" "" Stated])
       map roLeft (ruleOverlaps [r1, r2]) `shouldBe` ["r1"]
+
+  -- A word the language BINDS and then discards makes a program line look
+  -- load-bearing while changing nothing (the http engine reads "go" into a
+  -- steer and emits the literal buildGoModule, so it works only because nobody
+  -- edits that word). Static, domain-blind, checked at the mint gate.
+  describe "dropped program values (does every word the language reads reach output)" $ do
+    let pat body = case parsePatternBody "p1" body of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test pattern: " <> e))
+        rul i body = case parseRuleBody i body of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test rule: " <> e))
+
+    -- The committed examples/http defect, verbatim in shape.
+    let langPat = pat "write the server in <lang> using only the standard library \
+                      \=> steer server.language \"<lang>\""
+        constRule = rul "r3" "match steer server.language => artifact.helloserver.builder \"\\\"buildGoModule\\\"\""
+
+    it "reports a captured word a matching rule replaces with a constant" $
+      droppedValues [langPat] [constRule]
+        `shouldBe` [DroppedValue "p1" "lang" (IgnoredBy ["server", "language"] ["r3"])]
+
+    it "accepts the same rule once its rhs reads the value" $
+      droppedValues [langPat]
+        [ rul "r3" "match steer server.language => artifact.helloserver.builder \"\\\"build<value>Module\\\"\"" ]
+        `shouldBe` []
+
+    it "accepts a presence match: a pattern with no hole drops nothing" $
+      droppedValues [pat "run a postgresql database server => fact postgres.enable \"true\""]
+        [ rul "r1" "match fact postgres.enable => services.postgresql.enable true" ]
+        `shouldBe` []
+
+    it "accepts indexed value holes as reading the value" $
+      droppedValues [pat "keep <count> <period> snapshots => fact backup.retention \"<count> <period>\""]
+        [ rul "r4" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-<value.2> <value.1>\\\" ]\"" ]
+        `shouldBe` []
+
+    -- The greet engine: <name> reaches output through the emit PATH, <msg>
+    -- through the value. Neither is dropped, and this is the shape most CLI
+    -- engines take, so a false rejection here would be expensive.
+    let greetPat = pat "install a command <name> that prints <msg> => fact cmd.<name>.msg \"<msg>\""
+
+    it "accepts a subject capture the rule carries into an emit path" $
+      droppedValues [greetPat]
+        [ rul "r1" "match fact cmd.<name>.msg => artifact.<name>.args.text \"\\\"echo <value>\\\"\"" ]
+        `shouldBe` []
+
+    it "reports a subject capture no emit path or value mentions" $
+      droppedValues [greetPat]
+        [ rul "r1" "match fact cmd.<name>.msg => environment.etc.greet.text \"\\\"<value>\\\"\"" ]
+        `shouldBe` [DroppedValue "p1" "name" (IgnoredBy ["cmd", "<name>", "msg"] ["r1"])]
+
+    it "accepts a literal rule segment: the word selects the rule" $
+      droppedValues [pat "write it in <lang> => fact tool.<lang> \"<lang>\""]
+        [ rul "r1" "match fact tool.go => artifact.<self>.builder \"\\\"buildGoModule\\\"\"" ]
+        `shouldBe` []
+
+    it "reports a hole no emit mentions at all" $
+      droppedValues [pat "write the tool in <lang> with no dependencies => fact tool.built \"true\""]
+        [ rul "r1" "match fact tool.built => artifact.<self>.args.vendorHash null" ]
+        `shouldBe` [DroppedValue "p1" "lang" EmittedNowhere]
+
+    it "leaves a decorative hole to the inert-line report" $
+      droppedValues [pat "show a kanban board in <place> => concept tool.intro \"<place>\""] []
+        `shouldBe` []
+
+    it "stays silent when no rule matches the decision at all" $
+      droppedValues [langPat] [] `shouldBe` []
+
+    it "names the defect in the words the rule author needs" $
+      map renderDroppedValue (droppedValues [langPat] [constRule])
+        `shouldBe`
+          [ "pattern p1 binds <lang>, which reaches server.language, and rule r3 \
+            \emits it nowhere: editing that word changes no output" ]
 
   -- The value language's two guarantees, as properties over generated inputs:
   -- canonical round-trip, and injection made unrepresentable.
