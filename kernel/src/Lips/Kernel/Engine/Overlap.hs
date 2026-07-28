@@ -33,11 +33,13 @@
 module Lips.Kernel.Engine.Overlap
   ( RuleOverlap (..)
   , ruleOverlaps
+  , subjectsUnify
   , renderRuleOverlap
   ) where
 
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import           Data.Maybe      (isJust)
 import           Data.Text       (Text)
 
 import Lips.Kernel.Capture      (captureName)
@@ -75,6 +77,14 @@ overlapOf l r
           rhs = terms "r" (mrSubject r)
       subst <- unify lhs rhs
       pure (RuleOverlap (mrId l) (mrId r) (map (render . resolve subst) lhs))
+
+-- | Could one concrete subject match both of these subject patterns? The
+-- yes/no half of 'overlapOf', without the witness -- shared so the
+-- dropped-value check ('Lips.Kernel.Engine.Reach') asks the SAME question about
+-- a pattern's emitted subject family and a rule's left-hand side. Two copies of
+-- unification would be two places for the answer to drift.
+subjectsUnify :: [Text] -> [Text] -> Bool
+subjectsUnify l r = isJust (unify (terms "l" l) (terms "r" r))
 
 -- | A subject segment is either a literal or a capture variable. Variables are
 -- tagged by side, so the two rules' capture names cannot collide: @\<path\>@ in

@@ -1892,6 +1892,20 @@ main = hspec $ do
     let emit = [ Emit ["x"] (VBool True) ]
         rule i k s = MapRule i k s emit
 
+    -- The yes/no half of the same unification, shared with the dropped-value
+    -- check so one implementation answers both questions.
+    it "unifies a capture with a literal at the same position" $ do
+      subjectsUnify ["tool", "<lang>"] ["tool", "go"] `shouldBe` True
+      subjectsUnify ["tool", "<lang>"] ["tool", "language"] `shouldBe` True
+
+    it "does not unify different literals or different lengths" $ do
+      subjectsUnify ["tool", "go"] ["tool", "rust"] `shouldBe` False
+      subjectsUnify ["tool"] ["tool", "<lang>"] `shouldBe` False
+
+    it "keeps a repeated capture constraining" $ do
+      subjectsUnify ["x", "<a>", "<a>"] ["x", "p", "q"] `shouldBe` False
+      subjectsUnify ["x", "<a>", "<a>"] ["x", "p", "p"] `shouldBe` True
+
     it "two rules with the same kind and subject overlap" $
       ruleOverlaps [rule "r1" Fact ["a", "b"], rule "r2" Fact ["a", "b"]]
         `shouldBe` [RuleOverlap "r1" "r2" ["a", "b"]]
