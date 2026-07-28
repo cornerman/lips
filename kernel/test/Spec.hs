@@ -2198,6 +2198,10 @@ main = hspec $ do
         -- nothing (TODO 1c, closed by design).
         , "replace every program VALUE with a hole"
         , "SELECTS A MECHANISM is not a value"
+        -- An artifact's args are the whole builder call, so they must be able to
+        -- produce a derivation name; a pname with no version ships a module that
+        -- fails inside nix, past every lips gate (TODO 1e).
+        , "BOTH pname and version"
         , "refusal beats invention"
         , "pure data"
         , "No functions"

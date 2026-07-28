@@ -77,9 +77,36 @@
       reaching the module. Still open: a hole inside a source heredoc, which is
       the "source is a fixed blob" half.
 
-   e. **A CLI engine has nothing to pin.** Every option it fills is
-      derivation-valued, so its contract is necessarily empty, and an empty
-      contract passes vacuously. Invariant 5 has no force for this class.
+   e. **A CLI engine has nothing to pin** — no longer theoretical: it shipped a
+      broken build. The first `board` mint (2026-07-28, claude-sonnet-5) emitted
+      `args.pname` with no `args.version`, so nixpkgs could not derive a name and
+      `nix run …#artifact.board` died with `attribute 'name' missing` — a raw nix
+      error naming neither lips, the program, the artifact, nor a remedy, past
+      every lips gate, with `check` reporting "all 2 checks pass".
+      Why no gate caught it: `runExpects` is the only evaluation lips performs,
+      and an artifact is unreachable by it three times over — it returns early on
+      an empty contract (`greet`: 0 checks, zero evaluation), nix is lazy so
+      forcing board's two string options never touches `home.packages`, and
+      `uncheckableExpects` forbids an expect on a derivation-valued option, so no
+      contract may ever name an artifact.
+      Verified remedy, and the honest answer to this item: **an artifact's own
+      instantiability is its contract.** Force each artifact's `drvPath` against
+      the pinned nixpkgs the binary already bakes as `LIPS_NIXPKGS_FLAKE` (the
+      same pin behind the option schema). Domain-blind and complete: nix judges,
+      so the kernel needs no list of builder arg names, and every malformed
+      artifact fails for every builder. Tested against the corpus with the exact
+      expression a gate would build: board FAILS (`attribute 'name' missing`),
+      greet and http INSTANTIATE, so it refuses the bad mint with no false
+      positives.
+      Open decision (deferred 2026-07-28): WHERE it runs. `generate` only keeps
+      `check`/`compile` offline, deterministic and schema-free as documented, but
+      leaves an engine committed before the gate silently broken; adding it to
+      `check` catches those at the cost of that stated property. Rejected on
+      sight: a kernel rule requiring `name`, or `pname` and `version`, since it
+      enumerates nixpkgs arg names inside a domain-blind kernel and would still
+      miss a wrong-typed arg or an unknown builder.
+      Interim mitigation only (a prompt plea, not a guard): the mint prompt now
+      states that args must be able to produce a derivation name.
 
    f. **Two hole namespaces, one syntax** (pattern holes named by the template
       vs the rule side's fixed `<value>`). A weaker model confuses them

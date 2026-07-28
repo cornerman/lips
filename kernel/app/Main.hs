@@ -376,8 +376,16 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
             Left (NixToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
             Left (NixInvalid why)   -> die (validationReport f ("the configuration lips produced isn't valid Nix:\n" <> why))
             Right ()                -> pure (f, base, nixModule)
-      -- Sources are minted in memory; stage them (not yet on disk) so the
-      -- behavioral gate can evaluate the artifact derivations.
+      -- Sources are minted in memory; stage them (not yet on disk) so a staged
+      -- @src = ./artifacts/<name>@ resolves during the behavioral eval.
+      -- NOTE: nothing forces an artifact derivation. The contract is the only
+      -- thing lips evaluates, it is skipped entirely when empty, nix is lazy, and
+      -- 'uncheckableExpects' forbids an expect on a derivation-valued option --
+      -- so an artifact is unreachable by any gate, and a malformed one (a pname
+      -- with no version) ships and fails inside nix at the user's `nix run`.
+      -- Recorded in TODO.md item 1e with the verified remedy (force each
+      -- artifact's drvPath against the pinned nixpkgs); deliberately not built
+      -- yet, because it would put a nixpkgs eval inside a gate.
       let minted = sourcesOf (map icItem candidates)
       -- The contract is language-level. On regeneration the COMMITTED contract
       -- governs (the stable spec regeneration may not silently break); on first
