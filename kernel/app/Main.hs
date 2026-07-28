@@ -57,6 +57,7 @@ import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Overlap    (renderRuleOverlap, ruleOverlaps)
+import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Flake                (flakeText, runCommands)
 import           Lips.Nix.Options              (parseNixOptionsJson)
@@ -349,6 +350,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
         Left es -> die (validationReport rep ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
         Right e -> pure e
       assertRulesOrthogonal rep eng
+      assertValuesReach rep eng
       assertOptionsAdmissible target rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
@@ -493,6 +495,21 @@ assertRulesOrthogonal file eng =
     ovs -> die (validationReport file
       ("two of its rules claim the same decision, so it has no single reading:\n"
         <> T.unlines (map (("  - " <>) . renderRuleOverlap) ovs)))
+
+-- | Deduce-or-fail applied to the engine's own reading: a word the language
+-- binds and then discards makes a program line look load-bearing while changing
+-- nothing, and no later stage can notice (the module it realizes is perfectly
+-- valid Nix). So it is rejected here, where the engine is still rejectable.
+-- Two honest ways out: carry the word (read it with <value> or the aligned
+-- capture), or state that it carries no value of its own by reading the line as
+-- a concept -- which `check` then reports as decoration.
+assertValuesReach :: FilePath -> EngineData -> IO ()
+assertValuesReach file eng =
+  case droppedValues (edPatterns eng) (edRules eng) of
+    []  -> pure ()
+    dvs -> die (validationReport file
+      ("it reads words from the program and then discards them:\n"
+        <> T.unlines (map (("  - " <>) . renderDroppedValue) dvs)))
 
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
 -- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
