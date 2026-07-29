@@ -24,8 +24,8 @@
 --     over the compiled directory, and the user picks one.
 module Main (main) where
 
-import           Control.Exception  (IOException, try)
-import           Control.Monad      (filterM, forM, forM_, unless)
+import           Control.Exception  (IOException, finally, try)
+import           Control.Monad      (filterM, forM, forM_, unless, when)
 import           Data.Bifunctor     (first)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
@@ -34,9 +34,12 @@ import qualified Data.Text.IO       as TIO
 import           System.Environment (getEnvironment, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
-import           System.Directory   (doesPathExist)
-import           System.FilePath    (takeFileName, (</>))
-import           System.Process     (CreateProcess (..), callCommand, proc, readCreateProcessWithExitCode, readProcessWithExitCode)
+import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist,
+                                     doesPathExist, getTemporaryDirectory, listDirectory,
+                                     removeDirectoryRecursive)
+import           System.FilePath    (takeDirectory, takeFileName, (</>))
+import           System.Posix.Temp  (mkdtemp)
+import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
@@ -124,7 +127,7 @@ compileLoose mout mLangDir file = do
   target  <- readRecordedTarget dir file
   let outDirPath = maybe (compiledPath file) id mout
   ensureDerived file
-  callCommand ("mkdir -p " <> shq outDirPath)
+  createDirectoryIfMissing True outDirPath
   TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
   stageFromDisk dir file (outDirPath </> "artifacts")
   artNames <- case rlArtifact rl of
@@ -142,7 +145,7 @@ compileLoose mout mLangDir file = do
 -- Written once; an existing file is left alone, so a user can edit it.
 ensureDerived :: FilePath -> IO ()
 ensureDerived file = do
-  callCommand ("mkdir -p " <> shq (outDir file))
+  createDirectoryIfMissing True (outDir file)
   let ign = outDir file </> ".gitignore"
   there <- doesPathExist ign
   unless there (TIO.writeFile ign "*\n")
@@ -451,7 +454,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- The language folder holds every minted and derived file; create it (and
       -- its derived out/ subtree) before writing, so a first mint beside a bare
       -- program just works.
-      callCommand ("mkdir -p " <> shq (langDir rep))
+      createDirectoryIfMissing True (langDir rep)
       TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
       TIO.writeFile (generationPath rep) rec
       TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
@@ -792,8 +795,7 @@ runExpects stage expects0 base nixModule =
   case expandExpects base expects0 >>= \expects ->
          (,) expects <$> traverse (expectedValue base) expects of
     Left e            -> pure (Left (Violations ["lips can't match a check to the program: " <> e]))
-    Right (expects, pvs) -> do
-      dir <- mkTempDir
+    Right (expects, pvs) -> withTempDir $ \dir -> do
       let tmp = dir <> "/module.nix"
       TIO.writeFile tmp nixModule
       stage (dir <> "/artifacts")
@@ -818,10 +820,13 @@ die msg = TIO.hPutStrLn stderr msg >> exitFailure
 -- | A fresh temporary directory. lips writes a module and its staged
 -- @artifacts/@ tree here so a relative @src = ./artifacts/<name>@ resolves at
 -- evaluation. (Left in place, matching the module temp files elsewhere.)
-mkTempDir :: IO FilePath
-mkTempDir = do
-  (_, out, _) <- readProcessWithExitCode "mktemp" ["-d", "/tmp/lips-XXXXXX"] ""
-  pure (T.unpack (T.strip (T.pack out)))
+withTempDir :: (FilePath -> IO a) -> IO a
+withTempDir act = do
+  tmp <- getTemporaryDirectory
+  dir <- mkdtemp (tmp </> "lips-")
+  -- Removed even when the action dies (exitFailure throws), so a failing check
+  -- does not leave a scratch tree behind on every run.
+  act dir `finally` removeDirectoryRecursive dir
 
 -- | Write minted source files under @<root>/<artifact>/<relpath>@. Used to
 -- persist to the language folder's @artifacts/@ and to stage into a temp
@@ -830,8 +835,8 @@ writeSources :: FilePath -> [SourceFile] -> IO ()
 writeSources root = mapM_ one
   where
     one sf = do
-      let p = root <> "/" <> T.unpack (sfArtifact sf) <> "/" <> T.unpack (sfPath sf)
-      callCommand ("mkdir -p " <> shq (parentDir p))
+      let p = root </> T.unpack (sfArtifact sf) </> T.unpack (sfPath sf)
+      createDirectoryIfMissing True (takeDirectory p)
       TIO.writeFile p (sfContent sf)
 
 -- | The staged-source gate: every relative path the realized module names must
@@ -849,8 +854,7 @@ writeSources root = mapM_ one
 -- Hence the remedy is regeneration: the source tree is minted, never edited.
 stagedGate :: (FilePath -> IO ()) -> FilePath -> [(Text, Decision)] -> IO ()
 stagedGate _     _    []     = pure ()
-stagedGate stage file staged = do
-  dir <- mkTempDir
+stagedGate stage file staged = withTempDir $ \dir -> do
   stage (dir </> "artifacts")
   missing <- filterM (fmap not . doesPathExist . (dir </>) . T.unpack . fst) staged
   case missing of
@@ -861,21 +865,29 @@ stagedGate stage file staged = do
       ("→ the source tree is minted, so rebuild it: lips generate " <> T.pack file))
 
 -- | Stage a language's committed @artifacts@ tree (found under @dir@) into
--- @dst@ (the temp module's @artifacts/@). A no-op when the program has no
--- artifacts.
+-- @dst@ (the temp module's @artifacts\/@). A no-op when the language has no
+-- artifacts tree, since a program without artifacts stages nothing.
+--
+-- A copy failure is NOT swallowed: it used to shell out to @cp -rT@ and discard
+-- every error, so an unreadable source tree surfaced later as a missing path or
+-- a confusing nix eval. Any IO error now propagates, naming the file.
 stageFromDisk :: FilePath -> FilePath -> FilePath -> IO ()
 stageFromDisk dir file dst = do
-  _ <- (try (readProcessWithExitCode "cp" ["-rT", artifactsPathIn dir file, dst] "")
-          :: IO (Either IOException (ExitCode, String, String)))
-  pure ()
+  let src = artifactsPathIn dir file
+  there <- doesDirectoryExist src
+  when there (copyTree src dst)
 
--- | The directory part of a path (everything up to and including the last @/@).
-parentDir :: FilePath -> FilePath
-parentDir = T.unpack . fst . T.breakOnEnd "/" . T.pack
-
--- | Minimal single-quote shell escaping for a path passed to @mkdir -p@.
-shq :: FilePath -> String
-shq s = "'" <> concatMap (\c -> if c == '\'' then "'\\''" else [c]) s <> "'"
+-- | Copy a directory tree, creating @dst@ and mirroring files and subdirectories
+-- (the @cp -rT@ shape: contents of @src@ land directly in @dst@). Loud on any
+-- IO error, by not catching it.
+copyTree :: FilePath -> FilePath -> IO ()
+copyTree src dst = do
+  createDirectoryIfMissing True dst
+  entries <- listDirectory src
+  forM_ entries $ \e -> do
+    isDir <- doesDirectoryExist (src </> e)
+    if isDir then copyTree (src </> e) (dst </> e)
+             else copyFile (src </> e) (dst </> e)
 
 -- | The standard message skeleton: a plain headline, optional indented detail
 -- lines, and a final "→" action. Every error the CLI prints is built from it,
