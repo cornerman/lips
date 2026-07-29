@@ -38,6 +38,34 @@
    2026-07-27 (three programs x qwen3-coder:30b and claude-sonnet-5) produced no
    engine and six findings. Ranked:
 
+   a2. **Re-mints DONE (2026-07-30).** The two engines that named their own defect
+      (`http`, `postgres`) are re-minted and honest; see DESIGN 13, "The two
+      dishonest engines re-minted". Three new findings came out of it, none of
+      which any lips gate can see today:
+      (i) **no gate looks INSIDE a build.** The first http re-mint kept
+      `module app` in `go.mod`, so the binary was `app` while
+      `ExecStart = "${artifact.hello}/bin/hello"` named `hello`: a service that
+      cannot start, past `check`, past `lipsArtifacts-eval` (which instantiates,
+      never builds), caught only by running the binary by hand. The prompt now
+      states the obligation ("a path inside a build must exist"), which is a plea,
+      not a guard. Candidate: a flake check that BUILDS each committed artifact and
+      asserts every `${artifact.<name>}/...` path the module names exists in the
+      result. Cheap to write, minutes to run, and it is the only thing between a
+      green repo and a dead unit.
+      (ii) **an option's own semantics can make an honest engine wrong.** postgres
+      emits `ensureUsers = [ { name = "app"; ensureDBOwnership = true; } ]`, but
+      NixOS grants ownership of the database that shares the USER's name, so a
+      program naming a user and a database differently would realize a silently
+      wrong config. The words are spent (the dropped-value guard is satisfied), so
+      lips sees nothing; the kernel cannot know option semantics either. Candidate:
+      nothing kernel-side -- it belongs in the mint's own review, or as a `gap` the
+      mint should have filed.
+      (iii) **duplicate list elements survive assembly.** Two lines mentioning the
+      same database give `ensureDatabases = [ "app" "app" ]`. Harmless for postgres,
+      noise in the output, and a reviewer trips over it. Open decision: should
+      `Append` assembly drop an element a previous contributor already stated (a
+      set-like merge), or is order-and-multiplicity part of what a list states?
+
    a. **Silent concept demotion (deduce-or-fail's blind spot).** Two halves
       landed (ledger §13): `diagInert` names the lines that realize nothing, and
       `droppedValues` makes a word the language reads and then discards a static
@@ -55,9 +83,9 @@
       its baked source came from, so an edit to one of them compiles to an
       unchanged binary. Candidate: record the source's line dependencies at mint
       and fail loud when one changes.
-      Two committed engines now name their own defect under (the closed half of)
-      this item and need a re-mint that cannot pass until 1c or a `gap` answers
-      them: `examples/http` (`<lang>` read into a steer, rule emits the literal
+      RESOLVED by the 2026-07-30 re-mints (item a2 above); the original text
+      follows. Two committed engines now name their own defect under (the closed
+      half of) this item and need a re-mint: `examples/http` (`<lang>` read into a steer, rule emits the literal
       `buildGoModule`) and `examples/postgres` (`<dbname>` bound in *who owns the
       app database* and emitted nowhere, while the rule asserts the constant
       `ensureDBOwnership = true`; NixOS `ensureUsers` may have no option that can

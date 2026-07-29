@@ -1434,6 +1434,28 @@ but the loop around it is incomplete; "missing" means specced, not built.
   the same prefix. Verified against the corpus: all 11 committed engines are
   orthogonal at the pattern layer, so the check refuses nothing that works today.
 
+- **The two dishonest engines re-minted (2026-07-30).** `examples/http` and
+  `examples/postgres` each named their own defect under the dropped-value guard;
+  both are re-minted (claude-sonnet-5) and the defect is gone. `http` now reads
+  the mechanism-selecting line ("in go, standard library only") as a fact with a
+  literal assertion instead of binding a hole it discards, carries the response
+  text INTO the Go source through a fill, and fills `module @NAME@` in `go.mod`
+  from the service name so the binary is really called what
+  `ExecStart = "${artifact.hello}/bin/hello"` says (verified: the built binary
+  serves the program's text on the program's port). `postgres` now reads *who owns
+  the app database* as one fact carrying both words (`"<user> <db>"`) and spends
+  both, so the owned database governs `ensureDatabases` instead of being dropped.
+  Both re-blessed their contract (`--renew`): a re-mint renames subjects, and the
+  contract names subjects, so invariant 5 fires by construction -- the observable
+  option paths were compared by hand before blessing.
+  Three defects the re-mints exposed, each now a guard: a `source` block whose
+  artifact name is still a hole (two mints in a row wrote `<self>`, which makes a
+  directory literally called `<self>`) is refused at the mint gate; the minted
+  `artifacts/` tree is REPLACED rather than added to (the first re-mint left a dead
+  `helloserver/` beside its new `hello/`); and a staged copy is made writable,
+  since a fill writes into it and a language folder read from the nix store is
+  read-only (this broke `lipsArtifacts-eval`, a compile inside a derivation).
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
