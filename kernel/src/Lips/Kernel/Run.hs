@@ -14,6 +14,7 @@ module Lips.Kernel.Run
   , run
   , runBase
   , runBaseArtifact
+  , runBaseStaged
   , runReplace
   , runBaseReplace
   ) where
@@ -27,7 +28,8 @@ import Lips.Kernel.Base
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
-import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile)
+import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile,
+                             realizeStagedPaths)
 import Lips.Kernel.Refine
 
 -- | The four run outcomes other than success (spec section 5).
@@ -79,6 +81,16 @@ runBaseArtifact :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision
 runBaseArtifact modeOf assemble budget rules demands base0 = do
   realizable <- runGround budget rules demands (resolve modeOf assemble base0)
   first fromRealizeError (realizeArtifactFile modeOf assemble (fromList realizable))
+
+-- | Like 'runBase' but projects the same ground base to the relative paths it
+-- names (see 'realizeStagedPaths'), so the caller can require each to exist in
+-- the tree it stages. Shares 'runGround', so the paths are exactly the ones the
+-- emitted module and artifact.nix contain -- one ground base, one answer.
+runBaseStaged :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+              -> Int -> [Rule] -> [Demand] -> Base -> Either RunError [(Text, Decision)]
+runBaseStaged modeOf assemble budget rules demands base0 = do
+  realizable <- runGround budget rules demands (resolve modeOf assemble base0)
+  first fromRealizeError (realizeStagedPaths modeOf assemble (fromList realizable))
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA
 -- guard), shared by 'runBase' and 'runBaseArtifact'. Takes the resolve result

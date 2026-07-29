@@ -19,6 +19,7 @@ module Lips.Kernel.Realize
   , realize
   , realizeReplace
   , realizeArtifactFile
+  , realizeStagedPaths
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
@@ -31,7 +32,7 @@ import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..)
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
-                                  valueArtifactNames)
+                                  valueArtifactNames, valuePaths)
 
 -- | Why a ground base could not be projected to a module. Every case is an
 -- engine defect (a minted rule that emitted an ill-formed artifact group or a
@@ -102,6 +103,27 @@ realizeArtifactFile modeOf assemble base =
                    , "{"
                    ] ++ map ("  " <>) entries ++ ["}"])
              Right (Just (body, names))
+
+-- | Every RELATIVE path the realized base names, paired with the decision that
+-- named it. Nix resolves such a path against the module directory, i.e. against
+-- the tree lips stages beside the module (an artifact's minted source), so it
+-- is the one value the module cannot vouch for itself: a path naming nothing
+-- dies inside nix, with an error naming neither lips, the program, nor a
+-- remedy. The kernel is pure and owns no filesystem, so it reports the paths
+-- and the caller requires each to exist (deduce-or-fail, at the door that
+-- stages). An absolute path names a file on the host, which is the host's to
+-- have, not lips's to check.
+realizeStagedPaths :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+                   -> Base -> Either RealizeError [(Text, Decision)]
+realizeStagedPaths modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs     -> Left (resolveErr errs)
+    Right winners -> concat <$> traverse paths (Map.toList winners)
+  where
+    paths (s, d) = case parseValue (unAssertion (dAssertion d)) of
+      Left e  -> Left (RMalformed s e)
+      Right v -> Right [ (p, d) | p <- valuePaths v, isRelative p ]
+    isRelative p = T.isPrefixOf "./" p || T.isPrefixOf "../" p
 
 -- | Today's all-Replace behavior, for callers and tests that do not
 -- aggregate. Byte-identical to the pre-aggregation 'realize'.

@@ -54,6 +54,7 @@ module Lips.Kernel.Engine.Value
   , holeIndex
   , valueRefsDerivation
   , valueArtifactNames
+  , valuePaths
   , parseHoleType
   ) where
 
@@ -159,6 +160,17 @@ valueArtifactNames (VList vs)        = concatMap valueArtifactNames vs
 valueArtifactNames (VAttr fs)        = concatMap (valueArtifactNames . snd) fs
 valueArtifactNames (VRef (RArt n))   = [n]
 valueArtifactNames _                 = []
+
+-- | Every path literal a value names, anywhere inside it. A path is the only
+-- value that points OUTSIDE the module text at a file that must be there, so
+-- 'Lips.Kernel.Realize.realizeStagedPaths' collects them for the caller to
+-- check against the staged tree. Structural, like 'valueArtifactNames': a
+-- @\"./x\"@ written as a string is a string, not a path.
+valuePaths :: Value -> [Text]
+valuePaths (VPath p)  = [p]
+valuePaths (VList vs) = concatMap valuePaths vs
+valuePaths (VAttr fs) = concatMap (valuePaths . snd) fs
+valuePaths _          = []
 
 -- | Resolve the reserved @\<self\>@ token inside a value to the instance name,
 -- the value-side twin of the option-path segment binding in

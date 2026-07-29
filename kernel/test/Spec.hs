@@ -610,6 +610,27 @@ main = hspec $ do
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList ground)
         `shouldBe` Right Nothing
 
+    -- A relative path literal names a file lips STAGED beside the module (an
+    -- artifact's source tree). It is the one value a module cannot vouch for
+    -- itself: nix resolves it against the module directory, so a path naming
+    -- nothing dies inside nix, naming neither lips nor the program. realize
+    -- therefore reports every relative path with the decision that named it,
+    -- and the caller -- which owns the filesystem -- requires it to exist.
+    -- An absolute path belongs to the host, so it is not lips's to check.
+    it "reports the relative paths the realized base names (absolute ones are the host's)" $ do
+      let ps =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","myserver","builder"] }
+            , (mk "s" "x" "./artifacts/myserver" Stated) { dSubject = Subject ["artifact","myserver","args","src"] }
+            , (mk "f" "x" "./artifacts/myserver/motd" Stated) { dSubject = Subject ["environment","etc","motd","source"] }
+            , (mk "a" "x" "/etc/hosts" Stated) { dSubject = Subject ["environment","etc","hosts","source"] }
+            ]
+      fmap (map fst) (realizeStagedPaths (const Replace) (\_ -> Left "unused") (fromList ps))
+        `shouldBe` Right ["./artifacts/myserver", "./artifacts/myserver/motd"]
+
+    it "reports no staged path for a base that names none" $
+      realizeStagedPaths (const Replace) (\_ -> Left "unused") (fromList ground)
+        `shouldBe` Right []
+
     it "fails loud (typed, not a crash) on a ${artifact.<name>} reference to an undefined artifact" $
       let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
        in realizeReplace (fromList dangling) `shouldBe` Left (RDangling ["ghost"])
