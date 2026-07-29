@@ -35,6 +35,9 @@ module Lips.Kernel.Engine.Overlap
   , ruleOverlaps
   , subjectsUnify
   , renderRuleOverlap
+  , PatternOverlap (..)
+  , patternOverlaps
+  , renderPatternOverlap
   ) where
 
 import           Data.Map.Strict (Map)
@@ -42,8 +45,12 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe      (isJust)
 import           Data.Text       (Text)
 
+import qualified Data.Set        as Set
+import qualified Data.Text       as T
+
 import Lips.Kernel.Capture      (captureName)
 import Lips.Kernel.Engine.Data  (MapRule (..), renderAttrPath)
+import Lips.Kernel.Lang.Pattern (Pattern (..), TplTok (..))
 
 -- | Two rules that could claim one decision, with the subject family that
 -- witnesses it (still-open captures rendered as @\<name\>@).
@@ -138,3 +145,94 @@ renderRuleOverlap :: RuleOverlap -> Text
 renderRuleOverlap o =
   "rules " <> roLeft o <> " and " <> roRight o
     <> " both match " <> renderAttrPath (roWitness o)
+
+-- | Two patterns whose templates could read one line, with the line shape that
+-- witnesses it (a hole's own name stands where any word fits).
+data PatternOverlap = PatternOverlap
+  { poLeft    :: Text
+  , poRight   :: Text
+  , poWitness :: [Text]
+  }
+  deriving (Eq, Show)
+
+-- | Every overlapping pair of patterns, each pair once, in pattern order. The
+-- pattern-layer sibling of 'ruleOverlaps', and the same argument: 'crystallize'
+-- reports 'Lips.Kernel.Lang.Crystallize.Overlapping' only for an overlap some
+-- line in the corpus happens to witness, so a language can ship two templates no
+-- example separates and fail later on the author's own program.
+--
+-- A template is a token sequence over three forms (a literal, a one-token hole,
+-- a multi-token hole), which makes "could one line match both" the emptiness of
+-- an intersection: a product walk over the two templates, one token at a time,
+-- where a multi-token hole may stay or advance. Exact, no heuristic, and the
+-- first path that reaches both ends is the witness.
+--
+-- One case is deliberately SKIPPED rather than approximated: a template that
+-- repeats a hole name (@\<a\> ... \<a\>@) constrains the two positions to the
+-- same word, which the product walk does not track, so calling it an overlap
+-- could reject a sound engine. A false rejection is as bad as a missed defect
+-- (deduce-or-fail cuts both ways), and the dynamic check still covers it.
+patternOverlaps :: [Pattern] -> [PatternOverlap]
+patternOverlaps pats =
+  [ PatternOverlap (pId l) (pId r) w
+  | (l : rest) <- tails' pats
+  , r <- rest
+  , not (repeatsHole l), not (repeatsHole r)
+  , Just w <- [templatesOverlap (pTemplate l) (pTemplate r)]
+  ]
+  where
+    tails' []       = []
+    tails' t@(_:xs) = t : tails' xs
+    repeatsHole p = let hs = [ h | tok <- pTemplate p, h <- holeName tok ]
+                     in length hs /= length (Set.toList (Set.fromList hs))
+    holeName (THole h)  = [h]
+    holeName (TMulti h) = [h]
+    holeName (TLit _)   = []
+
+-- | Could one token sequence match both templates? 'Just' the shortest witness
+-- the walk finds, 'Nothing' when the two templates read disjoint line shapes.
+templatesOverlap :: [TplTok] -> [TplTok] -> Maybe [Text]
+templatesOverlap l r = go Set.empty (l, r)
+  where
+    go seen (as, bs)
+      | st' `Set.member` seen = Nothing
+      | otherwise = case (as, bs) of
+          ([], [])  -> Just []
+          -- Every token form consumes at least one word, so a leftover template
+          -- can never match an exhausted line.
+          ([], _)   -> Nothing
+          (_, [])   -> Nothing
+          (a : as', b : bs') -> case step a b of
+            Nothing      -> Nothing
+            Just (w, ks) -> firstJust [ (w :) <$> go (Set.insert st' seen) (pick a as as' ka, pick b bs bs' kb)
+                                      | (ka, kb) <- ks ]
+      where st' = (length as, length bs)
+    -- One word, consumed by both sides at once, plus how each side may continue:
+    -- 'Stay' is a multi-token hole taking another word, 'Next' moves on.
+    step (TLit x) (TLit y) | x /= y = Nothing
+                           | otherwise = Just (x, [(Next, Next)])
+    step (TLit x) (THole _)  = Just (x, [(Next, Next)])
+    step (THole _) (TLit y)  = Just (y, [(Next, Next)])
+    step (THole h) (THole _) = Just (word h, [(Next, Next)])
+    step (TLit x) (TMulti _) = Just (x, [(Next, Stay), (Next, Next)])
+    step (TMulti _) (TLit y) = Just (y, [(Stay, Next), (Next, Next)])
+    step (THole h) (TMulti _) = Just (word h, [(Next, Stay), (Next, Next)])
+    step (TMulti h) (THole _) = Just (word h, [(Stay, Next), (Next, Next)])
+    step (TMulti h) (TMulti _) =
+      Just (word h, [(Stay, Stay), (Stay, Next), (Next, Stay), (Next, Next)])
+    pick _ whole _    Stay = whole
+    pick _ _     rest Next = rest
+    word h = "<" <> h <> ">"
+    firstJust xs = case [ x | Just x <- xs ] of
+      (x : _) -> Just x
+      []      -> Nothing
+
+-- | How a side continues after consuming one word.
+data Step = Stay | Next
+
+-- | One overlap in the words the mint needs: which two patterns, and a line
+-- shape they both read.
+renderPatternOverlap :: PatternOverlap -> Text
+renderPatternOverlap o =
+  "patterns " <> poLeft o <> " and " <> poRight o
+    <> " both read the line " <> T.unwords (poWitness o)

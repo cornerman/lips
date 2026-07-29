@@ -2254,6 +2254,48 @@ main = hspec $ do
         `shouldBe` Right (fromList [mk "d1" "unrelated" "" Stated])
       map roLeft (ruleOverlaps [r1, r2]) `shouldBe` ["r1"]
 
+  describe "static pattern overlap (the pattern-layer sibling of rule overlap)" $ do
+    let pat i toks = patOne i toks Fact [SLit "s"] [SLit "a"]
+        ids os = [ (poLeft o, poRight o) | o <- os ]
+    it "two identical templates overlap, witnessed by the line they both read" $
+      patternOverlaps [pat "p1" [TLit "back", TLit "up"], pat "p2" [TLit "back", TLit "up"]]
+        `shouldBe` [PatternOverlap "p1" "p2" ["back", "up"]]
+    it "a hole overlaps a literal at the same position, witnessed by the literal" $
+      patternOverlaps [pat "p1" [TLit "run", THole "when"], pat "p2" [TLit "run", TLit "daily"]]
+        `shouldBe` [PatternOverlap "p1" "p2" ["run", "daily"]]
+    it "different literals separate two templates" $
+      patternOverlaps [pat "p1" [TLit "back", TLit "up"], pat "p2" [TLit "back", TLit "down"]]
+        `shouldBe` []
+    it "different lengths separate two hole-free templates" $
+      patternOverlaps [pat "p1" [TLit "run", THole "a"], pat "p2" [TLit "run", THole "a2", THole "b"]]
+        `shouldBe` []
+    -- The form that makes the check worth having: a multi-token hole reads lines
+    -- of every length, so it overlaps almost anything starting the same way.
+    it "a multi-token hole overlaps a longer template with the same prefix" $
+      ids (patternOverlaps [ pat "p1" [TLit "install", TMulti "pkgs"]
+                           , pat "p2" [TLit "install", THole "pkg", TLit "on", THole "host"] ])
+        `shouldBe` [("p1", "p2")]
+    it "a multi-token hole still needs the literals to line up" $
+      patternOverlaps [ pat "p1" [TLit "install", TMulti "pkgs", TLit "on", THole "host"]
+                      , pat "p2" [TLit "install", THole "pkg", TLit "from", THole "repo"] ]
+        `shouldBe` []
+    it "reports each pair once and never a pattern against itself" $
+      ids (patternOverlaps [pat "p1" [THole "a"], pat "p2" [THole "b"], pat "p3" [THole "c"]])
+        `shouldBe` [("p1","p2"), ("p1","p3"), ("p2","p3")]
+    -- A repeated hole constrains the two positions to one word, which the
+    -- product walk does not track, so such a pattern is skipped rather than
+    -- reported: a false rejection would refuse a sound engine.
+    it "skips a template that repeats a hole name instead of guessing" $
+      patternOverlaps [pat "p1" [THole "a", THole "a"], pat "p2" [TLit "p", TLit "q"]]
+        `shouldBe` []
+    it "catches an overlap no program line in the corpus witnesses" $ do
+      -- crystallize reports Overlapping only for a line that hits both; a corpus
+      -- of one line that hits neither leaves the defect inside the engine.
+      let p1 = pat "p1" [TLit "keep", THole "n", TLit "days"]
+          p2 = pat "p2" [TLit "keep", TMulti "rest"]
+      crystallize "f" [p1, p2] "keep 7 days\n" `shouldSatisfy` isLeft
+      ids (patternOverlaps [p1, p2]) `shouldBe` [("p1","p2")]
+
   -- A word the language BINDS and then discards makes a program line look
   -- load-bearing while changing nothing (the http engine reads "go" into a
   -- steer and emits the literal buildGoModule, so it works only because nobody

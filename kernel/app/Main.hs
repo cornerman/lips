@@ -63,7 +63,7 @@ import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose, retiredConcepts)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnanswerableDemand, unanswerableDemands)
-import           Lips.Kernel.Engine.Overlap    (renderRuleOverlap, ruleOverlaps)
+import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOverlap, renderRuleOverlap, ruleOverlaps)
 import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Flake                (flakeText, runCommands)
@@ -392,6 +392,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       eng <- case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
         Left es -> die (validationReport rep ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
         Right e -> pure e
+      assertPatternsOrthogonal rep eng
       assertRulesOrthogonal rep eng
       assertValuesReach rep eng
       assertDemandsAnswerable rep eng
@@ -553,6 +554,21 @@ assertRulesOrthogonal file eng =
     ovs -> die (validationReport file
       ("two of its rules claim the same decision, so it has no single reading:\n"
         <> T.unlines (map (("  - " <>) . renderRuleOverlap) ovs)))
+
+-- | The same argument one layer up: two templates that could read one line leave
+-- the language with no single reading of it. 'crystallize' reports
+-- 'Lips.Kernel.Lang.Crystallize.Overlapping' for a line that hits both, but only
+-- for a line some program actually states, so an ambiguity no example separates
+-- ships inside the engine and fails later on the author's own program. The
+-- multi-token hole makes this cheap to mint by accident: it reads lines of every
+-- length, so it overlaps almost any template with the same prefix.
+assertPatternsOrthogonal :: FilePath -> EngineData -> IO ()
+assertPatternsOrthogonal file eng =
+  case patternOverlaps (edPatterns eng) of
+    []  -> pure ()
+    ovs -> die (validationReport file
+      ("two of its patterns read the same line, so it has no single reading:\n"
+        <> T.unlines (map (("  - " <>) . renderPatternOverlap) ovs)))
 
 -- | Deduce-or-fail applied to the engine's own reading: a word the language
 -- binds and then discards makes a program line look load-bearing while changing
