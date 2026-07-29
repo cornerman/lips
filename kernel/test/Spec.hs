@@ -48,6 +48,7 @@ import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
 import Lips.Kernel.Lang.Store
+import Lips.Kernel.Source
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
@@ -1131,6 +1132,35 @@ main = hspec $ do
       -- made a mid-sentence multi-word value inexpressible.
       parsePatternBody "p" "install <pkgs.words> on <host> => fact pkg.<host> \"<pkgs>\""
         `shouldSatisfy` isRight
+
+  describe "source fills (a program word inside baked source)" $ do
+    it "reads the markers a source text names, once each, in order" $
+      sourceMarkers "module @name@\nfunc main() { print(\"@name@ @greeting@\") }"
+        `shouldBe` ["name", "greeting"]
+    it "reads no marker where an @ is ordinary source text" $
+      -- A decorator, a Makefile prefix, an email: narrow marker syntax keeps
+      -- them out, so a fill is never guessed into someone's code.
+      sourceMarkers "@app.route('/')\n\t@echo hi\nme@example.com\n@ @\n@1x@"
+        `shouldBe` []
+    it "fills every marker in every file" $
+      fillTree "tool" [("name", "logscan")]
+        [("go.mod", "module @name@\n"), ("main.go", "// @name@ reads stdin\n")]
+        `shouldBe` Right [ ("go.mod", "module logscan\n")
+                         , ("main.go", "// logscan reads stdin\n") ]
+    it "refuses a declared fill no source file names (the word would govern nothing)" $
+      fillTree "tool" [("name", "logscan"), ("port", "8080")]
+        [("go.mod", "module @name@\n")]
+        `shouldBe` Left ["artifact tool declares fill port but no source file names @port@"]
+    it "refuses a marker the engine never declares (it would ship verbatim)" $
+      fillTree "tool" [("name", "logscan")]
+        [("main.go", "// @name@\nconst greeting = \"@greting@\"\n")]
+        `shouldBe` Left ["artifact tool: main.go names @greting@, which the engine never declares as a fill"]
+    it "fills in one pass, so a fill's own text is never rescanned" $
+      -- A program word that happens to read @name@ must land verbatim; a second
+      -- pass would let a program value inject a marker.
+      fillTree "tool" [("greeting", "@name@"), ("name", "x")]
+        [("main.go", "@greeting@ @name@")]
+        `shouldBe` Right [("main.go", "@name@ x")]
 
   describe "crystallize (crystallization plan: three outcomes)" $ do
     let sourceP = patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
