@@ -89,7 +89,7 @@ main = do
   case cmd of
     Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coFile co)
-    Check co    -> checkLoose (ceLangDir co) (ceFile co)
+    Check co    -> () <$ checkLoose (ceLangDir co) (ceFile co)
     Options oo  -> optionsQuery (ooTarget oo) (ooLimit oo) (T.pack (ooQuery oo))
     Lsp         -> runLsp
 
@@ -118,27 +118,22 @@ main = do
 compileLoose :: Maybe FilePath -> Maybe FilePath -> FilePath -> IO ()
 compileLoose mout mLangDir file = do
   dir <- either die pure (resolveLangDir file mLangDir)
-  checkLoose mLangDir file
-  program <- readProgramOrDie file
-  eng     <- loadLangOrDie dir file
+  -- The gate runs first and hands back its realization, so compile writes the
+  -- very output the contract judged (and the pipeline runs once, not twice).
+  rl  <- checkLoose mLangDir file
   target  <- readRecordedTarget dir file
-  case validate file eng program of
-    Left f   -> die (printFail file f)
-    Right rl -> do
-      let nixMod = rlModule rl
-          art    = rlArtifact rl
-      let outDirPath = maybe (compiledPath file) id mout
-      ensureDerived file
-      callCommand ("mkdir -p " <> shq outDirPath)
-      TIO.writeFile (outDirPath </> "default.nix") nixMod
-      stageFromDisk dir file (outDirPath </> "artifacts")
-      artNames <- case art of
-        Nothing            -> pure []
-        Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
-      TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)))
-      TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack outDirPath)
-      TIO.hPutStrLn stderr "run it with nix over the compiled dir:"
-      mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames outDirPath)
+  let outDirPath = maybe (compiledPath file) id mout
+  ensureDerived file
+  callCommand ("mkdir -p " <> shq outDirPath)
+  TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
+  stageFromDisk dir file (outDirPath </> "artifacts")
+  artNames <- case rlArtifact rl of
+    Nothing            -> pure []
+    Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
+  TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)))
+  TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack outDirPath)
+  TIO.hPutStrLn stderr "run it with nix over the compiled dir:"
+  mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the
@@ -170,7 +165,10 @@ readRecordedTarget dir file = do
 -- its realized module, deterministically (no AI). This is the offline guardian
 -- of the @.expect@ spec; @generate@ runs the same check before accepting an
 -- engine, and the flake check shells this per example.
-checkLoose :: Maybe FilePath -> FilePath -> IO ()
+-- Returns the realization it validated, so @compile@ -- which gates through
+-- this same verb -- materializes that run's output instead of running the whole
+-- pipeline a second time.
+checkLoose :: Maybe FilePath -> FilePath -> IO Realization
 checkLoose mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
@@ -207,7 +205,7 @@ checkLoose mLangDir file = do
 -- Validates once, up front: the module, its artifacts and the paths it names
 -- all come from that one run, so the staged-source gate below and the contract
 -- judge the same realization.
-expectGate :: FilePath -> FilePath -> EngineData -> Text -> IO ()
+expectGate :: FilePath -> FilePath -> EngineData -> Text -> IO Realization
 expectGate dir file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
   stagedGate (stageFromDisk dir file) file (rlStaged rl)
@@ -236,6 +234,7 @@ expectGate dir file eng program = do
               (T.pack file <> " no longer produces what it promised:")
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
+  pure rl
 
 -- | Render the authoring diagnosis: a coverage headline, one line per program
 -- line (matched to which pattern and subject, or unread, or ambiguous), then
