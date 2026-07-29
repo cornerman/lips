@@ -1,2 +1,4 @@
-a1 expect home.sessionVariables.BOARD_PATH from board.path
-a2 expect home.sessionVariables.BOARD_COLUMNS from board.columns
+a1 expect artifact.<self>.args.pname from command.name
+a2 expect artifact.<self>.args.installPhase from command.name
+a3 expect artifact.<self>.fill.BOARD_PATH from board.storage
+a4 expect artifact.<self>.fill.COLUMNS from board.columns

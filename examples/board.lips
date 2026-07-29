@@ -1,5 +1,4 @@
 show a kanban board in the terminal.
 the board is stored in /home/cornerman/notes/board.md.
 the board has the columns "todo, doing, done".
-write the tool in go, using only the standard library with no external dependencies.
 install the tool as the command board.

@@ -91,11 +91,12 @@ instance names, artifacts).
 Output ONLY lines of these forms, no prose, no code fences. Every line
 starts with a bare confidence NUMBER as its very first token -- never the
 word "because" or any other keyword -- then its id, then a leading
-keyword naming its kind (pattern|match|demand|expect|because), so a
+keyword naming its kind (pattern|match|merge|demand|expect|because), so a
 pattern template may itself begin with any word:
 
   <confidence> <id> pattern <template> => <kind> <subject> "<assertion>" ; <kind> <subject> "<assertion>"
   <confidence> <id> match <kind> <subject> => <option.path> "<rhs>" ; <option.path> "<rhs>"
+  <confidence> <id> merge <option.path> set|list
   <confidence> <id> demand <subject> "<question>"
   <confidence> <id> expect <option.path> from <subject>[#<n>]
   <confidence> <id> because "<reason>"
@@ -115,7 +116,13 @@ must cover every input line. template = the loose line with VALUES
 replaced by <holes>; fixed words match literally (case-insensitive).
 Each hole binds exactly one token, captured verbatim. To capture a QUOTED
 value that may contain spaces, use a quoted hole: text "<body>" binds the
-inner text of a "..." value (quotes dropped). A BULLETED list item begins
+inner text of a "..." value (quotes dropped). To capture an UNQUOTED value
+of several words, use a multi-token hole <name.words>: it binds one or more
+tokens joined by single spaces, may sit anywhere in the template, and ends
+where the template's next literal matches -- 'back up <src.words> to
+<target>' reads 'back up my home folder to nas' as src='my home folder'. As
+the LAST template token it binds the rest of the line, which is how one line
+carries several items ('install <pkgs.words>'). A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -123,6 +130,13 @@ language AND port; "- /hi => status 200 text/plain \"hi\"" fixes a route's
 status, type and body). A line matches ONE pattern, so that pattern must
 emit ONE decision per fact, separated by ' ; ', or a demand on the second
 fact can never be met. Give each emit its own subject.
+ONE FACT PER OPTION SLOT, though: split a line into several facts only when
+each one lands in its OWN option. When several words of one line must end up
+in the SAME option value (a route's status and body written into one file, a
+record's fields in one string), they are ONE fact -- put them in one
+assertion, in a fixed order, and let the rule spend them with <value.1>,
+<value.2>. Two rules emitting to one option path is a conflict, and lips
+refuses it: an option holds one value, so nothing may set it twice.
 A HEADING or label line that only groups and introduces the lines under it
 (e.g. "http routes:") carries no value to realize: emit a single
 'concept' decision for it and write NO rule -- a concept is decorative
@@ -320,6 +334,12 @@ relative to the artifact's source root:
   <confidence> <id> source <name> <relpath> <<<lips
   ...verbatim file content...
   lips>>>
+In a source block, <name> is the CONCRETE name this program gives the thing
+(hello, logscan) -- never <self> and never a capture: the block becomes a
+directory on disk, so a literal '<self>' would leave args.src pointing at
+nothing. The RULE keeps the hole (args.src ./artifacts/<name>), so the same
+language serves the next program; a program that renames the thing rebuilds
+its source, which is what regeneration is for.
 Reference the built artifact in an option with ${artifact.<name>}, e.g.
   systemd.services.<name>.serviceConfig.ExecStart
     "\"${artifact.<name>}/bin/<name>\""
@@ -330,19 +350,53 @@ A built program has an INTERFACE: where its input comes from, where its
 output goes, and how its configuration reaches it. Deduce it from the
 program: what fits the problem that program states, by the best practice of
 the kind of program it is. There is no default to fall back on.
-Source is a FIXED BLOB with no holes, so a program VALUE written into source
-freezes there: editing it in the program can no longer flow through, and the
-built program silently keeps the old one. Carry every value the program
-states through an OPTION instead, and let the source read it at runtime --
-an environment variable on the unit that runs it (the unit's environment
-holds the hole, the source reads that variable by name), or, when nothing
-runs it, a second artifact built with writeShellApplication whose text sets
-the variable and execs the first. Only STRUCTURE belongs in source: the
-algorithm, the file format, the protocol -- what the program says rather
-than what it states as a value.
+A program VALUE may reach INSIDE the source, through a FILL. Write the value
+in the source as @marker@ (a name starting with a letter, of letters, digits,
+_ or -) and declare the marker beside the artifact's args:
+  artifact.<name>.fill.<marker> "\"<value>\""
+The rhs is an ordinary value, so every hole works there (<value>, <value.N>,
+a capture), and lips substitutes it when it stages the source -- offline, at
+compile time, so editing the program flows through to the built binary. This
+is how a captured command name reaches go.mod ('module @name@') or Cargo.toml.
+Both halves must agree or lips refuses: every fill you declare must be named
+by some source file, and every @marker@ in source must be declared. A fill
+carries TEXT, so its value must be a literal string or number -- never a
+${...} reference (a store path is not known offline). Do NOT smuggle shell
+into a build argument (a postInstall loop renaming a binary) to work around
+a missing hole: a fill is the mechanism, and a computation is a gap to file.
+A PATH INSIDE A BUILD MUST EXIST: when an option references something under
+${artifact.<name>} (a binary under /bin), the name in that path is decided by
+the SOURCE you wrote, not by the derivation, and no gate can look inside a
+build. So make the source name it: whatever file of yours names the built
+program must carry the same word the option's path uses -- through a fill when
+that word comes from the program. Re-read your own source before you finish
+and check the two agree; a mismatch ships a service that cannot start.
+A fill is substituted ONCE, at compile: for a value that changes while the
+program runs, or a value the source must read per request, carry it through
+an OPTION instead and let the source read it at runtime -- an environment
+variable on the unit that runs it (the unit's environment holds the hole, the
+source reads that variable by name), or, when nothing runs it, a second
+artifact built with writeShellApplication whose text sets the variable and
+execs the first. Source still holds STRUCTURE: the algorithm, the file
+format, the protocol. A REPEATING structure inside source (one code block per
+route, per mount) has no hole form -- a fill replaces a marker, it cannot
+repeat a block -- so that is a gap to file, not something to fake.
+
+SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute
+elements to one list option, lips aggregates them, and by default the option
+is a SET -- two lines naming one package name it once, so a repeated element
+collapses. Declare an option a LIST only where a repeat is genuinely meant:
+  <confidence> m1 merge <option.path> list
+The path is written exactly as in a rule (a <capture> covers the whole
+family). Write no merge line for the ordinary case.
 
 DEMANDS (ids q1, q2, ...): what any program in this language must state,
 as a subject plus the question to ask when it is missing.
+The subject must be one a PATTERN EMITS, matched segment for segment, since
+that is the only decision that can answer it -- so write the capture too:
+beside a pattern emitting command.<name>, demand command.<name>; a bare
+demand command is one segment short and no program can ever meet it. An
+unanswerable demand is refused.
 
 EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
@@ -363,6 +417,14 @@ derivation; such an expect is rejected. Write NO expect for a derivation
 option. The rule that emits it is the whole contract. Expects are for
 options that hold a value from the program: a string, number, path, list of
 strings, or record.
+DO EXPECT AN ARTIFACT ARG: an artifact slot IS assertable, and it is how a
+program whose whole result is a build gets pinned at all. Name the arg path
+you emit:
+  0.95 a1 expect artifact.greet.args.text from cmd.greet.msg
+It is judged against the realized artifact args (no nix eval, so a
+derivation reference inside the arg is fine). Whenever a program value ends
+up in an artifact arg rather than in a module option, write this expect --
+otherwise nothing pins that value and the contract is empty.
 
 REPORT (exactly one, id d1, REQUIRED -- a mint without it is refused):
 explain in plain words the language you just built, for a human who will
@@ -377,9 +439,9 @@ GAPS (ids g1, g2, ...; zero or more): whenever you wanted to express
 something and the grammar above could not, file it instead of working
 around it. Each names the missing capability by a short slug, and its body
 gives the blocked program line and the smallest repro:
-  <confidence> g1 gap templated-source <<<lips
+  <confidence> g1 gap repeating-source <<<lips
   blocked line: - /hi => status 200
-  source heredocs have no holes, so a per-route body cannot reach the source.
+  a fill replaces a marker; it cannot repeat a code block per route.
   lips>>>
 A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
@@ -393,183 +455,97 @@ expect holds against the evaluated module.
 show a kanban board in the terminal.
 the board is stored in /home/cornerman/notes/board.md.
 the board has the columns "todo, doing, done".
-write the tool in go, using only the standard library with no external dependencies.
 install the tool as the command board.
 
 --- tool transcript ---
--> query_options "home.sessionVariables"
 -> query_options "home.packages"
-<- query_options
-home.sessionVariables : integer
-
 <- query_options
 home.packages : list of package
 
--> query_options "sessionVariables"
-<- query_options
-home.sessionVariables : integer
-pam.sessionVariables : attribute set
-programs.bash.sessionVariables : integer
-programs.zsh.sessionVariables : integer
-systemd.user.sessionVariables : integer
-
--> query_options "variables"
-<- query_options
-programs.readline.variables : integer
-wayland.windowManager.hyprland.systemd.variables : list of string
-wayland.windowManager.labwc.systemd.variables : list of string
-wayland.windowManager.river.systemd.variables : list of string
-wayland.windowManager.sway.systemd.variables : list of string
-wayland.windowManager.wayfire.systemd.variables : list of string
-
 
 --- raw reply ---
-0.97 p1 pattern show a kanban board in the terminal. => concept board.intro "kanban board terminal app"
-0.95 p2 pattern the board is stored in <path>. => fact board.path "<path>"
-0.95 p3 pattern the board has the columns "<columns>". => fact board.columns "<columns>"
-0.97 p4 pattern write the tool in go, using only the standard library with no external dependencies. => concept board.toolchain "go stdlib only, no external dependencies"
-0.95 p5 pattern install the tool as the command <name>. => fact tool.<name> "<name>"
+0.97 p1 pattern show a kanban board in the terminal. => concept kanban.board "kanban board in the terminal"
+0.95 p2 pattern the board is stored in <path>. => fact board.storage "<path>"
+0.95 p3 pattern the board has the columns "<cols>". => fact board.columns "<cols>"
+0.95 p4 pattern install the tool as the command <name>. => fact command.name "<name>"
 
-0.95 r1 match fact board.path => home.sessionVariables.BOARD_PATH "\"<value>\""
-0.95 r2 match fact board.columns => home.sessionVariables.BOARD_COLUMNS "\"<value>\""
-0.9 r3 match fact tool.<name> => artifact.<name>.builder "\"buildGoModule\"" ; artifact.<name>.args.pname "\"<name>\"" ; artifact.<name>.args.version "\"0.1.0\"" ; artifact.<name>.args.src "./artifacts/<name>" ; artifact.<name>.args.vendorHash "null" ; home.packages "[ ${artifact.<name>} ]"
+0.9 r1 match fact board.storage => artifact.<self>.fill.BOARD_PATH "\"<value>\""
+0.9 r2 match fact board.columns => artifact.<self>.fill.COLUMNS "\"<value>\""
+0.9 r3 match fact command.name => artifact.<self>.builder "\"stdenv.mkDerivation\"" ; artifact.<self>.args.pname "\"<value>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.installPhase "\"mkdir -p $out/bin; install -m755 run.sh $out/bin/<value>\"" ; home.packages "[ ${artifact.<self>} ]"
 
-0.95 a1 expect home.sessionVariables.BOARD_PATH from board.path
-0.95 a2 expect home.sessionVariables.BOARD_COLUMNS from board.columns
+0.85 q1 demand board.storage "where is the board file stored (its full path)?"
+0.85 q2 demand board.columns "what are the board's column names, as a quoted comma-separated list?"
+0.85 q3 demand command.name "what command name should the tool be installed as?"
 
-0.95 s1 source board go.mod <<<lips
-module board
+0.9 a1 expect artifact.<self>.args.pname from command.name
+0.85 a2 expect artifact.<self>.args.installPhase from command.name
+0.85 a3 expect artifact.<self>.fill.BOARD_PATH from board.storage
+0.85 a4 expect artifact.<self>.fill.COLUMNS from board.columns
 
-go 1.21
+0.85 s1 source board run.sh <<<lips
+#!/usr/bin/env bash
+set -euo pipefail
+
+FILE="@BOARD_PATH@"
+COLUMNS_RAW="@COLUMNS@"
+
+IFS=',' read -ra COLS <<< "$COLUMNS_RAW"
+
+for col in "${COLS[@]}"; do
+  col_trimmed="$(echo "$col" | sed 's/^ *//;s/ *$//')"
+  echo "=== ${col_trimmed} ==="
+  awk -v section="$col_trimmed" '
+    BEGIN { show = 0 }
+    /^##[ \t]*/ {
+      title = $0
+      sub(/^##[ \t]*/, "", title)
+      show = (title == section) ? 1 : 0
+      next
+    }
+    show && NF > 0 { print "  - " $0 }
+  ' "$FILE"
+  echo
+done
 lips>>>
 
-0.95 s2 source board main.go <<<lips
-package main
+0.95 d1 report <<<lips
+This language describes a single-user terminal "kanban board" tool that reads
+a markdown file with column sections and prints them to the terminal.
 
-import (
-	"bufio"
-	"fmt"
-	"os"
-	"strings"
-)
+Line shapes recognized:
+- `show a kanban board in the terminal.` — a decorative heading that fixes
+  the mechanism (a terminal CLI tool, built from source) but carries no
+  program value of its own, so it is a `concept` and needs no rule.
+- `the board is stored in <path>.` — states where the board's markdown file
+  lives; captured as fact `board.storage`.
+- `the board has the columns "<cols>".` — the quoted, comma-separated list
+  of column headings the board file uses; captured as fact `board.columns`.
+- `install the tool as the command <name>.` — names the command the built
+  tool should be installed as; captured as fact `command.name`.
 
-func main() {
-	path := os.Getenv("BOARD_PATH")
-	if path == "" {
-		fmt.Fprintln(os.Stderr, "BOARD_PATH is not set")
-		os.Exit(1)
-	}
-	colsEnv := os.Getenv("BOARD_COLUMNS")
-	if colsEnv == "" {
-		fmt.Fprintln(os.Stderr, "BOARD_COLUMNS is not set")
-		os.Exit(1)
-	}
+Mechanism chosen: since no existing package can read this program's own
+markdown convention, the tool is built from source with `stdenv.mkDerivation`
+(the plainest builder that takes a `src` directory and an `installPhase`,
+matching a shell script with no external dependencies). The artifact is
+keyed by `<self>` (per source-file instance), and the program's own command
+name is threaded through as the built binary's name via `<value>` in
+`installPhase` and `args.pname`, so renaming the command in the program
+renames the installed command. The board's file path and column list are
+values that don't change at runtime, so they are threaded into the script at
+build time via `fill` markers (`@BOARD_PATH@`, `@COLUMNS@`) rather than
+through a runtime environment variable. The built package is added to
+`home.packages` so it is installed into the user's profile.
 
-	var columns []string
-	for _, c := range strings.Split(colsEnv, ",") {
-		c = strings.TrimSpace(c)
-		if c != "" {
-			columns = append(columns, c)
-		}
-	}
+The script itself (source `board/run.sh`) parses `## <column>` sections out
+of the markdown file and prints each column's bullet items in turn; that
+parsing algorithm is a fixed mechanism, not a program value.
 
-	items := make(map[string][]string)
-	for _, c := range columns {
-		items[c] = nil
-	}
+Invented at full confidence (mechanism constants, not values the program
+states): the builder `stdenv.mkDerivation`, the version string `0.1.0`, the
+source file name `run.sh`, and the markdown convention of `##` section
+headers per column.
 
-	f, err := os.Open(path)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "cannot open board file:", err)
-		os.Exit(1)
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	current := ""
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#") {
-			heading := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-			current = ""
-			for _, c := range columns {
-				if strings.EqualFold(heading, c) {
-					current = c
-					break
-				}
-			}
-			continue
-		}
-		if current == "" {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "-") || strings.HasPrefix(trimmed, "*") {
-			item := strings.TrimSpace(trimmed[1:])
-			if item != "" {
-				items[current] = append(items[current], item)
-			}
-		}
-	}
-
-	printBoard(columns, items)
-}
-
-func printBoard(columns []string, items map[string][]string) {
-	widths := make([]int, len(columns))
-	for i, c := range columns {
-		w := len(c)
-		for _, it := range items[c] {
-			if len(it) > w {
-				w = len(it)
-			}
-		}
-		widths[i] = w
-	}
-
-	for i, c := range columns {
-		fmt.Printf("%-*s  ", widths[i], strings.ToUpper(c))
-	}
-	fmt.Println()
-	for i := range columns {
-		fmt.Print(strings.Repeat("-", widths[i]), "  ")
-	}
-	fmt.Println()
-
-	max := 0
-	for _, c := range columns {
-		if len(items[c]) > max {
-			max = len(items[c])
-		}
-	}
-	for row := 0; row < max; row++ {
-		for i, c := range columns {
-			val := ""
-			if row < len(items[c]) {
-				val = items[c][row]
-			}
-			fmt.Printf("%-*s  ", widths[i], val)
-		}
-		fmt.Println()
-	}
-}
-lips>>>
-
-0.9 d1 report <<<lips
-This language describes a small terminal kanban-board tool and how it is wired into the user's home-manager profile.
-
-**Patterns**
-- `show a kanban board in the terminal.` and `write the tool in go, using only the standard library with no external dependencies.` are decorative headings: they name the kind of program (a terminal kanban board) and the mechanism (Go, stdlib only, no external deps). Neither carries a value the config must hold, so both crystallize as `concept`s and need no rule. The "go / stdlib only" sentence is exactly what licenses the mechanism choice below (buildGoModule with `vendorHash = null`), so it is not a gap, it is read directly as a mechanism-selecting sentence.
-- `the board is stored in <path>.` states the markdown file location -> `fact board.path`.
-- `the board has the columns "<columns>".` states the column list as one quoted string (kept as one comma-joined value; the Go program itself splits it) -> `fact board.columns`.
-- `install the tool as the command <name>.` names the installed command. Since the program itself names the binary, the artifact is keyed by that captured name (`tool.<name>`), not by the instance/file name, so renaming the command in the program renames the build.
-
-**Rules / mechanism**
-- `board.path` and `board.columns` are carried at runtime as environment variables (`home.sessionVariables.BOARD_PATH` / `BOARD_COLUMNS`) rather than baked into the source blob, so editing either line still takes effect without regenerating the tool. The Go program reads both with `os.Getenv` at startup.
-- `tool.<name>` builds a Go program with `buildGoModule` (chosen because the program explicitly says "in go"). Since the program also says the tool uses only the standard library with no external dependencies, `vendorHash` is set to `null` (a legitimate buildGoModule mode for a module with nothing to vendor) -- a build-recipe constant, not a value the program need ever state. `version` is likewise a constant (`0.1.0`); nixpkgs needs pname+version together to name the derivation, and the program never speaks to versioning. The built package is added to `home.packages` so its `bin/<name>` (here `board`) lands on the user's PATH -- literally "installed as the command".
-- The staged Go source (`go.mod`, `main.go`) implements the structural part of the program: it reads the two env vars, opens the markdown file, treats `## <column>`-style headings (case-insensitively matched against the configured column names) as section markers, collects the `- item` / `* item` bullets under each, and prints the columns side by side as a simple terminal table. No value from the program is frozen into this source; only the file-format/parsing structure lives there.
-
-**Expects** pin that the stated board path and column list actually reach the session environment (`home.sessionVariables.BOARD_PATH`/`BOARD_COLUMNS`). No expect is written for the artifact/package wiring, since a package or build reference is not a checkable value.
-
-**Nothing was demanded**: this one program already states every fact the language needs (path, columns, command name); the only invented pieces are pure build constants (builder choice, version, vendorHash), which are mechanism, not missing facts.
+Every program in this language must state where the board file lives, what
+its columns are named, and what command to install the tool as; missing any
+of these produces a demand for that line.
 lips>>>

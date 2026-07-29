@@ -2,19 +2,42 @@
 
 # The `board` language
 
-This language describes a small terminal kanban-board tool and how it is wired into the user's home-manager profile.
+This language describes a single-user terminal "kanban board" tool that reads
+a markdown file with column sections and prints them to the terminal.
 
-**Patterns**
-- `show a kanban board in the terminal.` and `write the tool in go, using only the standard library with no external dependencies.` are decorative headings: they name the kind of program (a terminal kanban board) and the mechanism (Go, stdlib only, no external deps). Neither carries a value the config must hold, so both crystallize as `concept`s and need no rule. The "go / stdlib only" sentence is exactly what licenses the mechanism choice below (buildGoModule with `vendorHash = null`), so it is not a gap, it is read directly as a mechanism-selecting sentence.
-- `the board is stored in <path>.` states the markdown file location -> `fact board.path`.
-- `the board has the columns "<columns>".` states the column list as one quoted string (kept as one comma-joined value; the Go program itself splits it) -> `fact board.columns`.
-- `install the tool as the command <name>.` names the installed command. Since the program itself names the binary, the artifact is keyed by that captured name (`tool.<name>`), not by the instance/file name, so renaming the command in the program renames the build.
+Line shapes recognized:
+- `show a kanban board in the terminal.` — a decorative heading that fixes
+  the mechanism (a terminal CLI tool, built from source) but carries no
+  program value of its own, so it is a `concept` and needs no rule.
+- `the board is stored in <path>.` — states where the board's markdown file
+  lives; captured as fact `board.storage`.
+- `the board has the columns "<cols>".` — the quoted, comma-separated list
+  of column headings the board file uses; captured as fact `board.columns`.
+- `install the tool as the command <name>.` — names the command the built
+  tool should be installed as; captured as fact `command.name`.
 
-**Rules / mechanism**
-- `board.path` and `board.columns` are carried at runtime as environment variables (`home.sessionVariables.BOARD_PATH` / `BOARD_COLUMNS`) rather than baked into the source blob, so editing either line still takes effect without regenerating the tool. The Go program reads both with `os.Getenv` at startup.
-- `tool.<name>` builds a Go program with `buildGoModule` (chosen because the program explicitly says "in go"). Since the program also says the tool uses only the standard library with no external dependencies, `vendorHash` is set to `null` (a legitimate buildGoModule mode for a module with nothing to vendor) -- a build-recipe constant, not a value the program need ever state. `version` is likewise a constant (`0.1.0`); nixpkgs needs pname+version together to name the derivation, and the program never speaks to versioning. The built package is added to `home.packages` so its `bin/<name>` (here `board`) lands on the user's PATH -- literally "installed as the command".
-- The staged Go source (`go.mod`, `main.go`) implements the structural part of the program: it reads the two env vars, opens the markdown file, treats `## <column>`-style headings (case-insensitively matched against the configured column names) as section markers, collects the `- item` / `* item` bullets under each, and prints the columns side by side as a simple terminal table. No value from the program is frozen into this source; only the file-format/parsing structure lives there.
+Mechanism chosen: since no existing package can read this program's own
+markdown convention, the tool is built from source with `stdenv.mkDerivation`
+(the plainest builder that takes a `src` directory and an `installPhase`,
+matching a shell script with no external dependencies). The artifact is
+keyed by `<self>` (per source-file instance), and the program's own command
+name is threaded through as the built binary's name via `<value>` in
+`installPhase` and `args.pname`, so renaming the command in the program
+renames the installed command. The board's file path and column list are
+values that don't change at runtime, so they are threaded into the script at
+build time via `fill` markers (`@BOARD_PATH@`, `@COLUMNS@`) rather than
+through a runtime environment variable. The built package is added to
+`home.packages` so it is installed into the user's profile.
 
-**Expects** pin that the stated board path and column list actually reach the session environment (`home.sessionVariables.BOARD_PATH`/`BOARD_COLUMNS`). No expect is written for the artifact/package wiring, since a package or build reference is not a checkable value.
+The script itself (source `board/run.sh`) parses `## <column>` sections out
+of the markdown file and prints each column's bullet items in turn; that
+parsing algorithm is a fixed mechanism, not a program value.
 
-**Nothing was demanded**: this one program already states every fact the language needs (path, columns, command name); the only invented pieces are pure build constants (builder choice, version, vendorHash), which are mechanism, not missing facts.
+Invented at full confidence (mechanism constants, not values the program
+states): the builder `stdenv.mkDerivation`, the version string `0.1.0`, the
+source file name `run.sh`, and the markdown convention of `##` section
+headers per column.
+
+Every program in this language must state where the board file lives, what
+its columns are named, and what command to install the tool as; missing any
+of these produces a demand for that line.
