@@ -1502,7 +1502,18 @@ gate on an artifact-only engine, and the concept escape.
   the call site instead of being an unstated consequence of not staging the
   `.expect` file.
 
-- **The behavioral gate is vacuous where it is needed most.** `runExpects`
+- FIXED (2026-07-29): **an artifact-only engine can pin its values, and every
+  artifact must instantiate.** An assertion may now name an artifact slot
+  (`expect artifact.greet.args.text from cmd.greet.msg`), judged by the kernel
+  against the ground base rather than by `nix` -- an arg is a literal there, and a
+  builder consumes it, so it is no attribute of the module or of the resulting
+  derivation. Separately, the flake check `lipsArtifacts-eval` forces every
+  committed artifact's `drvPath`, which instantiates without building, so a
+  malformed builder arg set fails in CI instead of at a user's `nix run`. Both
+  keep `check` offline and nixpkgs-free (TODO 1e records the rejected homes).
+
+- **The behavioral gate is vacuous where it is needed most (superseded by the
+  entry above; kept for the record).** `runExpects`
   returns success on an empty contract, and `uncheckableExpects` forbids an
   assertion on a derivation-valued option, so an artifact-only engine has
   nothing to pin: `greet` and `logscan` report "all 0 checks pass" and

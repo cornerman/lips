@@ -87,9 +87,8 @@
           touch "$out"
         '';
         # The module helper labels each committed example by its recorded world
-        # and produces an importable module path. All current examples are
-        # nixos engines, so homeManagerModules is empty; nixosModules must be
-        # non-empty and every realized module must build (test -f forces it).
+        # and produces an importable module path. Both worlds must be non-empty
+        # and every realized module must build (test -f forces it).
         lipsModules-eval =
           let
             mods  = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
@@ -103,6 +102,35 @@
             test -n "${toString (builtins.attrNames mods.nixosModules)}"
             test -n "${toString (builtins.attrNames mods.homeManagerModules)}"
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
+          '';
+        # Every artifact a committed example declares must INSTANTIATE: a green
+        # `lips check` says the program's values reached the output, not that the
+        # build Nix describes is well-formed. Forcing each artifact's drvPath
+        # instantiates its .drv (writes it to the store) WITHOUT building it, so
+        # a malformed builder or a missing arg fails here in seconds instead of at
+        # the user's `nix run`. This is why lips itself does not do it: the check
+        # verb stays nixpkgs-free, and only a flake already has nixpkgs.
+        #
+        # The compiled dirs are derivation outputs, so reading artifact.nix out of
+        # them is import-from-derivation (deliberate, and cheap: each dir is one
+        # offline `lips compile`).
+        lipsArtifacts-eval =
+          let
+            mods  = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
+            dirs  = builtins.attrValues mods.nixosModules
+                    ++ builtins.attrValues mods.homeManagerModules;
+            artifactsOf = dir:
+              let f = "${dir}/artifact.nix";
+              in if builtins.pathExists f
+                 then builtins.attrValues (import f { inherit pkgs; })
+                 else [ ];
+            # unsafeDiscardStringContext: we want the .drv path as TEXT (proof it
+            # instantiated), not a build dependency of this check.
+            drvPaths = map (d: builtins.unsafeDiscardStringContext d.drvPath)
+                           (builtins.concatMap artifactsOf dirs);
+          in pkgs.runCommand "lips-artifacts-eval" { } ''
+            test ${toString (builtins.length drvPaths)} -gt 0
+            ${pkgs.lib.concatMapStringsSep "\n" (p: "test -n '${p}'") drvPaths}
             touch "$out"
           '';
       } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {

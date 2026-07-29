@@ -102,7 +102,8 @@
       artifact -- and it answers it with shell.
 
    e. **A CLI engine has nothing to pin** — no longer theoretical: it shipped a
-      broken build. **Half closed** (ledger §13, "Staged sources"): every relative
+      broken build. **CLOSED 2026-07-29** (see the decision at the end of this
+      item). Earlier half (ledger §13, "Staged sources"): every relative
       path a module names must exist in the staged tree, checked at `check` and at
       `generate`, which refuses the two staging repros on record (the `habit` mint
       staging its source under the literal directory `<name>`, and a renamed
@@ -128,15 +129,24 @@
       expression a gate would build: board FAILS (`attribute 'name' missing`),
       greet and http INSTANTIATE, so it refuses the bad mint with no false
       positives.
-      Open decision (deferred 2026-07-28, still open): WHERE it runs. `generate` only keeps
-      `check`/`compile` offline, deterministic and schema-free as documented, but
-      leaves an engine committed before the gate silently broken; adding it to
-      `check` catches those at the cost of that stated property. Rejected on
-      sight: a kernel rule requiring `name`, or `pname` and `version`, since it
-      enumerates nixpkgs arg names inside a domain-blind kernel and would still
-      miss a wrong-typed arg or an unknown builder.
-      Interim mitigation only (a prompt plea, not a guard): the mint prompt now
-      states that args must be able to produce a derivation name.
+      DECIDED and CLOSED (2026-07-29), in two halves, neither of which costs
+      `check` its offline, nixpkgs-free property:
+      (1) **an artifact arg is assertable.** `expect artifact.greet.args.text from
+      cmd.greet.msg` is judged by the kernel against the GROUND base
+      (`Lips.Kernel.Expect.checkArtifactValues`) -- no nix, since an arg is a
+      literal there, and a builder consumes it so no eval could reach it anyway.
+      `uncheckableExpects` no longer sweeps these up, and the mint prompt now
+      requires one whenever a program value lands in an arg instead of an option.
+      This is what an artifact-only program (`greet`, `logscan`) can pin at all;
+      before it, their contracts were necessarily empty.
+      (2) **instantiability is checked where nixpkgs already lives**: the flake
+      check `lipsArtifacts-eval` forces every committed example artifact's
+      `drvPath` (instantiate, do not build), so a malformed builder arg set fails
+      in `nix flake check` in seconds. Rejected: running it in `check` (drags
+      nixpkgs into the offline verb) and in `generate` only (leaves an engine
+      committed before the gate broken). Rejected on sight, as before: a kernel
+      rule requiring `name`/`pname`/`version`, which enumerates nixpkgs arg names
+      inside a domain-blind kernel.
 
    f. **Two hole namespaces, one syntax** (pattern holes named by the template
       vs the rule side's fixed `<value>`). A weaker model confuses them
