@@ -1426,6 +1426,37 @@ Each item was reproduced against `main` at 95e80f7 and states the promise it
 breaks. They are tracked as work in `TODO.md` ("Verified breakages"); listed
 here because a ledger that only records wins is a map of a different territory.
 
+Seven of the nine are FIXED (2026-07-29, branch `breakages`), each with the test
+that was missing; the entries stay, since the promise each one broke is what the
+test now pins. Still open, both by decision rather than by code: the vacuous
+gate on an artifact-only engine, and the concept escape.
+
+- FIXED: the singleton `<language>.lips` shorthand in `nix/modulesFromDir.nix`.
+  The Nix copy of the rule stays (an output ATTRIBUTE NAME must be known at eval
+  time, so asking the binary would mean import-from-derivation), but it is now
+  the same rule, marked as a duplicate, and `lipsModules-eval` forces BOTH
+  worlds' modules -- forcing only `nixosModules` is how the break survived,
+  since all four singleton programs are home-manager ones.
+- FIXED: `artifact.nix` is emitted with the module's own `let artifact = { ... }`
+  shape, so a sibling reference resolves (`rec` alone would not have: a
+  reference renders bare as `artifact.<name>`, so the NAME must be in scope).
+- FIXED: `renderModule` and `realizeArtifactFile` both collect artifact
+  references from artifact args as well as option values (`artifactArgRefs`).
+- FIXED: one quote-aware splitter in `Lips.Kernel.Surface`, used by the pattern
+  side and the rule side, so `" ; "` and `" => "` inside a value are content.
+- FIXED: `bindSelfExpect` fills by occurrence via `fillName`, so `<self>-core`
+  binds in a contract path exactly as it does in a rule.
+- FIXED: `Lips.Identity.requireProgram` refuses a program path without the
+  `.lips` marker, checked at the one door every verb reads a program through.
+- FIXED (this review's simplifications): `Lips.Kernel.Run` exports one
+  `Realization` from one pipeline run (it ran three times for three questions,
+  and `compile` a fourth time through `check`); the four `*Replace` wrappers are
+  test helpers; `kindText`/`kindTable`/`strengthText` live beside their type in
+  `Kernel/Decision.hs` and the quoting/punctuation rules in
+  `Kernel/Surface.hs`; the CLI uses `directory`/`unix` calls instead of shelling
+  out to `mktemp`/`mkdir`/`cp`, cleans its temp dirs up, and no longer swallows
+  a staging error.
+
 - **`nix flake check` is red: `lib.modulesFromDir` cannot read a singleton
   program.** `nix/modulesFromDir.nix` splits a filename on `.` and takes
   element 0 as the instance and element 1 as the language, so `board.lips` is

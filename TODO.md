@@ -177,7 +177,24 @@
 Each is stated with its promise in DESIGN §13, "Verified Breakages". Ranked by
 blast radius; V1-V4 are small, local fixes with tests missing.
 
-### The plan (execution order)
+### The plan (execution order) -- waves 1, 2 and 4 landed 2026-07-29
+
+Landed on branch `breakages` (one commit per item, suite 356 green, all 13
+examples `check` clean, `nix build .` and `lipsModules-eval` green, every
+compiled example byte-identical except the intended `artifact.nix` shape):
+V1, V2, V3, V4, V5, V7 and simplification items 10-14. What remains is wave 3,
+which needs a decision, not a patch: V6 (the concept escape), V8 (the deploy
+path's missing gate) and TODO 1e (the artifact contract).
+
+One deviation from the plan, recorded because the plan preferred the other
+branch: V1 kept the naming rule duplicated in Nix instead of adding a read-only
+`lips identify`. Output ATTRIBUTE NAMES must be known at eval time, so having the
+derivation ask the binary would require import-from-derivation. The Nix copy now
+carries a comment naming it as a duplicate, and `lipsModules-eval` forces both
+target worlds, so a drift breaks the build (forcing only `nixosModules` is what
+hid the bug: all four singleton programs are home-manager ones).
+
+### The plan as written
 
 One worktree under `.worktrees/`, TDD per item, one single-line commit per item,
 rebase + ff-merge, ledger §13 updated as each lands. Each numbered step names
@@ -269,7 +286,7 @@ Done already (6e0471c): the documentation half of this review -- stale ledger
 claims corrected in DESIGN/README/AGENTS/kernel README, this section written,
 and the breakages recorded in DESIGN §13.
 
-V1. **`lib.modulesFromDir` cannot read a singleton program, so `nix flake
+V1. FIXED (5df0bc2). **`lib.modulesFromDir` cannot read a singleton program, so `nix flake
     check` is red.** `nix/modulesFromDir.nix` takes filename element 0 as the
     instance and element 1 as the language, so `board.lips` becomes language
     `lips` and the build dies with `Path 'examples/lips/lips.lang' does not
@@ -278,24 +295,24 @@ V1. **`lib.modulesFromDir` cannot read a singleton program, so `nix flake
     stop duplicating the rule in Nix -- have the derivation ask the binary
     (`lips` already knows), so one implementation answers.
 
-V2. **`artifact.nix` is not recursive.** `realizeArtifactFile` emits `{ ... }`,
+V2. FIXED (7a7e022). **`artifact.nix` is not recursive.** `realizeArtifactFile` emits `{ ... }`,
     so an artifact arg holding `${artifact.<other>}` renders an undefined
     variable; the module escapes it only because a Nix `let` is recursive. Fix:
     `rec {`, plus a conformance test over a core-plus-wrapper base.
 
-V3. **A dangling `${artifact.<name>}` inside an artifact ARG is not caught.**
+V3. FIXED (7a7e022). **A dangling `${artifact.<name>}` inside an artifact ARG is not caught.**
     `renderModule` scans option assignments only, so `RDangling` misses
     artifact-to-artifact references and the failure lands inside nix as
     `attribute '<name>' missing`. Fix: collect names from the artifact group's
     args too (one `concatMap`).
 
-V4. **A rule rhs may not contain `" ; "`.** `parseRuleBody` splits emits with a
+V4. FIXED (68c9bc8). **A rule rhs may not contain `" ; "`.** `parseRuleBody` splits emits with a
     naive `T.splitOn " ; "`; the pattern side already has the quote-aware
     `splitEmits` (its comment names this defect). A shell text
     (`"cd /x ; ls"`) fails to parse, reported as "unterminated string". Fix:
     share one quote-aware splitter; a missing grammar case is a kernel bug.
 
-V5. **`<self>` binds only as a whole segment in an expect path.**
+V5. FIXED (3aa8103). **`<self>` binds only as a whole segment in an expect path.**
     `bindSelfExpect` compares literally instead of using the shared `fillName`,
     so `<self>-core` never binds and the assertion silently reads `null`. Fix:
     use `fillName`, the same call the rule side makes.
@@ -313,7 +330,7 @@ V6. **The concept escape: a mint may declare the program decorative and pass
     dropped word, (c) refuse an engine with zero checkable assertions in
     `generate` unless every option it fills is derivation-valued.
 
-V7. **A program file's extension is never checked.** `x.backup.txt` is read as
+V7. FIXED (5f7c6c0). **A program file's extension is never checked.** `x.backup.txt` is read as
     language `backup`, and `examples/backup/backup.lang` as a program. Fix: one
     fail-loud check on the `.lips` marker in `Lips.Identity`.
 
@@ -411,28 +428,16 @@ first has landed, these are the rest, ranked.
 
 ## Housekeeping / smells
 
-- `stripTailPunct` (`Kernel/Engine/Value.hs`) duplicates `stripTrailingPunct`
-  (`Kernel/Lang/Pattern.hs`) — same rule, two copies kept "in step" by comment.
-  A shared definition would remove the drift risk (the comment flags it).
-- `parseQuoted` exists three times (`Kernel/Reader.hs`, `Kernel/Lang/Store.hs`,
-  `Kernel/Engine/Data.hs`) and `kindText` three times (same modules). The
-  quoting rule of a stored assertion is one piece of knowledge; V4 is what its
-  drift costs.
-- `validate` (`app/Main.hs`) runs the whole pipeline three times (`runBase`,
-  `runBaseArtifact`, `runBaseStaged`), and `compile` runs it a fourth time via
-  `checkLoose`. `Kernel/Run.hs` could export `runGround` once and let the three
-  projections be pure functions of that one result.
-- Four `*Replace` wrappers (`resolveReplace`, `realizeReplace`, `runReplace`,
-  `runBaseReplace`) exist for tests and pre-aggregation callers -- production
-  surface paid for by the suite.
-- The shell-out layer: `mkTempDir` shells to `mktemp` (and never cleans up),
-  `writeSources` to `mkdir -p` with hand-rolled quoting, `stageFromDisk` to
-  `cp -rT` while swallowing every error. `directory` is already a dependency
-  (`doesPathExist`), so these are avoidable interfaces to the host; the silent
-  `cp` failure is the one that can mislead (a staging error surfaces later as a
-  missing path or a confusing eval).
-- `Kernel/Engine/Data.hs` imports `Data.Maybe` twice; `pAttrKey`'s comment in
-  `Kernel/Engine/Value.hs` says hyphens and quotes are rejected while the code
-  accepts `-` and `'` (and its char list repeats `-`).
-- `Kernel/Refine.hs`, `Kernel/Realize.hs` comments still name a `@print@` verb
-  that no longer exists (it is `compile`).
+All items in this section were cleared on 2026-07-29 (wave 4 of the review plan);
+kept as a record of where the duplication was, since each has a single home now:
+
+- the sentence-punctuation rule, the transport quoting and the quote-aware
+  separators live in `Kernel/Surface.hs`; the kind/strength words beside their
+  type in `Kernel/Decision.hs` (e079a8a).
+- `Kernel/Run.hs` exports one `Realization` from one pipeline run, and `compile`
+  materializes the realization `check` validated (20816c7, 6bd3398).
+- the four `*Replace` wrappers are test helpers in `test/Spec.hs` (20816c7).
+- the CLI uses `directory`/`unix` calls, removes its temp dirs, and propagates a
+  staging error instead of discarding it (a16c19b).
+- the double `Data.Maybe` import, the `pAttrKey` comment and the `@print@` verb
+  in comments are gone (68c9bc8, e079a8a).
