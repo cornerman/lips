@@ -23,6 +23,7 @@ import Lips.Kernel.Reader
 import Lips.Kernel.Realize
 import Lips.Kernel.Refine
 import Lips.Kernel.Run
+import Lips.Kernel.Engine.Answerable
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Reach
@@ -2079,6 +2080,43 @@ main = hspec $ do
           [ "pattern p1 binds <lang>, which reaches server.language, and rule r3 \
             \emits it nowhere: editing that word changes no output" ]
 
+  -- A demand is judged against the crystallized base, so only a subject the
+  -- language's own patterns emit can ever answer one. A demand outside every
+  -- emitted family blocks every program in the language -- and reports it as the
+  -- author's missing fact, which is why it is caught at the mint gate.
+  describe "unanswerable demands (can a program ever meet it)" $ do
+    let pat body = case parsePatternBody "p1" body of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test pattern: " <> e))
+        dem i subj = DemandSpec i subj "q?"
+        namePat = pat "install the tool as the command <name> \
+                      \=> fact command.<name> \"<name>\""
+
+    -- The examples/habit mint (2026-07-29), verbatim in shape: two mints in a
+    -- row demanded `command` beside a pattern emitting `command.<name>`, and
+    -- generate reported the program as silent about a fact it states.
+    it "reports a demand one segment short of the family its pattern emits" $
+      unanswerableDemands [namePat] [dem "q3" ["command"]]
+        `shouldBe` [UnanswerableDemand "q3" ["command"] [["command", "<name>"]]]
+
+    it "accepts a demand naming the capture, since a program line fills it" $
+      unanswerableDemands [namePat] [dem "q3" ["command", "<name>"]] `shouldBe` []
+
+    it "accepts a demand on a plain subject a pattern emits" $
+      unanswerableDemands
+        [pat "the habit log is stored in <path> => fact habit.logpath \"<path>\""]
+        [dem "q1" ["habit", "logpath"]] `shouldBe` []
+
+    it "reports every demand of a language with no patterns at all" $
+      map renderUnanswerableDemand (unanswerableDemands [] [dem "q1" ["habit", "logpath"]])
+        `shouldBe` ["demand q1 asks for habit.logpath, which no pattern emits \
+                    \(this language emits no subject at all)"]
+
+    it "names the defect in the words the mint needs" $
+      map renderUnanswerableDemand (unanswerableDemands [namePat] [dem "q3" ["command"]])
+        `shouldBe` ["demand q3 asks for command, which no pattern emits; the \
+                    \patterns emit command.<name>"]
+
   -- The value language's two guarantees, as properties over generated inputs:
   -- canonical round-trip, and injection made unrepresentable.
   -- A rhs either reads the matched decision's assertion or it does not; the
@@ -2228,6 +2266,9 @@ main = hspec $ do
         , "No functions"
         , "<value:int>"
         , "demand <subject>"
+        -- A demand is met only by a subject a pattern emits, matched segment for
+        -- segment; two habit mints in a row got this wrong (Engine.Answerable).
+        , "must be one a PATTERN EMITS"
         , "expect <option.path> from <subject>"
         , "pattern|match|demand|expect|because"
         -- A built program has an interface, and source has no holes: both are

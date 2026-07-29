@@ -56,6 +56,7 @@ import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
+import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnanswerableDemand, unanswerableDemands)
 import           Lips.Kernel.Engine.Overlap    (renderRuleOverlap, ruleOverlaps)
 import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
@@ -185,10 +186,16 @@ checkLoose mLangDir file = do
            []
            ("→ grow the language: lips generate " <> T.pack file))
     else if not (null (diagOpen d))
-      then die (report
-             (T.pack file <> " is incomplete while these questions stay open.")
-             []
-             "→ answer them by stating the detail in the program.")
+      -- An open question is the author's to answer -- unless no program could:
+      -- a demand outside every emitted subject family is an engine defect, and
+      -- telling the author to state a fact they already stated sends them in
+      -- circles. So blame the side that can fix it.
+      then case unanswerableDemands (edPatterns eng) (edDemands eng) of
+        []  -> die (report
+                 (T.pack file <> " is incomplete while these questions stay open.")
+                 []
+                 "→ answer them by stating the detail in the program.")
+        uds -> die (unanswerableReport file uds)
       else expectGate dir file eng program
   where
     escapes Matched{} = False
@@ -369,6 +376,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
         Right e -> pure e
       assertRulesOrthogonal rep eng
       assertValuesReach rep eng
+      assertDemandsAnswerable rep eng
       assertOptionsAdmissible target rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
@@ -551,6 +559,26 @@ assertValuesReach file eng =
         <> "it as a literal token of the template, so editing it stops the line\n"
         <> "matching and asks for a fresh language instead of governing nothing; or,\n"
         <> "if the line truly carries no value, read it as a concept."))
+
+-- | A demand no pattern can ever answer blocks every program in the language,
+-- and reports itself as the author's missing fact (see
+-- 'Lips.Kernel.Engine.Answerable'). Rejected at the mint gate, where the engine
+-- is still rejectable and the model is still the one to fix it.
+assertDemandsAnswerable :: FilePath -> EngineData -> IO ()
+assertDemandsAnswerable file eng =
+  case unanswerableDemands (edPatterns eng) (edDemands eng) of
+    []  -> pure ()
+    uds -> die (unanswerableReport file uds)
+
+-- | One voice for the defect, whether it is caught at the mint gate or found in
+-- an engine already committed.
+unanswerableReport :: FilePath -> [UnanswerableDemand] -> Text
+unanswerableReport file uds = validationReport file
+  ("it demands facts no program in this language can state:\n"
+    <> T.unlines (map (("  - " <>) . renderUnanswerableDemand) uds)
+    <> "\nA demand is met by a decision a pattern EMITS, matched segment for\n"
+    <> "segment, so the demanded subject must be one of those families -- write\n"
+    <> "the capture too (demand command.<name>, not demand command).")
 
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
 -- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
