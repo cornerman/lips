@@ -77,7 +77,18 @@
       expressible. What remains is empirical -- re-mint the engines that predate
       the split (see item 1a's list).
 
-   d. **Templated source, two fresh repros** (extends the existing backlog item
+   d. **CLOSED (2026-07-30) by source fills** -- see DESIGN 13, "Source fills".
+      An artifact declares `artifact.<name>.fill.<marker>` (an ordinary value, so
+      every hole mechanism applies) and its source names `@marker@`; lips
+      substitutes when it stages the tree, at compile, offline. Both directions
+      are checked, so neither a declared fill no file names nor a marker no fill
+      declares can pass. That kills the `postInstall` shell workaround below and
+      lets a captured command name reach `go.mod`. What remains is NOT this item:
+      a REPEATING structure inside source (one code block per route) has no
+      marker form and stays a gap to file (`repeating-source`), which is what the
+      httpserver repro needs. The original text follows for its evidence.
+
+      **Templated source, two fresh repros** (extends the existing backlog item
       below): the command name must reach `pname` and the Go module inside the
       artifact, and source heredocs have no holes.
       Half closed (see ledger §13, "One name grammar"): a composite artifact
@@ -174,13 +185,16 @@
    Wire one realized module into `~/nixos` on `wolf`. Reduced to "import one
    file"; proves survival on a real system, not just a VM boot.
 
-5. **Template grammar completeness** (completeness plan Target 2). The value
-   grammar is complete-by-construction over the Nix value algebra minus
-   computation; the template grammar is only "complete over observed line
-   shapes" — a weaker, honest claim. Missing capture forms: unquoted multi-token
-   holes (bind several words up to a literal), and true parent-child block
-   aggregation (a decision owning a list). Close these to make the template
-   claim match the value claim.
+5. **Template grammar completeness** (completeness plan Target 2) — the
+   multi-token hole LANDED (2026-07-30, DESIGN 13): `<name.words>` binds several
+   words anywhere in a template, matched shortest-first with backtracking, and
+   retires the end-of-line-only `<name.tail>` spelling. Deferred with its reason:
+   true parent-child block aggregation (a decision owning a list), because
+   subject-keyed bulleted items plus `Append` already carry every list the corpus
+   states — revisit when a program needs a block a subject cannot key.
+   What still separates the template claim from the value claim is soundness, not
+   capture forms: static pattern overlap (survey F below) is dynamic today, and a
+   multi-token hole makes the unification harder.
 
 ## Verified breakages (review of 2026-07-29, all reproduced on 95e80f7)
 
@@ -400,18 +414,19 @@ V8. DECIDED and FIXED (2026-07-29): the deploy path is gate-free by design and
 - **Glue** — the one deliberate incompleteness (computation inside the decision
   layer). `Glue` is a `Kind` with no rigor-downgrade mechanism. Blocks a
   *computed value*, not building a program (that is artifacts, done).
-- **Artifacts: templated source** — source is a fixed blob baked at generate; a
-  value that must appear inside the compiled program needs regeneration, not a
-  `compile`-time flow. Also: dependency-fetching builders (cargo/vendor hashes)
+- **Artifacts: repeating source** — a WHOLE VALUE inside source now flows at
+  compile through a fill (item 1d, closed); what has no form is REPETITION: N
+  routes need N code blocks, and a marker replaces text, it cannot repeat a
+  block. Also: dependency-fetching builders (cargo/vendor hashes)
   untried. Concrete repro (2026, `server.lips` httpserver example): a route's
   status/mimetype/body must land inside the compiled Go source per route
   (keyed by `<path>`), but `source` heredocs are verbatim text with no holes
   and no per-item (capture-keyed) binding into source text; `generate` rightly
-  refuses these three (confidence 0.35) rather than fake it. Needs a hole
-  syntax usable inside a `source` block, reusing the `<capture>` mechanism
-  already used for option paths, plus a decision on whether substitution is
-  generate-time (model renders the per-item structure) or a new realize-time
-  step.
+  refuses these three (confidence 0.35) rather than fake it. Needs a per-ITEM
+  binding into source text (the `<capture>` mechanism fanning one block out per
+  matching item), plus a decision on whether the repetition is rendered at
+  generate (the model writes the loop, and an added route needs a fresh mint) or
+  at compile (the kernel repeats a marked block, which is a second grammar).
 
 - **Language migration** — no diff/migration path when a `.lang` regenerates to
   a different shape.

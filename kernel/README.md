@@ -16,6 +16,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Surface` | section 2, 5 | the surface conventions every lips text layer shares: transport quoting, quote-aware separators (`splitOutsideQuotes`), trailing sentence punctuation |
 | `Lips.Kernel.Realize` | section 10 | projects a ground base to a NixOS module (`realize`), refusing conflicts |
 | `Lips.Kernel.Run` | section 5 | the deterministic pipeline; `RunError` is the spec's four run outcomes, `Realization` the module/artifacts/staged-paths projections of ONE run |
+| `Lips.Kernel.Source` | ledger 13 | source fills: the `@marker@` grammar of an artifact's baked source and the two-way check that its markers and the engine's declared fills agree |
 | `Lips.Kernel.Expect` | ledger 13 | the `.expect` behavioral contract: relational option-value assertions, parsed/rendered/judged (pure) |
 | `Lips.Kernel.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |

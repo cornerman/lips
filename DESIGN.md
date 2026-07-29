@@ -1385,6 +1385,44 @@ but the loop around it is incomplete; "missing" means specced, not built.
   named by the program). What they cost: two gates the mints themselves
   provoked (staged sources, answerable demands), both now physics.
 
+- **The multi-token capture (`<name.words>`).** A template hole may bind several
+  tokens, anywhere in the template: it takes the fewest tokens it can and the
+  rest of the template decides, growing the capture when the rest then fails, so
+  `back up <src.words> to <dst>` reads `back up a to b to c` as `src = "a to b"`.
+  Without the backtracking a line inside the language would be reported as
+  outside it, which is a grammar bug rather than a program defect. The search is
+  over a line's handful of tokens and laziness stops it at the first success, so
+  matching stays total, deterministic and cheap. This is the second of the
+  enumerated capture forms (completeness plan, Target 2) and it subsumes the old
+  end-of-line-only `<name.tail>`, whose spelling is retired; the mint prompt now
+  offers it, since a capability the model is never told about is dead capability.
+
+- **Source fills: a program word inside baked source.** An artifact's source tree
+  is minted once and committed verbatim, so a value that had to appear *inside*
+  the code froze there: a command name was spelled twice, once in the program and
+  once, dead, in `go.mod`. A live mint answered that with shell smuggled through a
+  build argument (a `postInstall` loop renaming the binary), exactly the
+  workaround the value grammar exists to forbid, so by invariant 4 the hole
+  belongs in the format. Two halves that must agree: the engine declares
+  `artifact.<name>.fill.<marker>` whose rhs is an ordinary value (so every hole
+  mechanism already applies and computation stays unrepresentable), and the source
+  names `@marker@`, the nixpkgs `substituteAll` spelling, narrow enough that a
+  decorator or a Makefile prefix is not read as a marker. `Lips.Kernel.Source`
+  checks both directions -- a declared fill no file names would let the program's
+  word govern nothing, a marker no fill declares would ship `@marker@` into the
+  compiled program -- and substitutes in ONE pass, so a fill's own text is never
+  rescanned and a program value cannot inject a marker. Filling happens where the
+  tree is staged (compile and the gates), never in the committed tree: the
+  committed source keeps its markers and stays the template it is, while the
+  compiled source is derived like every other output. A fill carries text (a
+  literal string or number), never a reference: lips fills offline, so no store
+  path is available. Proven end to end: a Go program whose `go.mod` says
+  `module @name@` and whose body prints `@msg@` builds and runs with the
+  program's own words. Still missing: a REPEATING structure inside source (one
+  block per route), which a marker cannot express -- filed as a gap, never faked.
+  Beside it, an artifact section the kernel does not know (a mint's `arg` for
+  `args`) is now refused instead of silently dropped.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
@@ -1569,10 +1607,11 @@ gate on an artifact-only engine, and the concept escape.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
-- **Artifacts: deferred pieces.** The core landed (see Done). Still open:
-  artifact source is a fixed blob baked at generate (not templated with holes),
-  so a value that must appear *inside* the compiled program needs regeneration
-  rather than flowing through `compile`; dependency-fetching builders (a
+- **Artifacts: deferred pieces.** The core landed (see Done), and a program value
+  now reaches inside baked source through a *fill* (see Done: "Source fills").
+  Still open: a REPEATING structure inside source (one code block per route, per
+  mount) has no hole form, since a fill replaces a marker and cannot repeat a
+  block, so a per-item body still needs regeneration; dependency-fetching builders (a
   `cargoHash`/`vendorHash` over fetched crates) move the fetch to generate and
   are untried (the proven path is no-dependency source, e.g. Go stdlib with
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A
@@ -1697,15 +1736,19 @@ gate on an artifact-only engine, and the concept escape.
     module needs (a list holds derivations, not interpolations). `realize`'s
     `artifactRefs` became quote-aware to catch a bare `artifact.<name>` list
     element while still ignoring the literal token inside a string.
-  - Template completeness: DONE for the nginx case (d4c4468). The tokenizer is
-    quote-aware: a `"..."` span is one token whose surface is its inner text
-    (quotes dropped, spaces kept), so a normal hole captures a quoted value,
-    and a template `"<body>"` reads as a capturing hole. Bullets need no block
-    machinery: `-` is just a literal token, and each item stays a distinct
-    decision by putting its own value (the path) in the subject. Deferred:
-    unquoted multi-token holes (bind several words up to a literal) and true
-    parent-child block aggregation (a decision that owns a list); neither is
-    needed yet.
+  - Template completeness: DONE for the enumerated capture forms. The tokenizer
+    is quote-aware (d4c4468): a `"..."` span is one token whose surface is its
+    inner text (quotes dropped, spaces kept), so a normal hole captures a quoted
+    value, and a template `"<body>"` reads as a capturing hole. The multi-token
+    hole `<name.words>` closes the second form: it binds one or more tokens
+    anywhere in the template, ending where the template's next literal matches,
+    so an unquoted several-word value needs no quotes (the end-of-template case
+    generalizes the former `<name.tail>`, its only spelling now). Bullets need no
+    block machinery: `-` is just a literal token, and each item stays a distinct
+    decision by putting its own value (the path) in the subject. Deferred, with
+    the reason: true parent-child block aggregation (a decision that owns a
+    list), because subject-keyed items already carry every bulleted list the
+    corpus states, and `Append` aggregates them.
   - Glue: TODO. The one documented incompleteness (computation).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
