@@ -51,6 +51,7 @@ module Lips.Identity
   , decisionsPath
   , compiledPath
   , resolveLangDir
+  , requireProgram
   , langPathIn
   , expectPathIn
   , generationPathIn
@@ -60,6 +61,26 @@ module Lips.Identity
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import           System.FilePath (dropExtension, dropTrailingPathSeparator, takeBaseName, takeDirectory, takeExtension, takeFileName, (<.>), (</>))
+
+-- | Does this path name a program at all? Every other function here reads a
+-- path as @\<instance\>.\<language\>.lips@ without asking, so a path missing
+-- the marker was silently reinterpreted: @notes.txt@ became language @txt@ and
+-- @backup\/backup.lang@ (a MINTED file) became a program in language @lang@,
+-- both then reported as some later missing file. Deduce-or-fail at the door
+-- instead: the marker is the convention's only anchor, so a path without it is
+-- refused naming it. The language segment may be absent (the singleton
+-- shorthand) but must not be empty, which rules out a bare @.lips@.
+requireProgram :: FilePath -> Either Text ()
+requireProgram file
+  | takeExtension file /= ".lips" = Left $ T.pack file
+      <> " is not a lips program: a program file ends in .lips."
+      <> "\n\n\8594 pass the program (<instance>.<language>.lips, or <language>.lips),"
+      <> " not a file lips writes."
+  | null (takeFileName (core file)) = Left $ T.pack file
+      <> " names no language: a program is <instance>.<language>.lips"
+      <> " (or <language>.lips)."
+      <> "\n\n\8594 name the file after its language, e.g. backup.lips."
+  | otherwise = Right ()
 
 -- | The program core: the path with the @.lips@ marker stripped.
 -- @a/ledger.backup.lips@ -> @a/ledger.backup@; @a/backup.lips@ -> @a/backup@.

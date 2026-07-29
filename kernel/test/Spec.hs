@@ -2442,6 +2442,23 @@ main = hspec $ do
     it "the shorthand puts the singleton under the language's own name" $
       compiledPath "examples/backup.lips" `shouldBe` "examples/backup/out/backup"
 
+  -- Nothing used to check the marker, so every other function here read a
+  -- non-program path as if it were one: x.backup.txt became language "backup"
+  -- and the minted backup/backup.lang became a program in language "lang",
+  -- each surfacing later as a confusing missing file.
+  describe "the .lips marker is required (Lips.Identity.requireProgram)" $ do
+    it "accepts both program shapes" $ do
+      requireProgram "examples/ledger.backup.lips" `shouldBe` Right ()
+      requireProgram "examples/backup.lips" `shouldBe` Right ()
+    it "refuses a path with another extension, naming the marker" $
+      case requireProgram "examples/x.backup.txt" of
+        Right () -> expectationFailure "expected Left for x.backup.txt"
+        Left msg -> msg `shouldSatisfy` T.isInfixOf ".lips"
+    it "refuses a minted file passed as a program" $
+      requireProgram "examples/backup/backup.lang" `shouldSatisfy` isLeft
+    it "refuses a bare .lips, which names no language" $
+      requireProgram "examples/.lips" `shouldSatisfy` isLeft
+
   describe "--lang resolution (Lips.Identity.resolveLangDir)" $ do
     let prog = "services/b/photos.backup.lips"
     it "with no override, resolves to the sibling langDir" $

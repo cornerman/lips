@@ -40,7 +40,7 @@ import           System.Process     (CreateProcess (..), callCommand, proc, read
 import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
-import           Lips.Identity                 (readmePath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
+import           Lips.Identity                 (requireProgram, readmePath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
@@ -299,6 +299,10 @@ loadLangOrDie dir file = do
 -- exception when the path is wrong (a common typo at the shell).
 readProgramOrDie :: FilePath -> IO Text
 readProgramOrDie file = do
+  -- The one door every verb reads a program through, so the .lips marker is
+  -- checked once, here: a path without it would otherwise be reinterpreted by
+  -- Lips.Identity (a .lang read as a program in language "lang").
+  either die pure (requireProgram file)
   m <- tryRead file
   case m of
     Just t  -> pure t
