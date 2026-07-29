@@ -1,0 +1,7 @@
+serve http on port 8081.
+run it as a systemd service named api.
+write the server in go, using only the standard library with no external dependencies.
+routes:
+- /hello returns status 200 with body "hello".
+- /bye returns status 404 with body "gone".
+- /health returns status 200 with body "ok".
