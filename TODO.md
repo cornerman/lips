@@ -5,7 +5,10 @@
 0. ~~**Mint `examples/greet.lips`.**~~ DONE (ca09f97 committed
    `examples/greet/`). ~~`check-expect` and `lipsModules-eval` stay RED for the
    three programs still without an engine~~ -- `examples/{board,habit,logscan}`
-   are committed (f0e8d13) and all 13 example programs `check` green. The
+   are committed (f0e8d13) and all 13 example programs `check` green.
+   **Correction (2026-07-29 review): `lipsModules-eval` is still RED**, for an
+   unrelated reason -- `nix/modulesFromDir.nix` cannot parse a singleton
+   `<language>.lips` name (item V1 below). The
    original text follows for its target-shape notes.
 
    One line,
@@ -44,8 +47,10 @@
       holes silently drops the second; a sound static map from holes to token
       positions is the missing piece (a multi-token capture breaks the naive one).
       (ii) a per-hole DECORATIVE report — a hole demoted to a `Concept` on a line
-      that otherwise realizes is invisible, since `diagInert` works per line. No
-      committed engine emits a `Concept`, so this has no call site yet.
+      that otherwise realizes is invisible, since `diagInert` works per line.
+      This now has call sites: `board`, `habit` and `logscan` emit `Concept`s (2,
+      3 and 4 decorative lines). The bigger question those mints raise is item V6
+      below (a mint may pass every gate by declaring the program decorative).
       (iii) a compiled artifact still records no dependency on the program lines
       its baked source came from, so an edit to one of them compiles to an
       unchanged binary. Candidate: record the source's line dependencies at mint
@@ -137,7 +142,7 @@
       vs the rule side's fixed `<value>`). A weaker model confuses them
       reliably, which makes it a format question, not a prompt question.
 
-1. **Mint prompt rewrite** — plan
+2. **Mint prompt rewrite** — plan
    `docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md`. Move the
    prompt out of escaped Haskell literals into `assets/mint/*.md` embedded with
    `file-embed` (byte-identical first), then rewrite it for the agent doing the
@@ -147,7 +152,7 @@
    examples, a self-review checklist. A suite guard parses every fenced
    `lips-engine` example block, so an example cannot outlive its grammar.
 
-2. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
+3. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
    When `generate` refuses because physics is missing, write a machine-readable
    artifact (refused lines, missing capability / extension point, minimal repro,
    model+prompt fingerprint) instead of on-screen-only text. Operationalizes the
@@ -155,17 +160,79 @@
    supplies the producer and prints on both paths; this item is only the file
    writer.
 
-3. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
+4. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
    Wire one realized module into `~/nixos` on `wolf`. Reduced to "import one
    file"; proves survival on a real system, not just a VM boot.
 
-4. **Template grammar completeness** (completeness plan Target 2). The value
+5. **Template grammar completeness** (completeness plan Target 2). The value
    grammar is complete-by-construction over the Nix value algebra minus
    computation; the template grammar is only "complete over observed line
    shapes" — a weaker, honest claim. Missing capture forms: unquoted multi-token
    holes (bind several words up to a literal), and true parent-child block
    aggregation (a decision owning a list). Close these to make the template
    claim match the value claim.
+
+## Verified breakages (review of 2026-07-29, all reproduced on 95e80f7)
+
+Each is stated with its promise in DESIGN §13, "Verified Breakages". Ranked by
+blast radius; V1-V4 are small, local fixes with tests missing.
+
+V1. **`lib.modulesFromDir` cannot read a singleton program, so `nix flake
+    check` is red.** `nix/modulesFromDir.nix` takes filename element 0 as the
+    instance and element 1 as the language, so `board.lips` becomes language
+    `lips` and the build dies with `Path 'examples/lips/lips.lang' does not
+    exist`. Fix: derive the pair the way `Lips.Identity` does (last extension
+    before `.lips` is the language; a missing instance defaults to it). Better:
+    stop duplicating the rule in Nix -- have the derivation ask the binary
+    (`lips` already knows), so one implementation answers.
+
+V2. **`artifact.nix` is not recursive.** `realizeArtifactFile` emits `{ ... }`,
+    so an artifact arg holding `${artifact.<other>}` renders an undefined
+    variable; the module escapes it only because a Nix `let` is recursive. Fix:
+    `rec {`, plus a conformance test over a core-plus-wrapper base.
+
+V3. **A dangling `${artifact.<name>}` inside an artifact ARG is not caught.**
+    `renderModule` scans option assignments only, so `RDangling` misses
+    artifact-to-artifact references and the failure lands inside nix as
+    `attribute '<name>' missing`. Fix: collect names from the artifact group's
+    args too (one `concatMap`).
+
+V4. **A rule rhs may not contain `" ; "`.** `parseRuleBody` splits emits with a
+    naive `T.splitOn " ; "`; the pattern side already has the quote-aware
+    `splitEmits` (its comment names this defect). A shell text
+    (`"cd /x ; ls"`) fails to parse, reported as "unterminated string". Fix:
+    share one quote-aware splitter; a missing grammar case is a kernel bug.
+
+V5. **`<self>` binds only as a whole segment in an expect path.**
+    `bindSelfExpect` compares literally instead of using the shared `fillName`,
+    so `<self>-core` never binds and the assertion silently reads `null`. Fix:
+    use `fillName`, the same call the rule side makes.
+
+V6. **The concept escape: a mint may declare the program decorative and pass
+    every gate.** `logscan` reads 4 of its 5 lines as `Concept`s and keeps the
+    behavior in baked Go source, so editing the sentences changes nothing while
+    `check` reports success -- with an empty contract, so nothing is pinned
+    either. The thesis says the program is the source of truth; here it is a
+    comment. Not obviously fixable in a domain-blind kernel (counting words is
+    exactly what the kernel may not do); candidates worth arguing:
+    (a) require a `Concept` line to be answered by SOME realizing sibling under
+    the same subject prefix, (b) make an artifact record the program lines its
+    source came from (item 1a(iii)) so a decorative behavior line becomes a
+    dropped word, (c) refuse an engine with zero checkable assertions in
+    `generate` unless every option it fills is derivation-valued.
+
+V7. **A program file's extension is never checked.** `x.backup.txt` is read as
+    language `backup`, and `examples/backup/backup.lang` as a program. Fix: one
+    fail-loud check on the `.lips` marker in `Lips.Identity`.
+
+V8. **`lib.modulesFromDir` compiles without the contract.** Its derivation (and
+    the `vm-smoke`/`artifact-vm` checks) copies only the `.lang`, so
+    `expectGate` finds no `.expect` and prints "no behavioral contract yet"
+    instead of gating -- and the derivation has no `nix` on PATH, so copying the
+    contract in would fail loud rather than pass. Decide it: either the deploy
+    path is documented as gate-free (the gate ran at `check` time, in the repo)
+    or the compile-in-derivation drops the gate explicitly with a flag, so the
+    skip is a stated choice instead of a missing file.
 
 ## Backlog (larger / deferred by design)
 
@@ -255,3 +322,25 @@ first has landed, these are the rest, ranked.
 - `stripTailPunct` (`Kernel/Engine/Value.hs`) duplicates `stripTrailingPunct`
   (`Kernel/Lang/Pattern.hs`) — same rule, two copies kept "in step" by comment.
   A shared definition would remove the drift risk (the comment flags it).
+- `parseQuoted` exists three times (`Kernel/Reader.hs`, `Kernel/Lang/Store.hs`,
+  `Kernel/Engine/Data.hs`) and `kindText` three times (same modules). The
+  quoting rule of a stored assertion is one piece of knowledge; V4 is what its
+  drift costs.
+- `validate` (`app/Main.hs`) runs the whole pipeline three times (`runBase`,
+  `runBaseArtifact`, `runBaseStaged`), and `compile` runs it a fourth time via
+  `checkLoose`. `Kernel/Run.hs` could export `runGround` once and let the three
+  projections be pure functions of that one result.
+- Four `*Replace` wrappers (`resolveReplace`, `realizeReplace`, `runReplace`,
+  `runBaseReplace`) exist for tests and pre-aggregation callers -- production
+  surface paid for by the suite.
+- The shell-out layer: `mkTempDir` shells to `mktemp` (and never cleans up),
+  `writeSources` to `mkdir -p` with hand-rolled quoting, `stageFromDisk` to
+  `cp -rT` while swallowing every error. `directory` is already a dependency
+  (`doesPathExist`), so these are avoidable interfaces to the host; the silent
+  `cp` failure is the one that can mislead (a staging error surfaces later as a
+  missing path or a confusing eval).
+- `Kernel/Engine/Data.hs` imports `Data.Maybe` twice; `pAttrKey`'s comment in
+  `Kernel/Engine/Value.hs` says hyphens and quotes are rejected while the code
+  accepts `-` and `'` (and its char list repeats `-`).
+- `Kernel/Refine.hs`, `Kernel/Realize.hs` comments still name a `@print@` verb
+  that no longer exists (it is `compile`).

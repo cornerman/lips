@@ -207,7 +207,11 @@ it by the world its engine was minted for:
 
 A home-manager engine appears under `lips.homeManagerModules.<instance>`
 instead. Nix flakes see only git-tracked files, so `git add` your program and
-its language folder before rebuilding.
+its language folder before rebuilding. Two caveats today: this helper reads a
+`<instance>.<language>.lips` name only (the singleton shorthand breaks it), and
+its compile derivation stages only the `.lang`, so the behavioral contract is
+not re-checked there -- run `lips check` in your repo, which is where the
+contract lives anyway.
 
 ## Try It
 
@@ -229,7 +233,8 @@ invocation it wraps. Both only make sense when hacking on lips itself inside
 the clone; once `lips` is installed elsewhere, `just` has no meaning there.
 The full suite (conformance tests, module eval, and a VM boot) is a separate
 recipe, `just ci`; nothing invokes it automatically yet, so run it yourself
-before a merge.
+before a merge. It is red today: the module-eval check cannot read a singleton
+`<language>.lips` program (DESIGN §13, "Verified Breakages", V1 in `TODO.md`).
 
 `compile` prints the stock nix commands that run the result, e.g.
 `nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs

@@ -32,7 +32,7 @@ kernel bug; a missing domain fact is the engine's job.
 
 ## Terminology (use these words exactly)
 
-- **Program**: the human-written `.loose` file. The only unrecoverable
+- **Program**: the human-written `<instance>.<language>.lips` file. The only unrecoverable
   artifact; everything else is derived or regenerable.
 - **Decision**: the atom. `id kind subject strength "assertion" @provenance`.
   Programs, engines, and all intermediate stages are decision bases.
@@ -44,12 +44,14 @@ kernel bug; a missing domain fact is the engine's job.
 - **Engine**: the per-problem rulebook, pure data in `<program>.lang`
   (patterns + rules + demands). AI-minted, disposable, regenerable. There is
   no per-problem engine *code*.
-- **generate / run / check**: generate is the only AI door (via `pi` print
-  mode). run and check are deterministic and offline, always.
+- **generate / compile / check**: generate is the only AI door (via `pi` print
+  mode). compile and check are deterministic and offline, always. Running is
+  not a lips verb: `compile` prints the stock `nix` commands over the compiled
+  directory.
 
 ## Invariants (do not break)
 
-1. `run` never calls a model. No AI after generate, ever.
+1. `compile`/`check` never call a model. No AI after generate, ever.
 2. Deduce-or-fail: unreadable input fails loud naming the remedy; lips never
    guesses. Structural guards beat prompt pleas.
 3. Illegal states unrepresentable: rule rhs is the closed value grammar

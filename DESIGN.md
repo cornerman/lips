@@ -19,7 +19,9 @@ Survey A/B/C/D).
   obligation-to-mechanism mappings, runtime strategies, coping logic, and
   derived tooling. Engines churn; Solutions do not.
 - **Solution**: the human-authored decision base for one problem. The stable
-  artifact.
+  artifact. (The shipped name for it is **program**, the `.lips` file; this
+  document's older sections say Solution and `lipsidea` says lips. `AGENTS.md`
+  carries the terminology the code uses.)
 - **System**: kernel + languages + engines + compiler + Nix realization.
 - **Glue**: a decision whose assertion contains a computation. Legal, marked,
   rigor-downgraded.
@@ -489,9 +491,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   heading is legitimately decorative, but so is a line a mint quietly declined to
   honor, and only the author can tell which; naming both is the honest move.
   This closes the visibility half of the silent-demotion finding
-  (gap report finding 1, `git show ca09f97^:docs/gaps/README.md`). No committed
-  engine emits a `Concept` yet,
-  so nothing changes for today's examples.
+  (gap report finding 1, `git show ca09f97^:docs/gaps/README.md`).
+  Since the three CLI mints landed (f0e8d13) it fires on real engines:
+  `board` reports 2 decorative lines, `habit` 3, `logscan` 4 of its 5 -- which
+  turned the report from a formality into the loudest open question in the
+  repo (see "Verified breakages", concept escape).
 
 - **The reasoning level is pinned (`--thinking`, default `high`).** `generate`
   passed no thinking flag, so pi's default applied, inherited from the caller's
@@ -1255,9 +1259,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   output surfaced as squiggles (an unread line is an error, an open question a
   warning). Client glue for neovim/vim/vscode/helix is in `editors/`. `Derive`
   is pure (no aeson, kernel-clean); only the server shell uses aeson, confined
-  like `Generate.PiJson`. Remaining polish: hover and go-to for a line's
-  produced subject, as-you-type completion tuning, and percent-decoding of
-  `file://` URIs (paths with spaces/non-ASCII are not handled yet).
+  like `Generate.PiJson`. Percent-decoding of `file://` URIs landed with the
+  server (`uriToPath`, pinned by tests over spaces and non-ASCII). Remaining
+  polish: hover and go-to for a line's produced subject, and as-you-type
+  completion tuning.
 
 - **Readable generate refusals.** A refusal now names its remedy instead of
   dumping grammar. Three coordinated moves. (1) The `--confidence` hint is
@@ -1382,11 +1387,15 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
-  deterministic verb, not just `generate`: `check` is the gate alone, `compile`
-  gates then writes, `run` gates then boots (`runVm`/`compileLoose` both call
-  the same gate `check` runs and die on any violation before their side effect,
-  so neither materializes nor boots a module that dropped a pinned value;
-  home-manager `run` gates too). This makes the safe path the obvious path
+  deterministic verb, not just `generate`: `check` is the gate alone and
+  `compile` gates (it calls `checkLoose`) before it writes, so neither
+  materializes a module that dropped a pinned value. (`run` is gone; running is
+  stock `nix` over the compiled dir, which is past every gate.) Two holes are
+  open, both verified: the gate is a NO-OP for a language whose `.expect` is
+  absent or empty (`greet`, `logscan`), and the deploy path
+  `lib.modulesFromDir` copies only the `.lang` into its compile derivation, so
+  the contract is silently skipped there -- see "Verified breakages" below.
+  This makes the safe path the obvious path
   (Failproof): the headline offline verb no longer emits a silently-wrong
   module. Nix is the compile target, so the gate's `nix eval` is no new
   dependency (every invocation already runs through nix; the output is only
@@ -1411,6 +1420,77 @@ but the loop around it is incomplete; "missing" means specced, not built.
   below, which is first-class and does not need glue. Glue and artifacts are
   separate axes; glue is deferred as far as possible.
 
+### Verified Breakages (Broken Promises, Review of 2026-07-29)
+
+Each item was reproduced against `main` at 95e80f7 and states the promise it
+breaks. They are tracked as work in `TODO.md` ("Verified breakages"); listed
+here because a ledger that only records wins is a map of a different territory.
+
+- **`nix flake check` is red: `lib.modulesFromDir` cannot read a singleton
+  program.** `nix/modulesFromDir.nix` splits a filename on `.` and takes
+  element 0 as the instance and element 1 as the language, so `board.lips` is
+  read as instance `board` in language `lips` and the check dies with
+  `Path 'examples/lips/lips.lang' does not exist`. The singleton shorthand
+  `<language>.lips` is documented in README and implemented in
+  `Lips.Identity`, so this is the Nix copy of that naming rule drifting from
+  the Haskell one -- the DRY failure the layout rule exists to prevent. The
+  `lipsModules-eval` check therefore fails for four committed examples
+  (`board`, `greet`, `habit`, `logscan`), which TODO item 0 recorded as green.
+
+- **A compiled `artifact.nix` cannot reference a sibling artifact.**
+  `realizeArtifactFile` emits a plain `{ ... }` attrset, so an artifact arg
+  holding `${artifact.<other>}` renders as the undefined variable
+  `artifact.<other>`; the module works only because a Nix `let` is recursive.
+  This breaks the ledger's own claim that `artifact.nix` holds "the exact same
+  derivation the module let-binds", and it breaks exactly the core-plus-wrapper
+  shape the "one name grammar" milestone was built for. One-word fix (`rec`),
+  no test covers it.
+
+- **A dangling artifact reference inside an artifact ARG reaches the module.**
+  `renderModule` collects `valueArtifactNames` from option assignments only, so
+  `RDangling` never sees an artifact's own args. A wrapper naming a build
+  nothing defines realizes cleanly and dies inside nix with
+  `attribute '<name>' missing` -- the raw, remedy-free failure the staged-source
+  gate was built to end.
+
+- **A rule rhs may not contain `" ; "`.** `parseRuleBody` splits emits with a
+  naive `T.splitOn " ; "`, while the pattern side has a quote-aware
+  `splitEmits` for the same job (whose comment names this defect and leaves it
+  standing). A shell text like `"cd /x ; ls"` -- ordinary in a
+  `writeShellApplication` -- fails to parse, and the message blames an
+  "unterminated string". A missing grammar case is a kernel bug (invariant 3).
+
+- **The behavioral gate is vacuous where it is needed most.** `runExpects`
+  returns success on an empty contract, and `uncheckableExpects` forbids an
+  assertion on a derivation-valued option, so an artifact-only engine has
+  nothing to pin: `greet` and `logscan` report "all 0 checks pass" and
+  regeneration is ungated for them (invariant 5 holds only formally). This is
+  the same hole TODO 1e names from the artifact side.
+
+- **The concept escape: a mint may declare the program decorative.**
+  `droppedValues` exempts a hole that reaches a `Concept`, since a mint
+  DECLARING decoration is honest. `logscan` shows the cost: 4 of its 5 lines are
+  concepts and the whole behavior lives in the baked Go source, so editing
+  "keep a line only when every field named on the command line equals the value
+  given with it" changes nothing, and `check` still reports success. The
+  program stops being the source of truth, which is the thesis (section 1).
+  The visibility is there (`diagInert` prints the lines); what is missing is a
+  judgment, and it is deliberately unresolved because the kernel may not count
+  domain words.
+
+- **`<self>` binds only as a whole segment in a `.expect` path.**
+  `bindSelfExpect` compares a segment to `"<self>"` literally instead of using
+  the shared `fillName`, so a composed name (`<self>-core`) never binds and the
+  assertion silently reads a `null`. The "one name grammar" milestone claims the
+  grammar resolves "wherever the grammar admits a name"; the expect layer is the
+  one place it does not.
+
+- **A program file's extension is never checked.** `Lips.Identity` derives the
+  language from the second-to-last extension, so `x.backup.txt` is happily read
+  as language `backup` and `examples/backup/backup.lang` as a program in
+  language `backup`. The `.lips` marker is documented as the constant handle;
+  refusing anything else is a one-line, fail-loud check.
+
 ### Missing
 
 - **Live host deployment.** The VM smoke test proves the module class; wiring
@@ -1425,7 +1505,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A
   build needing *arbitrary* Nix (custom overlays, hand-built derivation graphs)
   remains glue, deferred.
-- **Run axis: DONE. Running is not a lips verb; it is stock `nix` over the
+- **Run axis (DONE, kept here for its design record; the summary entry is in
+  Done above). Running is not a lips verb; it is stock `nix` over the
   compiled dir.** `lips compile [--out <dir>] <program>` is the deterministic
   compiler (verify the committed contract -> crystallize -> realize -> a
   DIRECTORY, default `<program without .lips>/`). It writes `default.nix` (the
@@ -1482,7 +1563,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   nowhere" is a non-thing; each distribution format is its own realize output
   shape) and the DEPLOY axis (import `default.nix` into `~/nixos` on `wolf`,
   persistent and privileged -- the headline missing proof).
-- **Direction file (done).** Optional owner taste for the mint: per-language
+- **Direction file (DONE, kept here for its design record).** Optional owner taste for the mint: per-language
   `<language>.direction`, plain text, appended to the minting prompt when
   present. Sharp boundary: the program states what must be true; direction
   states what to prefer (mechanism taste: restic vs rsync, no docker, secrets

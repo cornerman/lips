@@ -20,8 +20,20 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
 | `Lips.Kernel.Lang.Store` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
 | `Lips.Kernel.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |
-| `Lips.Kernel.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int; holes and `${pkgs...}` refs only) -- computation and injection unrepresentable |
-| `Lips.Generate.Harness` | section 5 | the deterministic core of `generate`: deduce-or-fail admission and resampling unanimity |
+| `Lips.Kernel.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int/float/path/null, attrsets; holes, typed holes and `${pkgs...}`/`${artifact...}` refs only) -- computation and injection unrepresentable |
+| `Lips.Kernel.Engine.Aggregate` | ledger 13 | list aggregation: `Append` mode derived from the rule emits, and the assembly of N same-subject list decisions |
+| `Lips.Kernel.Engine.Overlap` | ledger 13 | static rule orthogonality: critical pairs over rule left-hand sides (`ruleOverlaps`, `subjectsUnify`) |
+| `Lips.Kernel.Engine.Reach` | ledger 13 | a program word the language reads and then discards (`droppedValues`) |
+| `Lips.Kernel.Engine.Answerable` | ledger 13 | a demand no pattern can ever answer (`unanswerableDemands`) |
+| `Lips.Kernel.Capture` | ledger 13 | the one capture/name grammar shared by rules, expects and demands (`matchSubject`, `nameParse`, `fillName`) |
+| `Lips.Kernel.Lang.Diagnose` | ledger 13 | the authoring report: per-line outcome, open questions, inert lines, discarded words |
+| `Lips.Kernel.OptionType` | ledger 13 | domain-blind option grounding over a typed `OptionSchema`, plus the schema lookup the mint's one tool asks |
+| `Lips.Nix.Options` / `Lips.Nix.Target` / `Lips.Nix.Flake` | ledger 13 | the NixOS/home-manager specifics: `optionsJSON` shape, the closed `Target`, the emitted `flake.nix` |
+| `Lips.Identity` | ledger 13 | the only place that knows the file layout (`<instance>.<language>.lips` -> language folder, `out/`) |
+| `Lips.Cli` | ledger 13 | the whole CLI grammar as one `optparse-applicative` parser (verbs, flags, completion) |
+| `Lips.Lsp.Derive` / `Lips.Lsp.Server` | ledger 13 | the language server: pure completion/diagnostics core, and its stdio JSON-RPC shell |
+| `Lips.Generate.Harness` | section 5 | the `Confidence` unit the deduce-or-fail gate speaks in (the resampling harness was removed as speculative) |
+| `Lips.Generate.PiJson` | section 5 | parsing pi's json event stream: the reply, the model used, and the tool transcript |
 | `Lips.Generate.Record` | section 5 | the pinned generation record and its content id; every minted `.lang` line is stamped `@gen:<id>` |
 | `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + whole-engine candidate parser (pure) |
 | `Lips.Generate.Readme` | section 5 | the mint's `report` and `gap` blocks rendered as `<language>/README.md`, the human's review artifact |
@@ -55,10 +67,12 @@ compatible value type, or the engine is rejected -- deduce-or-fail), and only
 then writes the language's `.lang`, the
 per-instance crystal witness `out/<instance>.decisions`, and a `.generation`
 audit record. It
-routes the model call through `pi` in json print mode (`pi -p -nt -nc
---no-session --mode json`); lips bakes in no model, so by default `--model` is
-omitted and pi's own configured default applies. A model may be given as the
-optional first argument. Either way lips reads the model pi actually used back
+routes the model call through `pi` in json print mode, hermetic by explicit
+subtraction (`pi -p -nbt -nc --no-extensions --no-skills --no-prompt-templates
+--no-session --mode json --system-prompt <prompt> --thinking <level> -e
+<mint-tools>`); lips bakes in no model, so by default `--model` is
+omitted and pi's own configured default applies. A model is named with
+`-m/--model` (there is no positional model argument). Either way lips reads the model pi actually used back
 out of the json stream and records it in `.generation`, so provenance stays
 concrete without a vendor model in the deliverable. No domain vocabulary is compiled in: the model invents
 the subjects, and closure is checked (unmapped decision, unmet demand,
