@@ -934,6 +934,14 @@ main = hspec $ do
       bindSelfExpect "ledger" (Expect "a" ["services", "restic", "backups", "<self>", "paths"] opt Nothing)
         `shouldBe` Expect "a" ["services", "restic", "backups", "ledger", "paths"] opt Nothing
 
+    -- A segment is literal text with <token> OCCURRENCES (the same grammar an
+    -- artifact name uses, where <self>-core is the core-plus-wrapper idiom), so
+    -- <self> binds inside a segment too. Comparing the whole segment left
+    -- <self>-core unbound and the assertion silently read null.
+    it "binds <self> occurring inside a path segment, not only as a whole one" $
+      bindSelfExpect "greet" (Expect "a" ["home", "packages", "<self>-core"] opt Nothing)
+        `shouldBe` Expect "a" ["home", "packages", "greet-core"] opt Nothing
+
     it "resolves the whole assertion and the nth token" $ do
       expectedValue base (Expect "a" ["o"] opt Nothing)  `shouldBe` Right "/var/lib/ledger /backup/ledger daily"
       expectedValue base (Expect "a" ["o"] opt (Just 2)) `shouldBe` Right "/backup/ledger"

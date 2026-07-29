@@ -41,7 +41,7 @@ import qualified Data.Text  as T
 import           Text.Read  (readMaybe)
 
 import Lips.Kernel.Base     (Base, toList)
-import Lips.Kernel.Capture  (captureName, fillCaptures, matchSubject)
+import Lips.Kernel.Capture  (captureName, fillCaptures, fillName, matchSubject, selfName)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Data (renderAttrPath, splitAttrPath)
 import Lips.Kernel.Reader   (ParseError (..))
@@ -114,11 +114,15 @@ parseExpectBody eid body =
 -- @\<self\>@ is already bound the same way (plan 2026-07-22). Only the option
 -- path is affected; the source subject ('exFrom') is program-side and never
 -- carries @\<self\>@.
+-- Filled by OCCURRENCE ('fillName', the call the rule side makes), not by
+-- whole-segment comparison: a name is literal text with @\<token\>@
+-- occurrences, so @\<self\>-core@ is as legal a segment as @\<self\>@. The
+-- literal comparison this replaces left such a segment unbound, and the
+-- assertion then read @null@ from the module instead of failing.
 bindSelfExpect :: Text -> Expect -> Expect
-bindSelfExpect name e = e { exPath = map seg (exPath e) }
+bindSelfExpect name e = e { exPath = map (fillName resolve) (exPath e) }
   where
-    seg "<self>" = name
-    seg s        = s
+    resolve nm = if nm == selfName then Just name else Nothing
 
 -- | Expand a value-keyed contract against a program's base. An expect whose
 -- @from@ subject carries a capture (@route.<path>.status@) is a FAMILY: it
