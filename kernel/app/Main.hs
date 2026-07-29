@@ -58,6 +58,7 @@ import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtif
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
+import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose, retiredConcepts)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
@@ -133,6 +134,9 @@ compileLoose mout mLangDir noContract file = do
   createDirectoryIfMissing True outDirPath
   TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
   stageFromDisk dir file (outDirPath </> "artifacts")
+  -- The committed source keeps its markers (it is the template); the COMPILED
+  -- source is filled, like every other derived output.
+  fillStagedTree file (outDirPath </> "artifacts") (rlFills rl)
   artNames <- case rlArtifact rl of
     Nothing            -> pure []
     Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
@@ -218,7 +222,7 @@ checkLoose contract mLangDir file = do
 expectGate :: Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realization
 expectGate contract dir file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
-  stagedGate (stageFromDisk dir file) file (rlStaged rl)
+  stagedGate (stageFromDisk dir file) file rl
   sourceSpecGate dir file eng program
   expSrc <- if contract then tryRead (expectPathIn dir file) else pure Nothing
   case expSrc of
@@ -439,7 +443,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- a mint that emits `src ./artifacts/<name>` but writes its source under
       -- another name is refused here instead of shipping a broken build.
       forM_ validated $ \(f, rl) ->
-        stagedGate (\dst -> writeSources dst minted) f (rlStaged rl)
+        stagedGate (\dst -> writeSources dst minted) f rl
       -- The shared contract gates every program, each bound to its own <self>.
       forM_ validated $ \(f, rl) -> do
         gate <- runExpects (\dst -> writeSources dst minted)
@@ -881,10 +885,15 @@ writeSources root = mapM_ one
 -- fails in practice: the staged tree exists under the ONE name that was minted,
 -- so renaming the command in the program leaves the path pointing at nothing.
 -- Hence the remedy is regeneration: the source tree is minted, never edited.
-stagedGate :: (FilePath -> IO ()) -> FilePath -> [(Text, Decision)] -> IO ()
-stagedGate _     _    []     = pure ()
-stagedGate stage file staged = withTempDir $ \dir -> do
+stagedGate :: (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+stagedGate stage file rl
+  | null staged && null (rlFills rl) = pure ()
+  | otherwise = withTempDir $ \dir -> do
   stage (dir </> "artifacts")
+  -- The same fill compile performs, so a fill defect (a value no source names, a
+  -- marker no engine declares) is refused here rather than shipping @marker@
+  -- verbatim into a compiled program.
+  fillStagedTree file (dir </> "artifacts") (rlFills rl)
   missing <- filterM (fmap not . doesPathExist . (dir </>) . T.unpack . fst) staged
   case missing of
     [] -> pure ()
@@ -892,6 +901,44 @@ stagedGate stage file staged = withTempDir $ \dir -> do
       (T.pack file <> " names " <> plural (length ms) "file" <> " that lips never staged:")
       [ p <> " (named by " <> niceSubject (dSubject d) <> ")" | (p, d) <- ms ]
       ("→ the source tree is minted, so rebuild it: lips generate " <> T.pack file))
+  where staged = rlStaged rl
+
+-- | Fill a staged source tree in place: every @\@marker\@@ becomes the text the
+-- engine declared for it (kernel physics, 'Lips.Kernel.Source.fillTree'), so a
+-- word the program states reaches inside the compiled program. Each immediate
+-- subdirectory of the staged root is one artifact's tree, which is where its own
+-- fills apply; a file lying loose in the root belongs to no artifact and so has
+-- no fills, and a marker in it is a defect like any other undeclared one.
+fillStagedTree :: FilePath -> FilePath -> [(Text, Text, Text)] -> IO ()
+fillStagedTree file root fills = do
+  there <- doesDirectoryExist root
+  when there $ do
+    entries <- listDirectory root
+    forM_ entries $ \e -> do
+      isDir <- doesDirectoryExist (root </> e)
+      let art   = if isDir then T.pack e else ""
+          label = if isDir then art else "(staged root)"
+          decl  = [ (m, t) | (a, m, t) <- fills, a == art ]
+      -- Paths stay RELATIVE to the staged root: the root is a temp dir at the
+      -- gate, so an absolute path would name a file the reader cannot look at.
+      paths <- if isDir then map (e </>) <$> treeFiles (root </> e) else pure [e]
+      texts <- mapM (TIO.readFile . (root </>)) paths
+      case fillTree label decl (zip paths texts) of
+        Left defects -> die (report
+          (T.pack file <> ": the source lips bakes and the values it fills disagree:")
+          defects
+          ("→ the source tree and its fills are minted together, so rebuild both: "
+            <> "lips generate " <> T.pack file))
+        Right filled -> forM_ filled $ \(p, t) ->
+          when (Just t /= lookup p (zip paths texts)) (TIO.writeFile (root </> p) t)
+
+-- | Every file under a directory, recursively, named relative to it.
+treeFiles :: FilePath -> IO [FilePath]
+treeFiles dir = do
+  entries <- listDirectory dir
+  fmap concat $ forM entries $ \e -> do
+    isDir <- doesDirectoryExist (dir </> e)
+    if isDir then map (e </>) <$> treeFiles (dir </> e) else pure [e]
 
 -- | The source-specification gate: where a language BAKES source (a committed
 -- @artifacts\/@ tree, minted from the program), the program lines that produced

@@ -702,6 +702,39 @@ main = hspec $ do
       fmap (map fst) (realizeStagedPaths (const Replace) (\_ -> Left "unused") (fromList ps))
         `shouldBe` Right ["./artifacts/myserver", "./artifacts/myserver/motd"]
 
+    -- Source fills: the engine declares them under the artifact, realize reports
+    -- them, and the caller substitutes them into the tree it stages. Realize
+    -- refuses a fill that could never be written into source, so the defect is
+    -- named at the engine instead of appearing as Nix syntax inside a program.
+    it "reports the source fills an artifact declares" $ do
+      let ps =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","tool","builder"] }
+            , (mk "n" "x" "\"logscan\"" Stated) { dSubject = Subject ["artifact","tool","fill","name"] }
+            , (mk "p" "x" "8080" Stated) { dSubject = Subject ["artifact","tool","fill","port"] }
+            ]
+      realizeArtifactFills (const Replace) (\_ -> Left "unused") (fromList ps)
+        `shouldBe` Right [("tool","name","logscan"), ("tool","port","8080")]
+
+    it "refuses a fill whose value has no source text (a derivation is not text)" $ do
+      let ps = [ (mk "n" "x" "\"${artifact.other}\"" Stated) { dSubject = Subject ["artifact","tool","fill","name"] } ]
+      realizeArtifactFills (const Replace) (\_ -> Left "unused") (fromList ps)
+        `shouldSatisfy` \r -> case r of Left (RBadArtifact "tool" _) -> True; _ -> False
+
+    it "refuses a fill whose marker no source file could ever name" $ do
+      let ps = [ (mk "n" "x" "\"logscan\"" Stated) { dSubject = Subject ["artifact","tool","fill","2nd"] } ]
+      realizeArtifactFills (const Replace) (\_ -> Left "unused") (fromList ps)
+        `shouldSatisfy` \r -> case r of Left (RBadArtifact "tool" _) -> True; _ -> False
+
+    it "refuses an artifact section the kernel does not know (it would be dropped)" $ do
+      -- Before this guard, args/builder were selected and anything else silently
+      -- ignored, so a mint's typo compiled to a derivation missing what it said.
+      let ps =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","tool","builder"] }
+            , (mk "a" "x" "\"0.1.0\"" Stated) { dSubject = Subject ["artifact","tool","arg","version"] }
+            ]
+      realizeReplace (fromList ps)
+        `shouldSatisfy` \r -> case r of Left (RBadArtifact "tool" _) -> True; _ -> False
+
     it "reports no staged path for a base that names none" $
       realizeStagedPaths (const Replace) (\_ -> Left "unused") (fromList ground)
         `shouldBe` Right []

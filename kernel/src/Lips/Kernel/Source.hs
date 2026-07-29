@@ -26,6 +26,7 @@
 -- template it is, and the compiled source is derived like every other output.
 module Lips.Kernel.Source
   ( sourceMarkers
+  , validMarker
   , fillTree
   ) where
 
@@ -59,6 +60,14 @@ sourceMarkers = nub . go
 -- is never read as a marker.
 markerChar :: Char -> Bool
 markerChar c = isAlphaNum c || c == '_' || c == '-'
+
+-- | Could a source file name this marker at all? The declaring half (an engine
+-- subject segment) is free-form text, so a name no @\@marker\@@ could ever
+-- spell is rejected where it is declared rather than reported later as unused.
+validMarker :: Text -> Bool
+validMarker m = case T.uncons m of
+  Just (c, rest) -> isAlpha c && T.all markerChar rest
+  Nothing        -> False
 
 -- | Fill one artifact's staged source tree from its declared fills. Both
 -- directions must agree, or the caller gets a plain-words refusal per defect:
