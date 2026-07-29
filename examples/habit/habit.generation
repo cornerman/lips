@@ -91,11 +91,12 @@ instance names, artifacts).
 Output ONLY lines of these forms, no prose, no code fences. Every line
 starts with a bare confidence NUMBER as its very first token -- never the
 word "because" or any other keyword -- then its id, then a leading
-keyword naming its kind (pattern|match|demand|expect|because), so a
+keyword naming its kind (pattern|match|merge|demand|expect|because), so a
 pattern template may itself begin with any word:
 
   <confidence> <id> pattern <template> => <kind> <subject> "<assertion>" ; <kind> <subject> "<assertion>"
   <confidence> <id> match <kind> <subject> => <option.path> "<rhs>" ; <option.path> "<rhs>"
+  <confidence> <id> merge <option.path> set|list
   <confidence> <id> demand <subject> "<question>"
   <confidence> <id> expect <option.path> from <subject>[#<n>]
   <confidence> <id> because "<reason>"
@@ -115,7 +116,13 @@ must cover every input line. template = the loose line with VALUES
 replaced by <holes>; fixed words match literally (case-insensitive).
 Each hole binds exactly one token, captured verbatim. To capture a QUOTED
 value that may contain spaces, use a quoted hole: text "<body>" binds the
-inner text of a "..." value (quotes dropped). A BULLETED list item begins
+inner text of a "..." value (quotes dropped). To capture an UNQUOTED value
+of several words, use a multi-token hole <name.words>: it binds one or more
+tokens joined by single spaces, may sit anywhere in the template, and ends
+where the template's next literal matches -- 'back up <src.words> to
+<target>' reads 'back up my home folder to nas' as src='my home folder'. As
+the LAST template token it binds the rest of the line, which is how one line
+carries several items ('install <pkgs.words>'). A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -123,6 +130,13 @@ language AND port; "- /hi => status 200 text/plain \"hi\"" fixes a route's
 status, type and body). A line matches ONE pattern, so that pattern must
 emit ONE decision per fact, separated by ' ; ', or a demand on the second
 fact can never be met. Give each emit its own subject.
+ONE FACT PER OPTION SLOT, though: split a line into several facts only when
+each one lands in its OWN option. When several words of one line must end up
+in the SAME option value (a route's status and body written into one file, a
+record's fields in one string), they are ONE fact -- put them in one
+assertion, in a fixed order, and let the rule spend them with <value.1>,
+<value.2>. Two rules emitting to one option path is a conflict, and lips
+refuses it: an option holds one value, so nothing may set it twice.
 A HEADING or label line that only groups and introduces the lines under it
 (e.g. "http routes:") carries no value to realize: emit a single
 'concept' decision for it and write NO rule -- a concept is decorative
@@ -320,6 +334,12 @@ relative to the artifact's source root:
   <confidence> <id> source <name> <relpath> <<<lips
   ...verbatim file content...
   lips>>>
+In a source block, <name> is the CONCRETE name this program gives the thing
+(hello, logscan) -- never <self> and never a capture: the block becomes a
+directory on disk, so a literal '<self>' would leave args.src pointing at
+nothing. The RULE keeps the hole (args.src ./artifacts/<name>), so the same
+language serves the next program; a program that renames the thing rebuilds
+its source, which is what regeneration is for.
 Reference the built artifact in an option with ${artifact.<name>}, e.g.
   systemd.services.<name>.serviceConfig.ExecStart
     "\"${artifact.<name>}/bin/<name>\""
@@ -330,16 +350,45 @@ A built program has an INTERFACE: where its input comes from, where its
 output goes, and how its configuration reaches it. Deduce it from the
 program: what fits the problem that program states, by the best practice of
 the kind of program it is. There is no default to fall back on.
-Source is a FIXED BLOB with no holes, so a program VALUE written into source
-freezes there: editing it in the program can no longer flow through, and the
-built program silently keeps the old one. Carry every value the program
-states through an OPTION instead, and let the source read it at runtime --
-an environment variable on the unit that runs it (the unit's environment
-holds the hole, the source reads that variable by name), or, when nothing
-runs it, a second artifact built with writeShellApplication whose text sets
-the variable and execs the first. Only STRUCTURE belongs in source: the
-algorithm, the file format, the protocol -- what the program says rather
-than what it states as a value.
+A program VALUE may reach INSIDE the source, through a FILL. Write the value
+in the source as @marker@ (a name starting with a letter, of letters, digits,
+_ or -) and declare the marker beside the artifact's args:
+  artifact.<name>.fill.<marker> "\"<value>\""
+The rhs is an ordinary value, so every hole works there (<value>, <value.N>,
+a capture), and lips substitutes it when it stages the source -- offline, at
+compile time, so editing the program flows through to the built binary. This
+is how a captured command name reaches go.mod ('module @name@') or Cargo.toml.
+Both halves must agree or lips refuses: every fill you declare must be named
+by some source file, and every @marker@ in source must be declared. A fill
+carries TEXT, so its value must be a literal string or number -- never a
+${...} reference (a store path is not known offline). Do NOT smuggle shell
+into a build argument (a postInstall loop renaming a binary) to work around
+a missing hole: a fill is the mechanism, and a computation is a gap to file.
+A PATH INSIDE A BUILD MUST EXIST: when an option references something under
+${artifact.<name>} (a binary under /bin), the name in that path is decided by
+the SOURCE you wrote, not by the derivation, and no gate can look inside a
+build. So make the source name it: whatever file of yours names the built
+program must carry the same word the option's path uses -- through a fill when
+that word comes from the program. Re-read your own source before you finish
+and check the two agree; a mismatch ships a service that cannot start.
+A fill is substituted ONCE, at compile: for a value that changes while the
+program runs, or a value the source must read per request, carry it through
+an OPTION instead and let the source read it at runtime -- an environment
+variable on the unit that runs it (the unit's environment holds the hole, the
+source reads that variable by name), or, when nothing runs it, a second
+artifact built with writeShellApplication whose text sets the variable and
+execs the first. Source still holds STRUCTURE: the algorithm, the file
+format, the protocol. A REPEATING structure inside source (one code block per
+route, per mount) has no hole form -- a fill replaces a marker, it cannot
+repeat a block -- so that is a gap to file, not something to fake.
+
+SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute
+elements to one list option, lips aggregates them, and by default the option
+is a SET -- two lines naming one package name it once, so a repeated element
+collapses. Declare an option a LIST only where a repeat is genuinely meant:
+  <confidence> m1 merge <option.path> list
+The path is written exactly as in a rule (a <capture> covers the whole
+family). Write no merge line for the ordinary case.
 
 DEMANDS (ids q1, q2, ...): what any program in this language must state,
 as a subject plus the question to ask when it is missing.
@@ -368,6 +417,14 @@ derivation; such an expect is rejected. Write NO expect for a derivation
 option. The rule that emits it is the whole contract. Expects are for
 options that hold a value from the program: a string, number, path, list of
 strings, or record.
+DO EXPECT AN ARTIFACT ARG: an artifact slot IS assertable, and it is how a
+program whose whole result is a build gets pinned at all. Name the arg path
+you emit:
+  0.95 a1 expect artifact.greet.args.text from cmd.greet.msg
+It is judged against the realized artifact args (no nix eval, so a
+derivation reference inside the arg is fine). Whenever a program value ends
+up in an artifact arg rather than in a module option, write this expect --
+otherwise nothing pins that value and the contract is empty.
 
 REPORT (exactly one, id d1, REQUIRED -- a mint without it is refused):
 explain in plain words the language you just built, for a human who will
@@ -382,9 +439,9 @@ GAPS (ids g1, g2, ...; zero or more): whenever you wanted to express
 something and the grammar above could not, file it instead of working
 around it. Each names the missing capability by a short slug, and its body
 gives the blocked program line and the smallest repro:
-  <confidence> g1 gap templated-source <<<lips
+  <confidence> g1 gap repeating-source <<<lips
   blocked line: - /hi => status 200
-  source heredocs have no holes, so a per-route body cannot reach the source.
+  a fill replaces a marker; it cannot repeat a code block per route.
   lips>>>
 A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
@@ -399,199 +456,117 @@ track daily habits from the terminal.
 the habit log is stored in /home/cornerman/notes/habits.tsv.
 each log line holds an ISO date and a habit name separated by a tab.
 print a heatmap of the last 365 days for the habit named on the command line.
-write the tool in go, using only the standard library with no external dependencies.
 install the tool as the command habit.
 
 --- tool transcript ---
--> query_options "home.sessionVariables"
 -> query_options "home.packages"
-<- query_options
-home.sessionVariables : integer
-
 <- query_options
 home.packages : list of package
 
--> query_options "sessionVariables"
-<- query_options
-home.sessionVariables : integer
-pam.sessionVariables : attribute set
-programs.bash.sessionVariables : integer
-programs.zsh.sessionVariables : integer
-systemd.user.sessionVariables : integer
-
--> query_options "home.file"
--> query_options "xdg.configFile"
-<- query_options
-home.file : attribute set of (submodule)
-home.file.*.enable : boolean
-home.file.*.executable : null or boolean
-home.file.*.force : boolean
-home.file.*.ignorelinks : boolean
-home.file.*.onChange : string
-home.file.*.recursive : boolean
-home.file.*.source : path
-home.file.*.target : string
-home.file.*.text : null or strings concatenated with "\n"
-
-<- query_options
-xdg.configFile : attribute set of (submodule)
-xdg.configFile.*.enable : boolean
-xdg.configFile.*.executable : null or boolean
-xdg.configFile.*.force : boolean
-xdg.configFile.*.ignorelinks : boolean
-xdg.configFile.*.onChange : string
-xdg.configFile.*.recursive : boolean
-xdg.configFile.*.source : path
-xdg.configFile.*.target : string
-xdg.configFile.*.text : null or strings concatenated with "\n"
-
 
 --- raw reply ---
-0.97 p1 pattern track daily habits from the terminal. => concept habit.intro "track daily habits from the terminal"
+0.95 p1 pattern track daily habits from the terminal. => concept intro "track daily habits from the terminal"
+0.95 p2 pattern the habit log is stored in <path>. => fact habit.log "<path>"
+0.95 p3 pattern each log line holds an ISO date and a habit name separated by a tab. => concept format "each log line holds an ISO date and a habit name separated by a tab"
+0.95 p4 pattern print a heatmap of the last <days> days for the habit named on the command line. => fact habit.heatmap.days "<days>"
+0.95 p5 pattern install the tool as the command <name>. => fact command.name "<name>"
 
-0.95 p2 pattern the habit log is stored in <path>. => fact habit.logpath "<path>"
+0.9 r1 match fact habit.log => artifact.<self>.fill.logpath "\"<value>\""
+0.9 r2 match fact habit.heatmap.days => artifact.<self>.fill.days "\"<value>\""
+0.9 r3 match fact command.name => home.packages "[ ${artifact.<self>} ]" ; artifact.<self>.builder "\"stdenv.mkDerivation\"" ; artifact.<self>.args.pname "\"<value>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.dontBuild "true" ; artifact.<self>.args.installPhase "\"install -Dm755 run.sh $out/bin/<value>\""
 
-0.95 p3 pattern each log line holds an iso date and a habit name separated by a tab. => concept habit.logformat "each log line holds an ISO date and a habit name separated by a tab"
+0.85 q1 demand habit.log "what file path holds the habit log (tab-separated ISO-date + habit-name rows)?"
+0.85 q2 demand habit.heatmap.days "how many days should the printed heatmap span?"
+0.85 q3 demand command.name "what command name should the built tool be installed as?"
 
-0.95 p4 pattern print a heatmap of the last <days> days for the habit named on the command line. => fact habit.heatmapdays "<days>"
+0.9 a1 expect artifact.<self>.fill.logpath from habit.log
+0.9 a2 expect artifact.<self>.fill.days from habit.heatmap.days
+0.9 a3 expect artifact.<self>.args.pname from command.name
 
-0.95 p5 pattern write the tool in go, using only the standard library with no external dependencies. => concept habit.build "write the tool in go using only the standard library with no external dependencies"
+0.9 s1 source habit run.sh <<<lips
+#!/usr/bin/env bash
+set -euo pipefail
 
-0.95 p6 pattern install the tool as the command <name>. => fact habit.command.<name> "<name>"
+LOG="@logpath@"
+DAYS=@days@
+HABIT="${1:-}"
 
-0.92 r1 match fact habit.logpath => xdg.configFile.habit-logpath.text "\"<value>\""
+if [ -z "$HABIT" ]; then
+  echo "usage: $(basename "$0") <habit-name>" >&2
+  exit 1
+fi
 
-0.92 r2 match fact habit.heatmapdays => xdg.configFile.habit-heatmapdays.text "\"<value>\""
+declare -A seen
+if [ -f "$LOG" ]; then
+  while IFS=$'\t' read -r date name; do
+    if [ "$name" = "$HABIT" ]; then
+      seen["$date"]=1
+    fi
+  done < "$LOG"
+fi
 
-0.93 r3 match fact habit.command.<name> => home.packages "[ ${artifact.<name>} ]" ; artifact.<name>.builder "\"buildGoModule\"" ; artifact.<name>.args.pname "\"<name>\"" ; artifact.<name>.args.version "\"0.1.0\"" ; artifact.<name>.args.src "./artifacts/<name>" ; artifact.<name>.args.vendorHash "null"
-
-0.9 q1 demand habit.logpath "where is the habit log file stored (its path)?"
-
-0.9 q2 demand habit.heatmapdays "how many days should the heatmap cover?"
-
-0.9 q3 demand habit.command.<name> "what command name should the tool be installed as?"
-
-0.9 a1 expect xdg.configFile.habit-logpath.text from habit.logpath
-
-0.9 a2 expect xdg.configFile.habit-heatmapdays.text from habit.heatmapdays
-
-0.9 s1 source habit main.go <<<lips
-package main
-
-import (
-	"bufio"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"time"
-)
-
-func configDir() string {
-	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
-		return v
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config")
-}
-
-func readConfig(name string) (string, error) {
-	p := filepath.Join(configDir(), name)
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(data)), nil
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: habit <name>")
-		os.Exit(1)
-	}
-	target := os.Args[1]
-
-	logPath, err := readConfig("habit-logpath")
-	if err != nil || logPath == "" {
-		fmt.Fprintln(os.Stderr, "habit: no log path configured (habit-logpath)")
-		os.Exit(1)
-	}
-
-	days := 365
-	if s, err := readConfig("habit-heatmapdays"); err == nil && s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n > 0 {
-			days = n
-		}
-	}
-
-	seen := map[string]bool{}
-
-	f, err := os.Open(logPath)
-	if err == nil {
-		defer f.Close()
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			line := sc.Text()
-			if line == "" {
-				continue
-			}
-			parts := strings.SplitN(line, "\t", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			date, habit := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			if habit == target {
-				seen[date] = true
-			}
-		}
-	}
-
-	today := time.Now().UTC().Truncate(24 * time.Hour)
-	for i := days - 1; i >= 0; i-- {
-		d := today.AddDate(0, 0, -i)
-		key := d.Format("2006-01-02")
-		if seen[key] {
-			fmt.Print("#")
-		} else {
-			fmt.Print(".")
-		}
-		if d.Weekday() == time.Saturday {
-			fmt.Println()
-		}
-	}
-	fmt.Println()
-}
+today=$(date +%Y-%m-%d)
+for ((i = DAYS - 1; i >= 0; i--)); do
+  day=$(date -d "$today - $i days" +%Y-%m-%d)
+  if [ -n "${seen[$day]:-}" ]; then
+    printf '#'
+  else
+    printf '.'
+  fi
+done
+printf '\n'
 lips>>>
 
-0.9 s2 source habit go.mod <<<lips
-module habit
+1 d1 report <<<lips
+This language crystallizes a single "habit tracker" home-manager program:
+a small CLI tool that is compiled from source and dropped on the user's
+PATH via `home.packages`.
 
-go 1.21
-lips>>>
+Line shapes recognized:
+- Two narrative sentences ("track daily habits from the terminal.", "each
+  log line holds an ISO date and a habit name separated by a tab.") are
+  pure decoration/structure: they describe the file format the built
+  script implements, but name no option, so they crystallize as `concept`
+  and need no rule. The tab-separated format they describe is baked
+  directly into the shipped script as fixed structure.
+- "the habit log is stored in <path>." states the log file location -- a
+  program fact. It flows into the built script through a fill
+  (`@logpath@`), so editing the path in the program and re-realizing
+  changes the compiled tool without a fresh mint.
+- "print a heatmap of the last <days> days for the habit named on the
+  command line." states how many days the heatmap covers -- another fact,
+  also carried into the script via a fill (`@days@`). "for the habit named
+  on the command line" is read literally: the mechanism chosen is that the
+  habit name always comes from argv, never from config, so that phrase is
+  a fixed literal, not a hole.
+- "install the tool as the command <name>." names the command the human
+  wants on their PATH. That name is a program value, so it is captured and
+  used everywhere the *installed binary's own name* matters: the
+  derivation's pname and the destination filename in installPhase
+  (`$out/bin/<name>`). It is NOT used to build a second, separately-named
+  artifact key; since a home-manager program mints exactly one build here,
+  the internal artifact bookkeeping key is `<self>` (the program's own
+  file name), while the human's word governs the actually installed
+  command name -- so renaming the command in the program still renames
+  what lands on $PATH.
 
-0.9 d1 report <<<lips
-This language crystallizes a small habit-tracking CLI program description into a home-manager configuration.
+Mechanism choices:
+- Builder: `stdenv.mkDerivation`, the plainest builder for "copy a script
+  into $out/bin", with `dontBuild = true` and a custom `installPhase`
+  (no compilation needed, so buildGoModule/buildRustPackage would be
+  overkill).
+- Package delivery: `home.packages = [ ${artifact.<self>} ]` -- the tool
+  is a manually-invoked terminal command, not a background service, so no
+  systemd unit is minted.
+- `version = "0.1.0"` is an unobserved build constant (nixpkgs needs
+  pname+version to name the derivation), chosen once at full confidence,
+  never asked of the human.
+- The script itself (source/run.sh) implements the stated algorithm:
+  reads the tab-separated log, builds a set of dates the given habit was
+  logged, and prints one glyph per day for the last N days.
 
-**Line shapes recognized**
-
-- `track daily habits from the terminal.` — a decorative intro heading; carries no value, so it becomes a `concept` with no rule.
-- `the habit log is stored in <path>.` — states the filesystem path of the habit's TSV log. Captured as fact `habit.logpath`.
-- `each log line holds an ISO date and a habit name separated by a tab.` — describes the log's file *format*. This is structure that goes straight into the source code of the built tool, not a value that flows through any option, so it is a `concept`.
-- `print a heatmap of the last <days> days for the habit named on the command line.` — states how many days the heatmap should cover. Captured as fact `habit.heatmapdays`. ("the habit named on the command line" is interface structure — argv[1] — not a value, so it is folded into the same line's mechanism rather than captured separately.)
-- `write the tool in go, using only the standard library with no external dependencies.` — a mechanism-selecting sentence: "go" and "no external dependencies" are literal tokens that pick the builder (`buildGoModule`, `vendorHash = null`) used elsewhere; the sentence itself carries no independent value, so it is a `concept`.
-- `install the tool as the command <name>.` — names the installed command. This is the one place the program actually names the artifact, so it is captured as `habit.command.<name>` and that capture keys the artifact and the package list entry.
-
-**Mechanism choices**
-
-- The tool is built from source as `artifact.<name>` via `buildGoModule`, with `vendorHash = null` because the program explicitly states there are no external dependencies (stdlib only). `pname`/`version` are build constants (`version = "0.1.0"` is an arbitrary, effect-free placeholder).
-- Rather than freezing the log path or the heatmap window into the compiled source (which would silently go stale on edits), both values are carried through two small `xdg.configFile` entries (`habit-logpath`, `habit-heatmapdays`) that the program reads at runtime under `$XDG_CONFIG_HOME`. This keeps every stated program value re-derivable from the config after edits.
-- The built binary is added to `home.packages` via `${artifact.<name>}` so it lands on PATH as the named command.
-
-**Invented, effect-free details**
-
-- The two runtime config file names (`habit-logpath`, `habit-heatmapdays`) and the config-reading convention are ours to choose (mechanism), since the program never names its own config protocol.
-- `version = "0.1.0"` is a build constant with no observable effect.
-
-No gaps were hit; every stated program value (log path, heatmap window, command name) reaches a home-manager option, and the go/no-dependencies wording is honored by literal builder selection.
+Demands added so any program in this language states what the build
+needs: the log path, the heatmap span, and the installed command name --
+all three are also pinned with expects into their artifact slots
+(fill.logpath, fill.days, args.pname).
 lips>>>

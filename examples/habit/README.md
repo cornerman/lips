@@ -2,26 +2,54 @@
 
 # The `habit` language
 
-This language crystallizes a small habit-tracking CLI program description into a home-manager configuration.
+This language crystallizes a single "habit tracker" home-manager program:
+a small CLI tool that is compiled from source and dropped on the user's
+PATH via `home.packages`.
 
-**Line shapes recognized**
+Line shapes recognized:
+- Two narrative sentences ("track daily habits from the terminal.", "each
+  log line holds an ISO date and a habit name separated by a tab.") are
+  pure decoration/structure: they describe the file format the built
+  script implements, but name no option, so they crystallize as `concept`
+  and need no rule. The tab-separated format they describe is baked
+  directly into the shipped script as fixed structure.
+- "the habit log is stored in <path>." states the log file location -- a
+  program fact. It flows into the built script through a fill
+  (`@logpath@`), so editing the path in the program and re-realizing
+  changes the compiled tool without a fresh mint.
+- "print a heatmap of the last <days> days for the habit named on the
+  command line." states how many days the heatmap covers -- another fact,
+  also carried into the script via a fill (`@days@`). "for the habit named
+  on the command line" is read literally: the mechanism chosen is that the
+  habit name always comes from argv, never from config, so that phrase is
+  a fixed literal, not a hole.
+- "install the tool as the command <name>." names the command the human
+  wants on their PATH. That name is a program value, so it is captured and
+  used everywhere the *installed binary's own name* matters: the
+  derivation's pname and the destination filename in installPhase
+  (`$out/bin/<name>`). It is NOT used to build a second, separately-named
+  artifact key; since a home-manager program mints exactly one build here,
+  the internal artifact bookkeeping key is `<self>` (the program's own
+  file name), while the human's word governs the actually installed
+  command name -- so renaming the command in the program still renames
+  what lands on $PATH.
 
-- `track daily habits from the terminal.` — a decorative intro heading; carries no value, so it becomes a `concept` with no rule.
-- `the habit log is stored in <path>.` — states the filesystem path of the habit's TSV log. Captured as fact `habit.logpath`.
-- `each log line holds an ISO date and a habit name separated by a tab.` — describes the log's file *format*. This is structure that goes straight into the source code of the built tool, not a value that flows through any option, so it is a `concept`.
-- `print a heatmap of the last <days> days for the habit named on the command line.` — states how many days the heatmap should cover. Captured as fact `habit.heatmapdays`. ("the habit named on the command line" is interface structure — argv[1] — not a value, so it is folded into the same line's mechanism rather than captured separately.)
-- `write the tool in go, using only the standard library with no external dependencies.` — a mechanism-selecting sentence: "go" and "no external dependencies" are literal tokens that pick the builder (`buildGoModule`, `vendorHash = null`) used elsewhere; the sentence itself carries no independent value, so it is a `concept`.
-- `install the tool as the command <name>.` — names the installed command. This is the one place the program actually names the artifact, so it is captured as `habit.command.<name>` and that capture keys the artifact and the package list entry.
+Mechanism choices:
+- Builder: `stdenv.mkDerivation`, the plainest builder for "copy a script
+  into $out/bin", with `dontBuild = true` and a custom `installPhase`
+  (no compilation needed, so buildGoModule/buildRustPackage would be
+  overkill).
+- Package delivery: `home.packages = [ ${artifact.<self>} ]` -- the tool
+  is a manually-invoked terminal command, not a background service, so no
+  systemd unit is minted.
+- `version = "0.1.0"` is an unobserved build constant (nixpkgs needs
+  pname+version to name the derivation), chosen once at full confidence,
+  never asked of the human.
+- The script itself (source/run.sh) implements the stated algorithm:
+  reads the tab-separated log, builds a set of dates the given habit was
+  logged, and prints one glyph per day for the last N days.
 
-**Mechanism choices**
-
-- The tool is built from source as `artifact.<name>` via `buildGoModule`, with `vendorHash = null` because the program explicitly states there are no external dependencies (stdlib only). `pname`/`version` are build constants (`version = "0.1.0"` is an arbitrary, effect-free placeholder).
-- Rather than freezing the log path or the heatmap window into the compiled source (which would silently go stale on edits), both values are carried through two small `xdg.configFile` entries (`habit-logpath`, `habit-heatmapdays`) that the program reads at runtime under `$XDG_CONFIG_HOME`. This keeps every stated program value re-derivable from the config after edits.
-- The built binary is added to `home.packages` via `${artifact.<name>}` so it lands on PATH as the named command.
-
-**Invented, effect-free details**
-
-- The two runtime config file names (`habit-logpath`, `habit-heatmapdays`) and the config-reading convention are ours to choose (mechanism), since the program never names its own config protocol.
-- `version = "0.1.0"` is a build constant with no observable effect.
-
-No gaps were hit; every stated program value (log path, heatmap window, command name) reaches a home-manager option, and the go/no-dependencies wording is honored by literal builder selection.
+Demands added so any program in this language states what the build
+needs: the log path, the heatmap span, and the installed command name --
+all three are also pinned with expects into their artifact slots
+(fill.logpath, fill.days, args.pname).

@@ -1,2 +1,3 @@
-a1 expect xdg.configFile.habit-logpath.text from habit.logpath
-a2 expect xdg.configFile.habit-heatmapdays.text from habit.heatmapdays
+a1 expect artifact.<self>.fill.logpath from habit.log
+a2 expect artifact.<self>.fill.days from habit.heatmap.days
+a3 expect artifact.<self>.args.pname from command.name
