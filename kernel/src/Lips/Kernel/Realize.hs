@@ -96,12 +96,17 @@ realizeArtifactFile modeOf assemble base =
       in if null arts
            then Right Nothing
            else do
+             requireDefined names =<< artifactArgRefs arts
              entries <- artifactEntries arts
+             -- The same @let artifact = { ... }@ shape the module uses, for the
+             -- same reason: an arg may hold @${artifact.<other>}@, which
+             -- 'renderRealized' emits bare as @artifact.<other>@, so the name
+             -- @artifact@ must be in scope and its binding recursive. A plain
+             -- attrset would render an undefined variable.
              let body = T.unlines (
                    [ "# lips-realized artifact derivations. Generated; do not edit."
                    , "{ pkgs }:"
-                   , "{"
-                   ] ++ map ("  " <>) entries ++ ["}"])
+                   ] ++ letBlock entries ++ ["artifact"])
              Right (Just (body, names))
 
 -- | Every RELATIVE path the realized base names, paired with the decision that
@@ -143,22 +148,21 @@ renderModule winners = do
   -- (structural, not text-scanned) and the single canonical->Nix render. A
   -- non-Value assertion is an engine defect (RMalformed), never spliced raw.
   optVals <- traverse parseOpt opts
-  let refs     = concatMap (valueArtifactNames . valOf) optVals
-      dangling = [ r | r <- refs, r `notElem` defined ]
-  if not (null dangling)
-    -- Deduce-or-fail: never emit a module that references an artifact no
-    -- group builds. An engine bug, so it fails loud naming the culprits.
-    then Left (RDangling dangling)
-    else do
-      entries <- artifactEntries arts
-      Right $ T.unlines $
-        [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
-        , "{ config, lib, pkgs, ... }:"
-        ]
-          ++ letBlock entries
-          ++ ["{"]
-          ++ concatMap assignment (sortOn (path . subjOf) optVals)
-          ++ ["}"]
+  -- An artifact reference can stand in an option value OR in another
+  -- artifact's arg (the core-plus-wrapper shape), so both are checked: a
+  -- reference missed here dies inside nix as "attribute '<name>' missing",
+  -- naming neither lips, the program, nor a remedy.
+  argRefs <- artifactArgRefs arts
+  requireDefined defined (concatMap (valueArtifactNames . valOf) optVals ++ argRefs)
+  entries <- artifactEntries arts
+  Right $ T.unlines $
+    [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+    , "{ config, lib, pkgs, ... }:"
+    ]
+      ++ letBlock entries
+      ++ ["{"]
+      ++ concatMap assignment (sortOn (path . subjOf) optVals)
+      ++ ["}"]
   where
     subjOf (s, _, _) = s
     valOf  (_, _, v) = v
@@ -175,6 +179,25 @@ renderModule winners = do
     -- catch-all would otherwise emit it).
     isUnfilledTail (VTail _ _) = True
     isUnfilledTail _           = False
+
+-- | The artifact names referenced from artifact groups' own args, so a
+-- wrapper naming its core is checked like any other reference. A non-'Value'
+-- arg is an engine defect, loud (the same parse 'artifactEntries' makes).
+artifactArgRefs :: [(Subject, Decision)] -> Either RealizeError [Text]
+artifactArgRefs arts =
+  concat <$> traverse refs [ sd | sd@(Subject ("artifact" : _ : "args" : _), _) <- arts ]
+  where
+    refs (s, d) = case parseValue (unAssertion (dAssertion d)) of
+      Left e  -> Left (RMalformed s e)
+      Right v -> Right (valueArtifactNames v)
+
+-- | Deduce-or-fail: never emit Nix that references an artifact no group
+-- builds. An engine bug, so it fails loud naming every culprit once.
+requireDefined :: [Text] -> [Text] -> Either RealizeError ()
+requireDefined defined refs =
+  case nub [ r | r <- refs, r `notElem` defined ] of
+    []       -> Right ()
+    dangling -> Left (RDangling dangling)
 
 rootedAtArtifact :: Subject -> Bool
 rootedAtArtifact (Subject ("artifact" : _)) = True

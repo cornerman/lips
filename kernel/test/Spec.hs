@@ -597,15 +597,60 @@ main = hspec $ do
           expected = T.unlines
             [ "# lips-realized artifact derivations. Generated; do not edit."
             , "{ pkgs }:"
-            , "{"
-            , "  myserver = pkgs.buildGoModule {"
-            , "    pname = \"myserver\";"
-            , "    src = ./artifacts/myserver;"
+            , "let"
+            , "  artifact = {"
+            , "    myserver = pkgs.buildGoModule {"
+            , "      pname = \"myserver\";"
+            , "      src = ./artifacts/myserver;"
+            , "    };"
             , "  };"
-            , "}"
+            , "in"
+            , "artifact"
             ]
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
         `shouldBe` Right (Just (expected, ["myserver"]))
+
+    -- An artifact arg may name another artifact (the core-plus-wrapper shape:
+    -- a wrapper's runtimeInputs holds ${artifact.core}). In the module the
+    -- reference resolves because a Nix @let@ is recursive; the standalone file
+    -- is an attrset, so it must say @rec@ or the reference is an undefined
+    -- variable and the file evaluates only by accident of never being read.
+    it "binds artifact.nix recursively so one artifact may reference another" $ do
+      let arts =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","core","builder"] }
+            , (mk "p" "x" "\"core\"" Stated) { dSubject = Subject ["artifact","core","args","pname"] }
+            , (mk "wb" "x" "\"writeShellApplication\"" Stated) { dSubject = Subject ["artifact","wrap","builder"] }
+            , (mk "wr" "x" "[ ${artifact.core} ]" Stated) { dSubject = Subject ["artifact","wrap","args","runtimeInputs"] }
+            ]
+          expected = T.unlines
+            [ "# lips-realized artifact derivations. Generated; do not edit."
+            , "{ pkgs }:"
+            , "let"
+            , "  artifact = {"
+            , "    core = pkgs.buildGoModule {"
+            , "      pname = \"core\";"
+            , "    };"
+            , "    wrap = pkgs.writeShellApplication {"
+            , "      runtimeInputs = [ artifact.core ];"
+            , "    };"
+            , "  };"
+            , "in"
+            , "artifact"
+            ]
+      realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
+        `shouldBe` Right (Just (expected, ["core","wrap"]))
+
+    -- The dangling check used to scan option assignments only, so an artifact
+    -- arg naming an unbuilt artifact reached the module and died inside nix as
+    -- "attribute 'nosuch' missing" -- no lips, no program, no remedy.
+    it "catches a dangling ${artifact.<name>} inside an artifact arg" $ do
+      let dangling =
+            [ (mk "wb" "x" "\"writeShellApplication\"" Stated) { dSubject = Subject ["artifact","wrap","builder"] }
+            , (mk "wr" "x" "[ ${artifact.nosuch} ]" Stated) { dSubject = Subject ["artifact","wrap","args","runtimeInputs"] }
+            ]
+      realizeReplace (fromList dangling) `shouldBe` Left (RDangling ["nosuch"])
+      realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList dangling)
+        `shouldBe` Left (RDangling ["nosuch"])
 
     it "emits no artifact.nix for a program with no artifacts" $
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList ground)
