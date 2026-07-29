@@ -854,6 +854,18 @@ main = hspec $ do
       (length (edPatterns eng), length (edRules eng), length (edDemands eng)) `shouldBe` (1, 1, 1)
       length (expectsOf (map icItem cs)) `shouldBe` 1
 
+    it "keeps a value escape (\\n) that only the transport layer would swallow" $ do
+      -- Regression (api.web mint, 2026-07-30): a rule joining two words with a
+      -- newline realized "200n404" -- valid output, wrong text, invisible to
+      -- every gate. Only \" and \\ are transport escapes; anything else belongs
+      -- to the value grammar inside, which reads \n as a newline.
+      let reply = "0.9 r1 match fact p => environment.etc.pair.text \"\\\"<value.1>\\n<value.2>\\\"\""
+          (errs, cs) = parseEngineCandidates reply
+      errs `shouldBe` []
+      case [ emRhs e | ItemRule r <- map icItem cs, e <- mrEmits r ] of
+        [VStr [PHole "value.1", PLit "\n", PHole "value.2"]] -> pure ()
+        other -> expectationFailure ("expected a newline between the two holes, got " ++ show other)
+
     it "a pattern template may begin with a dispatch keyword (no collision)" $ do
       -- Regression (kernel review): a loose line starting with a domain word
       -- like "match" must mint as a pattern, not be misrouted to the rule

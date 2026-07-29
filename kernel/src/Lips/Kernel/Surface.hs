@@ -51,8 +51,16 @@ parseQuoted t = case T.uncons t of
     go s acc = case T.uncons s of
       Nothing           -> Left "unterminated string"
       Just ('"', rest)  -> Right (acc, rest)
+      -- Only @\"@ and @\\@ are TRANSPORT escapes. Any other escape belongs to
+      -- the layer inside (a value's @\n@, which
+      -- 'Lips.Kernel.Engine.Value.pString' turns into a newline), so it is
+      -- passed through with its backslash intact. Swallowing the backslash here
+      -- silently turned a minted @"200\n404"@ into @"200n404"@: valid output,
+      -- wrong text, and no gate can see it.
       Just ('\\', more) -> case T.uncons more of
-        Just (c, more') -> go more' (T.snoc acc c)
+        Just (c, more')
+          | c == '"' || c == '\\' -> go more' (T.snoc acc c)
+          | otherwise             -> go more' (acc <> T.pack ['\\', c])
         Nothing         -> Left "dangling escape"
       Just (c, more)    -> go more (T.snoc acc c)
 

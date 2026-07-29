@@ -1,0 +1,6 @@
+a1 expect systemd.services.<self>.environment.PORT from server.port
+a2 expect environment.etc.http-routes<path>/status.text from route.<path>.status
+a3 expect environment.etc.http-routes<path>/body.text from route.<path>.body
+a4 expect artifact.<name>.args.pname from service.<name>
+a5 expect artifact.<name>.fill.name from service.<name>
+a6 expect artifact.<name>.args.src from service.<name>
