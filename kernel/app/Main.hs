@@ -26,6 +26,7 @@ module Main (main) where
 
 import           Control.Exception  (IOException, try)
 import           Control.Monad      (filterM, forM, forM_, unless)
+import           Data.Bifunctor     (first)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -123,9 +124,9 @@ compileLoose mout mLangDir file = do
   target  <- readRecordedTarget dir file
   case validate file eng program of
     Left f   -> die (printFail file f)
-    Right rz -> do
-      let nixMod = rzModule rz
-          art    = rzArtifact rz
+    Right rl -> do
+      let nixMod = rlModule rl
+          art    = rlArtifact rl
       let outDirPath = maybe (compiledPath file) id mout
       ensureDerived file
       callCommand ("mkdir -p " <> shq outDirPath)
@@ -208,10 +209,10 @@ checkLoose mLangDir file = do
 -- judge the same realization.
 expectGate :: FilePath -> FilePath -> EngineData -> Text -> IO ()
 expectGate dir file eng program = do
-  rz <- either (die . printFail file) pure (validate file eng program)
-  stagedGate (stageFromDisk dir file) file (rzStaged rz)
-  let base   = rzBase rz
-      nixMod = rzModule rz
+  rl <- either (die . printFail file) pure (validate file eng program)
+  stagedGate (stageFromDisk dir file) file (rlStaged rl)
+  let base   = rlBase rl
+      nixMod = rlModule rl
   expSrc <- tryRead (expectPathIn dir file)
   case expSrc of
     Nothing  -> TIO.putStrLn
@@ -389,12 +390,12 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
         -- is domain-blind): name both remedies rather than blame one side.
         Left (FailRun (OpenQuestions qs)) -> die (demandGenerateFail f qs)
         Left ff -> die (validationReport f (failureReport f ff))
-        Right rz -> do
-          nixCheck <- nixParses (rzModule rz)
+        Right rl -> do
+          nixCheck <- nixParses (rlModule rl)
           case nixCheck of
             Left (NixToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
             Left (NixInvalid why)   -> die (validationReport f ("the configuration lips produced isn't valid Nix:\n" <> why))
-            Right ()                -> pure (f, rz)
+            Right ()                -> pure (f, rl)
       -- Sources are minted in memory; stage them (not yet on disk) so a staged
       -- @src = ./artifacts/<name>@ resolves during the behavioral eval and so
       -- the staged-source gate below judges the tree this mint actually writes.
@@ -428,12 +429,12 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- Every relative path a module names must be in the tree this mint stages:
       -- a mint that emits `src ./artifacts/<name>` but writes its source under
       -- another name is refused here instead of shipping a broken build.
-      forM_ validated $ \(f, rz) ->
-        stagedGate (\dst -> writeSources dst minted) f (rzStaged rz)
+      forM_ validated $ \(f, rl) ->
+        stagedGate (\dst -> writeSources dst minted) f (rlStaged rl)
       -- The shared contract gates every program, each bound to its own <self>.
-      forM_ validated $ \(f, rz) -> do
+      forM_ validated $ \(f, rl) -> do
         gate <- runExpects (\dst -> writeSources dst minted)
-                           (map (bindSelfExpect (instanceName f)) expects) (rzBase rz) (rzModule rz)
+                           (map (bindSelfExpect (instanceName f)) expects) (rlBase rl) (rlModule rl)
         case gate of
           Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
           Left (EvalFailed e)  -> die (nixEvalFailed f "generate" e)
@@ -456,9 +457,9 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       TIO.writeFile (generationPath rep) rec
       TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
       writeSources (artifactsPath rep) minted
-      forM_ validated $ \(f, rz) -> do
+      forM_ validated $ \(f, rl) -> do
         ensureDerived f
-        TIO.writeFile (decisionsPath f) (renderBase (rzBase rz))
+        TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
       -- Bootstrap the contract on first generation only; keep the committed
       -- spec stable across regenerations.
       maybe (TIO.writeFile (expectPath rep) (renderExpect mintedExpects))
@@ -475,7 +476,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
              ++ [ "  - " <> gapSlug g | g <- gaps ])
         ++ [ "" ]
         ++ [ "→ preview:  lips compile " <> T.pack f | (f, _) <- validated ]
-      case [ rzModule rz | (f, rz) <- validated, f == rep ] of
+      case [ rlModule rl | (f, rl) <- validated, f == rep ] of
         (m : _) -> TIO.putStr m
         []      -> pure ()
 
@@ -680,19 +681,7 @@ schemaExpr HomeManager flakeref = T.pack $ concat
 -- The module and the artifact.nix (the buildable derivations, or Nothing) are
 -- projected from the same bound rules and ground base, so the artifacts a
 -- compiled flake addresses are exactly the ones the module @let@-binds.
--- | Everything the deterministic pipeline projects from one program under one
--- engine: the ground-producing base, the module, the buildable artifacts (or
--- 'Nothing'), and the relative paths the module names (which the caller checks
--- against the tree it stages). One record, so every call site sees the same
--- projections of one run.
-data Realized = Realized
-  { rzBase     :: Base
-  , rzModule   :: Text
-  , rzArtifact :: Maybe (Text, [Text])
-  , rzStaged   :: [(Text, Decision)]
-  }
-
-validate :: FilePath -> EngineData -> Text -> Either Failure Realized
+validate :: FilePath -> EngineData -> Text -> Either Failure Realization
 validate file eng program =
   case crystallize file (edPatterns eng) program of
     Left errs  -> Left (FailRead errs)
@@ -707,13 +696,7 @@ validate file eng program =
           modeOf     = mergeModeOf boundRules
           rules      = map toRule boundRules
           demands    = map toDemand (edDemands eng)
-      in case runBase modeOf assembleSubject budget rules demands base of
-        Left err        -> Left (FailRun err)
-        Right nixModule -> case runBaseArtifact modeOf assembleSubject budget rules demands base of
-          Left err  -> Left (FailRun err)
-          Right art -> case runBaseStaged modeOf assembleSubject budget rules demands base of
-            Left err     -> Left (FailRun err)
-            Right staged -> Right (Realized base nixModule art staged)
+      in first FailRun (runBase modeOf assembleSubject budget rules demands base)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable

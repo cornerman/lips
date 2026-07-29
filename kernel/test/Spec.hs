@@ -68,6 +68,29 @@ mk i s a str =
 winnerAssertion :: Subject -> Map.Map Subject Decision -> Maybe Assertion
 winnerAssertion s = fmap dAssertion . Map.lookup s
 
+-- The all-Replace, no-assembly configuration: what most of this suite exercises
+-- (aggregation has its own cases). Test helpers, not production functions --
+-- they used to live in the kernel as four exported wrappers with no caller
+-- outside these tests.
+resolveReplace :: Base -> Either [Conflict] (Map.Map Subject Decision)
+resolveReplace base = case resolve (const Replace) noAssembly base of
+  Left errs -> Left [ c | REConflict c <- errs ]
+  Right m   -> Right m
+
+realizeReplace :: Base -> Either RealizeError Text
+realizeReplace = realize (const Replace) noAssembly
+
+runReplace :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
+runReplace budget rules demands =
+  fmap rlModule . run (const Replace) noAssembly budget rules demands
+
+runBaseReplace :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
+runBaseReplace budget rules demands =
+  fmap rlModule . runBase (const Replace) noAssembly budget rules demands
+
+noAssembly :: [Decision] -> Either Text Decision
+noAssembly _ = Left "assemble unused"
+
 main :: IO ()
 main = hspec $ do
   describe "generate argument parsing (Lips.Cli)" $ do
@@ -352,7 +375,7 @@ main = hspec $ do
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
         Right base -> case runBase modeOf assembleSubject 100 (map toRule [installRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
-          Right mod_ -> mod_ `shouldSatisfy`
+          Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" ];"
 
     it "end-to-end C: one line with many packages -> one VList, aggregatable with B" $ do
@@ -371,7 +394,7 @@ main = hspec $ do
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
         Right base -> case runBase modeOf assembleSubject 100 (map toRule [tailRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
-          Right mod_ -> mod_ `shouldSatisfy`
+          Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" \"tmux\" ];"
 
     it "end-to-end C+pkg: a line of package names realizes to a list of derivations" $ do
@@ -391,7 +414,7 @@ main = hspec $ do
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
         Right base -> case runBase modeOf assembleSubject 100 (map toRule [tailRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
-          Right mod_ -> mod_ `shouldSatisfy`
+          Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];"
 
     it "end-to-end: N separate bullet facts each contribute one package via a singleton-list rhs" $ do
@@ -412,7 +435,7 @@ main = hspec $ do
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
         Right base -> case runBase modeOf assembleSubject 100 (map toRule [pkgRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
-          Right mod_ -> mod_ `shouldSatisfy`
+          Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.npm pkgs.bun pkgs.scala ];"
 
   describe "refinement (spec 2.4, 4)" $ do

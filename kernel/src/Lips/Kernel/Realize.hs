@@ -17,7 +17,6 @@
 module Lips.Kernel.Realize
   ( RealizeError (..)
   , realize
-  , realizeReplace
   , realizeArtifactFile
   , realizeStagedPaths
   ) where
@@ -129,11 +128,6 @@ realizeStagedPaths modeOf assemble base =
       Left e  -> Left (RMalformed s e)
       Right v -> Right [ (p, d) | p <- valuePaths v, isRelative p ]
     isRelative p = T.isPrefixOf "./" p || T.isPrefixOf "../" p
-
--- | Today's all-Replace behavior, for callers and tests that do not
--- aggregate. Byte-identical to the pre-aggregation 'realize'.
-realizeReplace :: Base -> Either RealizeError Text
-realizeReplace = realize (const Replace) (\_ -> Left "assemble unused")
 
 -- | An artifact group is any decision whose subject is rooted at @artifact@
 -- (@artifact.<name>.builder@, @artifact.<name>.args.<key>@). These do not

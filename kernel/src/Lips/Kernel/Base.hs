@@ -17,7 +17,6 @@ module Lips.Kernel.Base
   , MergeMode (..)
   , ResolveErr (..)
   , resolve
-  , resolveReplace
   ) where
 
 import           Data.List  (sortOn)
@@ -124,10 +123,3 @@ replaceGroup subj ds =
             _  -> Left [Conflict subj chosen d | d <- dissent]
   where top = maximum (map dStrength ds)
 
--- | Today's behavior: all 'Replace', no assembly. For tests and callers that
--- do not aggregate (realize before the merge config is threaded, etc.).
-resolveReplace :: Base -> Either [Conflict] (Map Subject Decision)
-resolveReplace base =
-  case resolve (const Replace) (\_ -> Left "assemble unused") base of
-    Left errs -> Left [ c | REConflict c <- errs ]
-    Right m   -> Right m

@@ -11,12 +11,9 @@
 -- pure function of (program, engine).
 module Lips.Kernel.Run
   ( RunError (..)
+  , Realization (..)
   , run
   , runBase
-  , runBaseArtifact
-  , runBaseStaged
-  , runReplace
-  , runBaseReplace
   ) where
 
 import           Data.Bifunctor  (first)
@@ -57,43 +54,43 @@ data RunError
 -- function are injected, keeping run domain-blind. The budget bounds
 -- refinement steps.
 run :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-    -> Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
+    -> Int -> [Rule] -> [Demand] -> Text -> Either RunError Realization
 run modeOf assemble budget rules demands src = do
   base0 <- first ParseRejected (readBase src)
   runBase modeOf assemble budget rules demands base0
+
+-- | Everything the pipeline projects from ONE ground base: the module, the
+-- buildable artifacts (or 'Nothing' when the program declares none), and the
+-- relative paths the output names (which the caller checks against the tree it
+-- stages). One record, because they must agree: the artifacts a compiled flake
+-- addresses are byte-for-byte the ones the module @let@-binds, and the staged
+-- paths are exactly the ones both contain. Three separate entry points ran the
+-- whole pipeline three times to answer three questions about one run.
+-- The base it was projected FROM travels with them, so a caller that judges
+-- the output against the program (the behavioral contract) cannot pair a module
+-- with someone else's base.
+data Realization = Realization
+  { rlBase     :: Base
+  , rlModule   :: Text
+  , rlArtifact :: Maybe (Text, [Text])
+  , rlStaged   :: [(Text, Decision)]
+  }
 
 -- | The pipeline from a decision base onward (resolve, demands, refine,
 -- realize), shared by canonical @run@ and the loose path where @crystallize@
 -- produces the base. Pure in (base, engine). The merge config is injected.
 runBase :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-        -> Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
+        -> Int -> [Rule] -> [Demand] -> Base -> Either RunError Realization
 runBase modeOf assemble budget rules demands base0 = do
   realizable <- runGround budget rules demands (resolve modeOf assemble base0)
-  first fromRealizeError (realize modeOf assemble (fromList realizable))
-
--- | Like 'runBase' but projects the same ground base to its standalone
--- @artifact.nix@ (the buildable artifact derivations), or 'Nothing' when the
--- program declares none. Shares 'runGround' with 'runBase', so the artifacts a
--- compile emits as an addressable file are byte-for-byte the ones the module
--- @let@-binds -- one ground base, one rendering.
-runBaseArtifact :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-                -> Int -> [Rule] -> [Demand] -> Base -> Either RunError (Maybe (Text, [Text]))
-runBaseArtifact modeOf assemble budget rules demands base0 = do
-  realizable <- runGround budget rules demands (resolve modeOf assemble base0)
-  first fromRealizeError (realizeArtifactFile modeOf assemble (fromList realizable))
-
--- | Like 'runBase' but projects the same ground base to the relative paths it
--- names (see 'realizeStagedPaths'), so the caller can require each to exist in
--- the tree it stages. Shares 'runGround', so the paths are exactly the ones the
--- emitted module and artifact.nix contain -- one ground base, one answer.
-runBaseStaged :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-              -> Int -> [Rule] -> [Demand] -> Base -> Either RunError [(Text, Decision)]
-runBaseStaged modeOf assemble budget rules demands base0 = do
-  realizable <- runGround budget rules demands (resolve modeOf assemble base0)
-  first fromRealizeError (realizeStagedPaths modeOf assemble (fromList realizable))
+  let ground = fromList realizable
+  first fromRealizeError $ Realization base0
+    <$> realize modeOf assemble ground
+    <*> realizeArtifactFile modeOf assemble ground
+    <*> realizeStagedPaths modeOf assemble ground
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA
--- guard), shared by 'runBase' and 'runBaseArtifact'. Takes the resolve result
+-- guard). Takes the resolve result
 -- so the caller injects the merge config once. A 'Concept' is decorative
 -- vocabulary (a heading grouping lines) that carries no obligation to realize
 -- and is dropped; a surviving non-'Meta' decision is an unmapped obligation
@@ -135,14 +132,6 @@ fromRealizeError (RDangling ns)      = Unrealizable
   ["references artifact(s) nothing builds: " <> T.intercalate ", " ns]
 fromRealizeError (RBadArtifact n why) = Unrealizable ["artifact " <> n <> ": " <> why]
 fromRealizeError (RMalformed s e)    = Unrealizable ["option " <> subjText s <> ": " <> e]
-
--- | Today's all-Replace behavior, for callers and tests that do not
--- aggregate. Identical to the pre-aggregation 'run'/'runBase'.
-runReplace :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
-runReplace = run (const Replace) (\_ -> Left "assemble unused")
-
-runBaseReplace :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
-runBaseReplace = runBase (const Replace) (\_ -> Left "assemble unused")
 
 -- | Render a subject as a dotted path for a plain-language error.
 subjText :: Subject -> Text
