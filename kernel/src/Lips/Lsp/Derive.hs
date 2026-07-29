@@ -110,10 +110,20 @@ matchComplete (TLit lit : ts) ((_, norm) : rs) binds
   | otherwise   = Nothing
 matchComplete (THole h : ts) ((surface, _) : rs) binds =
   matchComplete ts rs (Map.insert h surface binds)
-matchComplete (TTail h : []) rest binds
-  | null rest  = Just (binds, [TTail h])   -- tokens ran out: tail unfilled
-  | otherwise  = Just (Map.insert h (T.unwords (map fst rest)) binds, [])
-matchComplete (TTail _ : _ : _) _ _ = Nothing
+matchComplete (TMulti h : ts) rest binds
+  | null rest  = Just (binds, TMulti h : ts)   -- tokens ran out: hole unfilled
+  | otherwise  = case ts of
+      -- Last token: it takes everything that is left.
+      [] -> Just (Map.insert h (T.unwords (map fst rest)) binds, [])
+      -- Bounded: take the words up to the first token the next literal
+      -- matches. Completion is best-effort by nature (the line is half
+      -- written), so it scans once instead of backtracking like
+      -- 'matchTemplate'; the worst case is a candidate not offered.
+      (TLit lit : ts') -> case break ((== lit) . snd) rest of
+        (taken, _ : rs) | not (null taken) ->
+          matchComplete ts' rs (Map.insert h (T.unwords (map fst taken)) binds)
+        _ -> Just (Map.insert h (T.unwords (map fst rest)) binds, ts)
+      _ -> Just (Map.insert h (T.unwords (map fst rest)) binds, ts)
 
 -- | Phase 2: match the trailing fragment (the partial word at the cursor)
 -- against the next template token, positionally. A literal admits the fragment
@@ -133,10 +143,9 @@ applyPartial binds remaining (Just frag) = case remaining of
   (THole h : ts)
     | not (T.null frag) -> Just (Map.insert h frag binds, ts)
     | otherwise         -> Nothing
-  (TTail h : [])
-    | not (T.null frag) -> Just (Map.insert h frag binds, [])
+  (TMulti h : ts)
+    | not (T.null frag) -> Just (Map.insert h frag binds, ts)
     | otherwise         -> Nothing
-  (TTail _ : _ : _)     -> Nothing
   []                    -> Nothing                          -- prefix outgrew template
   where norm = normalizeToken frag
 
@@ -144,7 +153,7 @@ applyPartial binds remaining (Just frag) = case remaining of
 -- binding map) appears as its captured surface text (a literal, no tab-stop,
 -- since the user already typed it); a hole still to type becomes a numbered
 -- tab-stop. Tab-stop numbers are assigned by hole name, so a repeated hole
--- stays in sync across its occurrences. A tail hole uses the @\<name.tail>@
+-- stays in sync across its occurrences. A multi-token hole uses the @\<name.words>@
 -- label form when unfilled, matching the no-context renderer.
 renderPattern :: Map Text Text -> Pattern -> CItem
 renderPattern binds p =
@@ -153,13 +162,13 @@ renderPattern binds p =
   where
     step (ls, ss, nums) (TLit t)   = (t : ls, t : ss, nums)
     step (ls, ss, nums) (THole h)  = holeStep ls ss nums h False
-    step (ls, ss, nums) (TTail h)  = holeStep ls ss nums h True
-    holeStep ls ss nums h isTail =
+    step (ls, ss, nums) (TMulti h) = holeStep ls ss nums h True
+    holeStep ls ss nums h isMulti =
       case Map.lookup h binds of
         Just v  -> (v : ls, v : ss, nums)                -- filled: literal
         Nothing ->
           let (n, nums') = assign h nums
-              label = if isTail then "<" <> h <> ".tail>" else "<" <> h <> ">"
+              label = if isMulti then "<" <> h <> ".words>" else "<" <> h <> ">"
               tab   = "${" <> T.pack (show n) <> ":" <> h <> "}"
            in (label : ls, tab : ss, nums')
     -- Assign a stable number per hole name so repeated holes share a tab-stop.

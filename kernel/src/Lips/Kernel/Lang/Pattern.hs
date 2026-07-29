@@ -16,10 +16,10 @@
 --     with @\<hole\>@ placeholders that the captured surface forms fill.
 --
 -- Design limits, deliberate for the prototype (crystallization plan,
--- \"settled\"): holes bind a single token; holes may appear only in subject and
--- assertion, never replacing a template literal's meaning. These keep matching
--- total and closure-under-hole-edits a property by construction. Multi-token
--- holes and morphology are future work.
+-- \"settled\"): holes may appear only in subject and assertion, never replacing a
+-- template literal's meaning. This keeps matching total and
+-- closure-under-hole-edits a property by construction. Morphology is future
+-- work.
 --
 -- A pattern yields ONE OR MORE decisions from a matched line: a single loose
 -- line often states several facts at once (\"http server in go on port 8080\"
@@ -44,6 +44,7 @@ module Lips.Kernel.Lang.Pattern
   ) where
 
 import           Data.Char       (isSpace)
+import           Data.Maybe      (listToMaybe)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -53,11 +54,14 @@ import Lips.Kernel.Decision (Assertion (..), Kind, Strength (Stated), Subject (.
 import Lips.Kernel.Surface  (stripTrailingPunct)
 
 -- | A template token: a literal to match (stored already normalized), a hole
--- that binds one loose token's surface form, or a tail hole that binds the
--- REST of the line's tokens (>= 1) as one space-joined capture. A tail hole
--- must be the last template token (validated on read); it lets one line carry
--- many items without the kernel dictating any collection syntax.
-data TplTok = TLit Text | THole Text | TTail Text
+-- that binds one loose token's surface form, or a multi-token hole that binds
+-- SEVERAL tokens (>= 1) as one space-joined capture. The multi-token hole is
+-- the capture form for a value of several words: written @\<name.words>@, it
+-- may sit anywhere in the template and ends where the template's next literal
+-- matches (at the end of the template it binds the rest of the line, so one
+-- line may carry many items without the kernel dictating any collection
+-- syntax).
+data TplTok = TLit Text | THole Text | TMulti Text
   deriving (Eq, Show)
 
 -- | A piece of a target (subject or assertion) string: literal text or a hole
@@ -91,15 +95,15 @@ data Pattern = Pattern
 patOne :: Text -> [TplTok] -> Kind -> [StrPart] -> [StrPart] -> Pattern
 patOne i tpl k subj assn = Pattern i tpl [PatEmit k subj assn]
 
--- | The hole names a pattern binds, in template order. A tail hole binds a
--- name too, so a target @<name>@ may be filled from a tail capture (otherwise
+-- | The hole names a pattern binds, in template order. A multi-token hole binds
+-- a name too, so a target @<name>@ may be filled from such a capture (otherwise
 -- 'applyPattern' could be partial and the reader would reject a target hole
--- bound only by a tail).
+-- bound only by a multi-token hole).
 holesOf :: Pattern -> [Text]
 holesOf p = [h | tok <- pTemplate p, h <- tokHoles tok]
   where
     tokHoles (THole h) = [h]
-    tokHoles (TTail h) = [h]
+    tokHoles (TMulti h) = [h]
     tokHoles _         = []
 
 -- | Normalize a token for literal comparison: lowercase after stripping
@@ -147,30 +151,44 @@ tokenizeLine = filter (not . T.null . snd) . map tok . lexTokens
     -- punctuation never changes the token count a match depends on.
 
 -- | Match a template against a tokenized line. A literal must equal the
--- normalized token; a hole binds one surface token (a repeated hole must bind
--- consistently). A trailing @TTail@ binds the rest of the tokens (>= 1;
--- matching zero fails loud), space-joined, so one line may carry many items.
--- A @TTail@ that is not the last template token is rejected on read; the
--- length-unequal case here is a defense-in-depth 'Nothing'.
+-- normalized token; a hole binds one surface token; a @TMulti@ binds one or
+-- more tokens, space-joined. A repeated hole must bind consistently.
+--
+-- Search order makes the result deterministic: a multi-token hole takes the
+-- FEWEST tokens it can, and the rest of the template decides. When the rest
+-- then fails, the hole grows -- @back up \<src.words> to \<dst>@ must read
+-- @back up a to b to c@ as src=\"a to b\", since src=\"a\" leaves \"to c\"
+-- unmatched. Without that backtracking a line inside the language would be
+-- reported as outside it, which is a grammar bug, not a program defect. The
+-- search is over the line's tokens (a handful), and laziness stops it at the
+-- first success.
 matchTemplate :: [TplTok] -> [(Text, Text)] -> Maybe (Map Text Text)
-matchTemplate toks line = go toks line Map.empty
+matchTemplate toks line = listToMaybe (go toks line Map.empty)
   where
-    go [] [] binds = Just binds
-    go [] _  _     = Nothing
-    go (TTail name : []) rest binds
-      | null rest  = Nothing                       -- empty tail: never guess
-      | otherwise  = Just (Map.insert name (T.unwords (map fst rest)) binds)
-    go (TTail _ : _ : _) _ _ = Nothing             -- tail not last (defense in depth)
+    go :: [TplTok] -> [(Text, Text)] -> Map Text Text -> [Map Text Text]
+    go [] [] binds = [binds]
+    go [] _  _     = []
     go (TLit lit : ts) ((_, norm) : rs) binds
       | lit == norm = go ts rs binds
-      | otherwise   = Nothing
-    go (TLit _ : _) [] _ = Nothing
+      | otherwise   = []
+    go (TLit _ : _) [] _ = []
     go (THole h : ts) ((surface, _) : rs) binds =
-      case Map.lookup h binds of
-        Nothing               -> go ts rs (Map.insert h surface binds)
-        Just prev | prev == surface -> go ts rs binds
-                  | otherwise       -> Nothing
-    go (THole _ : _) [] _ = Nothing
+      [ b' | b <- bind h surface binds, b' <- go ts rs b ]
+    go (THole _ : _) [] _ = []
+    -- Never guess: a multi-token hole binds at least one token, so `splits`
+    -- starts at one and an empty rest yields no match at all.
+    go (TMulti h : ts) rest binds =
+      [ b'
+      | (taken, rs) <- splits rest
+      , b  <- bind h (T.unwords (map fst taken)) binds
+      , b' <- go ts rs b
+      ]
+    splits xs = [ splitAt n xs | n <- [1 .. length xs] ]
+    -- A repeated hole must bind the same surface text at every occurrence.
+    bind h v binds = case Map.lookup h binds of
+      Nothing                    -> [Map.insert h v binds]
+      Just prev | prev == v      -> [binds]
+                | otherwise      -> []
 
 -- | Apply a matched pattern's bindings to produce one (subject, kind,
 -- assertion, strength) tuple per emit. Bindings are complete by construction:

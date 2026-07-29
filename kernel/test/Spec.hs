@@ -389,7 +389,7 @@ main = hspec $ do
       -- crystallizes to a DISTINCT captured subject (install.<pkgs>), so the
       -- human base does not conflict; the rule emits a VTail rhs to the COMMON
       -- environment.systemPackages, so resolve assembles both VLists into one.
-      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact
+      let pat = patOne "p" [TLit "install", TMulti "pkgs"] Fact
                   [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
           tailRule = MapRule "r" Fact ["install", "<pkg>"]
                    [ Emit ["environment","systemPackages"] (VTail Nothing "value") ]
@@ -409,7 +409,7 @@ main = hspec $ do
       -- derivations), so the module carries [ pkgs.htop pkgs.ripgrep pkgs.tmux ],
       -- the shape environment.systemPackages demands. This is the capability
       -- the string-tail form above could not express (it would emit strings).
-      let pat = patOne "p" [TLit "install", TTail "pkgs"] Fact
+      let pat = patOne "p" [TLit "install", TMulti "pkgs"] Fact
                   [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
           tailRule = MapRule "r" Fact ["install", "<pkg>"]
                    [ Emit ["environment","systemPackages"] (VTail (Just HPkg) "value") ]
@@ -1087,30 +1087,50 @@ main = hspec $ do
       matchTemplate [TLit "-", THole "path"] (tokenizeLine "- /hello")
         `shouldBe` Just (Map.fromList [("path", "/hello")])
 
-  describe "template tail hole (C: many items on one line)" $ do
-    -- A trailing @<name.tail>@ binds the REST of a line's tokens (>= 1), so one
-    -- line may carry many items. The kernel dictates no collection syntax:
-    -- the tail is a generic "bind the rest" capability; how items are
-    -- separated is the minted pattern's affair (here, comma+space prose).
-    it "a trailing <name.tail> binds the rest of the tokens, joined by space" $ do
-      let p   = patOne "p" [TLit "install", TTail "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
+  describe "template multi-token hole (C: many words in one hole)" $ do
+    -- A @<name.words>@ hole binds SEVERAL tokens (>= 1) of a line, so a value
+    -- of several words needs no quotes and one line may carry many items. The
+    -- kernel dictates no collection syntax: the hole is a generic "bind these
+    -- words" capability; how items are separated is the minted pattern's
+    -- affair (here, comma+space prose).
+    it "a trailing <name.words> binds the rest of the tokens, joined by space" $ do
+      let p   = patOne "p" [TLit "install", TMulti "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
           toks = tokenizeLine "install htop, ripgrep, tmux."
       matchTemplate (pTemplate p) toks `shouldBe` Just (Map.fromList [("pkgs", "htop ripgrep tmux")])
-    it "a tail hole matching zero tokens fails (deduce-or-fail, never guess)" $ do
-      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
+    it "a multi-token hole matching zero tokens fails (deduce-or-fail, never guess)" $ do
+      let p = patOne "p" [TLit "install", TMulti "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
       matchTemplate (pTemplate p) (tokenizeLine "install") `shouldBe` Nothing
-    it "a tail hole is still a binding a target hole may use" $ do
-      -- holesOf must include a tail name, or a target <pkgs> bound only by a
-      -- tail would be rejected as loose on read (applyPattern would be partial).
-      let p = patOne "p" [TLit "install", TTail "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
+    it "a multi-token hole is still a binding a target hole may use" $ do
+      -- holesOf must include the name, or a target <pkgs> bound only by a
+      -- multi-token hole would be rejected as loose on read (applyPattern
+      -- would be partial).
+      let p = patOne "p" [TLit "install", TMulti "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
       holesOf p `shouldBe` ["pkgs"]
-    it "a <name.tail> template token round-trips through the .lang store" $ do
-      let p  = patOne "p" [TLit "install", TTail "pkgs"] Fact [SLit "install"] [SHole "pkgs"]
+    it "a <name.words> template token round-trips through the .lang store" $ do
+      let p  = patOne "p" [TLit "install", TMulti "pkgs"] Fact [SLit "install"] [SHole "pkgs"]
           rt = decisionToPattern . patternToDecision
       rt p `shouldBe` Right p
-    it "a tail hole must be the last template token" $
-      parsePatternBody "p" "install <pkgs.tail> on <host> => fact pkg \"<value>\""
-        `shouldSatisfy` isLeft
+    it "a multi-token hole bounded by a following literal binds the words between" $ do
+      -- The bounded form: an unquoted value of several words mid-sentence, the
+      -- capture the template grammar was missing (a human had to quote it).
+      let p = patOne "p" [TLit "back", TLit "up", TMulti "src", TLit "to", THole "dst"]
+                Fact [SLit "backup.source"] [SHole "src"]
+      matchTemplate (pTemplate p) (tokenizeLine "back up my home folder to nas")
+        `shouldBe` Just (Map.fromList [("src", "my home folder"), ("dst", "nas")])
+    it "a bounded multi-token hole stretches past a literal the tail still needs" $ do
+      -- Shortest-first with backtracking: binding <src> to "a" leaves "to c"
+      -- unmatched, so the match must grow the capture until the whole template
+      -- fits. Without backtracking this line would be reported as out of
+      -- language, a grammar bug rather than a program defect.
+      let p = patOne "p" [TLit "back", TLit "up", TMulti "src", TLit "to", THole "dst"]
+                Fact [SLit "backup.source"] [SHole "src"]
+      matchTemplate (pTemplate p) (tokenizeLine "back up a to b to c")
+        `shouldBe` Just (Map.fromList [("src", "a to b"), ("dst", "c")])
+    it "a multi-token hole may sit anywhere in a template" $
+      -- The old grammar rejected this on read (the hole had to be last), which
+      -- made a mid-sentence multi-word value inexpressible.
+      parsePatternBody "p" "install <pkgs.words> on <host> => fact pkg.<host> \"<pkgs>\""
+        `shouldSatisfy` isRight
 
   describe "crystallize (crystallization plan: three outcomes)" $ do
     let sourceP = patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
@@ -2640,7 +2660,7 @@ main = hspec $ do
           , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
           ]
         -- reconstruct a surface line from a template, filling its single hole
-        surface toks fill = T.unwords [ case t of TLit l -> l; THole _ -> fill; TTail _ -> fill | t <- toks ]
+        surface toks fill = T.unwords [ case t of TLit l -> l; THole _ -> fill; TMulti _ -> fill | t <- toks ]
         runProg prog = do
           base <- either (Left . show) Right (crystallize "feed" pats prog)
           either (Left . show) Right
