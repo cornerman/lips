@@ -1147,6 +1147,28 @@ main = hspec $ do
     it "rule body round-trips" $
       parseRuleBody "r2" (renderRuleBody rule) `shouldBe` Right rule
 
+    -- The emit separator " ; " and the meta arrow " => " are ordinary text
+    -- inside a shell line or a mapping, so a value may hold them. The pattern
+    -- side always split outside quotes; the rule side split naively, which made
+    -- such a value unwritable and blamed it as an unterminated string. One
+    -- quote-aware rule now serves both (Lips.Kernel.Quoting).
+    it "rule body round-trips with the emit separator inside a value" $ do
+      let r = MapRule "r" Fact ["x"]
+                [ Emit ["environment","etc","foo","text"] (VStr [PLit "cd /x ; ls"]) ]
+      parseRuleBody "r" (renderRuleBody r) `shouldBe` Right r
+
+    it "rule body round-trips with the meta arrow inside a value" $ do
+      let r = MapRule "r" Fact ["x"]
+                [ Emit ["environment","etc","foo","text"] (VStr [PLit "a => b"]) ]
+      parseRuleBody "r" (renderRuleBody r) `shouldBe` Right r
+
+    it "rule body round-trips over arbitrary string values (property)" $
+      property $ \(chunks :: [Bool]) ->
+        let txt = T.concat [ if b then " ; " else " => " | b <- chunks ]
+            r   = MapRule "r" Fact ["x"]
+                    [ Emit ["a","b"] (VStr [PLit ("cmd" <> txt <> "tail")]) ]
+         in parseRuleBody "r" (renderRuleBody r) === Right r
+
     -- The storage round-trip must hold for ANY segment shape, including a
     -- literal dotted key (a model may write environment.etc."my.route".text).
     -- The base layer escapes \.; the engine layer must too, or parse . render

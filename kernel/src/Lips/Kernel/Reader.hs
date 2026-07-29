@@ -30,6 +30,7 @@ import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Base     (Base, fromList, toList)
+import Lips.Kernel.Quoting  (parseQuoted, quoteText)
 import Lips.Kernel.Decision
 
 -- | A parse failure, anchored to the 1-based source line so the report is
@@ -92,20 +93,6 @@ parseKind w = maybe (Left ("unknown kind: " <> w)) Right (lookup w kindTable)
 
 parseStrength :: Text -> Either Text Strength
 parseStrength w = maybe (Left ("unknown strength: " <> w)) Right (lookup w strengthTable)
-
--- | Parse a leading quoted string with @\\\"@ and @\\\\@ escapes.
-parseQuoted :: Text -> Either Text (Text, Text)
-parseQuoted t = case T.uncons t of
-  Just ('"', rest) -> go rest T.empty
-  _                -> Left "expected quoted assertion"
-  where
-    go s acc = case T.uncons s of
-      Nothing          -> Left "unterminated assertion"
-      Just ('"', rest) -> Right (acc, rest)
-      Just ('\\', rest) -> case T.uncons rest of
-        Just (c, rest') -> go rest' (T.snoc acc c)
-        Nothing         -> Left "dangling escape in assertion"
-      Just (c, rest)   -> go rest (T.snoc acc c)
 
 -- | Parse the optional trailing provenance and rationale. Absent provenance
 -- defaults to an unknown source at line 0, kept explicit rather than silent.
@@ -175,11 +162,7 @@ render d =
     unAssertion (Assertion a) = a
 
 quote :: Text -> Text
-quote a = "\"" <> T.concatMap esc a <> "\""
-  where
-    esc '"'  = "\\\""
-    esc '\\' = "\\\\"
-    esc c    = T.singleton c
+quote = quoteText
 
 -- | Serialize/parse a subject as a dotted path, LOSSLESSLY: a segment may
 -- itself contain a dot (an HTTP route key @\/file.json@, a value-keyed

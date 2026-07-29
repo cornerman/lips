@@ -43,14 +43,15 @@ module Lips.Kernel.Engine.Data
   , renderAttrPath
   ) where
 
-import           Data.Maybe     (isJust)
 import           Data.Text      (Text)
 import qualified Data.Text      as T
 
 import qualified Data.Map.Strict as Map
-import           Data.Maybe      (mapMaybe)
+import           Data.Maybe      (isJust, mapMaybe)
 
 import Lips.Kernel.Capture         (captureName, fillCaptures, fillName, matchSubject, selfName)
+import           Lips.Kernel.Quoting (breakFirstOutsideQuotes, quoteText, splitOutsideQuotes)
+import qualified Lips.Kernel.Quoting as Q
 import Lips.Kernel.Engine.Value    (Value, bindCaptureValue, bindSelfValue, fillValue, holeIndex, parseValue, renderValue, valueCaptures)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
@@ -188,12 +189,16 @@ renderRuleBody mr =
 parseRuleBody :: Text -> Text -> Either Text MapRule
 parseRuleBody rid body = do
   afterMatch <- note (pre <> "expected 'match '") (T.stripPrefix "match " body)
-  let (matchPart, arrowPart) = T.breakOn " => " afterMatch
-  emitsPart <- if T.null arrowPart then Left (pre <> "missing =>") else Right (T.drop 4 arrowPart)
+  -- Quote-aware on both delimiters (the shared rule): the match side is a kind
+  -- and a subject, so the arrow is the first one outside quotes, and an emit's
+  -- rhs may itself contain " ; " or " => " as ordinary text (a shell line, a
+  -- mapping). A naive split made such an rhs unwritable.
+  (matchPart, emitsPart) <- note (pre <> "missing =>")
+                              (breakFirstOutsideQuotes " => " afterMatch)
   (kind, subj) <- case T.words matchPart of
     [k, s] -> (,) <$> parseKindTok pre k <*> splitAttrPath s
     _      -> Left (pre <> "match needs '<kind> <subject>'")
-  emits <- mapM (parseEmit . T.strip) (T.splitOn " ; " emitsPart)
+  emits <- mapM (parseEmit . T.strip) (splitOutsideQuotes " ; " emitsPart)
   if null emits
     then Left (pre <> "rule emits nothing")
     else do
@@ -242,28 +247,10 @@ parseDemandBody did body = do
   where
     pre = "demand " <> did <> ": "
 
--- Shared small parsers (local copies; the sub-grammars are tiny and keeping
--- them self-contained beats exporting Reader internals).
-
+-- | The shared quoted-string parser, with this body's context prefixed to any
+-- complaint (which rule, which demand).
 parseQuoted :: Text -> Text -> Either Text Text
-parseQuoted pre t = case T.uncons t of
-  Just ('"', rest) -> go rest T.empty
-  _                -> Left (pre <> "expected quoted string")
-  where
-    go s acc = case T.uncons s of
-      Nothing           -> Left (pre <> "unterminated string")
-      Just ('"', _)     -> Right acc
-      Just ('\\', more) -> case T.uncons more of
-        Just (c, more') -> go more' (T.snoc acc c)
-        Nothing         -> Left (pre <> "dangling escape")
-      Just (c, more)    -> go more (T.snoc acc c)
-
-quoteText :: Text -> Text
-quoteText a = "\"" <> T.concatMap esc a <> "\""
-  where
-    esc '"'  = "\\\""
-    esc '\\' = "\\\\"
-    esc c    = T.singleton c
+parseQuoted pre t = either (Left . (pre <>)) (Right . fst) (Q.parseQuoted t)
 
 -- | Split a dotted attribute path -- a rule emit path or an expect option path
 -- -- into segments, tolerating the Nix-attr-path quoting a model may write. A

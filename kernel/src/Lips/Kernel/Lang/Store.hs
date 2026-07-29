@@ -40,6 +40,8 @@ import qualified Data.Text  as T
 import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), parseDemandBody,
                              parseRuleBody, renderDemandBody, renderRuleBody)
 import Lips.Kernel.Engine.Value    (parseHoleType)
+import Lips.Kernel.Quoting  (breakLastOutsideQuotes, quoteText, splitOutsideQuotes)
+import qualified Lips.Kernel.Quoting as Q
 import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Reader   (ParseError (..), readDecision, renderBase)
@@ -174,11 +176,7 @@ renderParts = T.concat . map r
     r (SHole h) = "<" <> h <> ">"
 
 quoteParts :: [StrPart] -> Text
-quoteParts ps = "\"" <> T.concatMap esc (renderParts ps) <> "\""
-  where
-    esc '"'  = "\\\""
-    esc '\\' = "\\\\"
-    esc c    = T.singleton c
+quoteParts = quoteText . renderParts
 
 parseBody :: Text -> Text -> Either Text Pattern
 parseBody pid body = do
@@ -190,7 +188,7 @@ parseBody pid body = do
   let template = filter (not . emptyLit) (map parseTplTok (lexTokens tplStr))
       emptyLit (TLit t) = T.null t
       emptyLit _        = False
-  emits <- mapM (parseEmit . T.strip) (splitEmits rest0)
+  emits <- mapM (parseEmit . T.strip) (splitOutsideQuotes " ; " rest0)
   let p = Pattern { pId = pid, pTemplate = template, pEmits = emits }
   -- A <name.tail> may appear only as the LAST template token: a tail consumes
   -- the rest of the line, so anything after it could never match. Reject it on
@@ -230,29 +228,7 @@ parseBody pid body = do
 -- the LAST @ => @ lying outside quotes. Splitting there lets a template use
 -- @=>@ freely: the kernel's own delimiter must not forbid a surface form.
 splitOnSeparator :: Text -> Maybe (Text, Text)
-splitOnSeparator body =
-  case [ (b, T.drop 4 a) | (b, a) <- T.breakOnAll " => " body, even (unescapedQuotes b) ] of
-    [] -> Nothing
-    xs -> Just (last xs)
-
--- | Split a pattern's emit clauses on the @ ; @ that lies OUTSIDE quotes, so an
--- assertion may itself contain @"; "@. Leftmost-first, quote-aware; the naive
--- @T.splitOn@ the rule body uses would mis-split such an emit.
-splitEmits :: Text -> [Text]
-splitEmits t =
-  case [ (b, T.drop 3 a) | (b, a) <- T.breakOnAll " ; " t, even (unescapedQuotes b) ] of
-    []          -> [t]
-    ((b, a) : _) -> b : splitEmits a
-
--- | Count unescaped double quotes in a prefix, so a scan can tell whether a
--- split point lies inside a quoted span (odd count) or outside it (even).
-unescapedQuotes :: Text -> Int
-unescapedQuotes t = go (T.unpack t) (0 :: Int)
-  where
-    go []              n = n
-    go ('\\' : _ : cs) n = go cs n
-    go ('"' : cs)      n = go cs (n + 1)
-    go (_ : cs)        n = go cs n
+splitOnSeparator = breakLastOutsideQuotes " => "
 
 parseTplTok :: Text -> TplTok
 parseTplTok w
@@ -313,17 +289,7 @@ firstToken t err =
     (w : _) -> Right (w, T.drop (T.length w) (T.stripStart t))
 
 parseQuoted :: Text -> Either Text Text
-parseQuoted t = case T.uncons t of
-  Just ('"', rest) -> go rest T.empty
-  _                -> Left "expected quoted assertion"
-  where
-    go s acc = case T.uncons s of
-      Nothing           -> Left "unterminated assertion"
-      Just ('"', _)     -> Right acc
-      Just ('\\', more) -> case T.uncons more of
-        Just (c, more') -> go more' (T.snoc acc c)
-        Nothing         -> Left "dangling escape"
-      Just (c, more)    -> go more (T.snoc acc c)
+parseQuoted = fmap fst . Q.parseQuoted
 
 kindTable :: [(Text, Kind)]
 kindTable = [(kindText k, k) | k <- [minBound .. maxBound]]
