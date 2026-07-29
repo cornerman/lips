@@ -37,7 +37,7 @@ import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist,
                                      doesPathExist, getTemporaryDirectory, listDirectory,
-                                     removeDirectoryRecursive)
+                                     removeDirectoryRecursive, removePathForcibly)
 import           System.FilePath    (takeDirectory, (</>))
 import           System.Posix.Temp  (mkdtemp)
 import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
@@ -482,6 +482,11 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
       TIO.writeFile (generationPath rep) rec
       TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
+      -- The artifacts tree is machine-owned and minted whole, so REPLACE it: a
+      -- previous mint's tree under another artifact name would otherwise stay
+      -- committed forever, dead source nothing builds (the http re-mint left a
+      -- helloserver/ tree beside its new hello/ one).
+      removePathForcibly (artifactsPath rep)
       writeSources (artifactsPath rep) minted
       forM_ validated $ \(f, rl) -> do
         ensureDerived f
