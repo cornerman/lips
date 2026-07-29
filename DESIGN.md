@@ -383,14 +383,15 @@ machinery retargets beyond NixOS.
 - **Language/engine migration**: when a language's semantics change, how
   existing Solutions migrate (decision-preserving transformations, versioned
   demands).
-- ~~**Engine orthogonality check**~~: resolved for rules. Critical-pair
-  analysis over rule left-hand sides runs at the `generate` gate
-  (`Lips.Kernel.Engine.Overlap`; ledger §13). Still open for the *pattern*
-  layer: `crystallize` reports `Overlapping` when a line matches two templates,
-  which is again dynamic, so a language can ship two templates that no example
-  line separates. Template unification is the harder half (token sequences with
-  multi-token tail holes, not fixed-length tuples) and no live mint has needed
-  it yet.
+- ~~**Engine orthogonality check**~~: RESOLVED for both layers, at the `generate`
+  gate (`Lips.Kernel.Engine.Overlap`; ledger §13). Rules: critical-pair analysis
+  over their left-hand sides. Patterns: a product walk over the two token
+  templates, which answers "could one line match both" exactly, since a template
+  is a sequence over three forms (literal, one-token hole, multi-token hole) and a
+  multi-token hole may stay or advance at each step. A template that repeats a
+  hole name is skipped rather than approximated (the repeat constrains two
+  positions to one word, which the walk does not track, and a false rejection
+  would refuse a sound engine); the dynamic `Overlapping` check still covers it.
 - ~~**Branching on a captured word**~~: resolved as permanently out of scope,
   and the resolution is a distinction, not a mechanism. A word in a program
   either FILLS A VALUE (a port, a path, a message), which belongs in a hole so
@@ -1422,6 +1423,16 @@ but the loop around it is incomplete; "missing" means specced, not built.
   block per route), which a marker cannot express -- filed as a gap, never faked.
   Beside it, an artifact section the kernel does not know (a mint's `arg` for
   `args`) is now refused instead of silently dropped.
+
+- **Static pattern overlap.** The sibling of the rule check, at the same gate and
+  for the same reason: `crystallize` reports `Overlapping` only for a line some
+  program states, so two templates no example separates ship inside the engine and
+  fail later on the author's own program. A product walk over the two templates
+  decides it exactly (see §11), and the first path that reaches both ends is the
+  witness the refusal prints, as a line shape. The multi-token hole made this
+  urgent: it reads lines of every length, so it overlaps almost any template with
+  the same prefix. Verified against the corpus: all 11 committed engines are
+  orthogonal at the pattern layer, so the check refuses nothing that works today.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every

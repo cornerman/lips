@@ -450,11 +450,10 @@ first has landed, these are the rest, ranked.
   consistency checks, and strength already supplies the preference order the
   algorithm needs. Deterministic, domain-blind, offline; sized like the overlap
   milestone.
-- **Static pattern overlap** — the pattern-layer sibling of the rule overlap
-  check that landed. `crystallize` reports `Overlapping` dynamically, so a
-  language can ship two templates no example line separates. Harder half:
-  templates are token sequences with multi-token tail holes, not fixed-length
-  tuples, so unification is not the same three lines.
+- ~~**Static pattern overlap**~~ — LANDED 2026-07-30 (DESIGN §13, §11). A product
+  walk over the two token templates decides "could one line match both" exactly;
+  a template repeating a hole name is skipped rather than approximated, and all 11
+  committed engines pass, so the gate refuses nothing that works today.
 - **Merge against the IC postulates.** Record which of Konieczny & Pino Pérez's
   merging postulates lips's merge satisfies, which it violates and why
   (arbitration over majority, with `Append` as the stated exception). A written

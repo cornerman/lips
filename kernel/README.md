@@ -24,7 +24,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |
 | `Lips.Kernel.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int/float/path/null, attrsets; holes, typed holes and `${pkgs...}`/`${artifact...}` refs only) -- computation and injection unrepresentable |
 | `Lips.Kernel.Engine.Aggregate` | ledger 13 | list aggregation: `Append` mode derived from the rule emits, and the assembly of N same-subject list decisions |
-| `Lips.Kernel.Engine.Overlap` | ledger 13 | static rule orthogonality: critical pairs over rule left-hand sides (`ruleOverlaps`, `subjectsUnify`) |
+| `Lips.Kernel.Engine.Overlap` | ledger 13 | static orthogonality, both layers: critical pairs over rule left-hand sides (`ruleOverlaps`, `subjectsUnify`) and a product walk over token templates (`patternOverlaps`) |
 | `Lips.Kernel.Engine.Reach` | ledger 13 | a program word the language reads and then discards (`droppedValues`) |
 | `Lips.Kernel.Engine.Answerable` | ledger 13 | a demand no pattern can ever answer (`unanswerableDemands`) |
 | `Lips.Kernel.Capture` | ledger 13 | the one capture/name grammar shared by rules, expects and demands (`matchSubject`, `nameParse`, `fillName`) |
