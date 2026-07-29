@@ -42,7 +42,10 @@
       (`http`, `postgres`) are re-minted and honest; see DESIGN 13, "The two
       dishonest engines re-minted". Three new findings came out of it, none of
       which any lips gate can see today:
-      (i) **no gate looks INSIDE a build.** The first http re-mint kept
+      (i) CLOSED 2026-07-30 by the flake check `lipsArtifacts-build` (DESIGN §13):
+      it builds every committed artifact and asserts every interpolated
+      `${artifact.<name>}<suffix>` exists, verified red on a deliberately broken
+      `ExecStart`. Original text: **no gate looks INSIDE a build.** The first http re-mint kept
       `module app` in `go.mod`, so the binary was `app` while
       `ExecStart = "${artifact.hello}/bin/hello"` named `hello`: a service that
       cannot start, past `check`, past `lipsArtifacts-eval` (which instantiates,

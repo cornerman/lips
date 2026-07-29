@@ -1482,6 +1482,20 @@ but the loop around it is incomplete; "missing" means specced, not built.
   every gate. Only `\"` and `\\` are transport escapes now; anything else passes
   through to the value grammar, which reads `\n` as a newline.
 
+- **A path inside a build must exist (`lipsArtifacts-build`).** Instantiating an
+  artifact proves the build is well-formed and says nothing about what it
+  produces, and a binary's name is decided by the SOURCE, not by the derivation.
+  An http mint that left `module app` in `go.mod` shipped a unit whose
+  `ExecStart = "${artifact.hello}/bin/hello"` named a file the build does not
+  contain: green `lips check`, green `lipsArtifacts-eval`, a service that cannot
+  start, discoverable only by running the binary. The new flake check builds every
+  committed artifact and asserts every `${artifact.<name>}<suffix>` the realized
+  module interpolates really exists under it. Verified in both directions: green on
+  the corpus, and red (naming the missing path and the store path) when the http
+  engine's `ExecStart` is pointed at a binary the build has not got. It lives in
+  the flake, not in `check`, for the same reason as the eval check: `check` stays
+  offline and nixpkgs-free, and only a flake already has nixpkgs.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and

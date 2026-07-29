@@ -134,6 +134,49 @@
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -n '${p}'") drvPaths}
             touch "$out"
           '';
+        # A path INSIDE a build must exist. Instantiating (above) proves the build
+        # is well-formed; it says nothing about what the build produces, and the
+        # name of a binary is decided by the source, not by the derivation. An http
+        # mint that left `module app` in go.mod shipped a unit whose
+        # ExecStart = "${artifact.hello}/bin/hello" named a file the build does not
+        # contain -- past `lips check`, past the eval check above, and only
+        # discoverable by running it. So: build every committed artifact and assert
+        # every path the module names under it really is there.
+        lipsArtifacts-build =
+          let
+            mods  = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
+            dirs  = builtins.attrValues mods.nixosModules
+                    ++ builtins.attrValues mods.homeManagerModules;
+            # Every ${artifact.<name>}<suffix> the realized module interpolates.
+            # A bare `artifact.<name>` list element (a package) has no suffix and
+            # is covered by building it, which this check does for every artifact.
+            refsOf = dir:
+              let
+                arts = import "${dir}/artifact.nix" { inherit pkgs; };
+                text = builtins.readFile "${dir}/default.nix";
+                parts = builtins.split "artifact\\.([a-zA-Z0-9_-]+)}(/[^\"[:space:]]*)?" text;
+                hit = m: {
+                  drv = arts.${builtins.elemAt m 0};
+                  suffix = let sfx = builtins.elemAt m 1; in if sfx == null then "" else sfx;
+                };
+              in map hit (builtins.filter builtins.isList parts);
+            refs = builtins.concatMap
+              (d: if builtins.pathExists "${d}/artifact.nix" then refsOf d else [ ])
+              dirs;
+            allArtifacts = builtins.concatMap
+              (d: if builtins.pathExists "${d}/artifact.nix"
+                  then builtins.attrValues (import "${d}/artifact.nix" { inherit pkgs; })
+                  else [ ])
+              dirs;
+          in pkgs.runCommand "lips-artifacts-build" { } ''
+            test ${toString (builtins.length allArtifacts)} -gt 0
+            # Building every artifact is this derivation's own dependency graph.
+            ${pkgs.lib.concatMapStringsSep "\n" (a: "test -d ${a}") allArtifacts}
+            ${pkgs.lib.concatMapStringsSep "\n"
+                (r: "test -e ${r.drv}${r.suffix} || { echo 'the module names ${r.suffix} inside ${r.drv}, which the build does not contain'; exit 1; }")
+                refs}
+            touch "$out"
+          '';
       } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux) {
         # The realization smoke test (spec section 12.4, "realized ... on a
         # real machine"; ledger section 13): a committed Solution is realized
