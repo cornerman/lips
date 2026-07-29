@@ -1,6 +1,8 @@
-p1 meta lang.pattern.p1 stated "run a postgresql database server => fact postgres.enable \"true\"" @gen:2c1434a7ff0cdf6c
-p2 meta lang.pattern.p2 stated "provision a database named <name> => fact postgres.database.<name> \"<name>\"" @gen:2c1434a7ff0cdf6c
-p3 meta lang.pattern.p3 stated "provision a user named <user> who owns the <dbname> database => fact postgres.user.<user> \"<user>\"" @gen:2c1434a7ff0cdf6c
-r1 meta engine.rule.r1 stated "match fact postgres.enable => services.postgresql.enable \"true\"" @gen:2c1434a7ff0cdf6c
-r2 meta engine.rule.r2 stated "match fact postgres.database.<name> => services.postgresql.ensureDatabases \"[ \\\"<value>\\\" ]\"" @gen:2c1434a7ff0cdf6c
-r3 meta engine.rule.r3 stated "match fact postgres.user.<user> => services.postgresql.ensureUsers \"[ { name = \\\"<value>\\\"; ensureDBOwnership = true; } ]\"" @gen:2c1434a7ff0cdf6c
+p1 meta lang.pattern.p1 stated "run a postgresql database server => fact postgres.enable \"enabled\"" @gen:dbfa594d3d09f937
+p2 meta lang.pattern.p2 stated "provision a database named <name> => fact db.<name> \"<name>\"" @gen:dbfa594d3d09f937
+p3 meta lang.pattern.p3 stated "provision a user named <user> who owns the <db> database => fact user.<user>.owner \"<user> <db>\"" @gen:dbfa594d3d09f937
+q1 meta engine.demand.q1 stated "demand db.<name> \"what database should be provisioned?\"" @gen:dbfa594d3d09f937
+q2 meta engine.demand.q2 stated "demand user.<user>.owner \"which database does user <user> own?\"" @gen:dbfa594d3d09f937
+r1 meta engine.rule.r1 stated "match fact postgres.enable => services.postgresql.enable \"true\"" @gen:dbfa594d3d09f937
+r2 meta engine.rule.r2 stated "match fact db.<name> => services.postgresql.ensureDatabases \"[ \\\"<value>\\\" ]\"" @gen:dbfa594d3d09f937
+r3 meta engine.rule.r3 stated "match fact user.<user>.owner => services.postgresql.ensureUsers \"[ { name = \\\"<value.1>\\\"; ensureDBOwnership = true; } ]\" ; services.postgresql.ensureDatabases \"[ \\\"<value.2>\\\" ]\"" @gen:dbfa594d3d09f937
