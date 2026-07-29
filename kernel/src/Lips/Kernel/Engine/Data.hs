@@ -39,6 +39,10 @@ module Lips.Kernel.Engine.Data
   , parseRuleBody
   , renderDemandBody
   , parseDemandBody
+  , MergeSpec (..)
+  , renderMergeBody
+  , parseMergeBody
+  , keepsRepeats
   , splitAttrPath
   , renderAttrPath
   ) where
@@ -83,6 +87,46 @@ data DemandSpec = DemandSpec
   , dsQuestion :: Text
   }
   deriving (Eq, Show)
+
+-- | How a list-typed option AGGREGATES the contributions of several program
+-- lines. Two readings exist in the target world and the kernel cannot tell them
+-- apart -- @environment.systemPackages@ or @ensureDatabases@ is a SET (naming a
+-- thing twice names it once), while a list whose repetition carries meaning is a
+-- SEQUENCE -- so which one an option is, is knowledge about that option: engine
+-- data, like the option path itself. Default is @set@ (two statements of one
+-- fact are one fact, the reading the decision base already takes when it merges
+-- a subject); an engine declares @list@ for the option where a repeat is meant.
+data MergeSpec = MergeSpec
+  { mgId   :: Text
+  , mgPath :: [Text]   -- ^ the option path, capture-aware (@route.\<path\>@)
+  , mgList :: Bool     -- ^ True: keep every contribution (@list@); False: @set@
+  }
+  deriving (Eq, Show)
+
+-- | Does this option keep repeated elements? Capture-aware, so one declaration
+-- covers a whole value-keyed family. Nothing declared means @set@.
+keepsRepeats :: [MergeSpec] -> [Text] -> Bool
+keepsRepeats specs segs =
+  any (\m -> mgList m && isJust (matchSubject (mgPath m) segs)) specs
+
+renderMergeBody :: MergeSpec -> Text
+renderMergeBody m =
+  "merge " <> renderAttrPath (mgPath m) <> " " <> (if mgList m then "list" else "set")
+
+parseMergeBody :: Text -> Text -> Either Text MergeSpec
+parseMergeBody mid body = do
+  afterKw <- note (pre <> "expected 'merge '") (T.stripPrefix "merge " body)
+  case T.words afterKw of
+    [pathTok, mode] -> do
+      keep <- case mode of
+        "list" -> Right True
+        "set"  -> Right False
+        _      -> Left (pre <> "the mode is 'set' (a repeat is the same fact) or"
+                            <> " 'list' (a repeat is meant), got " <> mode)
+      MergeSpec mid <$> splitAttrPath pathTok <*> pure keep
+    _ -> Left (pre <> "merge needs '<option.path> set|list'")
+  where
+    pre = "merge " <> mid <> ": "
 
 -- | Bind the reserved @\<self\>@ option-path segment to the solution's
 -- instance name (its file basename), so a shared language names its

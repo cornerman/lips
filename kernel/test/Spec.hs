@@ -28,7 +28,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Value
-import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject)
+import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Target
@@ -1765,6 +1765,7 @@ main = hspec $ do
               [ MapRule "r1" Oblige ["feed", "ingest"]
                   [ Emit ["services", "x", "enable"] (VBool True) ] ]
           , edDemands = [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?" ]
+          , edMerges  = [ MergeSpec "m1" ["environment", "systemPackages"] True ]
           }
 
     it "round-trips the whole engine: readLang . renderLang == Right" $
@@ -1903,6 +1904,7 @@ main = hspec $ do
               [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
               , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
               ]
+          , edMerges = []
           }
         loose loc sched = T.unlines
           [ "the bank drops csv files into " <> loc <> "."
@@ -1963,6 +1965,7 @@ main = hspec $ do
               [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
               , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
               ]
+          , edMerges = []
           }
 
     it "reports a matched line with the pattern it used and the decision it yields" $ do
@@ -2003,7 +2006,7 @@ main = hspec $ do
       let engT = EngineData
             { edPatterns = [ patOne "p2" [TLit "stored", TLit "in", THole "path"]
                                Fact [SLit "habit.log"] [SHole "path"] ]
-            , edRules = [], edDemands = [] }
+            , edRules = [], edDemands = [], edMerges = [] }
           d = diagnose "f" engT "stored in /tmp/habits.tsv"
       diagMatched d `shouldBe` 1
       parseTplTok "<path:path>" `shouldBe` THole "path"
@@ -2029,6 +2032,7 @@ main = hspec $ do
                             [ Emit ["environment", "etc", "builder", "text"]
                                    (VStr [PLit "buildGoModule"]) ] ]
             , edDemands = []
+            , edMerges = []
             }
       diagDropped (diagnose "f" engD "write the server in go")
         `shouldBe` [(1, "write the server in go", ["lang"])]
@@ -2042,6 +2046,7 @@ main = hspec $ do
                             [ Emit ["environment", "etc", "builder", "text"]
                                    (VStr [PHole "value"]) ] ]
             , edDemands = []
+            , edMerges = []
             }
       diagDropped (diagnose "f" engK "write the server in go") `shouldBe` []
 
@@ -2265,6 +2270,38 @@ main = hspec $ do
       refine 100 (map toRule [r1, r2]) (fromList [mk "d1" "unrelated" "" Stated])
         `shouldBe` Right (fromList [mk "d1" "unrelated" "" Stated])
       map roLeft (ruleOverlaps [r1, r2]) `shouldBe` ["r1"]
+
+  describe "set or list: how a list option aggregates repeats" $ do
+    let contrib i line v = Decision (DecisionId i) (Subject ["environment","systemPackages"])
+                             Meta (Assertion v) Stated (FromSource (SourceLoc "f" line)) Nothing
+        elemsOf d = case parseValue (unAssertion' (dAssertion d)) of
+          Right (VList vs) -> map renderValue vs
+          other            -> [T.pack (show other)]
+        unAssertion' (Assertion a) = a
+    it "a set (the default) collapses an element two lines both state" $
+      fmap elemsOf (assembleSubject [ contrib "d1" 1 "[ \"app\" ]", contrib "d2" 2 "[ \"app\" ]" ])
+        `shouldBe` Right ["\"app\""]
+    it "a list keeps every contribution, in source order" $
+      fmap elemsOf (assembleWith (const True)
+                      [ contrib "d1" 1 "[ \"app\" ]", contrib "d2" 2 "[ \"app\" ]" ])
+        `shouldBe` Right ["\"app\"", "\"app\""]
+    it "a set keeps distinct elements, in source order" $
+      fmap elemsOf (assembleSubject [ contrib "d2" 2 "[ \"b\" ]", contrib "d1" 1 "[ \"a\" ]" ])
+        `shouldBe` Right ["\"a\"", "\"b\""]
+    -- Which reading an option takes is knowledge about that option, so it is
+    -- engine data, capture-aware like every other option path.
+    it "an engine declaration names the option, matching a value-keyed family" $ do
+      let specs = [ MergeSpec "m1" ["services","x","<name>","args"] True ]
+      keepsRepeats specs ["services","x","web","args"] `shouldBe` True
+      keepsRepeats specs ["services","x","web","other"] `shouldBe` False
+      keepsRepeats [] ["services","x","web","args"] `shouldBe` False
+    it "round-trips a merge declaration through the .lang body grammar" $ do
+      let m = MergeSpec "m1" ["environment","systemPackages"] True
+      parseMergeBody "m1" (renderMergeBody m) `shouldBe` Right m
+      parseMergeBody "m2" "merge environment.systemPackages set"
+        `shouldBe` Right (MergeSpec "m2" ["environment","systemPackages"] False)
+    it "refuses a mode that is neither set nor list (never guesses one)" $
+      parseMergeBody "m1" "merge environment.systemPackages unique" `shouldSatisfy` isLeft
 
   describe "static pattern overlap (the pattern-layer sibling of rule overlap)" $ do
     let pat i toks = patOne i toks Fact [SLit "s"] [SLit "a"]
@@ -2572,7 +2609,10 @@ main = hspec $ do
         -- segment; two habit mints in a row got this wrong (Engine.Answerable).
         , "must be one a PATTERN EMITS"
         , "expect <option.path> from <subject>"
-        , "pattern|match|demand|expect|because"
+        , "pattern|match|merge|demand|expect|because"
+        -- A list option is a SET by default and a LIST only where the engine says
+        -- so: the kernel cannot know which, so the mint must be told it can say.
+        , "merge <option.path> set|list"
         -- A built program has an interface, and a program word reaches inside its
         -- source through a fill: both are universal physics, so they belong here
         -- and not in a per-language .direction file (docs/gaps/README.md,

@@ -63,11 +63,11 @@
       lips sees nothing; the kernel cannot know option semantics either. Candidate:
       nothing kernel-side -- it belongs in the mint's own review, or as a `gap` the
       mint should have filed.
-      (iii) **duplicate list elements survive assembly.** Two lines mentioning the
-      same database give `ensureDatabases = [ "app" "app" ]`. Harmless for postgres,
-      noise in the output, and a reviewer trips over it. Open decision: should
-      `Append` assembly drop an element a previous contributor already stated (a
-      set-like merge), or is order-and-multiplicity part of what a list states?
+      (iii) CLOSED 2026-07-30: both readings exist, so the grammar carries both and
+      the engine picks -- `merge <option.path> set|list`, default `set` (DESIGN §13,
+      "Set or list"). `ensureDatabases` is now `[ "app" ]` with no engine change,
+      since nothing declared it a list. Original text: **duplicate list elements
+      survive assembly.**
 
    a. **Silent concept demotion (deduce-or-fail's blind spot).** Two halves
       landed (ledger §13): `diagInert` names the lines that realize nothing, and

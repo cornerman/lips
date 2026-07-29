@@ -25,9 +25,10 @@ module Lips.Kernel.Engine.Aggregate
   ( MergeMode (..)
   , mergeModeOf
   , assembleSubject
+  , assembleWith
   ) where
 
-import           Data.List       (sortOn)
+import           Data.List       (nub, sortOn)
 import           Data.Maybe      (isJust)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -63,11 +64,23 @@ mergeModeOf rules (Subject segs)
 -- stores); elements are concatenated in source-line order. A non-VList
 -- contributor is a loud 'Left' (deduce-or-fail: never guess a shape).
 assembleSubject :: [Decision] -> Either Text Decision
-assembleSubject [] = Left "assembleSubject: no contributors"
-assembleSubject contributors = do
+assembleSubject = assembleWith (const False)
+
+-- | 'assembleSubject' with the per-option aggregation choice injected: given a
+-- subject, does that option keep REPEATED elements? A set (the default) collapses
+-- them -- two program lines naming one package name it once -- while a list keeps
+-- every contribution. The kernel cannot tell which an option is, so the caller
+-- passes the engine's own declaration ('Lips.Kernel.Engine.Data.keepsRepeats').
+assembleWith :: ([Text] -> Bool) -> [Decision] -> Either Text Decision
+assembleWith _ [] = Left "assembleSubject: no contributors"
+assembleWith keepsRepeated contributors = do
   let ordered = sortOn sourceKey contributors
   vals <- traverse listValOf ordered
-  let assembled = VList (concatMap unwrap vals)
+  let segsOf (Subject ss) = ss
+      dedup = if keepsRepeated (segsOf (dSubject (head' ordered))) then id else nub
+      assembled = VList (dedup (concatMap unwrap vals))
+      head' (x : _) = x
+      head' []      = error "assembleWith: unreachable (empty guarded above)"
       -- 'assembleSubject []' is guarded above, so 'ordered' is non-empty
       -- here; the case keeps it total (no partial 'head').
       smallest = case ordered of

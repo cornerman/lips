@@ -43,8 +43,8 @@ import           System.FilePath    (takeDirectory, (</>))
 import           System.Posix.Temp  (mkdtemp)
 import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 
-import           Lips.Kernel.Engine.Aggregate   (assembleSubject, mergeModeOf)
-import           Lips.Kernel.Engine.Data       (bindSelf, toDemand, toRule)
+import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
+import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
@@ -743,7 +743,11 @@ validate file eng program =
           modeOf     = mergeModeOf boundRules
           rules      = map toRule boundRules
           demands    = map toDemand (edDemands eng)
-      in first FailRun (runBase modeOf assembleSubject budget rules demands base)
+          -- Whether a list option keeps repeated elements is knowledge about that
+          -- option, so the engine states it; nothing declared means a set (two
+          -- program lines naming one thing name it once).
+          assembleList = assembleWith (keepsRepeats (edMerges eng))
+      in first FailRun (runBase modeOf assembleList budget rules demands base)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable

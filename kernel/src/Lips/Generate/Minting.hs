@@ -39,7 +39,8 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
-import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), parseDemandBody, parseRuleBody)
+import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), MergeSpec,
+                                     parseDemandBody, parseMergeBody, parseRuleBody)
 import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Nix.Target       (Target (..))
@@ -77,6 +78,9 @@ data EngineItem
   = ItemPattern Pattern
   | ItemRule MapRule
   | ItemDemand DemandSpec
+  -- | How one list-typed option aggregates several lines' contributions (set or
+  -- list); absent means set, the default reading.
+  | ItemMerge MergeSpec
   | ItemExpect Expect
   | ItemSource SourceFile
   -- | A plain-language reason a low-confidence item is unsure. Carries no
@@ -105,6 +109,7 @@ carriesEngineMeaning i = case i of
   ItemPattern _ -> True
   ItemRule _    -> True
   ItemDemand _  -> True
+  ItemMerge _   -> True
   ItemExpect _  -> True
   ItemSource _  -> True
 
@@ -234,11 +239,12 @@ commonBody = T.unlines
   , "Output ONLY lines of these forms, no prose, no code fences. Every line"
   , "starts with a bare confidence NUMBER as its very first token -- never the"
   , "word \"because\" or any other keyword -- then its id, then a leading"
-  , "keyword naming its kind (pattern|match|demand|expect|because), so a"
+  , "keyword naming its kind (pattern|match|merge|demand|expect|because), so a"
   , "pattern template may itself begin with any word:"
   , ""
   , "  <confidence> <id> pattern <template> => <kind> <subject> \"<assertion>\" ; <kind> <subject> \"<assertion>\""
   , "  <confidence> <id> match <kind> <subject> => <option.path> \"<rhs>\" ; <option.path> \"<rhs>\""
+  , "  <confidence> <id> merge <option.path> set|list"
   , "  <confidence> <id> demand <subject> \"<question>\""
   , "  <confidence> <id> expect <option.path> from <subject>[#<n>]"
   , "  <confidence> <id> because \"<reason>\""
@@ -524,6 +530,14 @@ commonBody = T.unlines
   , "route, per mount) has no hole form -- a fill replaces a marker, it cannot"
   , "repeat a block -- so that is a gap to file, not something to fake."
   , ""
+  , "SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute"
+  , "elements to one list option, lips aggregates them, and by default the option"
+  , "is a SET -- two lines naming one package name it once, so a repeated element"
+  , "collapses. Declare an option a LIST only where a repeat is genuinely meant:"
+  , "  <confidence> m1 merge <option.path> list"
+  , "The path is written exactly as in a rule (a <capture> covers the whole"
+  , "family). Write no merge line for the ordinary case."
+  , ""
   , "DEMANDS (ids q1, q2, ...): what any program in this language must state,"
   , "as a subject plus the question to ask when it is missing."
   , "The subject must be one a PATTERN EMITS, matched segment for segment, since"
@@ -670,6 +684,7 @@ assemble items =
     { edPatterns = [p | ItemPattern p <- items]
     , edRules    = [r | ItemRule r <- items]
     , edDemands  = [q | ItemDemand q <- items]
+    , edMerges   = [m | ItemMerge m <- items]
     }
 
 -- | The minted behavioral contract (the @.expect@ artifact).
@@ -736,10 +751,12 @@ parseLine line = do
     "pattern" -> ItemPattern <$> located (parsePatternBody idTok (afterKeyword body))
     "match"   -> ItemRule    <$> located (parseRuleBody   idTok body)
     "demand"  -> ItemDemand  <$> located (parseDemandBody idTok body)
+    "merge"   -> ItemMerge   <$> located (parseMergeBody  idTok body)
     "expect"  -> ItemExpect  <$> located (parseExpectBody idTok body)
     "because" -> ItemNote    <$> located (parseNoteBody body)
     other     -> Left ("unknown item kind '" <> other
-                        <> "' (want pattern|match|demand|expect|because) in: " <> line)
+                        <> "' (want pattern|match|merge|demand|expect|because) in: "
+                        <> line)
   Right (ItemCandidate item (Confidence conf) line idTok)
   where
     firstWord t = case T.words t of { (w : _) -> w; [] -> "" }

@@ -37,8 +37,9 @@ import           Data.List  (sortOn)
 import           Data.Text  (Text)
 import qualified Data.Text  as T
 
-import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), parseDemandBody,
-                             parseRuleBody, renderDemandBody, renderRuleBody)
+import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), MergeSpec (..),
+                             parseDemandBody, parseMergeBody, parseRuleBody,
+                             renderDemandBody, renderMergeBody, renderRuleBody)
 import Lips.Kernel.Engine.Value    (parseHoleType)
 import Lips.Kernel.Surface  (breakLastOutsideQuotes, quoteText, splitOutsideQuotes)
 import qualified Lips.Kernel.Surface as Q
@@ -53,6 +54,9 @@ data EngineData = EngineData
   { edPatterns :: [Pattern]
   , edRules    :: [MapRule]
   , edDemands  :: [DemandSpec]
+  , edMerges   :: [MergeSpec]
+    -- ^ per-option aggregation choice (set or list); empty means every list
+    -- option is a set, the default reading.
   }
   deriving (Eq, Show)
 
@@ -66,11 +70,12 @@ renderLang prov ed =
     map patternToDecision (sortOn pId (edPatterns ed))
       ++ map ruleToDecision (sortOn mrId (edRules ed))
       ++ map demandToDecision (sortOn dsId (edDemands ed))
+      ++ map mergeToDecision (sortOn mgId (edMerges ed))
   where
     stamp d = d { dProv = prov }
 
 -- | One classified engine line: which group a @.lang@ decision belongs to.
-data EngLine = ELPat Pattern | ELRule MapRule | ELDem DemandSpec
+data EngLine = ELPat Pattern | ELRule MapRule | ELDem DemandSpec | ELMerge MergeSpec
 
 -- | Read an engine from @.lang@ text in one line-aware pass, so every error
 -- (envelope or body sub-grammar) names its real source line, not line 0.
@@ -90,6 +95,7 @@ readLang src =
                { edPatterns = sortOn pId  [p | ELPat p  <- oks]
                , edRules    = sortOn mrId [r | ELRule r <- oks]
                , edDemands  = sortOn dsId [q | ELDem q  <- oks]
+               , edMerges   = sortOn mgId [m | ELMerge m <- oks]
                }
         else Left errs
   where
@@ -105,6 +111,7 @@ classify n d = case dSubject d of
   Subject ["lang", "pattern", i]   -> tag ELPat  (parsePatternBody i body)
   Subject ["engine", "rule", i]    -> tag ELRule (parseRuleBody   i body)
   Subject ["engine", "demand", i]  -> tag ELDem  (parseDemandBody i body)
+  Subject ["engine", "merge", i]    -> tag ELMerge (parseMergeBody i body)
   Subject segs -> Left (ParseError n
     ("unrecognized engine line (subject " <> T.intercalate "." segs
       <> "): a .lang carries only lang.pattern.*, engine.rule.*, engine.demand.*"))
@@ -115,6 +122,10 @@ classify n d = case dSubject d of
 -- | Turn a rule into its canonical @meta@ decision.
 ruleToDecision :: MapRule -> Decision
 ruleToDecision r = metaDecision (mrId r) ["engine", "rule", mrId r] (renderRuleBody r)
+
+-- | Turn a merge declaration into its canonical @meta@ decision.
+mergeToDecision :: MergeSpec -> Decision
+mergeToDecision m = metaDecision (mgId m) ["engine", "merge", mgId m] (renderMergeBody m)
 
 -- | Turn a demand into its canonical @meta@ decision.
 demandToDecision :: DemandSpec -> Decision

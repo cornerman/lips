@@ -1496,6 +1496,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
   the flake, not in `check`, for the same reason as the eval check: `check` stays
   offline and nixpkgs-free, and only a flake already has nixpkgs.
 
+- **Set or list: how a list option aggregates repeats.** Two program lines can
+  contribute the same element to one list option (`ensureDatabases` got
+  `[ "app" "app" ]` from *provision a database named app* plus *a user who owns the
+  app database*). Both readings are real in the target world -- naming a package
+  twice names it once, while a list whose repetition carries meaning keeps both --
+  and the kernel cannot tell them apart, since that is knowledge about the option.
+  So the grammar carries both and the ENGINE chooses: a `merge <option.path>
+  set|list` declaration, stored like every other engine line
+  (`engine.merge.<id>`), capture-aware so one line covers a value-keyed family.
+  The default is `set`, which is the reading the decision base already takes when
+  it merges a subject: two statements of one fact are one fact. `Append` assembly
+  therefore dedups unless the engine declares that option a `list`. Kernel-side
+  this is `assembleWith` taking the predicate; `assembleSubject` is the set
+  default. Rejected: deducing set-ness from the option type (nixpkgs types do not
+  mark it) and dedup as a global kernel law (that decides a semantic question about
+  a target world the kernel may not know).
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
