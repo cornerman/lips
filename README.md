@@ -80,15 +80,13 @@ and the tests for the language; pass several programs
 across them. lips refuses to write anything unless the engine actually compiles
 every program and the tests hold, so a bad mint costs you nothing.
 
-The mint has exactly one tool: it can look an option path and type up in the
-pinned schema of the target world, the same lookup `lips options <query>` gives
-you. So it confirms a name instead of recalling it, and every lookup it makes,
-with the answer it got, is written into `<language>.generation` and enters the
-generation id. The tool grounds names, never values: being told an option exists
-is no licence to invent what fills it, so a value your program does not state is
-still a demand or a refusal. Nothing lips exposes lets a mint judge its own
-engine, or run anything at all; the judging happens afterwards, offline, in
-lips itself.
+The mint has a single tool: it can look up an option path and type in the
+pinned schema of the target world (the same lookup `lips options <query>` gives
+you). It confirms a name instead of hallucinating it, and every answer it gets
+goes into `<language>.generation` to enter the generation hash. It grounds
+names, never values; what your program does not state remains uninvented.
+Nothing in lips lets a model run or judge its own engine — that verification
+happens afterwards, offline, by lips itself.
 
 `--target nixos` (the default) or `--target home-manager` picks the world the
 engine is born into. The flag steers the mint into that world's option
@@ -128,7 +126,7 @@ You then edit freely. Value and wording changes covered by your language run
 straight through `compile`. You return to `generate` only when you say something
 genuinely new that the language cannot yet read, and even then regeneration is
 gated: a fresh engine is accepted only if the committed tests still hold. To
-change behavior on purpose you delete the `.expect` file and regenerate, and
+change behavior on purpose you pass `--renew` to `generate`, and
 that diff is your semantic changelog.
 
 **Steer the mint (optional).** To express taste about *how* the engine gets
@@ -181,14 +179,11 @@ Rebuild, and `lips` is a command on your PATH. That one package is everything
 `compile`, `check`, and `lsp` need; they are offline and use only `nix`
 itself. `generate` additionally expects the `pi` binary on your PATH,
 authenticated against some provider: lips deliberately keeps it out of its own
-closure, because it is your harness and carries your credentials. lips calls it
-hermetically, by explicit subtraction (`-p -nbt -nc --no-session
---no-extensions --no-skills --no-prompt-templates`), so no ambient `AGENTS.md`,
-extension, skill or prompt template *of yours* steers a mint, and pi's built-in
-tools (read, bash, write, ...) are gone. What remains is the system prompt lips
-sends and the one schema-lookup tool lips loads on purpose, for that run only.
-Both are hashed into `.generation`, along with every answer the tool gave, so
-nothing the model saw is missing from the record.
+closure, because it is your harness and carries your credentials. lips calls it hermetically, completely stripping away your ambient session,
+tools, skills, and extensions. What remains is the system prompt lips sends and
+the one schema-lookup tool it loads for that run. Everything the model saw (the
+prompt and every tool answer) is hashed into `.generation`, ensuring the mint
+is fully transparent and leaves a complete audit trail.
 
 Prefer not to install anything yet? Run it straight from the flake instead:
 
@@ -230,14 +225,7 @@ The examples live in the repo, so clone it first:
     # just check examples/ledger.backup.lips
     # nix run . -- check examples/ledger.backup.lips
 
-The two commented lines under each command are for reference, not to run:
-`just <verb>` is the equivalent recipe and `nix run . -- <verb>` the raw
-invocation it wraps. Both only make sense when hacking on lips itself inside
-the clone; once `lips` is installed elsewhere, `just` has no meaning there.
-The full suite (conformance tests, module eval, and a VM boot) is a separate
-recipe, `just ci`; nothing invokes it automatically yet, so run it yourself
-before a merge. It is red today: the module-eval check cannot read a singleton
-`<language>.lips` program (DESIGN §13, "Verified Breakages", V1 in `TODO.md`).
+The commented lines show equivalents using `just` or `nix run . --` for when you are developing on `lips` itself.
 
 `compile` prints the stock nix commands that run the result, e.g.
 `nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs
@@ -263,7 +251,7 @@ Developing on lips itself, rather than using it, is a separate mode: the repo
 clone above already gives you everything. `justfile` is the command index
 (`just` alone lists every recipe); with direnv installed, `direnv allow` once
 wires the dev shell automatically, otherwise prefix commands with
-`nix develop -c` or run via `nix run .`.
+`nix develop -c` or run via `nix run .`. The full suite (conformance tests, module eval, and a VM boot) is a separate recipe, `just ci`; run it yourself before a merge. It is red today: the module-eval check cannot read a singleton `<language>.lips` program (DESIGN §13, "Verified Breakages", V1 in `TODO.md`).
 
 ## The Files
 
