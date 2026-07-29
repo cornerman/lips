@@ -187,7 +187,14 @@
 Each is stated with its promise in DESIGN §13, "Verified Breakages". Ranked by
 blast radius; V1-V4 are small, local fixes with tests missing.
 
-### The plan (execution order) -- waves 1, 2 and 4 landed 2026-07-29
+### The plan (execution order) -- ALL FOUR WAVES LANDED 2026-07-29
+
+Wave 3 (the three decisions) landed too, each as decided with the owner:
+V6 by the source-specification gate, V8 by `compile --no-contract` at the three
+nix call sites, and TODO 1e by both halves (an artifact arg is assertable; the
+new flake check `lipsArtifacts-eval` forces every artifact's `drvPath`).
+
+
 
 Landed on branch `breakages` (one commit per item, suite 356 green, all 13
 examples `check` clean, `nix build .` and `lipsModules-eval` green, every
