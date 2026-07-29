@@ -52,7 +52,11 @@ let
       cp ${dir + "/${name}"} ${name}
       cp ${langDir p.language + "/${p.language}.lang"} ${p.language}/${p.language}.lang
       ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}/artifacts"}
-      ${lips}/bin/lips compile --out "$out" ${name}
+      # --no-contract: the behavioral gate evaluates the realized module with
+      # nix, which a compile INSIDE a nix build cannot do (no recursive nix). The
+      # contract is checked in the repo, by `lips check` / `just check-expect`;
+      # here the skip is stated rather than implied by not staging the .expect.
+      ${lips}/bin/lips compile --no-contract --out "$out" ${name}
     '';
 
   built = lib.mapAttrs' (name: _:

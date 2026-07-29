@@ -91,8 +91,8 @@ main = do
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
     Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
-    Compile co  -> compileLoose (coOut co) (coLangDir co) (coFile co)
-    Check co    -> () <$ checkLoose (ceLangDir co) (ceFile co)
+    Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
+    Check co    -> () <$ checkLoose True (ceLangDir co) (ceFile co)
     Options oo  -> optionsQuery (ooTarget oo) (ooLimit oo) (T.pack (ooQuery oo))
     Lsp         -> runLsp
 
@@ -118,12 +118,14 @@ main = do
 -- is not a lips verb, it is stock @nix@ over this directory, so compile emits
 -- the handles and names the commands (only those the program's shape supports,
 -- so no impossible command is ever shown -- deduce-or-fail).
-compileLoose :: Maybe FilePath -> Maybe FilePath -> FilePath -> IO ()
-compileLoose mout mLangDir file = do
+compileLoose :: Maybe FilePath -> Maybe FilePath -> Bool -> FilePath -> IO ()
+compileLoose mout mLangDir noContract file = do
   dir <- either die pure (resolveLangDir file mLangDir)
   -- The gate runs first and hands back its realization, so compile writes the
   -- very output the contract judged (and the pipeline runs once, not twice).
-  rl  <- checkLoose mLangDir file
+  -- @--no-contract@ is the one caller that cannot gate (a compile inside a nix
+  -- derivation has no nix to evaluate with); it still crystallizes and realizes.
+  rl  <- checkLoose (not noContract) mLangDir file
   target  <- readRecordedTarget dir file
   let outDirPath = maybe (compiledPath file) id mout
   ensureDerived file
@@ -171,8 +173,12 @@ readRecordedTarget dir file = do
 -- Returns the realization it validated, so @compile@ -- which gates through
 -- this same verb -- materializes that run's output instead of running the whole
 -- pipeline a second time.
-checkLoose :: Maybe FilePath -> FilePath -> IO Realization
-checkLoose mLangDir file = do
+-- The @contract@ flag says whether the behavioral gate runs; only a compile
+-- inside a nix build passes 'False' (see @--no-contract@). Everything before the
+-- gate -- crystallization, the open questions, the staged-source check -- runs
+-- either way, because none of it needs nix.
+checkLoose :: Bool -> Maybe FilePath -> FilePath -> IO Realization
+checkLoose contract mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
   eng     <- loadLangOrDie dir file
@@ -198,7 +204,7 @@ checkLoose mLangDir file = do
                  []
                  "→ answer them by stating the detail in the program.")
         uds -> die (unanswerableReport file uds)
-      else expectGate dir file eng program
+      else expectGate contract dir file eng program
   where
     escapes Matched{} = False
     escapes _         = True
@@ -208,14 +214,16 @@ checkLoose mLangDir file = do
 -- Validates once, up front: the module, its artifacts and the paths it names
 -- all come from that one run, so the staged-source gate below and the contract
 -- judge the same realization.
-expectGate :: FilePath -> FilePath -> EngineData -> Text -> IO Realization
-expectGate dir file eng program = do
+expectGate :: Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realization
+expectGate contract dir file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
   stagedGate (stageFromDisk dir file) file (rlStaged rl)
   let base   = rlBase rl
       nixMod = rlModule rl
-  expSrc <- tryRead (expectPathIn dir file)
+  expSrc <- if contract then tryRead (expectPathIn dir file) else pure Nothing
   case expSrc of
+    Nothing | not contract -> TIO.putStrLn
+      (T.pack file <> ": crystallizes cleanly; behavioral contract SKIPPED (--no-contract).")
     Nothing  -> TIO.putStrLn
       (T.pack file <> ": crystallizes cleanly; no behavioral contract yet ("
         <> T.pack (expectPathIn dir file) <> " is missing, written by generate).")

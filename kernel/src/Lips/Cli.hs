@@ -59,9 +59,10 @@ defaultThinking = "high"
 -- see 'Lips.Identity.resolveLangDir'); it never affects where compile WRITES
 -- (that stays under the program's own directory).
 data CompileOpts = CompileOpts
-  { coOut     :: Maybe FilePath
-  , coLangDir :: Maybe FilePath
-  , coFile    :: FilePath
+  { coOut        :: Maybe FilePath
+  , coLangDir    :: Maybe FilePath
+  , coNoContract :: Bool
+  , coFile       :: FilePath
   } deriving (Eq, Show)
 
 -- | Everything @check@ needs: the program, plus the same @--lang@
@@ -201,6 +202,13 @@ compileOpts = CompileOpts
         (long "out" <> short 'o' <> metavar "DIR"
           <> help "Output directory (default: <language>/out/<instance>)."))
   <*> langDirOpt
+  -- For the one caller that CANNOT run the gate: a compile inside a nix
+  -- derivation (lib.modulesFromDir, the VM checks) has no nix to evaluate the
+  -- realized module with. The flag makes that skip a stated choice at the call
+  -- site instead of an unstated consequence of not staging the .expect file.
+  <*> switch
+        (long "no-contract"
+          <> help "Skip the behavioral contract (for a compile inside a nix build, which has no nix to evaluate with). The program must still crystallize.")
   <*> programArg
 
 checkOpts :: Parser CheckOpts

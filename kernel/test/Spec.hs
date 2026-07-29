@@ -136,14 +136,19 @@ main = hspec $ do
 
   describe "compile argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info compileOpts idm)
-    it "defaults --out and --lang to Nothing" $
+    it "defaults --out and --lang to Nothing, and gates on the contract" $
       parseArgs ["a.backup.lips"]
-        `shouldBe` Just (CompileOpts Nothing Nothing "a.backup.lips")
+        `shouldBe` Just (CompileOpts Nothing Nothing False "a.backup.lips")
     it "reads --lang in any position, alongside --out" $ do
       parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CompileOpts Nothing (Just "services/a/backup") "a.backup.lips")
+        `shouldBe` Just (CompileOpts Nothing (Just "services/a/backup") False "a.backup.lips")
       parseArgs ["--out", "dir", "--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CompileOpts (Just "dir") (Just "services/a/backup") "a.backup.lips")
+        `shouldBe` Just (CompileOpts (Just "dir") (Just "services/a/backup") False "a.backup.lips")
+    -- The gate needs nix to evaluate the realized module, which a compile
+    -- INSIDE a nix build does not have; the flag states that skip.
+    it "reads --no-contract, the stated skip for a compile inside a nix build" $
+      parseArgs ["--no-contract", "a.backup.lips"]
+        `shouldBe` Just (CompileOpts Nothing Nothing True "a.backup.lips")
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 

@@ -1491,6 +1491,17 @@ gate on an artifact-only engine, and the concept escape.
   `writeShellApplication` -- fails to parse, and the message blames an
   "unterminated string". A missing grammar case is a kernel bug (invariant 3).
 
+- DECIDED (2026-07-29): **the deploy path is gate-free by design, and now says
+  so.** `compile` takes `--no-contract`, which `lib.modulesFromDir`, `vm-smoke`
+  and `artifact-vm` pass: the gate evaluates the realized module with `nix`, and
+  a compile inside a nix build has no nix to evaluate with (recursive nix is not
+  available). Everything that needs no nix still runs there -- crystallization,
+  the open questions, the staged-source check -- so the derivation refuses a
+  program its language cannot read. The contract is checked where it lives, in
+  the repo, by `lips check`. The point of the flag is that the skip is stated at
+  the call site instead of being an unstated consequence of not staging the
+  `.expect` file.
+
 - **The behavioral gate is vacuous where it is needed most.** `runExpects`
   returns success on an empty contract, and `uncheckableExpects` forbids an
   assertion on a derivation-valued option, so an artifact-only engine has

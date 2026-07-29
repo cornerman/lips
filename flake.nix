@@ -124,7 +124,10 @@
               mkdir -p backup
               cp ${./examples/ledger.backup.lips} ledger.backup.lips
               cp ${./examples/backup/backup.lang} backup/backup.lang
-              ${lips}/bin/lips compile --out "$out" ledger.backup.lips
+              # --no-contract: the gate needs nix to evaluate the module, which
+              # a compile inside a nix build has not got; `lips check` gates in
+              # the repo (see just check-expect).
+              ${lips}/bin/lips compile --no-contract --out "$out" ledger.backup.lips
             '';
           in
           pkgs.testers.runNixOSTest {
@@ -178,7 +181,10 @@
               cp ${./examples/hello.http.lips} hello.http.lips
               cp ${./examples/http/http.lang} http/http.lang
               cp -r ${./examples/http/artifacts} http/artifacts
-              ${lips}/bin/lips compile --out "$out" hello.http.lips
+              # --no-contract: the gate needs nix to evaluate the module, which
+              # a compile inside a nix build has not got; `lips check` gates in
+              # the repo (see just check-expect).
+              ${lips}/bin/lips compile --no-contract --out "$out" hello.http.lips
             '';
           in
           pkgs.testers.runNixOSTest {

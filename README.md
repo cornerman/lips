@@ -207,11 +207,14 @@ it by the world its engine was minted for:
 
 A home-manager engine appears under `lips.homeManagerModules.<instance>`
 instead. Nix flakes see only git-tracked files, so `git add` your program and
-its language folder before rebuilding. Two caveats today: this helper reads a
-`<instance>.<language>.lips` name only (the singleton shorthand breaks it), and
-its compile derivation stages only the `.lang`, so the behavioral contract is
-not re-checked there -- run `lips check` in your repo, which is where the
-contract lives anyway.
+its language folder before rebuilding. Both program shapes work here, the
+singleton `<language>.lips` included.
+
+The compile inside that derivation passes `--no-contract`: the behavioral gate
+evaluates the realized module with `nix`, and a compile running inside a `nix`
+build has no nix to do it with. So the contract is checked where it lives, in
+your repo, by `lips check <program>` (the deploy path realizes the same module
+from the same committed engine, deterministically).
 
 ## Try It
 
