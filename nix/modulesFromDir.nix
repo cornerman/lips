@@ -10,11 +10,24 @@
 let
   entries = lib.filterAttrs (n: _: lib.hasSuffix ".lips" n) (builtins.readDir dir);
 
-  # <instance>.<language>.lips -> { instance, language }.
+  # <instance>.<language>.lips -> { instance, language }; the singleton
+  # shorthand <language>.lips defaults the instance to the language.
+  #
+  # This restates Lips.Identity's rule in Nix, and knowingly duplicates it: the
+  # output ATTRIBUTE NAMES must be known at eval time, so asking the binary
+  # (which owns the rule) would mean import-from-derivation. The
+  # lipsModules-eval flake check evaluates this over examples/, which holds both
+  # shapes, so a drift between the two copies fails the build rather than
+  # silently mis-naming a language (it did: taking element 1 of the split read
+  # the singleton board.lips as language "lips").
   parse = name:
-    let parts = lib.splitString "." name;
-    in { instance = builtins.elemAt parts 0;
-         language = builtins.elemAt parts 1; };
+    let stem  = lib.removeSuffix ".lips" name;
+        parts = lib.splitString "." stem;
+        n     = builtins.length parts;
+    in if n == 1
+       then { instance = stem; language = stem; }
+       else { instance = lib.concatStringsSep "." (lib.take (n - 1) parts);
+              language = builtins.elemAt parts (n - 1); };
 
   # Everything minted for a language sits in one folder beside the programs
   # (Lips.Identity.langDir): <dir>/<language>/.

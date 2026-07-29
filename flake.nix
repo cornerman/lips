@@ -93,9 +93,15 @@
         lipsModules-eval =
           let
             mods  = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
-            paths = builtins.attrValues mods.nixosModules;
+            # Both worlds, so EVERY committed example is compiled by this check.
+            # Forcing only nixosModules left the home-manager ones (all four
+            # singleton <language>.lips programs) unevaluated, which is how a
+            # broken filename rule survived here.
+            paths = builtins.attrValues mods.nixosModules
+                    ++ builtins.attrValues mods.homeManagerModules;
           in pkgs.runCommand "lips-modules-eval" { } ''
             test -n "${toString (builtins.attrNames mods.nixosModules)}"
+            test -n "${toString (builtins.attrNames mods.homeManagerModules)}"
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
             touch "$out"
           '';
