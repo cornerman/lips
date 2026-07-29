@@ -442,11 +442,16 @@ V8. DECIDED and FIXED (2026-07-29): the deploy path is gate-free by design and
 - **Glue** — the one deliberate incompleteness (computation inside the decision
   layer). `Glue` is a `Kind` with no rigor-downgrade mechanism. Blocks a
   *computed value*, not building a program (that is artifacts, done).
-- **Artifacts: repeating source** — a WHOLE VALUE inside source now flows at
-  compile through a fill (item 1d, closed); what has no form is REPETITION: N
-  routes need N code blocks, and a marker replaces text, it cannot repeat a
-  block. Also: dependency-fetching builders (cargo/vendor hashes)
-  untried. Concrete repro (2026, `server.lips` httpserver example): a route's
+- ~~**Artifacts: repeating source**~~ — CLOSED 2026-07-30 as NOT NEEDED, by a live
+  mint (`examples/api.web.lips`, three routes): per-item data belongs in the
+  config (value-keyed `environment.etc` entries), and the source stays generic and
+  route-count-agnostic, so adding a route changes only the config. Compile-time
+  block repetition was rejected (a second templating layer inside source, plus a
+  rebuild for every data change). See DESIGN §13, "Repeating source".
+  Still open in this family: dependency-fetching builders (cargo/vendor hashes)
+  untried. The original repro text follows.
+
+  Concrete repro (2026, `server.lips` httpserver example): a route's
   status/mimetype/body must land inside the compiled Go source per route
   (keyed by `<path>`), but `source` heredocs are verbatim text with no holes
   and no per-item (capture-keyed) binding into source text; `generate` rightly

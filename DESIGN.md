@@ -1456,6 +1456,32 @@ but the loop around it is incomplete; "missing" means specced, not built.
   since a fill writes into it and a language folder read from the nix store is
   read-only (this broke `lipsArtifacts-eval`, a compile inside a derivation).
 
+- **Repeating source: not needed, closed by evidence (`examples/api.web.lips`).**
+  The open question was how N items (routes, mounts) reach a built program when a
+  fill replaces one marker and cannot repeat a code block. A compile-time repeat
+  block was designed and REJECTED: it needs a second templating layer inside
+  source, with per-language comment syntax for its own markers, and it rebuilds
+  the binary whenever the program's data changes. The answer the corpus gives
+  instead: the program's per-item data is DATA, so it reaches the program through
+  the config, and the source stays generic. Minted live for a three-route server
+  (claude-sonnet-5): each bullet crystallizes to its own value-keyed options
+  (`environment.etc.http-routes<path>/status.text` and `.../body.text`, ordinary
+  attrsOf aggregation across bullets), and the Go source scans that directory at
+  startup and registers a handler per entry it finds. Adding a fourth route
+  changes only the config -- no rebuild, no regeneration -- which a repeated code
+  block could not claim. The mint reached this itself and filed no gap for it. So
+  the rule of thumb is now doctrine: source holds STRUCTURE (the algorithm, the
+  format, the protocol), a fill carries a compile-time CONSTANT into it (the
+  binary's own name in `go.mod`), and everything the program enumerates stays a
+  table in the config.
+  Two defects the experiment exposed, both fixed: two rules emitting to one
+  option path is a conflict, so several words of one line that must land in ONE
+  option value are ONE fact spent with `<value.N>` (the prompt now says so); and
+  the transport quoting swallowed a non-transport escape, silently turning a
+  minted `"200\n404"` into `"200n404"` -- valid output, wrong text, invisible to
+  every gate. Only `\"` and `\\` are transport escapes now; anything else passes
+  through to the value grammar, which reads `\n` as a newline.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
@@ -1640,11 +1666,9 @@ gate on an artifact-only engine, and the concept escape.
 - **Live host deployment.** The VM smoke test proves the module class; wiring
   one realized module into `~/nixos` on `wolf` is now reduced to "import one
   file" and remains optional symbolism.
-- **Artifacts: deferred pieces.** The core landed (see Done), and a program value
-  now reaches inside baked source through a *fill* (see Done: "Source fills").
-  Still open: a REPEATING structure inside source (one code block per route, per
-  mount) has no hole form, since a fill replaces a marker and cannot repeat a
-  block, so a per-item body still needs regeneration; dependency-fetching builders (a
+- **Artifacts: deferred pieces.** The core landed (see Done), a program value
+  reaches inside baked source through a *fill*, and repeating source is settled as
+  unnecessary (both in Done). Still open: dependency-fetching builders (a
   `cargoHash`/`vendorHash` over fetched crates) move the fetch to generate and
   are untried (the proven path is no-dependency source, e.g. Go stdlib with
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A
