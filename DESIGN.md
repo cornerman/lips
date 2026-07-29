@@ -1345,6 +1345,41 @@ but the loop around it is incomplete; "missing" means specced, not built.
   is never hand-edited (invariant 4). Verified 341/341, `-Wall` clean; both
   repros refused, the other eleven examples unchanged.
 
+- **A demand no pattern can answer is a static defect.** `openQuestions` judges
+  a demand against the crystallized base, so only a subject the language's own
+  patterns emit can ever satisfy one; subject matching is segment-for-segment
+  (`matchSubject`). Two `habit` mints in a row wrote `demand command` beside a
+  pattern emitting `command.<name>`, one segment short, so the demand stood open
+  for every program and lips told the author to state a fact the program already
+  stated (`install the tool as the command habit.`) -- a mint defect wearing an
+  author's error message. `Kernel/Engine/Answerable.hs` refuses it statically:
+  each demand subject must unify (`subjectsUnify`) with a subject family some
+  pattern emits, derived by running the pattern's own substitution
+  (`applyPattern` with each hole standing as its own capture), so the check sees
+  exactly the subjects crystallize will build. Wired in at `generate`
+  (`assertDemandsAnswerable`, beside the orthogonality and dropped-value gates)
+  and at `check`, where it replaces the misleading "answer them in the program"
+  action for an engine already committed. Domain-blind: it asks only whether the
+  engine's own shape could ever produce the subject, never what it means. The
+  prompt states the rule too, but the guard is what holds (invariant 4: two
+  identical mint failures mean a prompt plea is not the fix). Verified 346/346,
+  `-Wall` clean; the third `habit` mint then wrote `demand habit.command.<name>`
+  and passed every gate.
+
+- **Three CLI tools, minted and committed.** `examples/{board,habit,logscan}`
+  (f0e8d13) plus `greet` (ca09f97) make four committed CLI engines, the shape
+  TODO 1 was opened for. Each keys its artifact by the command name the program
+  gives it (`fact tool.<name>` / `habit.command.<name>`), builds with
+  `buildGoModule` (`vendorHash = null`, a `version` constant) over a minted Go
+  source tree, and lands it in `home.packages`; program values reach the tool at
+  runtime through the environment (`board`: `home.sessionVariables`) or a config
+  file (`habit`: `xdg.configFile`), never baked into the source, so editing the
+  program takes effect without regeneration. Verified per engine: `check` green,
+  `nix eval …#artifact.<name>.drvPath` instantiates, and each binary runs
+  (`logscan` filters `{"a":"1"}` by `a=1`; `habit` prints a heatmap from a TSV
+  named by the program). What they cost: two gates the mints themselves
+  provoked (staged sources, answerable demands), both now physics.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone, `compile`

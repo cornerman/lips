@@ -3,9 +3,10 @@
 ## Next up (priority order)
 
 0. ~~**Mint `examples/greet.lips`.**~~ DONE (ca09f97 committed
-   `examples/greet/`). `check-expect` and `lipsModules-eval` stay RED for the
-   three programs still without an engine (`examples/{board,habit,logscan}.lips`),
-   which is item 1's job. The original text follows for its target-shape notes.
+   `examples/greet/`). ~~`check-expect` and `lipsModules-eval` stay RED for the
+   three programs still without an engine~~ -- `examples/{board,habit,logscan}`
+   are committed (f0e8d13) and all 13 example programs `check` green. The
+   original text follows for its target-shape notes.
 
    One line,
    `install a command greet that prints "hello from lips"`, the smallest
@@ -24,7 +25,11 @@
    gap report's finding 5, `git show ca09f97^:docs/gaps/README.md`, which is that guard followed through to its
    uncomfortable conclusion).
 
-1. **CLI-tool physics** — evidence and analysis in the gap report (deleted with
+1. **CLI-tool physics** — three CLI engines now committed (f0e8d13: `board`,
+   `habit`, `logscan`; each `buildGoModule` + `home.packages`, each artifact
+   instantiating and running). Two gates landed getting them there: staged
+   sources (1e, half) and answerable demands (new, ledger §13). Remaining
+   sub-items below. Evidence and analysis in the gap report (deleted with
    `ca09f97`; read it with `git show ca09f97^:docs/gaps/README.md`), with
    `examples/{board,habit,logscan}.lips` as committed repros. Six mints on
    2026-07-27 (three programs x qwen3-coder:30b and claude-sonnet-5) produced no
