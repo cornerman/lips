@@ -15,14 +15,19 @@
 module Lips.Generate.Record
   ( record
   , genId
+  , corpusText
+  , recordedProgram
   ) where
 
 import           Data.Bits          (shiftR, xor)
 import qualified Data.ByteString    as BS
+import           Data.List          (dropWhileEnd)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import           Data.Text.Encoding (encodeUtf8)
 import           Data.Word          (Word64)
+
+import           System.FilePath    (takeFileName)
 
 import           Lips.Nix.Target    (Target, targetSlug)
 
@@ -75,3 +80,31 @@ genId = hex . BS.foldl' step offset . encodeUtf8
         go 0 acc _ = acc
         go n acc w = go (n - 1) (digit (fromIntegral (w `mod` 16)) : acc) (w `shiftR` 4)
         digit d = if d < 10 then toEnum (fromEnum '0' + d) else toEnum (fromEnum 'a' + d - 10)
+
+-- | The corpus the mint reads: every program of one language, each framed by its
+-- file name. The mint sees them all at once so the grammar generalizes across
+-- them, and the same text is recorded as the generation's input -- which makes it
+-- the one offline witness of what each program SAID when its language (and any
+-- artifact source) was minted.
+corpusText :: [(FilePath, Text)] -> Text
+corpusText progs = T.intercalate "\n"
+  [ header f <> "\n" <> t | (f, t) <- progs ]
+
+header :: FilePath -> Text
+header f = "=== program " <> T.pack (takeFileName f) <> " ==="
+
+-- | Read one program's text back out of a committed record: the inverse of
+-- 'corpusText' over the record's program block. 'Nothing' when this record holds
+-- no section for that file (an older record, or a program added after the mint),
+-- which the caller treats as "nothing to compare" rather than as a failure.
+recordedProgram :: FilePath -> Text -> Maybe Text
+recordedProgram file rec =
+  case break (== header file) (dropWhile (/= "--- program (input) ---") (T.lines rec)) of
+    -- The framing separates sections with a blank line, which is not part of the
+    -- program (and is ignored by crystallize anyway); drop it so the text read
+    -- back equals the text put in.
+    (_, _ : rest) -> Just (T.unlines (dropWhileEnd T.null (takeWhile ours rest)))
+    _             -> Nothing
+  where
+    -- The section ends at the next program header or at the next record block.
+    ours l = not ("=== program " `T.isPrefixOf` l) && not ("--- " `T.isPrefixOf` l)

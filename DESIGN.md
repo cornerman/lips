@@ -1520,7 +1520,27 @@ gate on an artifact-only engine, and the concept escape.
   regeneration is ungated for them (invariant 5 holds only formally). This is
   the same hole TODO 1e names from the artifact side.
 
-- **The concept escape: a mint may declare the program decorative.**
+- FIXED (2026-07-29): **the source-specification gate closes the concept
+  escape.** Reproduced first, which narrowed it: rewording a concept line breaks
+  its all-literal pattern and is already reported as unmatched, and adding a line
+  is unmatched too -- the silent case is DELETION. `examples/logscan.lips` with
+  line 2 removed crystallized cleanly and reported "all 0 checks pass", while the
+  built Go source went on filtering by that rule.
+  The gate: where a language BAKES source (a committed `<language>/artifacts/`
+  tree), the lines that produced `Concept` decisions are part of that source's
+  specification, so a concept the mint saw and the program no longer states fails
+  loud, naming the line and offering `lips generate`. What the program said at
+  mint time is read from the committed `.generation` record, which stores the
+  corpus verbatim -- so the check is offline, deterministic and needs no new file
+  and no re-mint (`Lips.Generate.Record.recordedProgram`,
+  `Lips.Kernel.Lang.Diagnose.retiredConcepts`). A language with no baked source
+  is untouched: a concept there is a heading, and a heading must stay freely
+  editable. Known gap, recorded rather than papered over: a program the record
+  holds no section for (added or renamed after the mint) has nothing to compare
+  and is skipped.
+
+- **The concept escape, as found (superseded by the entry above): a mint may
+  declare the program decorative.**
   `droppedValues` exempts a hole that reaches a `Concept`, since a mint
   DECLARING decoration is honest. `logscan` shows the cost: 4 of its 5 lines are
   concepts and the whole behavior lives in the baked Go source, so editing

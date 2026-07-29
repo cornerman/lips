@@ -38,7 +38,7 @@ import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist,
                                      doesPathExist, getTemporaryDirectory, listDirectory,
                                      removeDirectoryRecursive)
-import           System.FilePath    (takeDirectory, takeFileName, (</>))
+import           System.FilePath    (takeDirectory, (</>))
 import           System.Posix.Temp  (mkdtemp)
 import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 
@@ -51,7 +51,7 @@ import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
-import           Lips.Generate.Record   (genId, record)
+import           Lips.Generate.Record   (corpusText, genId, record, recordedProgram)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isArtifactExpect, readExpect, renderExpect)
@@ -59,7 +59,7 @@ import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
-import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
+import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose, retiredConcepts)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnanswerableDemand, unanswerableDemands)
 import           Lips.Kernel.Engine.Overlap    (renderRuleOverlap, ruleOverlaps)
@@ -219,6 +219,7 @@ expectGate :: Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realizati
 expectGate contract dir file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
   stagedGate (stageFromDisk dir file) file (rlStaged rl)
+  sourceSpecGate dir file eng program
   expSrc <- if contract then tryRead (expectPathIn dir file) else pure Nothing
   case expSrc of
     Nothing | not contract -> TIO.putStrLn
@@ -349,8 +350,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- across them (anti-unification): tokens that vary between examples become
       -- holes, tokens that agree stay literal. One program is the corpus-of-one
       -- case. The same set is the regeneration corpus below.
-      corpus = T.intercalate "\n"
-        [ "=== program " <> T.pack (takeFileName f) <> " ===\n" <> t | (f, t) <- progs ]
+      corpus = corpusText progs
   (reply, model, transcript) <- callPi mmodel thinking prompt corpus target
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
@@ -892,6 +892,46 @@ stagedGate stage file staged = withTempDir $ \dir -> do
       (T.pack file <> " names " <> plural (length ms) "file" <> " that lips never staged:")
       [ p <> " (named by " <> niceSubject (dSubject d) <> ")" | (p, d) <- ms ]
       ("→ the source tree is minted, so rebuild it: lips generate " <> T.pack file))
+
+-- | The source-specification gate: where a language BAKES source (a committed
+-- @artifacts\/@ tree, minted from the program), the program lines that produced
+-- 'Concept' decisions are part of that source's specification. So a concept the
+-- mint saw and the program no longer states means the committed source was
+-- written for a specification that is gone -- and nothing else notices, because a
+-- Concept realizes nothing: rewording such a line breaks its all-literal pattern
+-- and is reported as unmatched, adding one is unmatched too, but DELETING one is
+-- silent and every gate stays green.
+--
+-- What the program said at mint time is read from the committed @.generation@
+-- record, which stores the corpus verbatim, so this stays offline and
+-- deterministic (no AI, no nix). A language with no baked source is untouched: a
+-- concept there is a heading, and a heading must stay freely editable.
+--
+-- Known gap: a program the record holds no section for (added or renamed after
+-- the mint) has nothing to compare, so it is skipped.
+sourceSpecGate :: FilePath -> FilePath -> EngineData -> Text -> IO ()
+sourceSpecGate dir file eng program = do
+  baked <- doesDirectoryExist (artifactsPathIn dir file)
+  when baked $ do
+    mrec <- tryRead (generationPathIn dir file)
+    case mrec >>= recordedProgram file of
+      Nothing   -> pure ()
+      Just was0 -> case (crystallize file (edPatterns eng) was0, crystallize file (edPatterns eng) program) of
+        (Left _, _) -> die (report
+          ("the program recorded in " <> T.pack (generationPathIn dir file)
+            <> " no longer crystallizes with the committed language.")
+          []
+          ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))
+        (_, Left _) -> pure ()   -- the current program's own read errors are reported by the caller
+        (Right was, Right now) -> case retiredConcepts was now of
+          []      -> pure ()
+          retired -> die (report
+            (T.pack file <> " dropped " <> plural (length retired) "line"
+              <> " that the built source was written from:")
+            [ a <> " (" <> niceSubject (dSubject d) <> ")"
+            | d <- retired, let Assertion a = dAssertion d ]
+            ("\8594 state it again, or rebuild the source for the program as it stands: "
+              <> "lips generate " <> T.pack file))
 
 -- | Stage a language's committed @artifacts@ tree (found under @dir@) into
 -- @dst@ (the temp module's @artifacts\/@). A no-op when the language has no

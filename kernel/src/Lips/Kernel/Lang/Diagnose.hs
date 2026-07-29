@@ -26,11 +26,12 @@
 module Lips.Kernel.Lang.Diagnose
   ( Diagnosis (..)
   , diagnose
+  , retiredConcepts
   ) where
 
 import           Data.Text (Text)
 
-import Lips.Kernel.Base            (fromList)
+import Lips.Kernel.Base            (Base, fromList, toList)
 import Lips.Kernel.Decision        (Decision (..), Kind (..))
 import Lips.Kernel.Demand          (Demand (..), openQuestions)
 import Lips.Kernel.Engine.Data     (toDemand)
@@ -90,3 +91,22 @@ droppedLines dvs outcomes =
   , let hs = [dvHole dv | dv <- dvs, dvPattern dv == pid]
   , not (null hs)
   ]
+
+-- | The concepts a program stated when its language was minted and no longer
+-- states: present in @was@, absent from @now@ (compared by subject AND text, so
+-- a reworded one counts as gone).
+--
+-- Why it matters: a 'Concept' realizes nothing, so DELETING such a line changes
+-- no output and every gate stays green -- while an artifact\'s minted source was
+-- written from exactly those lines. That is the one way a program can stop being
+-- the source of truth without anything failing: rewording a concept line breaks
+-- its (all-literal) pattern and is reported as unmatched, and adding one is
+-- unmatched too, but a deletion is silent. The caller applies this only where a
+-- language bakes source, since a language whose concepts are mere headings must
+-- stay freely editable.
+retiredConcepts :: Base -> Base -> [Decision]
+retiredConcepts was now =
+  [ d | d <- concepts was, (dSubject d, dAssertion d) `notElem` stated ]
+  where
+    stated   = [ (dSubject d, dAssertion d) | d <- concepts now ]
+    concepts b = [ d | d <- toList b, dKind d == Concept ]

@@ -327,8 +327,13 @@ V5. FIXED (3aa8103). **`<self>` binds only as a whole segment in an expect path.
     so `<self>-core` never binds and the assertion silently reads `null`. Fix:
     use `fillName`, the same call the rule side makes.
 
-V6. **The concept escape: a mint may declare the program decorative and pass
-    every gate.** `logscan` reads 4 of its 5 lines as `Concept`s and keeps the
+V6. FIXED (2026-07-29), see DESIGN 13 "Verified Breakages" for the mechanism.
+    Reproducing it first narrowed the hole to DELETION (a reworded or added line
+    is already unmatched), and the fix is the source-specification gate: where a
+    language bakes source, a concept the mint saw and the program no longer
+    states fails loud, compared against the corpus the `.generation` record
+    stores verbatim. **The concept escape as found: a mint may declare the
+    program decorative and pass every gate.** `logscan` reads 4 of its 5 lines as `Concept`s and keeps the
     behavior in baked Go source, so editing the sentences changes nothing while
     `check` reports success -- with an empty contract, so nothing is pinned
     either. The thesis says the program is the source of truth; here it is a
@@ -344,7 +349,9 @@ V7. FIXED (5f7c6c0). **A program file's extension is never checked.** `x.backup.
     language `backup`, and `examples/backup/backup.lang` as a program. Fix: one
     fail-loud check on the `.lips` marker in `Lips.Identity`.
 
-V8. **`lib.modulesFromDir` compiles without the contract.** Its derivation (and
+V8. DECIDED and FIXED (2026-07-29): the deploy path is gate-free by design and
+    now says so, via `compile --no-contract` at each of the three call sites.
+    **As found: `lib.modulesFromDir` compiles without the contract.** Its derivation (and
     the `vm-smoke`/`artifact-vm` checks) copies only the `.lang`, so
     `expectGate` finds no `.expect` and prints "no behavioral contract yet"
     instead of gating -- and the derivation has no `nix` on PATH, so copying the

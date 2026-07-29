@@ -43,7 +43,7 @@ import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
-import Lips.Generate.Record (genId, record)
+import Lips.Generate.Record (corpusText, genId, record, recordedProgram)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
@@ -1715,6 +1715,20 @@ main = hspec $ do
       -- the reasoning level steers the reply, so it is pinned too
       genId r `shouldNotBe` genId rk
       T.length (genId r) `shouldBe` 16
+    -- The record stores the corpus verbatim, which makes it the one offline
+    -- witness of what each program SAID when the language (and any baked
+    -- artifact source) was minted. The source-specification gate reads it back.
+    it "reads one program's text back out of the record it was minted from" $ do
+      let progs = [("a/one.log.lips", "first line\nsecond line\n"), ("a/two.log.lips", "other\n")]
+          r     = record "m" Nixos "high" 0.7 "sp" (corpusText progs) "tt" "reply"
+      recordedProgram "a/one.log.lips" r `shouldBe` Just "first line\nsecond line\n"
+      -- addressed by file NAME, so the same program under another directory reads
+      recordedProgram "b/two.log.lips" r `shouldBe` Just "other\n"
+      -- a program the record never saw has nothing to compare
+      recordedProgram "a/three.log.lips" r `shouldBe` Nothing
+      -- and the section stops before the next record block
+      recordedProgram "a/two.log.lips" r `shouldSatisfy` maybe False (not . T.isInfixOf "transcript")
+
     it "writes the target slug into the record text" $
       record "m" HomeManager "high" 0.7 "sp" "prog" "tt" "reply"
         `shouldSatisfy` T.isInfixOf "target: home-manager"
@@ -1939,6 +1953,25 @@ main = hspec $ do
     it "does not call a realizing line decorative" $ do
       let d = diagnose "f" eng "the bank drops csv files into inbox/."
       diagInert d `shouldBe` []
+
+    -- The concept escape (review 2026-07-29, V6): a Concept realizes nothing, so
+    -- DELETING such a line changes no output and every gate stays green -- while
+    -- an artifact's minted source was written from exactly those lines. Rewording
+    -- one is already caught (its pattern is all-literal, so the line goes
+    -- unmatched); the silent case is retirement, which this names.
+    it "names a concept the program stated at mint time and no longer states" $ do
+      let engC = eng { edPatterns = edPatterns eng ++
+                        [ patOne "p3" [TLit "feed", TLit "notes"]
+                            Concept [SLit "notes"] [SLit "feed notes"] ] }
+          crys src = case crystallize "f" (edPatterns engC) src of
+            Right b -> b
+            Left e  -> error ("fixture failed to crystallize: " <> show e)
+          was = crys "feed notes\nthe bank drops csv files into inbox/."
+          now = crys "the bank drops csv files into inbox/."
+      map (dSubject) (retiredConcepts was now) `shouldBe` [Subject ["notes"]]
+      retiredConcepts was was `shouldBe` []
+      -- a program that only ADDS a concept has retired none
+      retiredConcepts now was `shouldBe` []
 
     it "derives one completion snippet per pattern, holes as numbered tab-stops" $
       case completionItems (edPatterns eng) of
