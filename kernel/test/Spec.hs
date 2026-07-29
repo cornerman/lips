@@ -1020,6 +1020,35 @@ main = hspec $ do
       valueRefsDerivation (VStr [PHole "value"])            `shouldBe` False
       map exId (uncheckableExpects [ruleStr] [onDeriv, onValue]) `shouldBe` ["a1"]
 
+    -- An artifact-only program (its whole result is a built command) had NOTHING
+    -- it could pin: an artifact arg is consumed by a builder, so it is no
+    -- attribute of the module or of the resulting derivation, and the mint wrote
+    -- an empty contract -- which passes trivially. Such an arg IS a literal in
+    -- the ground base, so the kernel judges it there: no nix, no eval.
+    it "judges an artifact arg against the ground base (what an artifact-only program pins)" $ do
+      let ground = fromList
+            [ (mk "b" "x" "\"writeShellApplication\"" Stated) { dSubject = Subject ["artifact","greet","builder"] }
+            , (mk "t" "x" "\"echo \\\"hello from lips\\\"\"" Stated) { dSubject = Subject ["artifact","greet","args","text"] }
+            ]
+          onArg = Expect "a1" ["artifact","greet","args","text"] (Subject ["cmd","greet","msg"]) Nothing
+      isArtifactExpect onArg `shouldBe` True
+      isArtifactExpect (Expect "a2" ["home","packages"] (Subject ["x"]) Nothing) `shouldBe` False
+      -- the program's value reached the arg
+      checkArtifactValues ground [(onArg, "hello from lips")] `shouldBe` []
+      -- a value that did NOT reach it fails, naming the slot
+      length (checkArtifactValues ground [(onArg, "goodbye")]) `shouldBe` 1
+      -- an assertion on a slot no rule fills fails loud instead of reading null
+      let onNothing = Expect "a3" ["artifact","greet","args","name"] (Subject ["cmd","greet","msg"]) Nothing
+      length (checkArtifactValues ground [(onNothing, "greet")]) `shouldBe` 1
+
+    it "an artifact arg is checkable even when it references another artifact" $ do
+      -- The derivation-reference exemption is about the nix eval's pkgs stub; an
+      -- artifact assertion never evals, so it must not be swept up by it.
+      let ruleArt = MapRule "r" Fact ["cmd", "<name>"]
+            [ Emit ["artifact","wrap","args","runtimeInputs"] (VList [VRef (RArt "core")]) ]
+          onArg = Expect "a1" ["artifact","wrap","args","runtimeInputs"] (Subject ["cmd","x"]) Nothing
+      uncheckableExpects [ruleArt] [onArg] `shouldBe` []
+
   describe "pattern matching (crystallization plan: normalization, holes)" $ do
     it "normalizes case and strips trailing sentence punctuation" $ do
       normalizeToken "Files." `shouldBe` "files"

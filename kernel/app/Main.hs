@@ -27,6 +27,7 @@ module Main (main) where
 import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (filterM, forM, forM_, unless, when)
 import           Data.Bifunctor     (first)
+import           Data.List          (partition)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -51,9 +52,9 @@ import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (genId, record)
-import           Lips.Kernel.Base       (Conflict (..), Base)
+import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
-import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkValues, evalExpr, expandExpects, expectedValue, readExpect, renderExpect)
+import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isArtifactExpect, readExpect, renderExpect)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
@@ -218,8 +219,6 @@ expectGate :: Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realizati
 expectGate contract dir file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
   stagedGate (stageFromDisk dir file) file (rlStaged rl)
-  let base   = rlBase rl
-      nixMod = rlModule rl
   expSrc <- if contract then tryRead (expectPathIn dir file) else pure Nothing
   case expSrc of
     Nothing | not contract -> TIO.putStrLn
@@ -235,7 +234,7 @@ expectGate contract dir file eng program = do
         | otherwise -> do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
-          res <- runExpects (stageFromDisk dir file) (map (bindSelfExpect (instanceName file)) expects) base nixMod
+          res <- runExpects (stageFromDisk dir file) (map (bindSelfExpect (instanceName file)) expects) rl
           case res of
             Right () -> TIO.putStrLn (T.pack file <> ": all "
                           <> tshow (length expects) <> " checks pass.")
@@ -444,7 +443,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- The shared contract gates every program, each bound to its own <self>.
       forM_ validated $ \(f, rl) -> do
         gate <- runExpects (\dst -> writeSources dst minted)
-                           (map (bindSelfExpect (instanceName f)) expects) (rlBase rl) (rlModule rl)
+                           (map (bindSelfExpect (instanceName f)) expects) rl
         case gate of
           Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
           Left (EvalFailed e)  -> die (nixEvalFailed f "generate" e)
@@ -795,16 +794,38 @@ callPi mmodel thinking system userPrompt target = do
 -- or the config doesn't carry the promised values (violations).
 data ExpectFail = ToolMissing Text | EvalFailed Text | Violations [Text]
 
-runExpects :: (FilePath -> IO ()) -> [Expect] -> Base -> Text -> IO (Either ExpectFail ())
-runExpects _     []      _    _         = pure (Right ())
-runExpects stage expects0 base nixModule =
+runExpects :: (FilePath -> IO ()) -> [Expect] -> Realization -> IO (Either ExpectFail ())
+runExpects _     []       _  = pure (Right ())
+runExpects stage expects0 rl =
   -- Expand any value-keyed family expect against this program's routes first,
   -- so a shared contract (route.<path>.status) checks every concrete route.
   case expandExpects base expects0 >>= \expects ->
          (,) expects <$> traverse (expectedValue base) expects of
     Left e            -> pure (Left (Violations ["lips can't match a check to the program: " <> e]))
-    Right (expects, pvs) -> withTempDir $ \dir -> do
-      let tmp = dir <> "/module.nix"
+    Right (expects, pvs) -> do
+      -- Two kinds of assertion, judged where their value actually lives: a
+      -- module option is read by evaluating the module, an artifact arg is a
+      -- literal in the ground base (a builder consumes it, so it is no attribute
+      -- of the derivation and no eval could reach it).
+      let (artExpects, optExpects) = partition (isArtifactExpect . fst) (zip expects pvs)
+          artFails = checkArtifactValues (rlGround rl) artExpects
+      optRes <- evalOptionExpects stage (rlModule rl) optExpects
+      pure $ case (artFails, optRes) of
+        ([], r)      -> r
+        (fs, Right ()) -> Left (Violations fs)
+        (fs, Left (Violations more)) -> Left (Violations (fs ++ more))
+        (_,  Left other) -> Left other
+  where
+    base = rlBase rl
+
+-- | The nix half of the gate: evaluate the realized module once and judge every
+-- option assertion against it.
+evalOptionExpects :: (FilePath -> IO ()) -> Text -> [(Expect, Text)] -> IO (Either ExpectFail ())
+evalOptionExpects _     _         []    = pure (Right ())
+evalOptionExpects stage nixModule pairs = withTempDir $ \dir -> do
+      let expects = map fst pairs
+          pvs     = map snd pairs
+          tmp     = dir <> "/module.nix"
       TIO.writeFile tmp nixModule
       stage (dir <> "/artifacts")
       let expr = evalExpr tmp expects

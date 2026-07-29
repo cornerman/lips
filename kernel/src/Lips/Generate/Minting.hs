@@ -42,7 +42,7 @@ import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), parseD
 import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Nix.Target       (Target (..))
-import Lips.Kernel.Expect          (Expect (..), parseExpectBody)
+import Lips.Kernel.Expect          (Expect (..), isArtifactExpect, parseExpectBody)
 import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
 
@@ -509,6 +509,14 @@ commonBody = T.unlines
   , "option. The rule that emits it is the whole contract. Expects are for"
   , "options that hold a value from the program: a string, number, path, list of"
   , "strings, or record."
+  , "DO EXPECT AN ARTIFACT ARG: an artifact slot IS assertable, and it is how a"
+  , "program whose whole result is a build gets pinned at all. Name the arg path"
+  , "you emit:"
+  , "  0.95 a1 expect artifact.greet.args.text from cmd.greet.msg"
+  , "It is judged against the realized artifact args (no nix eval, so a"
+  , "derivation reference inside the arg is fine). Whenever a program value ends"
+  , "up in an artifact arg rather than in a module option, write this expect --"
+  , "otherwise nothing pins that value and the contract is empty."
   , ""
   , "REPORT (exactly one, id d1, REQUIRED -- a mint without it is refused):"
   , "explain in plain words the language you just built, for a human who will"
@@ -648,8 +656,12 @@ gapsOf items = [g | ItemGap g <- items]
 -- empty @pkgs@ stub, so naming one is a mint defect. Returned so @generate@
 -- and @check@ reject it loud (deduce-or-fail) rather than crash the eval.
 uncheckableExpects :: [MapRule] -> [Expect] -> [Expect]
-uncheckableExpects rules = filter ((`elem` derivationPaths) . exPath)
+uncheckableExpects rules = filter uncheckable
   where
+    -- An ARTIFACT assertion needs no eval at all (its value is a literal in the
+    -- ground base, judged by 'Lips.Kernel.Expect.checkArtifactValues'), so a
+    -- derivation-referencing artifact arg is checkable, not uncheckable.
+    uncheckable e = not (isArtifactExpect e) && exPath e `elem` derivationPaths
     derivationPaths =
       [ emPath em | r <- rules, em <- mrEmits r, valueRefsDerivation (emRhs em) ]
 

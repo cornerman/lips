@@ -68,9 +68,12 @@ run modeOf assemble budget rules demands src = do
 -- whole pipeline three times to answer three questions about one run.
 -- The base it was projected FROM travels with them, so a caller that judges
 -- the output against the program (the behavioral contract) cannot pair a module
--- with someone else's base.
+-- with someone else's base. So does the GROUND base it was projected from: an
+-- artifact arg is not an attribute of the module, so a contract on one is judged
+-- against these decisions (see 'Lips.Kernel.Expect.checkArtifactValues').
 data Realization = Realization
   { rlBase     :: Base
+  , rlGround   :: Base
   , rlModule   :: Text
   , rlArtifact :: Maybe (Text, [Text])
   , rlStaged   :: [(Text, Decision)]
@@ -84,7 +87,7 @@ runBase :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
 runBase modeOf assemble budget rules demands base0 = do
   realizable <- runGround budget rules demands (resolve modeOf assemble base0)
   let ground = fromList realizable
-  first fromRealizeError $ Realization base0
+  first fromRealizeError $ Realization base0 ground
     <$> realize modeOf assemble ground
     <*> realizeArtifactFile modeOf assemble ground
     <*> realizeStagedPaths modeOf assemble ground

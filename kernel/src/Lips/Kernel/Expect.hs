@@ -32,6 +32,8 @@ module Lips.Kernel.Expect
   , expectedValue
   , evalExpr
   , checkValues
+  , isArtifactExpect
+  , checkArtifactValues
   ) where
 
 import           Data.List  (sortOn)
@@ -193,6 +195,35 @@ evalExpr modPath expects = T.concat
   where
     nixPath e = "[ " <> T.unwords (map quote (exPath e)) <> " ]"
     quote s   = "\"" <> s <> "\""
+
+-- | Does this assertion name an ARTIFACT slot (@artifact.\<name\>.args...@)
+-- rather than a module option? Such a slot is not part of the module a caller
+-- can evaluate: it is an argument consumed by a builder, so its value never
+-- reappears as an attribute of the resulting derivation. It is a literal in the
+-- realized output, though, so the kernel judges it itself -- no nix, no eval.
+-- This is what an artifact-only engine (a program whose whole result is a built
+-- command) can pin; without it such a program had NOTHING to assert and its
+-- contract was empty, which passes trivially.
+isArtifactExpect :: Expect -> Bool
+isArtifactExpect e = case exPath e of
+  ("artifact" : _) -> True
+  _                -> False
+
+-- | Judge artifact assertions against the GROUND base -- the decisions realize
+-- turned into @artifact.nix@ -- with the same containment rule 'checkValues'
+-- uses on evaluated options. The assertion's option path IS the ground
+-- subject, so an assertion whose slot no rule fills fails loud instead of
+-- reading a silent @null@.
+checkArtifactValues :: Base -> [(Expect, Text)] -> [Text]
+checkArtifactValues ground pairs = concatMap judge pairs
+  where
+    judge (e, pv) = case [ a | d <- toList ground, dSubject d == Subject (exPath e)
+                             , let Assertion a = dAssertion d ] of
+      []      -> [ dotted (exPath e) <> ": nothing realizes this slot, so the "
+                    <> "program value " <> pv <> " lands nowhere" ]
+      (a : _) | pv `T.isInfixOf` a -> []
+              | otherwise -> [ dotted (exPath e) <> ": should contain " <> pv
+                                <> ", but is " <> a ]
 
 -- | Judge the eval results against the program values. Containment: each
 -- program value must appear in its option's evaluated JSON. Returns one message
