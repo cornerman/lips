@@ -37,7 +37,8 @@ import           System.Exit        (ExitCode (..), exitFailure)
 import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist,
                                      doesPathExist, getTemporaryDirectory, listDirectory,
-                                     removeDirectoryRecursive, removePathForcibly)
+                                     removeDirectoryRecursive, removePathForcibly,
+                                     getPermissions, setPermissions, setOwnerWritable)
 import           System.FilePath    (takeDirectory, (</>))
 import           System.Posix.Temp  (mkdtemp)
 import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
@@ -1036,7 +1037,14 @@ copyTree src dst = do
   forM_ entries $ \e -> do
     isDir <- doesDirectoryExist (src </> e)
     if isDir then copyTree (src </> e) (dst </> e)
-             else copyFile (src </> e) (dst </> e)
+             else do
+               copyFile (src </> e) (dst </> e)
+               -- A staged tree is lips's own working copy: source fills WRITE into
+               -- it. Copying preserves the mode, and a language folder read from
+               -- the nix store is read-only (a compile inside a derivation), so
+               -- the copy is made writable or the fill dies with EACCES.
+               perms <- getPermissions (dst </> e)
+               setPermissions (dst </> e) (setOwnerWritable True perms)
 
 -- | The standard message skeleton: a plain headline, optional indented detail
 -- lines, and a final "→" action. Every error the CLI prints is built from it,
