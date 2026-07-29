@@ -1,0 +1,8 @@
+p1 meta lang.pattern.p1 stated "show a kanban board in the terminal => concept board.intro \"kanban board terminal app\"" @gen:1e47296c063d8d9f
+p2 meta lang.pattern.p2 stated "the board is stored in <path> => fact board.path \"<path>\"" @gen:1e47296c063d8d9f
+p3 meta lang.pattern.p3 stated "the board has the columns <columns> => fact board.columns \"<columns>\"" @gen:1e47296c063d8d9f
+p4 meta lang.pattern.p4 stated "write the tool in go using only the standard library with no external dependencies => concept board.toolchain \"go stdlib only, no external dependencies\"" @gen:1e47296c063d8d9f
+p5 meta lang.pattern.p5 stated "install the tool as the command <name> => fact tool.<name> \"<name>\"" @gen:1e47296c063d8d9f
+r1 meta engine.rule.r1 stated "match fact board.path => home.sessionVariables.BOARD_PATH \"\\\"<value>\\\"\"" @gen:1e47296c063d8d9f
+r2 meta engine.rule.r2 stated "match fact board.columns => home.sessionVariables.BOARD_COLUMNS \"\\\"<value>\\\"\"" @gen:1e47296c063d8d9f
+r3 meta engine.rule.r3 stated "match fact tool.<name> => artifact.<name>.builder \"\\\"buildGoModule\\\"\" ; artifact.<name>.args.pname \"\\\"<name>\\\"\" ; artifact.<name>.args.version \"\\\"0.1.0\\\"\" ; artifact.<name>.args.src \"./artifacts/<name>\" ; artifact.<name>.args.vendorHash \"null\" ; home.packages \"[ ${artifact.<name>} ]\"" @gen:1e47296c063d8d9f

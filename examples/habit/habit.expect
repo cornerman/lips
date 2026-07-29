@@ -1,0 +1,2 @@
+a1 expect xdg.configFile.habit-logpath.text from habit.logpath
+a2 expect xdg.configFile.habit-heatmapdays.text from habit.heatmapdays

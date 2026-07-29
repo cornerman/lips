@@ -1,0 +1,2 @@
+a1 expect home.sessionVariables.BOARD_PATH from board.path
+a2 expect home.sessionVariables.BOARD_COLUMNS from board.columns

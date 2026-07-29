@@ -1,0 +1,12 @@
+p1 meta lang.pattern.p1 stated "track daily habits from the terminal => concept habit.intro \"track daily habits from the terminal\"" @gen:e5b440b33cfef9c1
+p2 meta lang.pattern.p2 stated "the habit log is stored in <path> => fact habit.logpath \"<path>\"" @gen:e5b440b33cfef9c1
+p3 meta lang.pattern.p3 stated "each log line holds an iso date and a habit name separated by a tab => concept habit.logformat \"each log line holds an ISO date and a habit name separated by a tab\"" @gen:e5b440b33cfef9c1
+p4 meta lang.pattern.p4 stated "print a heatmap of the last <days> days for the habit named on the command line => fact habit.heatmapdays \"<days>\"" @gen:e5b440b33cfef9c1
+p5 meta lang.pattern.p5 stated "write the tool in go using only the standard library with no external dependencies => concept habit.build \"write the tool in go using only the standard library with no external dependencies\"" @gen:e5b440b33cfef9c1
+p6 meta lang.pattern.p6 stated "install the tool as the command <name> => fact habit.command.<name> \"<name>\"" @gen:e5b440b33cfef9c1
+q1 meta engine.demand.q1 stated "demand habit.logpath \"where is the habit log file stored (its path)?\"" @gen:e5b440b33cfef9c1
+q2 meta engine.demand.q2 stated "demand habit.heatmapdays \"how many days should the heatmap cover?\"" @gen:e5b440b33cfef9c1
+q3 meta engine.demand.q3 stated "demand habit.command.<name> \"what command name should the tool be installed as?\"" @gen:e5b440b33cfef9c1
+r1 meta engine.rule.r1 stated "match fact habit.logpath => xdg.configFile.habit-logpath.text \"\\\"<value>\\\"\"" @gen:e5b440b33cfef9c1
+r2 meta engine.rule.r2 stated "match fact habit.heatmapdays => xdg.configFile.habit-heatmapdays.text \"\\\"<value>\\\"\"" @gen:e5b440b33cfef9c1
+r3 meta engine.rule.r3 stated "match fact habit.command.<name> => home.packages \"[ ${artifact.<name>} ]\" ; artifact.<name>.builder \"\\\"buildGoModule\\\"\" ; artifact.<name>.args.pname \"\\\"<name>\\\"\" ; artifact.<name>.args.version \"\\\"0.1.0\\\"\" ; artifact.<name>.args.src \"./artifacts/<name>\" ; artifact.<name>.args.vendorHash \"null\"" @gen:e5b440b33cfef9c1
