@@ -25,7 +25,7 @@
 module Main (main) where
 
 import           Control.Exception  (IOException, try)
-import           Control.Monad      (forM, forM_, unless)
+import           Control.Monad      (filterM, forM, forM_, unless)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -121,8 +121,10 @@ compileLoose mout mLangDir file = do
   eng     <- loadLangOrDie dir file
   target  <- readRecordedTarget dir file
   case validate file eng program of
-    Left f                 -> die (printFail file f)
-    Right (_, nixMod, art) -> do
+    Left f   -> die (printFail file f)
+    Right rz -> do
+      let nixMod = rzModule rz
+          art    = rzArtifact rz
       let outDirPath = maybe (compiledPath file) id mout
       ensureDerived file
       callCommand ("mkdir -p " <> shq outDirPath)
@@ -194,8 +196,15 @@ checkLoose mLangDir file = do
 
 -- | The behavioral gate: the committed @.expect@ contract against the realized
 -- module. Reached only after diagnostics confirm the program crystallizes.
+-- Validates once, up front: the module, its artifacts and the paths it names
+-- all come from that one run, so the staged-source gate below and the contract
+-- judge the same realization.
 expectGate :: FilePath -> FilePath -> EngineData -> Text -> IO ()
 expectGate dir file eng program = do
+  rz <- either (die . printFail file) pure (validate file eng program)
+  stagedGate (stageFromDisk dir file) file (rzStaged rz)
+  let base   = rzBase rz
+      nixMod = rzModule rz
   expSrc <- tryRead (expectPathIn dir file)
   case expSrc of
     Nothing  -> TIO.putStrLn
@@ -206,9 +215,7 @@ expectGate dir file eng program = do
       Right expects
         | bad@(_ : _) <- uncheckableExpects (edRules eng) expects ->
             die (uncheckableReport file bad)
-        | otherwise -> case validate file eng program of
-        Left f       -> die (printFail file f)
-        Right (base, nixMod, _) -> do
+        | otherwise -> do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
           res <- runExpects (stageFromDisk dir file) (map (bindSelfExpect (instanceName file)) expects) base nixMod
@@ -370,14 +377,15 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
         -- is domain-blind): name both remedies rather than blame one side.
         Left (FailRun (OpenQuestions qs)) -> die (demandGenerateFail f qs)
         Left ff -> die (validationReport f (failureReport f ff))
-        Right (base, nixModule, _) -> do
-          nixCheck <- nixParses nixModule
+        Right rz -> do
+          nixCheck <- nixParses (rzModule rz)
           case nixCheck of
             Left (NixToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
             Left (NixInvalid why)   -> die (validationReport f ("the configuration lips produced isn't valid Nix:\n" <> why))
-            Right ()                -> pure (f, base, nixModule)
+            Right ()                -> pure (f, rz)
       -- Sources are minted in memory; stage them (not yet on disk) so a staged
-      -- @src = ./artifacts/<name>@ resolves during the behavioral eval.
+      -- @src = ./artifacts/<name>@ resolves during the behavioral eval and so
+      -- the staged-source gate below judges the tree this mint actually writes.
       -- NOTE: nothing forces an artifact derivation. The contract is the only
       -- thing lips evaluates, it is skipped entirely when empty, nix is lazy, and
       -- 'uncheckableExpects' forbids an expect on a derivation-valued option --
@@ -405,10 +413,15 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       case uncheckableExpects (edRules eng) expects of
         bad@(_ : _) -> die (uncheckableReport rep bad)
         []          -> pure ()
+      -- Every relative path a module names must be in the tree this mint stages:
+      -- a mint that emits `src ./artifacts/<name>` but writes its source under
+      -- another name is refused here instead of shipping a broken build.
+      forM_ validated $ \(f, rz) ->
+        stagedGate (\dst -> writeSources dst minted) f (rzStaged rz)
       -- The shared contract gates every program, each bound to its own <self>.
-      forM_ validated $ \(f, base, nixModule) -> do
+      forM_ validated $ \(f, rz) -> do
         gate <- runExpects (\dst -> writeSources dst minted)
-                           (map (bindSelfExpect (instanceName f)) expects) base nixModule
+                           (map (bindSelfExpect (instanceName f)) expects) (rzBase rz) (rzModule rz)
         case gate of
           Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
           Left (EvalFailed e)  -> die (nixEvalFailed f "generate" e)
@@ -431,9 +444,9 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       TIO.writeFile (generationPath rep) rec
       TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
       writeSources (artifactsPath rep) minted
-      forM_ validated $ \(f, base, _) -> do
+      forM_ validated $ \(f, rz) -> do
         ensureDerived f
-        TIO.writeFile (decisionsPath f) (renderBase base)
+        TIO.writeFile (decisionsPath f) (renderBase (rzBase rz))
       -- Bootstrap the contract on first generation only; keep the committed
       -- spec stable across regenerations.
       maybe (TIO.writeFile (expectPath rep) (renderExpect mintedExpects))
@@ -449,8 +462,8 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
              [ "", "lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":" ]
              ++ [ "  - " <> gapSlug g | g <- gaps ])
         ++ [ "" ]
-        ++ [ "→ preview:  lips compile " <> T.pack f | (f, _, _) <- validated ]
-      case [ m | (f, _, m) <- validated, f == rep ] of
+        ++ [ "→ preview:  lips compile " <> T.pack f | (f, _) <- validated ]
+      case [ rzModule rz | (f, rz) <- validated, f == rep ] of
         (m : _) -> TIO.putStr m
         []      -> pure ()
 
@@ -635,7 +648,19 @@ schemaExpr HomeManager flakeref = T.pack $ concat
 -- The module and the artifact.nix (the buildable derivations, or Nothing) are
 -- projected from the same bound rules and ground base, so the artifacts a
 -- compiled flake addresses are exactly the ones the module @let@-binds.
-validate :: FilePath -> EngineData -> Text -> Either Failure (Base, Text, Maybe (Text, [Text]))
+-- | Everything the deterministic pipeline projects from one program under one
+-- engine: the ground-producing base, the module, the buildable artifacts (or
+-- 'Nothing'), and the relative paths the module names (which the caller checks
+-- against the tree it stages). One record, so every call site sees the same
+-- projections of one run.
+data Realized = Realized
+  { rzBase     :: Base
+  , rzModule   :: Text
+  , rzArtifact :: Maybe (Text, [Text])
+  , rzStaged   :: [(Text, Decision)]
+  }
+
+validate :: FilePath -> EngineData -> Text -> Either Failure Realized
 validate file eng program =
   case crystallize file (edPatterns eng) program of
     Left errs  -> Left (FailRead errs)
@@ -654,7 +679,9 @@ validate file eng program =
         Left err        -> Left (FailRun err)
         Right nixModule -> case runBaseArtifact modeOf assembleSubject budget rules demands base of
           Left err  -> Left (FailRun err)
-          Right art -> Right (base, nixModule, art)
+          Right art -> case runBaseStaged modeOf assembleSubject budget rules demands base of
+            Left err     -> Left (FailRun err)
+            Right staged -> Right (Realized base nixModule art staged)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable
@@ -792,6 +819,32 @@ writeSources root = mapM_ one
       let p = root <> "/" <> T.unpack (sfArtifact sf) <> "/" <> T.unpack (sfPath sf)
       callCommand ("mkdir -p " <> shq (parentDir p))
       TIO.writeFile p (sfContent sf)
+
+-- | The staged-source gate: every relative path the realized module names must
+-- exist in the tree lips stages beside it (an artifact's minted source).
+-- Without it such a path reaches nix, which fails with @path '...' does not
+-- exist@ over a store path, naming neither lips, the program, the artifact nor
+-- a remedy -- and only at the user's @nix run@, since nothing lips evaluates
+-- forces an artifact (TODO 1e). Checked against a real staging into a temp dir,
+-- not against a guess at how a path maps to the language folder, so the gate
+-- sees exactly what nix will see.
+--
+-- A path filled from a program word (@src ./artifacts/\<name\>@) is how this
+-- fails in practice: the staged tree exists under the ONE name that was minted,
+-- so renaming the command in the program leaves the path pointing at nothing.
+-- Hence the remedy is regeneration: the source tree is minted, never edited.
+stagedGate :: (FilePath -> IO ()) -> FilePath -> [(Text, Decision)] -> IO ()
+stagedGate _     _    []     = pure ()
+stagedGate stage file staged = do
+  dir <- mkTempDir
+  stage (dir </> "artifacts")
+  missing <- filterM (fmap not . doesPathExist . (dir </>) . T.unpack . fst) staged
+  case missing of
+    [] -> pure ()
+    ms -> die (report
+      (T.pack file <> " names " <> plural (length ms) "file" <> " that lips never staged:")
+      [ p <> " (named by " <> niceSubject (dSubject d) <> ")" | (p, d) <- ms ]
+      ("→ the source tree is minted, so rebuild it: lips generate " <> T.pack file))
 
 -- | Stage a language's committed @artifacts@ tree (found under @dir@) into
 -- @dst@ (the temp module's @artifacts/@). A no-op when the program has no
