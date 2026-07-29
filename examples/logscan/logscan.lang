@@ -1,6 +1,5 @@
-p1 meta lang.pattern.p1 stated "filter json lines read from standard input => concept io.stdin \"read JSON lines from standard input\"" @gen:680173e57b54dbb3
-p2 meta lang.pattern.p2 stated "keep a line only when every field named on the command line equals the value given with it => concept filter.logic \"keep line only if every named field equals its given value\"" @gen:680173e57b54dbb3
-p3 meta lang.pattern.p3 stated "print each kept line unchanged => concept io.stdout \"print each kept line unchanged\"" @gen:680173e57b54dbb3
-p4 meta lang.pattern.p4 stated "write the tool in go using only the standard library with no external dependencies => concept build.lang \"go, stdlib only, no external dependencies\"" @gen:680173e57b54dbb3
-p5 meta lang.pattern.p5 stated "install the tool as the command <name> => fact tool.<name> \"<name>\"" @gen:680173e57b54dbb3
-r5 meta engine.rule.r5 stated "match fact tool.<name> => artifact.<name>.builder \"\\\"buildGoModule\\\"\" ; artifact.<name>.args.pname \"\\\"<name>\\\"\" ; artifact.<name>.args.version \"\\\"0.1.0\\\"\" ; artifact.<name>.args.src \"./artifacts/<name>\" ; artifact.<name>.args.vendorHash \"null\" ; home.packages \"[ ${artifact.<name>} ]\"" @gen:680173e57b54dbb3
+p1 meta lang.pattern.p1 stated "filter json lines read from standard input => concept io.stdin \"filter json lines read from standard input\"" @gen:d60a5245ed432793
+p2 meta lang.pattern.p2 stated "keep a line only when every field named on the command line equals the value given with it => concept io.filter \"keep a line only when every field named on the command line equals the value given with it\"" @gen:d60a5245ed432793
+p3 meta lang.pattern.p3 stated "print each kept line unchanged => concept io.output \"print each kept line unchanged\"" @gen:d60a5245ed432793
+p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact cmd.<name>.name \"<name>\"" @gen:d60a5245ed432793
+r1 meta engine.rule.r1 stated "match fact cmd.<name>.name => artifact.<name>.builder \"\\\"buildGoModule\\\"\" ; artifact.<name>.args.pname \"\\\"<value>\\\"\" ; artifact.<name>.args.version \"\\\"0.1.0\\\"\" ; artifact.<name>.args.src \"./artifacts/<name>\" ; artifact.<name>.args.vendorHash \"null\" ; artifact.<name>.fill.name \"\\\"<value>\\\"\" ; home.packages \"[ ${artifact.<name>} ]\"" @gen:d60a5245ed432793

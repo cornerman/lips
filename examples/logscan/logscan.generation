@@ -91,11 +91,12 @@ instance names, artifacts).
 Output ONLY lines of these forms, no prose, no code fences. Every line
 starts with a bare confidence NUMBER as its very first token -- never the
 word "because" or any other keyword -- then its id, then a leading
-keyword naming its kind (pattern|match|demand|expect|because), so a
+keyword naming its kind (pattern|match|merge|demand|expect|because), so a
 pattern template may itself begin with any word:
 
   <confidence> <id> pattern <template> => <kind> <subject> "<assertion>" ; <kind> <subject> "<assertion>"
   <confidence> <id> match <kind> <subject> => <option.path> "<rhs>" ; <option.path> "<rhs>"
+  <confidence> <id> merge <option.path> set|list
   <confidence> <id> demand <subject> "<question>"
   <confidence> <id> expect <option.path> from <subject>[#<n>]
   <confidence> <id> because "<reason>"
@@ -115,7 +116,13 @@ must cover every input line. template = the loose line with VALUES
 replaced by <holes>; fixed words match literally (case-insensitive).
 Each hole binds exactly one token, captured verbatim. To capture a QUOTED
 value that may contain spaces, use a quoted hole: text "<body>" binds the
-inner text of a "..." value (quotes dropped). A BULLETED list item begins
+inner text of a "..." value (quotes dropped). To capture an UNQUOTED value
+of several words, use a multi-token hole <name.words>: it binds one or more
+tokens joined by single spaces, may sit anywhere in the template, and ends
+where the template's next literal matches -- 'back up <src.words> to
+<target>' reads 'back up my home folder to nas' as src='my home folder'. As
+the LAST template token it binds the rest of the line, which is how one line
+carries several items ('install <pkgs.words>'). A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -123,6 +130,13 @@ language AND port; "- /hi => status 200 text/plain \"hi\"" fixes a route's
 status, type and body). A line matches ONE pattern, so that pattern must
 emit ONE decision per fact, separated by ' ; ', or a demand on the second
 fact can never be met. Give each emit its own subject.
+ONE FACT PER OPTION SLOT, though: split a line into several facts only when
+each one lands in its OWN option. When several words of one line must end up
+in the SAME option value (a route's status and body written into one file, a
+record's fields in one string), they are ONE fact -- put them in one
+assertion, in a fixed order, and let the rule spend them with <value.1>,
+<value.2>. Two rules emitting to one option path is a conflict, and lips
+refuses it: an option holds one value, so nothing may set it twice.
 A HEADING or label line that only groups and introduces the lines under it
 (e.g. "http routes:") carries no value to realize: emit a single
 'concept' decision for it and write NO rule -- a concept is decorative
@@ -320,6 +334,12 @@ relative to the artifact's source root:
   <confidence> <id> source <name> <relpath> <<<lips
   ...verbatim file content...
   lips>>>
+In a source block, <name> is the CONCRETE name this program gives the thing
+(hello, logscan) -- never <self> and never a capture: the block becomes a
+directory on disk, so a literal '<self>' would leave args.src pointing at
+nothing. The RULE keeps the hole (args.src ./artifacts/<name>), so the same
+language serves the next program; a program that renames the thing rebuilds
+its source, which is what regeneration is for.
 Reference the built artifact in an option with ${artifact.<name>}, e.g.
   systemd.services.<name>.serviceConfig.ExecStart
     "\"${artifact.<name>}/bin/<name>\""
@@ -330,19 +350,53 @@ A built program has an INTERFACE: where its input comes from, where its
 output goes, and how its configuration reaches it. Deduce it from the
 program: what fits the problem that program states, by the best practice of
 the kind of program it is. There is no default to fall back on.
-Source is a FIXED BLOB with no holes, so a program VALUE written into source
-freezes there: editing it in the program can no longer flow through, and the
-built program silently keeps the old one. Carry every value the program
-states through an OPTION instead, and let the source read it at runtime --
-an environment variable on the unit that runs it (the unit's environment
-holds the hole, the source reads that variable by name), or, when nothing
-runs it, a second artifact built with writeShellApplication whose text sets
-the variable and execs the first. Only STRUCTURE belongs in source: the
-algorithm, the file format, the protocol -- what the program says rather
-than what it states as a value.
+A program VALUE may reach INSIDE the source, through a FILL. Write the value
+in the source as @marker@ (a name starting with a letter, of letters, digits,
+_ or -) and declare the marker beside the artifact's args:
+  artifact.<name>.fill.<marker> "\"<value>\""
+The rhs is an ordinary value, so every hole works there (<value>, <value.N>,
+a capture), and lips substitutes it when it stages the source -- offline, at
+compile time, so editing the program flows through to the built binary. This
+is how a captured command name reaches go.mod ('module @name@') or Cargo.toml.
+Both halves must agree or lips refuses: every fill you declare must be named
+by some source file, and every @marker@ in source must be declared. A fill
+carries TEXT, so its value must be a literal string or number -- never a
+${...} reference (a store path is not known offline). Do NOT smuggle shell
+into a build argument (a postInstall loop renaming a binary) to work around
+a missing hole: a fill is the mechanism, and a computation is a gap to file.
+A PATH INSIDE A BUILD MUST EXIST: when an option references something under
+${artifact.<name>} (a binary under /bin), the name in that path is decided by
+the SOURCE you wrote, not by the derivation, and no gate can look inside a
+build. So make the source name it: whatever file of yours names the built
+program must carry the same word the option's path uses -- through a fill when
+that word comes from the program. Re-read your own source before you finish
+and check the two agree; a mismatch ships a service that cannot start.
+A fill is substituted ONCE, at compile: for a value that changes while the
+program runs, or a value the source must read per request, carry it through
+an OPTION instead and let the source read it at runtime -- an environment
+variable on the unit that runs it (the unit's environment holds the hole, the
+source reads that variable by name), or, when nothing runs it, a second
+artifact built with writeShellApplication whose text sets the variable and
+execs the first. Source still holds STRUCTURE: the algorithm, the file
+format, the protocol. A REPEATING structure inside source (one code block per
+route, per mount) has no hole form -- a fill replaces a marker, it cannot
+repeat a block -- so that is a gap to file, not something to fake.
+
+SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute
+elements to one list option, lips aggregates them, and by default the option
+is a SET -- two lines naming one package name it once, so a repeated element
+collapses. Declare an option a LIST only where a repeat is genuinely meant:
+  <confidence> m1 merge <option.path> list
+The path is written exactly as in a rule (a <capture> covers the whole
+family). Write no merge line for the ordinary case.
 
 DEMANDS (ids q1, q2, ...): what any program in this language must state,
 as a subject plus the question to ask when it is missing.
+The subject must be one a PATTERN EMITS, matched segment for segment, since
+that is the only decision that can answer it -- so write the capture too:
+beside a pattern emitting command.<name>, demand command.<name>; a bare
+demand command is one segment short and no program can ever meet it. An
+unanswerable demand is refused.
 
 EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
@@ -363,6 +417,14 @@ derivation; such an expect is rejected. Write NO expect for a derivation
 option. The rule that emits it is the whole contract. Expects are for
 options that hold a value from the program: a string, number, path, list of
 strings, or record.
+DO EXPECT AN ARTIFACT ARG: an artifact slot IS assertable, and it is how a
+program whose whole result is a build gets pinned at all. Name the arg path
+you emit:
+  0.95 a1 expect artifact.greet.args.text from cmd.greet.msg
+It is judged against the realized artifact args (no nix eval, so a
+derivation reference inside the arg is fine). Whenever a program value ends
+up in an artifact arg rather than in a module option, write this expect --
+otherwise nothing pins that value and the contract is empty.
 
 REPORT (exactly one, id d1, REQUIRED -- a mint without it is refused):
 explain in plain words the language you just built, for a human who will
@@ -377,9 +439,9 @@ GAPS (ids g1, g2, ...; zero or more): whenever you wanted to express
 something and the grammar above could not, file it instead of working
 around it. Each names the missing capability by a short slug, and its body
 gives the blocked program line and the smallest repro:
-  <confidence> g1 gap templated-source <<<lips
+  <confidence> g1 gap repeating-source <<<lips
   blocked line: - /hi => status 200
-  source heredocs have no holes, so a per-route body cannot reach the source.
+  a fill replaces a marker; it cannot repeat a code block per route.
   lips>>>
 A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
@@ -393,7 +455,6 @@ expect holds against the evaluated module.
 filter JSON lines read from standard input.
 keep a line only when every field named on the command line equals the value given with it.
 print each kept line unchanged.
-write the tool in go, using only the standard library with no external dependencies.
 install the tool as the command logscan.
 
 --- tool transcript ---
@@ -403,25 +464,26 @@ home.packages : list of package
 
 
 --- raw reply ---
-0.92 p1 pattern filter JSON lines read from standard input. => concept io.stdin "read JSON lines from standard input"
+0.95 p1 pattern filter JSON lines read from standard input. => concept io.stdin "filter json lines read from standard input"
 
-0.92 p2 pattern keep a line only when every field named on the command line equals the value given with it. => concept filter.logic "keep line only if every named field equals its given value"
+0.95 p2 pattern keep a line only when every field named on the command line equals the value given with it. => concept io.filter "keep a line only when every field named on the command line equals the value given with it"
 
-0.92 p3 pattern print each kept line unchanged. => concept io.stdout "print each kept line unchanged"
+0.95 p3 pattern print each kept line unchanged. => concept io.output "print each kept line unchanged"
 
-0.92 p4 pattern write the tool in go, using only the standard library with no external dependencies. => concept build.lang "go, stdlib only, no external dependencies"
+0.95 p4 pattern install the tool as the command <name>. => fact cmd.<name>.name "<name>"
 
-0.95 p5 pattern install the tool as the command <name>. => fact tool.<name> "<name>"
+0.95 r1 match fact cmd.<name>.name => artifact.<name>.builder "\"buildGoModule\"" ; artifact.<name>.args.pname "\"<value>\"" ; artifact.<name>.args.version "\"0.1.0\"" ; artifact.<name>.args.src "./artifacts/<name>" ; artifact.<name>.args.vendorHash "null" ; artifact.<name>.fill.name "\"<value>\"" ; home.packages "[ ${artifact.<name>} ]"
 
-0.9 r5 match fact tool.<name> => artifact.<name>.builder "\"buildGoModule\"" ; artifact.<name>.args.pname "\"<name>\"" ; artifact.<name>.args.version "\"0.1.0\"" ; artifact.<name>.args.src "./artifacts/<name>" ; artifact.<name>.args.vendorHash "null" ; home.packages "[ ${artifact.<name>} ]"
+0.9 a1 expect artifact.<name>.args.pname from cmd.<name>.name
+0.9 a2 expect artifact.<name>.fill.name from cmd.<name>.name
 
-0.9 s1 source logscan go.mod <<<lips
-module logscan
+0.95 s1 source logscan go.mod <<<lips
+module @name@
 
 go 1.21
 lips>>>
 
-0.9 s2 source logscan main.go <<<lips
+0.95 s2 source logscan main.go <<<lips
 package main
 
 import (
@@ -433,47 +495,44 @@ import (
 )
 
 func main() {
-	filters := map[string]string{}
+	conditions := map[string]string{}
 	for _, arg := range os.Args[1:] {
 		parts := strings.SplitN(arg, "=", 2)
-		if len(parts) == 2 {
-			filters[parts[0]] = parts[1]
+		if len(parts) != 2 {
+			fmt.Fprintf(os.Stderr, "invalid argument: %s\n", arg)
+			os.Exit(1)
 		}
+		conditions[parts[0]] = parts[1]
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, len(buf))
-
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024*10)
 	for scanner.Scan() {
 		line := scanner.Text()
-
 		var obj map[string]interface{}
 		if err := json.Unmarshal([]byte(line), &obj); err != nil {
 			continue
 		}
-
 		keep := true
-		for k, want := range filters {
-			raw, ok := obj[k]
+		for field, want := range conditions {
+			val, ok := obj[field]
 			if !ok {
 				keep = false
 				break
 			}
-			var got string
-			switch v := raw.(type) {
+			var s string
+			switch v := val.(type) {
 			case string:
-				got = v
+				s = v
 			default:
 				b, _ := json.Marshal(v)
-				got = string(b)
+				s = string(b)
 			}
-			if got != want {
+			if s != want {
 				keep = false
 				break
 			}
 		}
-
 		if keep {
 			fmt.Println(line)
 		}
@@ -481,67 +540,53 @@ func main() {
 }
 lips>>>
 
-0.9 d1 report <<<lips
-## What this language recognizes
+0.95 d1 report <<<lips
+This program describes a single self-written filter tool, so the language
+has one value-bearing line shape and three fixed descriptive lines that
+only document the tool's fixed behaviour (they carry no per-program value,
+so they crystallize as `concept`s and mint no rule):
 
-`logscan.lips` is read as five line shapes:
+- "filter JSON lines read from standard input." — describes the input
+  channel (concept `io.stdin`).
+- "keep a line only when every field named on the command line equals the
+  value given with it." — describes the filter algorithm (concept
+  `io.filter`).
+- "print each kept line unchanged." — describes the output behaviour
+  (concept `io.output`).
 
-1. **`filter JSON lines read from standard input.`** — a fixed, structural
-   sentence describing the tool's input channel. It carries no program
-   value (stdin is not a configurable option here), so it is captured as a
-   `concept` (decorative vocabulary) with no rule.
-2. **`keep a line only when every field named on the command line equals
-   the value given with it.`** — describes the filtering algorithm itself.
-   The actual field names/values are supplied at *invocation* time (argv),
-   not written into the program, so there is nothing to extract as a
-   config value; this is algorithm, so it lives in the artifact's source,
-   not in an option. Captured as a `concept`.
-3. **`print each kept line unchanged.`** — describes the output channel
-   (stdout, verbatim). Also a `concept`.
-4. **`write the tool in go, using only the standard library with no
-   external dependencies.`** — this sentence *selects the mechanism*: Go,
-   built via nixpkgs' `buildGoModule`, with no vendored/external Go
-   modules. Since "go" here is a mechanism-selecting word rather than a
-   value, it stays as literal template text and is realized as a `concept`
-   too; the actual mechanism choice (buildGoModule, `vendorHash = null`
-   because there are no external deps to vendor) is made once, at full
-   confidence, in the rule for the next line.
-5. **`install the tool as the command <name>.`** — the one line that
-   states an actual program VALUE: the command's name (`logscan`). This is
-   captured as `fact tool.<name>` and is what names the built artifact, so
-   editing this word renames the binary, the build directory, and the
-   installed package everywhere consistently.
+The one value-bearing line is:
 
-## Mechanism chosen
+  install the tool as the command <name>.
 
-The tool is a short-lived CLI filter invoked by the user (stdin -> stdout,
-argv-driven), not a long-running daemon, so no `systemd.user.service` is
-needed — it is simply built and put on `PATH` via `home.packages`. It is
-built from source with `buildGoModule` because the program says "in go...
-standard library... no external dependencies," which needs nothing beyond
-`pname`/`version`/`src`/`vendorHash`. `vendorHash` is set to `null` because
-the program explicitly states there are no external dependencies to
-vendor/hash. `version` ("0.1.0") and the go.mod module path ("logscan")
-are build-recipe constants with no observable effect on program behavior,
-so they are chosen once at full confidence rather than demanded.
+which captures the command's name (here `logscan`) as `cmd.<name>.name`.
+This is the only word in the program that varies across instances of this
+language, and everything else follows mechanically from it.
 
-## What was invented
+Mechanism chosen: since the program must filter arbitrary JSON lines by
+equality on arbitrary command-line-specified fields — a small algorithm,
+not configuration of an existing package — it is written from source and
+built with `buildGoModule` (Go's standard `encoding/json` makes this a
+robust, dependency-free implementation, so `vendorHash` is `null`). The
+built derivation is exposed as an ordinary user package via
+`home.packages`, since the program only asks that the tool be *installed
+as a command*, not run as a background service.
 
-- The Go module name/version placeholder (pure build plumbing, no
-  behavioral effect).
-- The actual filtering/JSON-parsing/printing logic, since the program only
-  states the algorithm in prose ("keep a line only when every field named
-  on the command line equals the value given with it") — this is
-  structure, not a value, so it is written once into `main.go` and reads
-  its filters from `os.Args` at runtime rather than freezing anything the
-  program could later change; there is nothing in the program text for a
-  future edit to redirect here.
+The captured command name reaches the build in two places: as the
+derivation's `pname` (so nix knows the package's name), and as a `fill`
+substituted into `go.mod`'s `module @name@` line, so the compiled binary
+is actually named `logscan` (buildGoModule names the binary after the
+module/package path) — this keeps `${artifact.logscan}/bin/logscan`
+truthful. `version` is an invented build constant ("0.1.0"), never asked
+of the program, since it has no observable effect on behaviour.
 
-## What is NOT expected
+The Go source itself implements the fixed algorithm literally stated by
+the three descriptive lines: read newline-delimited JSON from stdin,
+parse each line, keep it only if every `field=value` pair given as a
+command-line argument matches (comparing strings directly, and JSON
+round-tripping non-string field values for comparison), and print kept
+lines unchanged to stdout.
 
-No `expect` lines are emitted: the only program-stated value (the command
-name) flows exclusively into package/build definitions (`artifact.*.args`,
-`home.packages`), which build a derivation rather than set a checkable
-config value, and such options are explicitly exempt from behavioral
-expects.
+Nothing was left as a demand: the program fully names everything a
+build needs (the tool's own name); there was no silent gap to ask the
+human to fill in.
 lips>>>

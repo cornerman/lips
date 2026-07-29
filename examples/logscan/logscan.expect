@@ -1,0 +1,2 @@
+a1 expect artifact.<name>.args.pname from cmd.<name>.name
+a2 expect artifact.<name>.fill.name from cmd.<name>.name
