@@ -2519,11 +2519,14 @@ main = hspec $ do
         , "must be one a PATTERN EMITS"
         , "expect <option.path> from <subject>"
         , "pattern|match|demand|expect|because"
-        -- A built program has an interface, and source has no holes: both are
-        -- universal physics, so they belong here and not in a per-language
-        -- .direction file (docs/gaps/README.md, findings 1 and 4).
+        -- A built program has an interface, and a program word reaches inside its
+        -- source through a fill: both are universal physics, so they belong here
+        -- and not in a per-language .direction file (docs/gaps/README.md,
+        -- findings 1 and 4; TODO 1d for the fill).
         , "A built program has an INTERFACE"
-        , "Source is a FIXED BLOB with no holes"
+        , "reach INSIDE the source, through a FILL"
+        -- The capture forms are dead capability unless the prompt offers them.
+        , "multi-token hole <name.words>"
         -- Mechanism is the engine's job, not a gap (the greet
         -- builder-name-choice refusal), and a capture may key a build and fill
         -- a value (docs/gaps/README.md, finding 2, closed in the kernel).
