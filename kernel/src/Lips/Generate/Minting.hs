@@ -28,6 +28,7 @@ module Lips.Generate.Minting
   , assemble
   , expectsOf
   , sourcesOf
+  , unnamedSources
   , reportOf
   , gapsOf
   , carriesEngineMeaning
@@ -42,6 +43,7 @@ import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), parseD
 import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Nix.Target       (Target (..))
+import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Expect          (Expect (..), isArtifactExpect, parseExpectBody)
 import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
@@ -467,6 +469,12 @@ commonBody = T.unlines
   , "  <confidence> <id> source <name> <relpath> <<<lips"
   , "  ...verbatim file content..."
   , "  lips>>>"
+  , "In a source block, <name> is the CONCRETE name this program gives the thing"
+  , "(hello, logscan) -- never <self> and never a capture: the block becomes a"
+  , "directory on disk, so a literal '<self>' would leave args.src pointing at"
+  , "nothing. The RULE keeps the hole (args.src ./artifacts/<name>), so the same"
+  , "language serves the next program; a program that renames the thing rebuilds"
+  , "its source, which is what regeneration is for."
   , "Reference the built artifact in an option with ${artifact.<name>}, e.g."
   , "  systemd.services.<name>.serviceConfig.ExecStart"
   , "    \"\\\"${artifact.<name>}/bin/<name>\\\"\""
@@ -658,6 +666,17 @@ expectsOf items = [e | ItemExpect e <- items]
 -- @artifacts/@, committed and reviewable).
 sourcesOf :: [EngineItem] -> [SourceFile]
 sourcesOf items = [s | ItemSource s <- items]
+
+-- | The source blocks whose artifact name still carries a @\<hole\>@ token. A
+-- source tree is written to disk under that name, so a block minted for
+-- @artifact.\<self\>@ creates a directory literally called @\<self\>@ and the
+-- module's @src = ./artifacts/hello@ then points at nothing -- a defect two live
+-- mints produced in a row. The remedy is a concrete name: the tree is baked for
+-- the program as it stands (renaming the thing in the program is a regeneration,
+-- which is what the staged-source gate says), while the RULE keeps the hole so
+-- the same language serves the next instance.
+unnamedSources :: [SourceFile] -> [SourceFile]
+unnamedSources = filter (not . null . nameTokens . sfArtifact)
 
 -- | The language explained in the mint's own words (the @README.md@ body).
 -- The first report wins; @generate@ refuses a mint that has none.

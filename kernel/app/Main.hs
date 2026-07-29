@@ -49,7 +49,7 @@ import           Lips.Identity                 (requireProgram, readmePath, arti
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, unnamedSources)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (corpusText, genId, record, recordedProgram)
 import           Lips.Kernel.Base       (Conflict (..))
@@ -426,6 +426,18 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- governs (the stable spec regeneration may not silently break); on first
       -- generation the minted assertions bootstrap it.
           mintedExpects = expectsOf (map icItem candidates)
+      -- A source tree is written under the artifact name the block gives, so a
+      -- name still holding a hole makes a directory called "<self>" and the
+      -- module's src points at nothing. Refused here, where the mint is still
+      -- rejectable, instead of as a missing path two gates later.
+      case unnamedSources minted of
+        []  -> pure ()
+        bad -> die (report
+          (T.pack rep <> ": " <> plural (length bad) "source file"
+            <> " named for an artifact whose name is still a hole:")
+          [ sfArtifact sf <> "/" <> sfPath sf | sf <- bad ]
+          ("\8594 a baked source tree needs the concrete name this program gives it"
+            <> " (the RULE keeps the hole); run generate again."))
       -- --renew re-blesses the behavioral contract: ignore the committed
       -- .expect (do not even read it) so the minted assertions bootstrap it
       -- afresh and overwrite the file below. Every correctness gate above and
