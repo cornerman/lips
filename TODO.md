@@ -177,6 +177,98 @@
 Each is stated with its promise in DESIGN §13, "Verified Breakages". Ranked by
 blast radius; V1-V4 are small, local fixes with tests missing.
 
+### The plan (execution order)
+
+One worktree under `.worktrees/`, TDD per item, one single-line commit per item,
+rebase + ff-merge, ledger §13 updated as each lands. Each numbered step names
+its own proof, so "done" is never an assertion.
+
+**Wave 1 -- red build and silent-wrong output (do together, one branch).**
+
+1. V2 `artifact.nix` recursive. Test first: a two-artifact ground base
+   (`core` + a wrapper whose `args.runtimeInputs` holds `${artifact.core}`)
+   through `realizeArtifactFile`; assert the file evaluates. Then `rec {`.
+   Proof: the new test, plus `nix eval` of the compiled `artifact.nix`.
+2. V3 dangling refs in artifact args. Test first: the same base with the
+   wrapper naming `${artifact.nosuch}`; assert `RDangling ["nosuch"]`. Then
+   collect names from artifact groups beside option values in `renderModule`,
+   and do the same in `realizeArtifactFile` (today it checks nothing at all).
+   Proof: the new test; all 13 examples still realize byte-identically.
+3. V1 one naming rule, not two. Delete `parse` from
+   `nix/modulesFromDir.nix` and let the binary answer instead -- add a
+   read-only `lips identify <program>` (or `--print-paths`) that prints the
+   instance, language and language dir, and have the derivation read it. If
+   that verb is judged too much surface, the fallback is to mirror
+   `Lips.Identity`'s rule in Nix with a comment naming it as a duplicate.
+   Proof: `nix build .#checks.x86_64-linux.lipsModules-eval` green with the
+   four singleton examples committed (it is red today).
+4. V7 refuse a non-`.lips` program. Test first: `resolveLangDir`-level (or a
+   new `programPath`) rejection of `x.backup.txt` and of a `.lang` passed as a
+   program, naming the marker. Then one fail-loud check in `Lips.Identity`,
+   called by every verb that takes a PROGRAM. Proof: the tests, plus
+   `lips check examples/backup/backup.lang` failing with a sentence about
+   `.lips`.
+
+**Wave 2 -- grammar completeness and capability symmetry.**
+
+5. V4 one quote-aware emit splitter. Test first: round-trip a rule whose rhs
+   contains `" ; "` (`environment.etc.foo.text "cd /x ; ls"`) through
+   `renderRuleBody`/`parseRuleBody`, and a QuickCheck property over generated
+   values so the case cannot regress. Then lift `splitEmits`/`unescapedQuotes`
+   out of `Kernel/Lang/Store.hs` into one shared home (they are the same rule
+   the pattern side already uses) and call it from `parseRuleBody`. Proof: the
+   tests; every committed engine parses byte-identically.
+6. V5 `<self>` fills by occurrence in an expect path. Test first: an expect on
+   `...<self>-core...` binds to `<instance>-core`. Then replace the literal
+   comparison in `bindSelfExpect` with `fillName`, the call the rule side makes.
+   Proof: the test; existing contracts unchanged (a whole `<self>` renders the
+   same).
+
+**Wave 3 -- the two decisions (argue before coding; both are doctrine).**
+
+7. V6 the concept escape. Not a patch: pick one of (a) a `Concept` must be
+   answered by a realizing sibling under the same subject prefix, (b) an
+   artifact records the program lines its source came from (item 1a(iii)) so a
+   decorative behavior line becomes a dropped word, (c) `generate` refuses an
+   engine with zero checkable assertions unless every option it fills is
+   derivation-valued. Whichever wins, `examples/logscan` is the repro and the
+   acceptance test; write the decision into DESIGN §11 (with the refusal
+   recorded if the answer is "live with it").
+8. V8 the deploy path's missing gate. Decide whether
+   `lib.modulesFromDir`/`vm-smoke`/`artifact-vm` are gate-free by design (the
+   gate ran at `check` time, in the repo, and a derivation has no `nix`) or
+   whether compile takes an explicit `--no-contract` so the skip is stated.
+   Either way the choice lands in DESIGN §13 and the README paragraph that now
+   only warns about it.
+9. TODO 1e's artifact contract (an artifact's instantiability is its contract)
+   is the natural sequel to wave 1: with V2 and V3 fixed, forcing each
+   artifact's `drvPath` is the last hole between a green `check` and a broken
+   `nix run`.
+
+**Wave 4 -- simplification, no behavior change (each its own commit).**
+
+10. `Kernel/Run.hs` exports `runGround`; `runBase`/`runBaseArtifact`/
+    `runBaseStaged` become pure projections of one result, and `validate` runs
+    the pipeline once instead of three times (`compile` once instead of four).
+    Proof: all examples compile byte-identically.
+11. Collapse the duplicated helpers: `parseQuoted` (three copies), `kindText`
+    (three), `stripTailPunct`/`stripTrailingPunct` (two). Proof: suite green,
+    output byte-identical.
+12. Retire the `*Replace` wrappers (`resolveReplace`, `realizeReplace`,
+    `runReplace`, `runBaseReplace`) in favour of test helpers, so the suite
+    stops paying for production surface.
+13. Replace the shell-outs with `directory`/`temporary` calls (`mktemp`,
+    `mkdir -p` with hand-rolled quoting, `cp -rT`), and make the staging copy
+    fail loud instead of swallowing every error.
+14. Cosmetics: the double `Data.Maybe` import in `Kernel/Engine/Data.hs`, the
+    `pAttrKey` comment that contradicts its code (hyphens and `'` are
+    accepted; its char list repeats `-`), and the `@print@` verb in
+    `Kernel/Refine.hs` and `Kernel/Realize.hs` comments.
+
+Done already (6e0471c): the documentation half of this review -- stale ledger
+claims corrected in DESIGN/README/AGENTS/kernel README, this section written,
+and the breakages recorded in DESIGN §13.
+
 V1. **`lib.modulesFromDir` cannot read a singleton program, so `nix flake
     check` is red.** `nix/modulesFromDir.nix` takes filename element 0 as the
     instance and element 1 as the language, so `board.lips` becomes language
