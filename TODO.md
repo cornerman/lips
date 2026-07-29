@@ -92,7 +92,13 @@
       artifact -- and it answers it with shell.
 
    e. **A CLI engine has nothing to pin** — no longer theoretical: it shipped a
-      broken build. The first `board` mint (2026-07-28, claude-sonnet-5) emitted
+      broken build. **Half closed** (ledger §13, "Staged sources"): every relative
+      path a module names must exist in the staged tree, checked at `check` and at
+      `generate`, which refuses the two staging repros on record (the `habit` mint
+      staging its source under the literal directory `<name>`, and a renamed
+      command leaving `./artifacts/kb` pointing at nothing). Offline, no nix eval.
+      Still open below: a malformed *builder argument* set (`pname` with no
+      `version`), which no path check can see. The first `board` mint (2026-07-28, claude-sonnet-5) emitted
       `args.pname` with no `args.version`, so nixpkgs could not derive a name and
       `nix run …#artifact.board` died with `attribute 'name' missing` — a raw nix
       error naming neither lips, the program, the artifact, nor a remedy, past
@@ -112,7 +118,7 @@
       expression a gate would build: board FAILS (`attribute 'name' missing`),
       greet and http INSTANTIATE, so it refuses the bad mint with no false
       positives.
-      Open decision (deferred 2026-07-28): WHERE it runs. `generate` only keeps
+      Open decision (deferred 2026-07-28, still open): WHERE it runs. `generate` only keeps
       `check`/`compile` offline, deterministic and schema-free as documented, but
       leaves an engine committed before the gate silently broken; adding it to
       `check` catches those at the cost of that stated property. Rejected on

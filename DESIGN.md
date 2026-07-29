@@ -1321,6 +1321,30 @@ but the loop around it is incomplete; "missing" means specced, not built.
   before), keeping `uncheckableExpects` honest. Verified 229/229, `-Wall` clean;
   an end-to-end test realizes `install htop, ripgrep.` + `install tmux.` to
   `environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];`.
+- **Staged sources: a path the module names must be there.** A relative path
+  literal is the one value a realized module cannot vouch for itself: nix
+  resolves it against the module directory, i.e. against the tree lips stages
+  beside the module (an artifact's minted source). Two mints proved the hole,
+  both past every gate with `check` reporting success: the `habit` mint emitted
+  `args.src ./artifacts/<name>` but wrote its source under the literal directory
+  `<name>`, and renaming the command in `board.lips` left the filled path
+  `./artifacts/kb` pointing at a tree staged only for `board`. Both died inside
+  nix with `path '/nix/store/...-source/artifacts/habit' does not exist`, naming
+  neither lips, the program, the artifact, nor a remedy, and only at the user's
+  `nix run`. The fix is domain-blind and needs no builder knowledge:
+  `realizeStagedPaths` reports every relative path in the ground base with the
+  decision that named it (structural, from the parsed `Value` via `valuePaths`,
+  so a quoted `"./x"` string is a string), `runBaseStaged` projects it from the
+  same `runGround` the module and `artifact.nix` come from, and `stagedGate`
+  (`Main.hs`) requires each path to exist in a real staging into a temp dir --
+  the territory nix will see, not a guess at how a path maps to the language
+  folder. It runs at `check` (so `compile` inherits it) and at `generate` over
+  the in-memory minted sources, so a mint whose source tree and path disagree is
+  refused instead of committed. An absolute path is the host's to have, so it is
+  not checked. Remedy named in the message is regeneration, since minted source
+  is never hand-edited (invariant 4). Verified 341/341, `-Wall` clean; both
+  repros refused, the other eleven examples unchanged.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone, `compile`
