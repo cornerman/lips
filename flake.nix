@@ -102,6 +102,7 @@
             test -n "${toString (builtins.attrNames mods.nixosModules)}"
             test -n "${toString (builtins.attrNames mods.homeManagerModules)}"
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
+            touch "$out"
           '';
         # Every artifact a committed example declares must INSTANTIATE: a green
         # `lips check` says the program's values reached the output, not that the
