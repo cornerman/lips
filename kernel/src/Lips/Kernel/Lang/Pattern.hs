@@ -50,6 +50,7 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Decision (Assertion (..), Kind, Strength (Stated), Subject (..))
+import Lips.Kernel.Surface  (stripTrailingPunct)
 
 -- | A template token: a literal to match (stored already normalized), a hole
 -- that binds one loose token's surface form, or a tail hole that binds the
@@ -100,12 +101,6 @@ holesOf p = [h | tok <- pTemplate p, h <- tokHoles tok]
     tokHoles (THole h) = [h]
     tokHoles (TTail h) = [h]
     tokHoles _         = []
-
--- | Strip trailing sentence punctuation, so @inbox\/.@ captures as @inbox\/@
--- and a template literal @files.@ matches @files@. Internal punctuation (the
--- slash in @inbox\/@) is preserved: only the tail is sentence noise.
-stripTrailingPunct :: Text -> Text
-stripTrailingPunct = T.dropWhileEnd (`elem` (".,;:!?" :: String))
 
 -- | Normalize a token for literal comparison: lowercase after stripping
 -- trailing punctuation. Total and deterministic (no morphology yet).

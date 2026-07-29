@@ -1,6 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | The quoting and separator rules every stored lips line shares: a decision
+-- | The surface conventions of lips text: how a line is quoted, where it may be
+-- split, and what counts as sentence noise at the end of a token. Every layer
+-- that reads or writes lips text (a decision line, a @.lang@ pattern, a rule
+-- body, a program token) shares them.
+--
+-- The quoting and separator rules every stored lips line shares: a decision
 -- line, a @.lang@ pattern body, a rule body, an expect body. All of them wrap
 -- free text in @"..."@ with @\\"@ and @\\\\@ escapes, and all of them separate
 -- clauses with a token (@ => @, @ ; @) that the free text may itself contain.
@@ -12,13 +17,14 @@
 -- written at all -- and reported the defect as an unterminated string. A
 -- missing grammar case is a kernel bug, so the careful rule became the only
 -- rule.
-module Lips.Kernel.Quoting
+module Lips.Kernel.Surface
   ( quoteText
   , parseQuoted
   , unescapedQuotes
   , splitOutsideQuotes
   , breakFirstOutsideQuotes
   , breakLastOutsideQuotes
+  , stripTrailingPunct
   ) where
 
 import           Data.Text (Text)
@@ -88,3 +94,12 @@ breakLastOutsideQuotes :: Text -> Text -> Maybe (Text, Text)
 breakLastOutsideQuotes sep t = case outsideQuotes sep t of
   [] -> Nothing
   xs -> Just (last xs)
+
+-- | Strip trailing sentence punctuation, so @inbox\/.@ captures as @inbox\/@,
+-- a template literal @files.@ matches @files@, and a value token keeps its
+-- meaning when a human ends the sentence. Internal punctuation (the slash in
+-- @inbox\/@) is preserved: only the tail is noise. One definition, because the
+-- language layer and the value grammar were each carrying their own copy of the
+-- same character list.
+stripTrailingPunct :: Text -> Text
+stripTrailingPunct = T.dropWhileEnd (`elem` (".,;:!?" :: String))

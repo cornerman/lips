@@ -50,8 +50,8 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe      (isJust, mapMaybe)
 
 import Lips.Kernel.Capture         (captureName, fillCaptures, fillName, matchSubject, selfName)
-import           Lips.Kernel.Quoting (breakFirstOutsideQuotes, quoteText, splitOutsideQuotes)
-import qualified Lips.Kernel.Quoting as Q
+import           Lips.Kernel.Surface (breakFirstOutsideQuotes, quoteText, splitOutsideQuotes)
+import qualified Lips.Kernel.Surface as Q
 import Lips.Kernel.Engine.Value    (Value, bindCaptureValue, bindSelfValue, fillValue, holeIndex, parseValue, renderValue, valueCaptures)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Decision
@@ -309,10 +309,7 @@ renderAttrPath = T.intercalate "." . map (T.concatMap esc)
 
 parseKindTok :: Text -> Text -> Either Text Kind
 parseKindTok pre w =
-  note (pre <> "unknown kind " <> w) (lookup w [(kindText k, k) | k <- [minBound .. maxBound]])
-
-kindText :: Kind -> Text
-kindText = T.toLower . T.pack . show
+  note (pre <> "unknown kind " <> w) (lookup w kindTable)
 
 note :: Text -> Maybe a -> Either Text a
 note e = maybe (Left e) Right

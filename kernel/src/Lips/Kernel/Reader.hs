@@ -30,7 +30,7 @@ import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Base     (Base, fromList, toList)
-import Lips.Kernel.Quoting  (parseQuoted, quoteText)
+import Lips.Kernel.Surface  (parseQuoted, quoteText)
 import Lips.Kernel.Decision
 
 -- | A parse failure, anchored to the 1-based source line so the report is
@@ -193,14 +193,3 @@ renderProv (Derived ids (RuleId r)) =
   "<-" <> T.intercalate "," [i | DecisionId i <- ids] <> " via " <> r
 renderProv (FromGeneration gid) = "@gen:" <> gid
 
-kindTable :: [(Text, Kind)]
-kindTable = [(kindText k, k) | k <- [minBound .. maxBound]]
-
-strengthTable :: [(Text, Strength)]
-strengthTable = [(strengthText s, s) | s <- [minBound .. maxBound]]
-
-kindText :: Kind -> Text
-kindText = T.toLower . T.pack . show
-
-strengthText :: Strength -> Text
-strengthText = T.toLower . T.pack . show

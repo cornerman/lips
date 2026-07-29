@@ -40,8 +40,8 @@ import qualified Data.Text  as T
 import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), parseDemandBody,
                              parseRuleBody, renderDemandBody, renderRuleBody)
 import Lips.Kernel.Engine.Value    (parseHoleType)
-import Lips.Kernel.Quoting  (breakLastOutsideQuotes, quoteText, splitOutsideQuotes)
-import qualified Lips.Kernel.Quoting as Q
+import Lips.Kernel.Surface  (breakLastOutsideQuotes, quoteText, splitOutsideQuotes)
+import qualified Lips.Kernel.Surface as Q
 import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Reader   (ParseError (..), readDecision, renderBase)
@@ -291,8 +291,3 @@ firstToken t err =
 parseQuoted :: Text -> Either Text Text
 parseQuoted = fmap fst . Q.parseQuoted
 
-kindTable :: [(Text, Kind)]
-kindTable = [(kindText k, k) | k <- [minBound .. maxBound]]
-
-kindText :: Kind -> Text
-kindText = T.toLower . T.pack . show

@@ -49,7 +49,7 @@ data RefineError
   | -- | A rule matched a decision but could not rewrite it: the program value
     -- does not fit the rule (a missing @\<value.N\>@ token, a wrong-typed
     -- hole). Carries the decision, the rule, and the reason, so an edit that
-    -- breaks a value fails loud on @print@ instead of crashing.
+    -- breaks a value fails loud on @compile@ instead of crashing.
     RewriteFailed DecisionId RuleId Text
   deriving (Eq, Show)
 

@@ -36,7 +36,7 @@ import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderReal
 -- | Why a ground base could not be projected to a module. Every case is an
 -- engine defect (a minted rule that emitted an ill-formed artifact group or a
 -- reference to an artifact nothing builds), surfaced as a value the caller
--- reports, never a crash -- 'realize' is on the deterministic @print@ path.
+-- reports, never a crash -- 'realize' is on the deterministic @compile@ path.
 data RealizeError
   = -- | Equal-strength contradictions block realization (both provenances travel).
     RConflicts [Conflict]

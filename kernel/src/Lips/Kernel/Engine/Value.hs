@@ -66,6 +66,7 @@ import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Capture (NamePiece (..), fillName, nameParse, nameTokens, selfName)
+import Lips.Kernel.Surface (stripTrailingPunct)
 
 -- | One piece of a string value. 'PRef' is a @${pkgs.<dotted-path>}@ package
 -- reference; 'PArt' is a @${artifact.<name>}@ reference to a program-derived
@@ -448,9 +449,10 @@ pAttr t acc = case T.uncons t of
       Just ('}', r) -> Right (VAttr (reverse ((name, v) : acc)), r)
       _ -> Left ("an attrset field must end with ; or } (after key " <> name <> ")")
 
--- | A bare-identifier attrset key: a non-empty run of @[_A-Za-z0-9]@ starting
--- with a letter or underscore. Hyphens and quotes are rejected so the key is
--- always a valid bare Nix attribute name (never subtraction or a string).
+-- | A bare-identifier attrset key: a non-empty run of the characters a Nix bare
+-- attribute name allows (@[_A-Za-z0-9-']@) starting with a letter or
+-- underscore. A quoted or symbolic key is rejected, so program text can never
+-- turn the key into a string or an expression.
 pAttrKey :: Text -> Either Text (Text, Text)
 pAttrKey t =
   let (k, rest) = T.span isKeyChar t
@@ -459,7 +461,7 @@ pAttrKey t =
         Just (c, _) | isAsciiAlpha c || c == '_' -> Right (k, rest)
         _ -> Left ("an attrset key must start with a letter or underscore: " <> k)
   where
-    isKeyChar c = isAsciiAlpha c || isDigit c || c `elem` ("_-'-" :: String)
+    isKeyChar c = isAsciiAlpha c || isDigit c || c `elem` ("_-'" :: String)
     -- ASCII-only (mirrors 'okSeg'): a Nix bare attribute name allows no
     -- unicode, so a broad 'Data.Char.isAlpha' would admit invalid keys.
     isAsciiAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
@@ -656,7 +658,7 @@ fillValue pick = fmap renderValue . fillV
       -- list of @pkgs.<token>@ derivations (one line of package names becomes
       -- one list of packages).
       tok <- pick h
-      let toks = map stripTailPunct (filter (not . T.null) (T.words tok))
+      let toks = map stripTrailingPunct (filter (not . T.null) (T.words tok))
       if null toks
         then Left ("the value hole <" <> h <> ".tail> matched no tokens; there is nothing left on the line to fill it")
         else case mht of
@@ -700,9 +702,3 @@ fillValue pick = fmap renderValue . fillV
       "the value hole <" <> h <> ":pkg> was filled with a token that is not a valid "
         <> "package name (letters, digits, '-', '_', and dots only): " <> tok
 
--- | Strip trailing sentence punctuation from a token. A twin of
--- 'Lips.Kernel.Lang.Pattern.stripTrailingPunct', duplicated here so the value
--- grammar stays decoupled from the language layer; the two share a rule, so
--- they name it alike and must be kept in step.
-stripTailPunct :: Text -> Text
-stripTailPunct = T.dropWhileEnd (`elem` (".,;:!?" :: String))

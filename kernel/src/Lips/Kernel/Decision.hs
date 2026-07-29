@@ -20,9 +20,14 @@ module Lips.Kernel.Decision
   , Kind (..)
   , Assertion (..)
   , Decision (..)
+  , kindText
+  , kindTable
+  , strengthText
+  , strengthTable
   ) where
 
-import Data.Text (Text)
+import           Data.Text (Text)
+import qualified Data.Text as T
 
 -- | An attribute path, e.g. @["account","balance"]@. The key decisions merge
 -- on: same subject means the decisions are about the same thing and compete.
@@ -98,3 +103,20 @@ data Decision = Decision
   , dRationale :: Maybe Text
   }
   deriving (Eq, Ord, Show)
+
+-- | The surface word for a kind, and its inverse table. One definition beside
+-- the type, because every stored line -- a decision, a @.lang@ pattern emit, a
+-- rule body -- spells a kind the same way; it used to be spelled by three
+-- private copies.
+kindText :: Kind -> Text
+kindText = T.toLower . T.pack . show
+
+kindTable :: [(Text, Kind)]
+kindTable = [(kindText k, k) | k <- [minBound .. maxBound]]
+
+-- | The surface word for a strength, and its inverse table (see 'kindText').
+strengthText :: Strength -> Text
+strengthText = T.toLower . T.pack . show
+
+strengthTable :: [(Text, Strength)]
+strengthTable = [(strengthText s, s) | s <- [minBound .. maxBound]]
