@@ -1,8 +1,9 @@
-p1 meta lang.pattern.p1 stated "serve http on port <port> => fact server.port \"<port>\"" @gen:52facc6748e74a46
-p2 meta lang.pattern.p2 stated "respond to every request with the text <text> => fact server.text \"<text>\"" @gen:52facc6748e74a46
-p3 meta lang.pattern.p3 stated "write the server in go using only the standard library with no external dependencies => fact server.lang \"go-stdlib\"" @gen:52facc6748e74a46
-p4 meta lang.pattern.p4 stated "run it as a systemd service named <name> => fact service.name \"<name>\"" @gen:52facc6748e74a46
-r1 meta engine.rule.r1 stated "match fact server.port => systemd.services.<self>.environment.PORT \"\\\"<value>\\\"\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\"" @gen:52facc6748e74a46
-r2 meta engine.rule.r2 stated "match fact server.text => artifact.<self>.fill.RESPONSE_TEXT \"\\\"<value>\\\"\"" @gen:52facc6748e74a46
-r3 meta engine.rule.r3 stated "match fact server.lang => artifact.<self>.builder \"\\\"buildGoModule\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.vendorHash \"null\" ; artifact.<self>.args.src \"./artifacts/<self>\"" @gen:52facc6748e74a46
-r4 meta engine.rule.r4 stated "match fact service.name => artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.fill.NAME \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.ExecStart \"\\\"${artifact.<self>}/bin/<value>\\\"\" ; systemd.services.<self>.wantedBy \"[ \\\"multi-user.target\\\" ]\"" @gen:52facc6748e74a46
+p1 meta lang.pattern.p1 stated "serve http on port <port> => fact server.port \"<port>\"" @gen:56ed0d67184da94e
+p2 meta lang.pattern.p2 stated "respond to every request with the text <text> => fact server.text \"<text>\"" @gen:56ed0d67184da94e
+p3 meta lang.pattern.p3 stated "run it as a systemd service named <name> => fact server.name \"<name>\"" @gen:56ed0d67184da94e
+q1 meta engine.demand.q1 stated "demand server.port \"what port should the server listen on?\"" @gen:56ed0d67184da94e
+q2 meta engine.demand.q2 stated "demand server.text \"what text should every request receive?\"" @gen:56ed0d67184da94e
+q3 meta engine.demand.q3 stated "demand server.name \"what should the systemd service be named?\"" @gen:56ed0d67184da94e
+r1 meta engine.rule.r1 stated "match fact server.port => systemd.services.<self>.environment.PORT \"\\\"<value>\\\"\"" @gen:56ed0d67184da94e
+r2 meta engine.rule.r2 stated "match fact server.text => systemd.services.<self>.environment.RESPONSE_TEXT \"\\\"<value>\\\"\"" @gen:56ed0d67184da94e
+r3 meta engine.rule.r3 stated "match fact server.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.wantedBy \"[ \\\"multi-user.target\\\" ]\" ; systemd.services.<self>.after \"[ \\\"network.target\\\" ]\" ; systemd.services.<self>.serviceConfig.ExecStart \"\\\"${artifact.http-echo}/bin/http-echo\\\"\" ; artifact.http-echo.builder \"\\\"buildGoModule\\\"\" ; artifact.http-echo.args.pname \"\\\"http-echo\\\"\" ; artifact.http-echo.args.version \"\\\"0.1.0\\\"\" ; artifact.http-echo.args.src \"./artifacts/http-echo\" ; artifact.http-echo.args.vendorHash \"null\"" @gen:56ed0d67184da94e

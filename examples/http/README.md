@@ -2,34 +2,57 @@
 
 # The `http` language
 
-This program describes a single self-written Go HTTP server, deployed as one systemd service.
+## What this language describes
 
-Line shapes recognized:
-- `serve http on port <port>.` — fixes the listen port. The value feeds a `PORT` environment
-  variable on the service (read by the Go program at runtime) and is also opened in the host
-  firewall, since a program stating it serves http on a port means that port should be reachable.
-- `respond to every request with the text "<text>".` — fixes the response body. The value is
-  compiled into the Go source through a `fill` (marker `@RESPONSE_TEXT@`), since it never changes
-  at runtime.
-- `write the server in go, using only the standard library with no external dependencies.` — this
-  line is pure mechanism selection: "go" picks `buildGoModule` as the builder, and "standard
-  library / no external dependencies" justifies `vendorHash = null` (no modules to vendor). It
-  carries no per-program value, so its fact has an empty, fixed assertion and a rule that only
-  sets build-recipe constants (builder, version placeholder, vendorHash, source path).
-- `run it as a systemd service named <name>.` — the human-chosen name. Per the instance-naming
-  rule, the systemd unit key itself is `<self>` (the program's own instance, not a name read from
-  the program), but the captured word is not decoration: it becomes the artifact's `pname`, the
-  `@NAME@` fill for `go.mod` (which is what actually determines the built binary's filename), and
-  the literal binary name in `ExecStart`, so editing this word renames the built program.
+A program in this language is a tiny, always-on HTTP server, one systemd
+service per program file. It reads exactly three sentences:
 
-Mechanism choices: `pkgs.buildGoModule` for a small dependency-free Go program (plainest builder
-for "go, standard library only"); a `0.1.0` version placeholder (build constant, no observable
-effect); `vendorHash = null` (no external deps, so no vendoring to hash); PORT delivered via an
-environment variable (the idiomatic runtime-configurable knob for a Go net/http server) rather than
-a compile-time fill, since a port is the kind of value that should stay adjustable without a
-rebuild; the response text, by contrast, is static content and is compiled in via a fill.
-`networking.firewall.allowedTCPPorts` is opened for the same port, since a program that serves an
-http port is assumed to want it reachable.
+- `serve http on port <port>.` -- which port the server listens on.
+- `respond to every request with the text "<text>".` -- the fixed text sent
+  back to every request, on every path.
+- `run it as a systemd service named <name>.` -- a human-readable name for
+  the resulting systemd unit.
 
-No demands were needed: the four lines already state every fact the language requires (port, text,
-language/mechanism, service name).
+All three are required (each has a demand), since a server with no port, no
+response text, or no stated name is not a fully specified program.
+
+## Mechanism
+
+Each program is realized as one systemd service, keyed by the program's own
+instance name (its filename) via `<self>` -- this is what lets several
+`*.http.lips` programs coexist in one machine configuration without their
+units colliding.
+
+The actual server is a small Go program (`buildGoModule`), built once as a
+shared artifact named literally `http-echo` (not per-instance): its logic
+never depends on which program is using it, only on the port and text each
+program supplies, and those reach it at *runtime* through two environment
+variables on the systemd unit, `PORT` and `RESPONSE_TEXT` -- not baked into
+the binary at build time. This means the same compiled binary serves every
+program written in this language; only the unit's environment differs.
+`vendorHash` is `null` because the server uses only the Go standard library,
+with no external modules to vendor.
+
+The stated service name doesn't rename the systemd unit itself (that key is
+always `<self>`, matching the file), but it does become the unit's
+`description`, so it still governs something real and editing it changes
+the realized module.
+
+## What I had to invent
+
+- The port and response text travel to the binary via environment
+  variables rather than being compiled in, since that is the natural way
+  for a value to reach a long-running server without rebuilding it, and it
+  keeps the build itself independent of any one program's content.
+- The artifact's package name (`http-echo`), version (`0.1.0`), and the
+  choice of `buildGoModule` are fixed mechanism decisions -- the programs
+  never name the underlying binary, so nothing here should be a hole.
+- `wantedBy = [ "multi-user.target" ]` and `after = [ "network.target" ]`
+  are the ordinary defaults for an always-on network service; the programs
+  never discuss startup ordering, so these are mechanism constants, not
+  holes.
+
+No expects were written for the build/derivation options (`ExecStart`,
+`artifact.http-echo.*`), since those hold package/build references, not
+checkable program values; the three real values (port, text, name) each
+have their own expect against the option they land in.

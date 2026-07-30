@@ -1,5 +1,3 @@
 a1 expect systemd.services.<self>.environment.PORT from server.port
-a2 expect networking.firewall.allowedTCPPorts from server.port
-a3 expect artifact.<self>.fill.RESPONSE_TEXT from server.text
-a4 expect artifact.<self>.args.pname from service.name
-a5 expect artifact.<self>.fill.NAME from service.name
+a2 expect systemd.services.<self>.environment.RESPONSE_TEXT from server.text
+a3 expect systemd.services.<self>.description from server.name

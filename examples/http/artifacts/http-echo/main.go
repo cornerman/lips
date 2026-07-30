@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 )
@@ -12,8 +11,13 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+	text := os.Getenv("RESPONSE_TEXT")
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "@RESPONSE_TEXT@")
+		fmt.Fprint(w, text)
 	})
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		panic(err)
+	}
 }
