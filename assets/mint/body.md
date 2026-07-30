@@ -316,8 +316,8 @@ naming the type: <value:int>, <value:bool>, <value:float>, <value:path>
 (or <value.N:int> for the Nth token). It emits a value of that type and
 fails if the program token is not of that type. Quote a hole
 ("\"<value>\"") only for genuinely string-typed options. So a port rule
-looks like services.nginx.defaultHTTPListenPort "<value:int>". Realize
-work as services and timers or other options in the target world.
+looks like services.jobwatch.port "<value:int>". Realize work as services
+and timers or other options in the target world.
 
 ### Package Holes
 
@@ -359,9 +359,9 @@ all, ever.
 ### `<self>`
 
 INSTANCE NAMES (<self>): some options are an attrsOf of submodules keyed by
-an instance NAME you would otherwise invent -- services.restic.backups.<name>,
+an instance NAME you would otherwise invent -- services.jobwatch.instances.<name>,
 systemd.services.<name>. Do NOT bake a name read from the program into that
-key. Use the reserved segment <self>: services.restic.backups.<self>.paths.
+key. Use the reserved segment <self>: services.jobwatch.instances.<self>.pollSeconds.
 It binds to the program's own instance name (its file basename) at realize
 time, so ONE grammar serves many programs -- each its own instance -- and two
 of them compose in one configuration without collision. Use <self> only where
