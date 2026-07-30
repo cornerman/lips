@@ -1298,6 +1298,12 @@ failureReport file (FailRead errs) =
     -- above it. Naming that is the remedy, so say it rather than "unreadable".
     crystDetail (NoParentBlock n t _) =
       "line " <> tshow n <> ": " <> t <> " -- this belongs inside a block, and no line above it opens one"
+    -- The setup names one of this line's words as an identity, and the word
+    -- cannot be one: what the line states could not be written down and read
+    -- back, so the decisions file would stop being readable text.
+    crystDetail (Unreadable n t why) =
+      "line " <> tshow n <> ": " <> t
+        <> " -- what this line states cannot be written down and read back (" <> why <> ")"
 failureReport file (FailRun err) = case err of
   ParseRejected es ->
     reportHead (T.pack file <> " has lines that couldn't be read:")

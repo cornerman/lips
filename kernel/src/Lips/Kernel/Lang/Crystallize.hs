@@ -39,7 +39,7 @@ import Lips.Kernel.Base     (Base, fromList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Lang.Nest    (noFrames, recordLine, scopeLine)
 import Lips.Kernel.Lang.Pattern
-import Lips.Kernel.Reader   (joinSubject)
+import Lips.Kernel.Reader   (ParseError (..), joinSubject, readDecision, render)
 
 -- | A crystallization failure, anchored to the 1-based loose line.
 data CrystError
@@ -50,6 +50,11 @@ data CrystError
   | -- | The line reads as an item of a block, and no line heading such a block
     -- precedes it: the line, its text, and the parent pattern(s) it wanted.
     NoParentBlock Int Text [Text]
+  | -- | The line reads, but a decision it states cannot be written down and read
+    -- back: the line, its text, and what the reader complained about. A captured
+    -- value carrying a character the canonical decision line reserves
+    -- (whitespace separates its fields) lands here.
+    Unreadable Int Text Text
   deriving (Eq, Show)
 
 -- | The outcome of matching one loose line against the language: what a human
@@ -105,7 +110,7 @@ classifyLines file patterns src =
 crystallize :: FilePath -> [Pattern] -> Text -> Either [CrystError] Base
 crystallize file patterns src =
   let outcomes = classifyLines file patterns src
-      errs     = [toErr o | o <- outcomes, isErr o]
+      errs     = [toErr o | o <- outcomes, isErr o] ++ unreadable outcomes
       ds       = [d | Matched _ _ _ _ dsn <- outcomes, d <- dsn]
    in if null errs then Right (fromList ds) else Left errs
   where
@@ -115,6 +120,18 @@ crystallize file patterns src =
     toErr (Ambiguous n _ ids) = Overlapping n ids
     toErr (Orphan n t qs)     = NoParentBlock n t qs
     toErr Matched{}           = error "crystallize: Matched is not an error"
+    -- A decision base IS its canonical text: the regeneration gate compares
+    -- against a committed .decisions document, so a decision that renders to a
+    -- line the reader cannot take back is not a decision at all. The check is
+    -- the round trip itself -- no list of forbidden characters, so it closes
+    -- over the whole grammar and over every future field.
+    unreadable outcomes =
+      [ Unreadable n t why
+      | Matched n t _ _ dsn <- outcomes, d <- dsn, Left why <- [rereads d] ]
+    rereads d = case readDecision (render d) of
+      Left e                -> Left (peMessage e <> ", reading back: " <> render d)
+      Right d' | d' /= d    -> Left ("reads back as a different decision: " <> render d')
+               | otherwise  -> Right ()
 
 -- | The lines that state what an earlier line already stated: same subject, same
 -- assertion. A base is keyed by subject, so such a line merges into the earlier

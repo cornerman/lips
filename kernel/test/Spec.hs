@@ -405,11 +405,12 @@ main = hspec $ do
     it "end-to-end C: one line with many packages -> one VList, aggregatable with B" $ do
       -- Capability C: a <name.tail> template hole binds the rest of a line, and
       -- a <value.tail> rhs fills to a VList of those tokens. Each line
-      -- crystallizes to a DISTINCT captured subject (install.<pkgs>), so the
+      -- crystallizes to a DISTINCT subject (install.<n:index>, since a multi-word
+      -- capture may not key a subject), so the
       -- human base does not conflict; the rule emits a VTail rhs to the COMMON
       -- environment.systemPackages, so resolve assembles both VLists into one.
       let pat = patOne "p" [TLit "install", TMulti "pkgs"] Fact
-                  [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
+                  [SLit "install.", SHole "n:index"] [SHole "pkgs"]
           tailRule = MapRule "r" Fact ["install", "<pkg>"]
                    [ Emit ["environment","systemPackages"] (VTail Nothing "value") ]
           prog = T.unlines [ "install htop, ripgrep.", "install tmux." ]
@@ -429,7 +430,7 @@ main = hspec $ do
       -- the shape environment.systemPackages demands. This is the capability
       -- the string-tail form above could not express (it would emit strings).
       let pat = patOne "p" [TLit "install", TMulti "pkgs"] Fact
-                  [SLit "install.", SHole "pkgs"] [SHole "pkgs"]
+                  [SLit "install.", SHole "n:index"] [SHole "pkgs"]
           tailRule = MapRule "r" Fact ["install", "<pkg>"]
                    [ Emit ["environment","systemPackages"] (VTail (Just HPkg) "value") ]
           prog = T.unlines [ "install htop, ripgrep.", "install tmux." ]
@@ -1351,14 +1352,17 @@ main = hspec $ do
       -- fact (the merge doctrine).
       let stepP = patOne "s" [TLit "-", TMulti "step"]
                     Fact [SLit "step.", SHole "step", SLit ".command"] [SHole "step"]
-          src = "- run tests.\n- publish.\n- run tests.\n"
+          src = "- fetch.\n- publish.\n- fetch.\n"
       restatements (classifyLines "prog" [stepP] src)
-        `shouldBe` [(3, 1, "step.run tests.command")]
+        `shouldBe` [(3, 1, "step.fetch.command")]
 
     it "a restated line still crystallizes (duplication stays a no-op)" $ do
+      -- One word per step, so the subject stays a readable canonical segment
+      -- (a multi-word capture spliced into a subject is refused; see the
+      -- crystallize round-trip block).
       let stepP = patOne "s" [TLit "-", TMulti "step"]
                     Fact [SLit "step.", SHole "step", SLit ".command"] [SHole "step"]
-      crystallize "prog" [stepP] "- run tests.\n- run tests.\n" `shouldSatisfy` isRight
+      crystallize "prog" [stepP] "- publish.\n- publish.\n" `shouldSatisfy` isRight
 
     it "reports nothing when two lines disagree (that is resolve's conflict)" $ do
       let setP = patOne "s" [TLit "set", THole "v"] Fact [SLit "cfg.k"] [SHole "v"]
@@ -2059,6 +2063,34 @@ main = hspec $ do
     it "refuses <key> in a pattern that heads no block" $
       checkNesting [patOne "p1" [TLit "x"] Concept [SHole "k:key", SLit ".a"] []]
         `shouldBe` [KeyWithoutBlock "p1"]
+
+  describe "crystallize round-trip (every decision a line states must re-read)" $ do
+    -- The defect this closes (examples/website, 2026-07-31): a two-word quoted
+    -- label was spliced into a subject SEGMENT, so the emitted line read
+    -- "d4 concept button.drück mich stated ..." -- whitespace is the decision
+    -- line's own separator, and readDecision then choked on "mich" as a
+    -- strength. Every gate was green while out/*.decisions had stopped being
+    -- canonical text, which leaves the regeneration gate comparing against a
+    -- document lips can no longer parse. Domain-blind and offline: render each
+    -- decision, read it back, insist on the same decision.
+    let button = patOne "p1" [TLit "button", THole "label"]
+                   Concept [SLit "button.", SHole "label"] [SLit "a button"]
+    it "refuses a captured value that breaks the decision line it lands in" $
+      case crystallize "w" [button] "button \"drück mich\":\n" of
+        Left [Unreadable 1 t why] -> do
+          t `shouldBe` "button \"drück mich\":"
+          why `shouldSatisfy` T.isInfixOf "unknown strength: mich"
+        other -> expectationFailure ("expected one Unreadable, got " ++ show other)
+    it "accepts a single-word capture in the same position" $
+      fmap (map (\d -> case dSubject d of Subject ss -> ss) . toList)
+           (crystallize "w" [button] "button \"go\":\n")
+        `shouldBe` Right [["button", "go"]]
+    it "leaves a multi-word value in an ASSERTION alone (it is quoted there)" $
+      -- The gate must not over-refuse: the assertion is a quoted field, so
+      -- spaces in it round-trip, and only the subject side is at risk.
+      crystallize "w" [patOne "p1" [TLit "say", THole "m"] Fact [SLit "s"] [SHole "m"]]
+                     "say \"hello world\"\n"
+        `shouldSatisfy` isRight
 
   describe "language storage (crystallization plan: .lang round-trip)" $ do
     let engine = EngineData
