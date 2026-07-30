@@ -50,6 +50,7 @@ module Lips.Kernel.Engine.Value
   , bindSelfValue
   , bindCaptureValue
   , valueCaptures
+  , valuePathHoles
   , valueUsesAssertion
   , holeIndex
   , valueRefsDerivation
@@ -271,6 +272,27 @@ valueCaptures = go
     -- capture: it binds to the instance name at realize time ('bindSelfValue'),
     -- so no rule subject binds it and 'pathCaptures' drops it.
     capOf = pathCaptures
+
+-- | The path-TYPED holes in a value, by name. A @\<x:path\>@ hole coerces a
+-- program word into a bare Nix path, and a bare Nix path means "copy this
+-- location into the store": pure evaluation refuses an absolute one outright,
+-- and for a runtime directory (a document root, a data dir) copying is never
+-- what the author meant -- the option wants the STRING @"/var/www/shop"@.
+--
+-- A Nix path is therefore an engine LITERAL (a relative in-tree path such as
+-- @.\/artifacts\/x@, which is exactly how an artifact names its source), never a
+-- coercion of a program word. This names the offenders so the mint gate can
+-- refuse them while the engine is still rejectable; without it the engine
+-- realizes valid-looking Nix that only fails when something forces the path.
+valuePathHoles :: Value -> [Text]
+valuePathHoles = go
+  where
+    go (VStr _)        = []          -- a hole inside a string stays a string
+    go (VList vs)      = concatMap go vs
+    go (VAttr fs)      = concatMap (go . snd) fs
+    go (VHole HPath h) = [h]
+    go (VTail (Just HPath) h) = [h]
+    go _               = []
 
 -- | Does this rhs read the MATCHED decision's assertion? True for a
 -- @\<value\>@ or @\<value.N\>@ hole anywhere inside it (a string piece, a bare

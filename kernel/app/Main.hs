@@ -44,7 +44,8 @@ import           System.Posix.Temp  (mkdtemp)
 import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
-import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, toDemand, toRule)
+import           Lips.Kernel.Engine.Data       (Emit (..), MapRule (..), renderAttrPath, bindSelf, keepsRepeats, toDemand, toRule)
+import           Lips.Kernel.Engine.Value      (valuePathHoles)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
@@ -431,6 +432,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       assertPatternsOrthogonal rep eng
       assertRulesOrthogonal rep eng
       assertValuesReach rep eng
+      assertNoPathHoles rep eng
       assertDemandsAnswerable rep eng
       assertOptionsAdmissible target rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
@@ -646,6 +648,32 @@ assertValuesReach file eng =
         <> "it as a literal token of the template, so editing it stops the line\n"
         <> "matching and asks for a fresh language instead of governing nothing; or,\n"
         <> "if the line truly carries no value, read it as a concept."))
+
+-- | A program word must never be coerced into a bare Nix path. A Nix path means
+-- "copy this location into the store", so an absolute one is refused outright by
+-- pure evaluation, and for a runtime directory (a document root, a data dir)
+-- copying is never the intent: the option wants the string. A path is therefore
+-- something the ENGINE writes as a literal (@.\/artifacts\/x@), never a coercion
+-- of the author's word.
+--
+-- Caught here because nothing downstream can: the realized module is valid Nix
+-- and evaluates until something forces the path, so the failure surfaces as an
+-- opaque nix error far from the rule that caused it (which is exactly how the
+-- first engine to write @\<value:path\>@ was found, in a flake check).
+assertNoPathHoles :: FilePath -> EngineData -> IO ()
+assertNoPathHoles file eng =
+  case [ (mrId r, emPath e, h)
+       | r <- edRules eng, e <- mrEmits r, h <- valuePathHoles (emRhs e) ] of
+    []  -> pure ()
+    bad -> die (validationReport file
+      ("it turns a program word into a Nix path, which copies that location into the store:\n"
+        <> T.unlines [ "  - rule " <> rid <> " fills " <> renderAttrPath pth
+                         <> " with <" <> h <> ":path>"
+                     | (rid, pth, h) <- bad ]
+        <> "\nWrite the value as a quoted STRING instead (\"\\\"<value>\\\"\"): a NixOS\n"
+        <> "option of type path accepts a string, and a directory the program names\n"
+        <> "exists on the running machine, not in the store. Keep a Nix path for a\n"
+        <> "literal the engine itself writes, like ./artifacts/<name>."))
 
 -- | A demand no pattern can ever answer blocks every program in the language,
 -- and reports itself as the author's missing fact (see

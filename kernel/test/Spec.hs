@@ -1921,6 +1921,16 @@ main = hspec $ do
       diagHeads d `shouldBe` [(1, "host shop.example.com:", 1), (3, "host blog.example.com:", 1)]
       diagInert d `shouldBe` []
 
+    it "names a program word coerced into a Nix path" $ do
+      -- A bare Nix path means "copy this location into the store": pure eval
+      -- refuses an absolute one, and a document root exists on the running
+      -- machine, not in the store. Found by a flake check on the first engine to
+      -- write <value:path>, so the gate now names it (invariant 4).
+      valuePathHoles (VHole HPath "value") `shouldBe` ["value"]
+      valuePathHoles (VStr [PHole "value"]) `shouldBe` []
+      valuePathHoles (VList [VAttr [("root", VHole HPath "value")]]) `shouldBe` ["value"]
+      valuePathHoles (VPath "./artifacts/x") `shouldBe` []
+
     it "refuses <key> in a pattern that heads no block" $
       checkNesting [patOne "p1" [TLit "x"] Concept [SHole "k:key", SLit ".a"] []]
         `shouldBe` [KeyWithoutBlock "p1"]
