@@ -16,8 +16,13 @@ themselves:
 - variable.<name>.* -- an input the human supplies at apply time.
 
 Reference another resource the way Terraform does, with a string carrying its
-address ("${aws_instance.web.id}"); nothing in this world resolves such a
-reference at Nix time.
+address -- and ESCAPE it, because ${...} is Nix's own interpolation and a
+Terraform reference is plain text to Nix:
+
+    resource.aws_s3_bucket_versioning.<self>.bucket "\${aws_s3_bucket.<self>.id}"
+
+The backslash is required: written bare, the value is rejected. Terraform
+resolves such a reference at apply time; nothing here resolves it at Nix time.
 
 query_options searches exactly this world's pinned schema, and here it is
 WEAK on purpose: terranix declares resource, data, provider, output and

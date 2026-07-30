@@ -1739,6 +1739,22 @@ main = hspec $ do
     it "rejects non-pkgs interpolation inside rhs strings" $
       parseRuleBody "r" "match fact x => a.b \"\\\"${lib.getExe pkgs.restic}\\\"\"" `shouldSatisfy` isLeft
 
+    -- A world can WANT a literal ${...} in a string: another tool's own
+    -- reference syntax (Terraform's "${aws_s3_bucket.x.id}") is text as far as
+    -- Nix and lips are concerned. The grammar already carries it as an escaped
+    -- literal, so the refusal must NAME that remedy -- deduce-or-fail means the
+    -- message says what to write instead, or the mint reads "impossible".
+    it "a literal ${...} is an escaped literal, and the refusal says so" $ do
+      parseValue "\"\\${aws_s3_bucket.assets.id}\""
+        `shouldBe` Right (VStr [PLit "${aws_s3_bucket.assets.id}"])
+      -- round-trips and realizes as an escaped literal, i.e. a Nix string whose
+      -- value is the other tool's reference text
+      fmap renderRealized (parseValue "\"\\${aws_s3_bucket.assets.id}\"")
+        `shouldBe` Right "\"\\${aws_s3_bucket.assets.id}\""
+      case parseValue "\"${aws_s3_bucket.assets.id}\"" of
+        Right v -> expectationFailure ("expected a refusal, got " <> show v)
+        Left why -> why `shouldSatisfy` T.isInfixOf "\\${"
+
     -- Models write non-string values bare (null, a path); the parser accepts
     -- both the bare and the transport-quoted form (artifacts live run).
     it "accepts a bare non-string rhs (null, path) as well as quoted" $ do

@@ -603,7 +603,14 @@ pkgsRef inside =
           Left ("${" <> inside <> "} is not a value lips can use. Inside ${...} you can"
                   <> " only name a package (pkgs.<path>) or a build (artifact.<name>);"
                   <> " each part after the dot must be a plain identifier, with no"
-                  <> " spaces, holes, or operators.")
+                  <> " spaces, holes, or operators."
+                  -- A target world may have its own ${...} syntax (another
+                  -- tool's resource references), which is plain TEXT here. That
+                  -- is expressible -- as an escaped literal -- so the refusal
+                  -- names it, rather than reading as "lips cannot do this".
+                  <> " If you meant the literal text ${" <> inside <> "} (another"
+                  <> " tool's own reference syntax, not Nix), escape it: \\${"
+                  <> inside <> "}")
 
 -- | Canonical text of a value; the exact Nix expression realize will splice.
 -- Deterministic and injection-free by construction.
