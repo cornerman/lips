@@ -2,14 +2,14 @@
 
 lips exists to shrink the artifact a human must keep reviewing down to a
 few plain sentences: a `.lips` program. Everything else -- the mechanism,
-the option paths, the NixOS wiring -- is derived, and you are the one who
+the option paths, the wiring of the target world -- is derived, and you are the one who
 derives it. The human owns only the program; you own the translation, once.
 
 You act exactly once. You read the program (or several programs of one
 kind) and mint an ENGINE: patterns that read a line like this one, rules
 that turn what a pattern reads into option assignments, and demands that
 ask for what a program leaves silent. Once you answer, lips crystallizes
-the program with your engine, realizes a NixOS module, and validates it --
+the program with your engine, realizes a module, and validates it --
 and then you are gone. From then on the human edits the program and
 `compile` re-reads it with your patterns, deterministically, offline, with
 no model anywhere in the loop.
@@ -63,7 +63,7 @@ exactly:
    `<capture>` segment binds per item and fans one rule out across an
    attrsOf option; a rule that emits into a list-typed option makes its
    subject AGGREGATE across every line that produces one.
-7. REALIZATION renders a NixOS module. lips parses it with
+7. REALIZATION renders a module for the target world. lips parses it with
    `nix-instantiate --parse`, checks every option path and type it names
    against the pinned schema, and evaluates the module to run your expects.
 
@@ -131,7 +131,7 @@ Example output lines:
 ```
 One input line became a pattern (the language: a template with a hole,
 producing a fact under a subject you named), a rule (the mechanism: that
-subject realized into a NixOS option), a demand (what a program lacking such
+subject realized into an option of the target world), a demand (what a program lacking such
 a line must be asked), and an expect (the behavioral check that the value
 really lands in the option the rule named). The construct reference below
 defines this vocabulary precisely and covers the special cases (typed
@@ -379,7 +379,7 @@ trailing period stays outside the hole.
 
 ### Typed Holes
 
-TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
+TYPED HOLES: an option is typed. For a NON-string option (a port, a
 count, a size, a toggle) do NOT quote the hole; use a typed hole
 naming the type: <value:int>, <value:bool>, <value:float>
 (or <value.N:int> for the Nth token). It emits a value of that type and
@@ -583,7 +583,7 @@ EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
 It asserts the value your patterns capture into <subject> (or its nth
-whitespace token, #n, 1-based) appears at NixOS option <option.path> in
+whitespace token, #n, 1-based) appears at option <option.path> in
 the realized module. Name the SAME option paths your rules assign. Emit
 one expect for every distinct program value a rule carries into an option,
 so realization and configurability are pinned. A VALUE-KEYED expect uses the
@@ -633,7 +633,7 @@ A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
 
 The kernel verifies: every line crystallizes, every decision is mapped,
-every demand is met, the result parses as a NixOS module, and every
+every demand is met, the result parses as a module, and every
 expect holds against the evaluated module.
 
 ## Designing a Good Language
@@ -657,8 +657,8 @@ default, a build input with no natural question to ask), lower confidence
 rather than invent, and pair it with a because-note that says in one plain
 sentence what would pin it.
 
-Name subjects the way the domain talks, not the way NixOS names its
-options: the vocabulary is what the human's next program is written
+Name subjects the way the domain talks, not the way the target world names
+its options: the vocabulary is what the human's next program is written
 against, so `backup.source` reads naturally beside a sentence about where
 files come from, while `systemd.services.<name>.environment.SRC` does not.
 

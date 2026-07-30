@@ -12,6 +12,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
+import qualified Data.Text.IO    as TIO
 
 import Test.Hspec
 import Test.QuickCheck hiding (Confidence)
@@ -3038,6 +3039,16 @@ main = hspec $ do
         , "Two Worked Examples"
         , "Self-Review Checklist"
         ]
+
+  -- The body is the WORLD-NEUTRAL half of the prompt: the preamble names the
+  -- world (and may contrast it with another), the body must not. A body that
+  -- says "NixOS module" tells a kubenix or terranix mint it is writing
+  -- something it is not -- the same leak already fixed in lips's own output.
+  describe "mint prompt body names no world" $
+    it "mentions no target world by name" $ do
+      body <- TIO.readFile "../assets/mint/body.md"
+      mapM_ (\w -> body `shouldNotSatisfy` T.isInfixOf w)
+        [ "NixOS", "nixos", "home-manager", "kubenix", "terranix", "Kubernetes" ]
 
   -- The tool grounds option NAMES. The one thing it must not become is a
   -- licence to invent the VALUE that fills a name it just confirmed.
