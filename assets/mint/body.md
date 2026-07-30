@@ -375,12 +375,19 @@ trailing period stays outside the hole.
 ### Typed Holes
 
 TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
-count, a size, a toggle, a path) do NOT quote the hole; use a typed hole
-naming the type: <value:int>, <value:bool>, <value:float>, <value:path>
+count, a size, a toggle) do NOT quote the hole; use a typed hole
+naming the type: <value:int>, <value:bool>, <value:float>
 (or <value.N:int> for the Nth token). It emits a value of that type and
 fails if the program token is not of that type. Quote a hole
 ("\"<value>\"") only for genuinely string-typed options. So a port rule
-looks like services.jobwatch.port "<value:int>". Realize work as services
+looks like services.jobwatch.port "<value:int>".
+NEVER <value:path>, even for an option whose type is path. A bare Nix path
+means "copy this location into the store": an absolute one is refused outright
+by pure evaluation, and a directory the program names (a document root, a data
+dir) exists on the RUNNING MACHINE, not in the store. A path-typed option
+accepts a string, so write "\"<value>\"". lips refuses an engine that does
+otherwise. Keep an unquoted path for a literal YOU write, like
+./artifacts/<name>. Realize work as services
 and timers or other options in the target world.
 
 ### Package Holes

@@ -519,6 +519,21 @@ but the loop around it is incomplete; "missing" means specced, not built.
   editing these changes no output", because editing it changes every option its
   items realize.
 
+- **A program word may not become a Nix path.** Found by `nix flake check` on the
+  first engine ever to write `<value:path>` (the vhost mint, for an nginx document
+  root): a bare Nix path means "copy this location into the store", so pure
+  evaluation refuses an absolute one, and a directory the program names lives on
+  the running machine, not in the store. Nothing downstream could catch it -- the
+  realized module is valid Nix and evaluates until something forces the path, so
+  the failure surfaces as an opaque nix error far from the rule that caused it.
+  Now refused at the mint gate (`assertNoPathHoles` over
+  `Engine.Value.valuePathHoles`), with the fix named: a path-typed option accepts
+  a string, so write `"\"<value>\""`. A Nix path stays what the ENGINE writes as a
+  literal (`./artifacts/<name>`). The prompt states the rule too, since a fresh
+  `pi` process has no memory of the refusal and re-minted the same rule verbatim
+  until told; the guard is what makes it impossible, the prompt is what makes it
+  unnecessary.
+
 - **A line that restates an earlier one is named.** Found while trialling blocks:
   two program lines crystallizing to an identical decision (same subject, same
   assertion) merge into one, and nothing could see it -- `diagInert` works per
