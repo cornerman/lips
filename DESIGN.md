@@ -1223,6 +1223,20 @@ but the loop around it is incomplete; "missing" means specced, not built.
   says so to the mint in those words, and `TODO.md` carries the remedy
   (`terraform providers schema -json`, a per-provider fetch at generate time).
 
+  Rejected, and recorded so it is not re-asked: an HCL (`.tf`) rung beside the
+  JSON, by analogy with kubenix's YAML. The analogy does not hold. kubenix
+  DECLARES `resultYAML` itself, so exposing it converted nothing, whereas
+  terranix renders JSON only -- and `config.tf.json` is native configuration
+  (`tofu validate` accepts the rendered file as-is), so nothing is missing but
+  readability. Worse, the conversion is ill-posed rather than merely
+  unimplemented: Terraform's JSON syntax lets a name like
+  `versioning_configuration` be either a nested block or an object attribute, and
+  only the PROVIDER SCHEMA says which -- the same per-provider, per-version pin
+  the grounding remedy needs. The one converter in nixpkgs, `json2hcl`, emits
+  HCL1, which OpenTofu rejects outright on our own rendered config ("Argument
+  names must not be quoted"). So an HCL rung would mean lips owning a format
+  writer that guesses, and printing a rung it must label "do not apply".
+
   Three fixes the fourth world forced, each generic, none per-world. (1) The
   lookup and the gate DISAGREED about free-form regions: `checkEmits` accepts a
   path descending into a declared free-form option, while `answerQuery` answered
