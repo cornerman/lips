@@ -2611,6 +2611,10 @@ main = hspec $ do
 
   -- The system prompt is pinned into the generation id, so it is a versioned
   -- artifact; this guards its load-bearing clauses against silent drift.
+  -- Rewritten alongside the 2026-07-26 mint-prompt rewrite: the wording moved
+  -- (into assets/mint/body.md, organized as named sections below) but the
+  -- doctrine did not, so most clauses are unchanged; three were rephrased
+  -- in the rewrite (noted below) and are pinned to their new wording instead.
   describe "generate prompt is a pinned artifact (mint doctrine)" $
     it "states its load-bearing invariants" $
       mapM_ (\clause -> systemPrompt `shouldSatisfy` T.isInfixOf clause)
@@ -2620,13 +2624,15 @@ main = hspec $ do
         -- literal so editing it demands a fresh language instead of governing
         -- nothing (TODO 1c, closed by design).
         , "replace every program VALUE with a hole"
-        , "SELECTS A MECHANISM is not a value"
+        -- rephrased from "SELECTS A MECHANISM is not a value" (Where You Are)
+        , "is not a value in this sense"
         -- An artifact's args are the whole builder call, so they must be able to
         -- produce a derivation name; a pname with no version ships a module that
         -- fails inside nix, past every lips gate (TODO 1e).
         , "BOTH pname and version"
         , "refusal beats invention"
-        , "pure data"
+        -- rephrased from "pure data" (Where You Are: the three artifacts named)
+        , "data, never code"
         , "No functions"
         , "<value:int>"
         , "demand <subject>"
@@ -2646,10 +2652,8 @@ main = hspec $ do
         , "reach INSIDE the source, through a FILL"
         -- The capture forms are dead capability unless the prompt offers them.
         , "multi-token hole <name.words>"
-        -- Mechanism is the engine's job, not a gap (the greet
-        -- builder-name-choice refusal), and a capture may key a build and fill
-        -- a value (docs/gaps/README.md, finding 2, closed in the kernel).
-        , "A MECHANISM is not a gap at all"
+        -- rephrased from "A MECHANISM is not a gap at all" (How You Work)
+        , "None of this applies to a MECHANISM"
         , "or a <capture> the rule's subject binds"
         -- A composed name is kernel physics now, so the prompt must offer it:
         -- a capability the model is told nothing about is dead capability.
@@ -2665,6 +2669,20 @@ main = hspec $ do
         , "query_options"
         , "look it up"
         , "grounds NAMES, never VALUES"
+        -- Plan B's blocks, added by the rewrite: report is mandatory, gap files
+        -- a kernel capability rather than working around it.
+        , "report block is required"
+        , "A gap is a bug report against lips"
+        -- Every named section must actually be there, so a reviewer editing one
+        -- cannot silently drop another (Task 3 of the mint-prompt rewrite).
+        , "Where You Are"
+        , "The Machine You Program"
+        , "How You Work"
+        , "What You May Say"
+        , "Construct Reference"
+        , "Designing a Good Language"
+        , "Two Worked Examples"
+        , "Self-Review Checklist"
         ]
 
   -- The tool grounds option NAMES. The one thing it must not become is a
