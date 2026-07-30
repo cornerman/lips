@@ -28,6 +28,7 @@ module Lips.Kernel.Lang.Crystallize
   , restatements
   ) where
 
+import           Data.Char       (isSpace)
 import           Data.List       (sortOn)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
@@ -36,6 +37,7 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Base     (Base, fromList)
 import Lips.Kernel.Decision
+import Lips.Kernel.Lang.Nest    (noFrames, recordLine, scopeLine)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Reader   (joinSubject)
 
@@ -45,6 +47,9 @@ data CrystError
     NoPattern Int Text
   | -- | Several patterns matched: an orthogonality violation, all named.
     Overlapping Int [Text]
+  | -- | The line reads as an item of a block, and no line heading such a block
+    -- precedes it: the line, its text, and the parent pattern(s) it wanted.
+    NoParentBlock Int Text [Text]
   deriving (Eq, Show)
 
 -- | The outcome of matching one loose line against the language: what a human
@@ -52,12 +57,15 @@ data CrystError
 -- or a list of errors; diagnostics render them directly.
 data LineOutcome
   = -- | Exactly one pattern matched: line no, source text, the pattern id it
-    -- matched, and the decision(s) it produces (a dense line yields several).
-    Matched Int Text Text [Decision]
+    -- matched, the line heading its block (if it sits in one), and the
+    -- decision(s) it produces (a dense line yields several).
+    Matched Int Text Text (Maybe Int) [Decision]
   | -- | No pattern matched: the line escapes the language.
     Unmatched Int Text
   | -- | Several patterns matched (orthogonality violation), all named.
     Ambiguous Int Text [Text]
+  | -- | The line is an item of a block that no preceding line heads.
+    Orphan Int Text [Text]
   deriving (Eq, Show)
 
 -- | Classify every non-skipped loose line against the language. The single
@@ -65,16 +73,32 @@ data LineOutcome
 classifyLines :: FilePath -> [Pattern] -> Text -> [LineOutcome]
 classifyLines file patterns src =
   let numbered   = zip [1 ..] (T.lines src)
-      candidates = [(n, t) | (n, l) <- numbered, let t = T.strip l, not (skip t)]
-   in map (uncurry classify) candidates
+      candidates = [ (n, indentOf l, t)
+                   | (n, l) <- numbered, let t = T.strip l, not (skip t) ]
+   in reverse (snd (foldl' classify (noFrames, []) candidates))
   where
     skip t = T.null t || "#" `T.isPrefixOf` t
-    classify n t =
+    -- Leading whitespace is read but weightless: only a pattern that nests under
+    -- ITSELF consults it ('Lips.Kernel.Lang.Nest.scopeLine'), so every existing
+    -- program means exactly what it meant.
+    indentOf l = T.length (T.takeWhile isSpace l)
+    classify (frames, acc) (n, indent, t) =
       let toks = tokenizeLine t
        in case [(p, binds) | p <- patterns, Just binds <- [matchTemplate (pTemplate p) toks]] of
-            []            -> Unmatched n t
-            [(p, binds)]  -> Matched n t (pId p) (decisionsAt file n p binds)
-            many          -> Ambiguous n t [pId p | (p, _) <- many]
+            []           -> (frames, Unmatched n t : acc)
+            [(p, binds)] -> case scopeLine frames p indent binds of
+              Left qs -> (frames, Orphan n t qs : acc)
+              Right (par, env) ->
+                let decs = decisionsAt file n p env
+                    -- A line's block key is the subject of its first emit: what
+                    -- a child's <k:key> resolves to, so keys compose downward.
+                    key = case decs of
+                      (d : _) -> joinSubject (segsOf (dSubject d))
+                      []      -> ""
+                 in ( recordLine frames p n indent par env key
+                    , Matched n t (pId p) par decs : acc )
+            many         -> (frames, Ambiguous n t [pId p | (p, _) <- many] : acc)
+    segsOf (Subject ss) = ss
 
 -- | Crystallize a loose program against a language. Comment (@#@) and blank
 -- lines are ignored. Collects every line error, so one report names all gaps.
@@ -82,13 +106,14 @@ crystallize :: FilePath -> [Pattern] -> Text -> Either [CrystError] Base
 crystallize file patterns src =
   let outcomes = classifyLines file patterns src
       errs     = [toErr o | o <- outcomes, isErr o]
-      ds       = [d | Matched _ _ _ dsn <- outcomes, d <- dsn]
+      ds       = [d | Matched _ _ _ _ dsn <- outcomes, d <- dsn]
    in if null errs then Right (fromList ds) else Left errs
   where
     isErr Matched{}   = False
     isErr _           = True
     toErr (Unmatched n t)     = NoPattern n t
     toErr (Ambiguous n _ ids) = Overlapping n ids
+    toErr (Orphan n t qs)     = NoParentBlock n t qs
     toErr Matched{}           = error "crystallize: Matched is not an error"
 
 -- | The lines that state what an earlier line already stated: same subject, same
@@ -114,7 +139,7 @@ restatements outcomes = sortOn (\(n, _, _) -> n) (concatMap report (Map.toList b
   where
     byFact = Map.fromListWith (++)
       [ ((dSubject d, dAssertion d), [n])
-      | Matched n _ _ dsn <- outcomes, d <- dsn ]
+      | Matched n _ _ _ dsn <- outcomes, d <- dsn ]
     report ((subj, _), ns) = case dedup ns of
       (first : laters) -> [(n, first, joinSubject (segsOf subj)) | n <- laters]
       []               -> []

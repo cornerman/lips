@@ -63,7 +63,7 @@ data Diagnosis = Diagnosis
 diagnose :: FilePath -> EngineData -> Text -> Diagnosis
 diagnose file eng src =
   let outcomes = classifyLines file (edPatterns eng) src
-      decided  = [d | Matched _ _ _ dsn <- outcomes, d <- dsn]
+      decided  = [d | Matched _ _ _ _ dsn <- outcomes, d <- dsn]
       base     = fromList decided
       open     = map demQuestion (openQuestions (map toDemand (edDemands eng)) base)
    in Diagnosis
@@ -83,7 +83,7 @@ diagnose file eng src =
 inertLines :: [LineOutcome] -> [(Int, Text)]
 inertLines outcomes =
   [ (n, txt)
-  | Matched n txt _ decs <- outcomes
+  | Matched n txt _ _ decs <- outcomes
   , not (null decs)
   , all ((== Concept) . dKind) decs
   ]
@@ -95,7 +95,7 @@ inertLines outcomes =
 droppedLines :: [DroppedValue] -> [LineOutcome] -> [(Int, Text, [Text])]
 droppedLines dvs outcomes =
   [ (n, txt, hs)
-  | Matched n txt pid _ <- outcomes
+  | Matched n txt pid _ _ <- outcomes
   , let hs = [dvHole dv | dv <- dvs, dvPattern dv == pid]
   , not (null hs)
   ]

@@ -37,7 +37,7 @@ import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, 
 import Options.Applicative.Types (Completer (..))
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, getTemporaryDirectory)
 import System.FilePath ((</>))
-import Data.List (sort)
+import Data.List (sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
@@ -1293,7 +1293,7 @@ main = hspec $ do
     -- "http server in <lang> on port <port>" states BOTH language and port; the
     -- one pattern that matches the line must emit both, or a demand on the
     -- second could never be met (the bug that motivated this).
-    let denseP = Pattern "p1" Nothing
+    let denseP = Pattern "p1" []
                    [ TLit "http", TLit "server", TLit "in", THole "lang"
                    , TLit "on", TLit "port", THole "port" ]
                    [ PatEmit Steer [SLit "server.language"] [SHole "lang"]
@@ -1581,7 +1581,7 @@ main = hspec $ do
     -- through crystallize -> refine -> realize into two DISTINCT keyed options
     -- (the collision the value-keyed-options gap caused is gone).
     it "end to end: two routes fan out to two path-keyed options" $ do
-      let routeP = Pattern "pr" Nothing
+      let routeP = Pattern "pr" []
                      [ TLit "-", THole "path", TLit "=>", TLit "status", THole "code" ]
                      [ PatEmit Fact [SLit "route.", SHole "path", SLit ".status"] [SHole "code"] ]
           routeRule = MapRule "r" Fact ["route", "<path>", "status"]
@@ -1839,6 +1839,78 @@ main = hspec $ do
     it "accepts the two-level engine whose child reads its parent's capture" $
       checkNesting [host, route] `shouldBe` []
 
+    it "scopes two blocks so a repeated item key does not collide" $ do
+      -- The failure this closes: both hosts state a "/" location, so both lines
+      -- crystallized to route./.proxy and lips reported "sets the same thing two
+      -- ways ... keep only one of those lines" -- about two correct lines, while
+      -- calling the two host headers decoration.
+      let src = T.unlines
+            [ "host shop.example.com:"
+            , "- / proxies to http://localhost:3000."
+            , "host blog.example.com:"
+            , "- / proxies to http://localhost:4000."
+            ]
+      fmap subjectsOf (crystallize "g" [host, route] src) `shouldBe` Right
+        [ ["host", "shop.example.com"]
+        , ["host", "shop.example.com", "route", "/", "proxy"]
+        , ["host", "blog.example.com"]
+        , ["host", "blog.example.com", "route", "/", "proxy"]
+        ]
+
+    it "numbers anonymous siblings per block, so their fields stay together" $ do
+      -- Nothing in the program names a target, so position is the only identity
+      -- there is; without it both records collapse onto one subject and the
+      -- correlation between a job and its url is lost.
+      let targets = patOne "t1" [TLit "targets"] Concept [SLit "targets"] [SLit "the scrape targets"]
+          target  = patUnder "t2" "t1" [TLit "-", TLit "target"]
+                      [PatEmit Concept [SLit "targets.", SHole "n:index"] [SLit "one target"]]
+          field k = patUnder ("t" <> k) "t2" [TLit "-", TLit k, TLit "is", THole "v"]
+                      [PatEmit Fact [SLit "targets.", SHole "n", SLit ".", SLit k] [SHole "v"]]
+          src = T.unlines
+            [ "targets:"
+            , "- target:", "- job is web.", "- url is http://a/metrics."
+            , "- target:", "- job is db.",  "- url is http://b/metrics."
+            ]
+      fmap subjectsOf (crystallize "m" [targets, target, field "job", field "url"] src)
+        `shouldBe` Right
+          [ ["targets"]
+          , ["targets", "1"], ["targets", "1", "job"], ["targets", "1", "url"]
+          , ["targets", "2"], ["targets", "2", "job"], ["targets", "2", "url"]
+          ]
+
+    it "keeps a repeated item distinct when it is index-keyed" $ do
+      -- Four steps, the fourth repeating the second. Keyed by their own text they
+      -- merged into three and the fourth line vanished at exit 0.
+      let steps = patOne "s1" [TLit "steps"] Concept [SLit "steps"] [SLit "the steps"]
+          step  = patUnder "s2" "s1" [TLit "-", TMulti "cmd"]
+                    [PatEmit Fact [SLit "steps.", SHole "n:index"] [SHole "cmd"]]
+          src = "steps:\n- fetch.\n- run tests.\n- publish.\n- run tests.\n"
+      fmap subjectsOf (crystallize "r" [steps, step] src) `shouldBe` Right
+        [["steps"], ["steps","1"], ["steps","2"], ["steps","3"], ["steps","4"]]
+
+    it "fails loud on an item line with no block to sit in" $
+      crystallize "g" [host, route] "- / proxies to http://localhost:3000.\n"
+        `shouldBe` Left [NoParentBlock 1 "- / proxies to http://localhost:3000." ["p2"]]
+
+    it "resolves depth by indentation for a pattern nested under itself" $ do
+      -- Unbounded depth: an item sits inside the item above it when it is more
+      -- indented, and roots in the header otherwise. The two parents are tried in
+      -- the order the id declares them. This is the ONLY place leading whitespace
+      -- means anything.
+      let root = patOne "n0" [TLit "tree"] Concept [SLit "tree"] [SLit "a tree"]
+          node = Pattern "n1" ["n1", "n0"] [TLit "-", THole "name"]
+                   [PatEmit Fact [SHole "k:key", SLit ".", SHole "name"] [SLit "a node"]]
+          src = T.unlines ["tree:", "- File", "  - New", "    - Item", "- Edit", "  - New"]
+      fmap subjectsOf (crystallize "t" [root, node] src) `shouldBe` Right
+        [ ["tree"]
+        , ["tree","File"], ["tree","File","New"], ["tree","File","New","Item"]
+        , ["tree","Edit"], ["tree","Edit","New"]
+        ]
+
+    it "refuses <key> in a pattern that heads no block" $
+      checkNesting [patOne "p1" [TLit "x"] Concept [SHole "k:key", SLit ".a"] []]
+        `shouldBe` [KeyWithoutBlock "p1"]
+
   describe "language storage (crystallization plan: .lang round-trip)" $ do
     let engine = EngineData
           { edPatterns =
@@ -1904,12 +1976,12 @@ main = hspec $ do
         `shouldSatisfy` T.isInfixOf "lang.pattern.p3.under.p2"
 
     it "reads a qualified pattern id at the mint door" $
-      fmap pParent (parsePatternBody "p3.under.p2" "- <path> => concept a.<path> \"x\"")
-        `shouldBe` Right (Just "p2")
+      fmap pParents (parsePatternBody "p3.under.p2" "- <path> => concept a.<path> \"x\"")
+        `shouldBe` Right ["p2"]
 
     it "leaves an unqualified pattern id parentless" $
-      fmap pParent (parsePatternBody "p3" "- <path> => concept a.<path> \"x\"")
-        `shouldBe` Right Nothing
+      fmap pParents (parsePatternBody "p3" "- <path> => concept a.<path> \"x\"")
+        `shouldBe` Right []
 
     it "keeps the bare id as the pattern's own id" $
       fmap pId (parsePatternBody "p3.under.p2" "- <path> => concept a.<path> \"x\"")
@@ -2132,7 +2204,7 @@ main = hspec $ do
       diagMatched d `shouldBe` 1
       diagTotal d `shouldBe` 1
       case diagLines d of
-        [Matched 1 _ "p1" [dec]] -> dSubject dec `shouldBe` Subject ["feed", "source"]
+        [Matched 1 _ "p1" _ [dec]] -> dSubject dec `shouldBe` Subject ["feed", "source"]
         other                  -> expectationFailure ("unexpected: " ++ show other)
 
     it "flags a line that escapes the language as Unmatched" $ do
@@ -3220,6 +3292,15 @@ main = hspec $ do
           Map.lookup ["services", "x", "envFile"] schema `shouldBe` Just (OTOther "null or absolute path")
           -- a <name> placeholder normalizes to the wildcard sentinel
           Map.lookup ["services", "y", "*", "port"] schema `shouldBe` Just OTInt
+
+-- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
+-- set keyed by id, so its own order is not the program's).
+subjectsOf :: Base -> [[Text]]
+subjectsOf b = [ segs | d <- sortOn lineOf (toList b), let Subject segs = dSubject d ]
+  where
+    lineOf d = case dProv d of
+      FromSource (SourceLoc _ n) -> n
+      _                          -> 0
 
 isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)

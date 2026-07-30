@@ -202,4 +202,8 @@ diagsOf d = concatMap lineDiag (diagLines d) ++ map openDiag (diagOpen d)
       [Diag (n - 1) 0 0 1
         ("This line matches several patterns (" <> T.intercalate ", " ids
           <> "); the language is not orthogonal here.")]
+    lineDiag (Orphan n t qs) =
+      [Diag (n - 1) 0 (T.length t) 1
+        ("This line is an item of a block, and no line above it opens one ("
+          <> T.intercalate " or " qs <> ").")]
     openDiag q = Diag 0 0 0 2 ("Open question: " <> q)

@@ -23,6 +23,7 @@ module Lips.Kernel.Reader
   , render
   , renderBase
   , joinSubject
+  , splitSubject
   ) where
 
 import           Data.List       (sortOn)

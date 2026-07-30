@@ -116,6 +116,7 @@ readLang src =
     nestSubject e = case e of
       UnknownParent p _  -> p
       UnboundInScope p _ -> p
+      KeyWithoutBlock p  -> p
       NestCycle (p : _)  -> p
       NestCycle []       -> ""
     -- Read the decision envelope (re-stamping its line), then classify and
@@ -126,9 +127,10 @@ readLang src =
 
 classify :: Int -> Decision -> Either ParseError EngLine
 classify n d = case dSubject d of
-  Subject ["lang", "pattern", i]              -> tag ELPat (parsePatternBody i body)
-  -- A nested pattern names its parent in the path: lang.pattern.p3.under.p2.
-  Subject ["lang", "pattern", i, "under", par] -> tag ELPat (parsePatternBody (i <> ".under." <> par) body)
+  -- A nested pattern names its parents in the path, in the order they are
+  -- tried: lang.pattern.p3.under.p2, or lang.pattern.n1.under.n1.under.n0.
+  Subject ("lang" : "pattern" : i : rest)
+    | Just parents <- underChain rest -> tag ELPat (parsePatternBody (T.intercalate ".under." (i : parents)) body)
   Subject ["engine", "rule", i]    -> tag ELRule (parseRuleBody   i body)
   Subject ["engine", "demand", i]  -> tag ELDem  (parseDemandBody i body)
   Subject ["engine", "merge", i]    -> tag ELMerge (parseMergeBody i body)
@@ -169,16 +171,14 @@ patternToDecision p = metaDecision (pId p) ("lang" : "pattern" : idSegs) (render
   where
     -- Segments, not one dotted segment: the canonical renderer escapes a dot
     -- INSIDE a segment, so a nested id has to be spelled as the path it is.
-    idSegs = case pParent p of
-      Nothing  -> [pId p]
-      Just par -> [pId p, "under", par]
+    idSegs = pId p : concat [["under", q] | q <- pParents p]
 
 -- | Parse a @lang.pattern.*@ decision back into a pattern, or explain why not.
 decisionToPattern :: Decision -> Either Text Pattern
 decisionToPattern d = do
   pid <- case dSubject d of
-    Subject ["lang", "pattern", i]               -> Right i
-    Subject ["lang", "pattern", i, "under", par] -> Right (i <> ".under." <> par)
+    Subject ("lang" : "pattern" : i : rest)
+      | Just parents <- underChain rest -> Right (T.intercalate ".under." (i : parents))
     _ -> Left "not a lang.pattern subject"
   parseBody pid (unAssertion (dAssertion d))
   where
@@ -218,7 +218,7 @@ quoteParts = quoteText . renderParts
 
 parseBody :: Text -> Text -> Either Text Pattern
 parseBody idTok body = do
-  (pid, parent) <- parsePatternId idTok
+  (pid, parents) <- parsePatternId idTok
   (tplStr, rest0) <- maybe (Left ("pattern " <> pid <> ": missing =>")) Right
                        (splitOnSeparator body)
   -- Drop empty-literal tokens (pure punctuation), symmetric with 'tokenizeLine',
@@ -228,7 +228,7 @@ parseBody idTok body = do
       emptyLit (TLit t) = T.null t
       emptyLit _        = False
   emits <- mapM (parseEmit pid . T.strip) (splitOutsideQuotes " ; " rest0)
-  let p = Pattern { pId = pid, pParent = parent, pTemplate = template, pEmits = emits }
+  let p = Pattern { pId = pid, pParents = parents, pTemplate = template, pEmits = emits }
   -- Every hole in the target must be bound, so 'applyPattern' is total. A
   -- top-level pattern binds only through its own template, and is judged here.
   -- A NESTED one also sees its ancestors' captures, which one pattern's parse
@@ -246,7 +246,7 @@ parseBody idTok body = do
   if not (null clash)
     then Left ("pattern " <> pid <> ": <" <> T.intercalate ">, <" clash
                  <> "> is bound by the template, so it cannot also be a structure hole")
-    else if null loose || parent /= Nothing
+    else if null loose || not (null parents)
       then Right p
       else Left ("pattern " <> pid <> ": target holes not bound by template: " <> T.intercalate "," loose)
   where
@@ -331,3 +331,11 @@ firstToken t err =
 parseQuoted :: Text -> Either Text Text
 parseQuoted = fmap fst . Q.parseQuoted
 
+
+-- | Read a pattern subject's tail as its parent chain: @["under","p2"]@ is one
+-- parent, @["under","n1","under","n0"]@ two tried in order, @[]@ none. Anything
+-- else is not a pattern subject at all.
+underChain :: [Text] -> Maybe [Text]
+underChain []                    = Just []
+underChain ("under" : q : rest)  = (q :) <$> underChain rest
+underChain _                     = Nothing

@@ -58,6 +58,7 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Decision (Assertion (..), Kind, Strength (Stated), Subject (..))
+import Lips.Kernel.Reader   (splitSubject)
 import Lips.Kernel.Surface  (stripTrailingPunct)
 
 -- | A template token: a literal to match (stored already normalized), a hole
@@ -83,12 +84,21 @@ data StrPart = SLit Text | SHole Text
 -- Closed, and the extension point for any further structural fact (a depth, a
 -- sibling count): one constructor, one entry in 'structTypes', and the fill site
 -- in 'Lips.Kernel.Lang.Nest' -- never an open list the kernel enumerates.
-data StructType = SIndex
+data StructType
+  = -- | The line's 1-based position among the lines that matched the same
+    -- pattern in the same block. Gives an item with no key of its own an
+    -- identity, so two anonymous records stay two.
+    SIndex
+  | -- | The subject of the line that heads this line's block (that line's first
+    -- emit). Keys compose inductively, which is what makes unbounded depth work:
+    -- a pattern nested under itself writes @\<k:key\>.\<name\>@ and a node three
+    -- deep keys as @tree.File.New.Item@, so two subtrees may share a node name.
+    SKey
   deriving (Eq, Show)
 
 -- | The closed table of structure-bound hole types, by their spelling.
 structTypes :: [(Text, StructType)]
-structTypes = [("index", SIndex)]
+structTypes = [("index", SIndex), ("key", SKey)]
 
 -- | Read a hole reference as a structure-bound DECLARATION: @\"n:index\"@ is the
 -- hole @n@, filled from the line's position among its siblings. An unrecognized
@@ -134,15 +144,20 @@ data PatEmit = PatEmit
 -- loose line produces. Each 'PatEmit' becomes one decision, its subject and
 -- assertion built by filling holes with captured surface tokens.
 --
--- 'pParent' names the pattern this one nests UNDER, if any: a matching line is
--- then read as an item of the block headed by the nearest preceding line that
--- matched that parent, and the parent's captures are in scope here
--- ('Lips.Kernel.Lang.Nest'). Nothing about a block is spelled in the template,
--- so the kernel never learns how a language marks one -- the language's own
--- words do, through the parent's template.
+-- 'pParents' names the patterns this one nests UNDER, in the order they are
+-- tried: a matching line is read as an item of the block headed by the nearest
+-- preceding line that matched the FIRST of them that has one, and that line's
+-- captures are in scope here ('Lips.Kernel.Lang.Nest'). Nothing about a block is
+-- spelled in the template, so the kernel never learns how a language marks one
+-- -- the language's own words do, through the parent's template.
+--
+-- A list, not one parent, because a recursive item needs two: itself (an item
+-- inside an item, resolved by depth) and the header that roots the outermost
+-- ones. @n1.under.n1.under.n0@ reads exactly that way. Each LINE still has
+-- exactly one parent; the list is the order they are tried in.
 data Pattern = Pattern
   { pId       :: Text
-  , pParent   :: Maybe Text
+  , pParents  :: [Text]
   , pTemplate :: [TplTok]
   , pEmits    :: [PatEmit]
   }
@@ -151,11 +166,11 @@ data Pattern = Pattern
 -- | The common single-emit, top-level pattern (one loose line to one decision),
 -- spelled out so call sites and tests stay readable.
 patOne :: Text -> [TplTok] -> Kind -> [StrPart] -> [StrPart] -> Pattern
-patOne i tpl k subj assn = Pattern i Nothing tpl [PatEmit k subj assn]
+patOne i tpl k subj assn = Pattern i [] tpl [PatEmit k subj assn]
 
 -- | A pattern nested under another, by parent id.
 patUnder :: Text -> Text -> [TplTok] -> [PatEmit] -> Pattern
-patUnder i parent tpl = Pattern i (Just parent) tpl
+patUnder i parent = Pattern i [parent]
 
 -- | Split a pattern id token into the pattern's own id and the parent it nests
 -- under: @p3.under.p2@ is the pattern @p3@ inside @p2@'s block. One spelling at
@@ -167,16 +182,17 @@ patUnder i parent tpl = Pattern i (Just parent) tpl
 -- that legitimately begins with the word @under@, and refusing such a template
 -- would be a missing grammar case (invariant 3). On the id it is also
 -- structurally at most one parent, so \"two parents\" needs no check.
-parsePatternId :: Text -> Either Text (Text, Maybe Text)
+parsePatternId :: Text -> Either Text (Text, [Text])
 parsePatternId tok = case T.splitOn ".under." tok of
-  [i]         -> Right (i, Nothing)
-  [i, parent] | not (T.null i), not (T.null parent) -> Right (i, Just parent)
-  _           -> Left ("pattern id " <> tok <> ": a nested id is <id>.under.<parent>")
+  parts@(i : parents)
+    | all (not . T.null) parts -> Right (i, parents)
+  _ -> Left ("pattern id " <> tok <> ": a nested id is <id>.under.<parent>")
 
 -- | The id token a pattern is stored and minted under (inverse of
--- 'parsePatternId'): the bare id, or @\<id\>.under.\<parent\>@.
+-- 'parsePatternId'): the bare id, or @\<id\>.under.\<parent\>@ (repeated for a
+-- recursive item's fallback chain).
 renderPatternId :: Pattern -> Text
-renderPatternId p = maybe (pId p) ((pId p <> ".under.") <>) (pParent p)
+renderPatternId p = T.intercalate ".under." (pId p : pParents p)
 
 -- | The hole names a pattern's TEMPLATE binds, in template order. A multi-token
 -- hole binds a name too, so a target @<name>@ may be filled from such a capture
@@ -280,6 +296,10 @@ matchTemplate toks line = listToMaybe (go toks line Map.empty)
 -- read), so substitution is total.
 applyPattern :: Pattern -> Map Text Text -> [(Subject, Kind, Assertion, Strength)]
 applyPattern p binds = map one (pEmits p)
+  -- A key hole carries a whole subject PATH, so its segments are segments; every
+  -- other hole stays one atomic segment (an HTTP route @/file.json@ is one key).
+  -- Decided from the pattern's own declarations, so the reference spelling
+  -- (@\<k:key\>@ or the plain @\<k\>@) does not change the reading.
   where
     one e =
       ( Subject (segsOf (peSubject e))
@@ -299,13 +319,24 @@ applyPattern p binds = map one (pEmits p)
     -- still split, so a plain subject like @backup.source@ is unchanged.
     segsOf = foldr step [""] . map fill'
       where
-        fill' (SLit t)  = Left t                     -- separator-bearing literal
-        fill' (SHole h) = Right (Map.findWithDefault (missing h) (refName h) binds)
-        step (Right v) (seg : rest) = (v <> seg) : rest
-        step (Right _) []           = []             -- unreachable: acc always non-empty
-        step (Left t)  acc          = prepend (T.splitOn "." t) acc
+        fill' (SLit t)  = PLit t                     -- separator-bearing literal
+        fill' (SHole h)
+          | refName h `elem` keyHoles = PPath (splitSubject (valOf h))
+          | otherwise                 = PAtom (valOf h)
+        valOf h  = Map.findWithDefault (missing h) (refName h) binds
+        keyHoles = [n | (n, SKey) <- structHoles p]
+        step (PAtom v) (seg : rest)  = (v <> seg) : rest
+        step (PAtom _) []            = []            -- unreachable: acc always non-empty
+        step (PLit t)  acc           = prepend (T.splitOn "." t) acc
+        step (PPath ps) acc          = prepend ps acc
         -- Join the last literal piece onto the first accumulated segment; the
         -- earlier pieces become their own segments (the dots that separate them).
         prepend pieces (seg : rest) =
           init pieces ++ [(last pieces <> seg)] ++ rest
         prepend pieces []           = pieces
+
+-- | A filled target piece on its way to becoming subject segments: literal text
+-- (whose dots separate), one atomic captured value (whose dots do not, so an
+-- HTTP route @\/file.json@ stays one key), or a whole subject path from a key
+-- hole, already segmented.
+data Piece = PLit Text | PAtom Text | PPath [Text]

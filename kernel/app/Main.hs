@@ -263,13 +263,17 @@ renderDiagnosis file d =
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
-    row (Matched n _ pid decs) =
+    row (Matched n _ pid par decs) =
       "  line " <> tshow n <> "  ok        " <> pid <> "  "
         <> T.intercalate ", " (map (subjectPath . dSubject) decs)
+        <> maybe "" (\b -> "  in the block at line " <> tshow b) par
     row (Unmatched n t) =
       "  line " <> tshow n <> "  no match  \"" <> t <> "\""
     row (Ambiguous n _ ids) =
       "  line " <> tshow n <> "  ambiguous " <> T.intercalate "," ids
+    row (Orphan n _ qs) =
+      "  line " <> tshow n <> "  no block  needs a line above it matching "
+        <> T.intercalate " or " qs
     -- A line the language reads and then drops realizes nothing, so editing it
     -- changes nothing. Naming it is the point: a heading is legitimately
     -- decorative, but so is a line the mint quietly declined to honor, and only
@@ -1099,6 +1103,10 @@ failureReport file (FailRead errs) =
   where
     crystDetail (NoPattern n t)   = "line " <> tshow n <> ": " <> t
     crystDetail (Overlapping n _) = "line " <> tshow n <> ": the setup reads this line more than one way"
+    -- The line is fine; what is missing is the line that should open its block
+    -- above it. Naming that is the remedy, so say it rather than "unreadable".
+    crystDetail (NoParentBlock n t _) =
+      "line " <> tshow n <> ": " <> t <> " -- this belongs inside a block, and no line above it opens one"
 failureReport file (FailRun err) = case err of
   ParseRejected es ->
     reportHead (T.pack file <> " has lines that couldn't be read:")
