@@ -31,6 +31,8 @@ import Lips.Kernel.Engine.Value
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
+import Lips.Nix.Schema (schemaFor)
+import Lips.Nix.Flake (flakeText, runCommands)
 import Lips.Nix.Target
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
@@ -207,9 +209,10 @@ main = hspec $ do
 
 
   describe "realization target (Lips.Nix.Target)" $ do
-    it "parses the two world slugs and rejects others" $ do
+    it "parses the world slugs and rejects others" $ do
       parseTarget "nixos" `shouldBe` Just Nixos
       parseTarget "home-manager" `shouldBe` Just HomeManager
+      parseTarget "kubenix" `shouldBe` Just Kubenix
       parseTarget "darwin" `shouldBe` Nothing
     it "slug round-trips through parse for every target" $
       mapM_ (\t -> parseTarget (T.unpack (targetSlug t)) `shouldBe` Just t)
@@ -3022,10 +3025,10 @@ main = hspec $ do
   -- The tool grounds option NAMES. The one thing it must not become is a
   -- licence to invent the VALUE that fills a name it just confirmed.
   describe "mint prompt states the lookup tool (and its limit)" $ do
-    it "names the tool and when to reach for it, in both worlds" $
+    it "names the tool and when to reach for it, in every world" $
       mapM_ (\p -> mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
               [ "query_options", "look it up", "grounds NAMES, never VALUES" ])
-            [ systemPromptFor Nixos, systemPromptFor HomeManager ]
+            [ systemPromptFor Nixos, systemPromptFor HomeManager, systemPromptFor Kubenix ]
     it "repeats that a confirmed option is not a licence to invent its value" $
       systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "refusal beats invention"
 
@@ -3036,6 +3039,9 @@ main = hspec $ do
     it "absent or blank direction leaves the prompt untouched" $ do
       promptWithDirection Nothing Nixos `shouldBe` systemPrompt
       promptWithDirection (Just "   \n  ") Nixos `shouldBe` systemPrompt
+    it "steers kubenix to the resource alias every kubenix example writes" $ do
+      systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "kubernetes.resources."
+      systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "kubenix"
     it "steers home-manager to its namespaces, nixos to system options" $ do
       systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "home-manager"
       systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "systemd.user.services"
@@ -3428,6 +3434,70 @@ main = hspec $ do
           Map.lookup ["services", "x", "envFile"] schema `shouldBe` Just (OTOther "null or absolute path")
           -- a <name> placeholder normalizes to the wildcard sentinel
           Map.lookup ["services", "y", "*", "port"] schema `shouldBe` Just OTInt
+
+  -- The kubenix world's schema needs reshaping the other two do not: its typed
+  -- tree sits behind an alias, and its inner nodes are free-form, which
+  -- checkEmits would read as "anything below is fine".
+  describe "kubenix optionsJSON reshaping (Lips.Nix.Kubenix)" $ do
+    let kubeSchema = do
+          bytes <- BL.readFile "test/fixtures/options-kubenix-mini.json"
+          either (fail . T.unpack) pure (schemaFor Kubenix bytes)
+    it "re-keys the typed tree onto the alias every program writes" $ do
+      sch <- kubeSchema
+      Map.lookup ["kubernetes","resources","deployments","*","spec","replicas"] sch
+        `shouldBe` Just OTInt
+      -- the group/version/kind spelling of the same alias
+      Map.lookup ["kubernetes","resources","apps","v1","Deployment","*","spec","replicas"] sch
+        `shouldBe` Just OTInt
+      -- the typed path itself is MOVED, not copied: one spelling grounds
+      Map.lookup ["kubernetes","api","resources","deployments","*","spec","replicas"] sch
+        `shouldBe` Nothing
+    it "unwraps a k8s optional so its scalar type still grounds" $ do
+      sch <- kubeSchema
+      Map.lookup ["kubernetes","resources","deployments","*","metadata","name"] sch
+        `shouldBe` Just OTString
+      Map.lookup ["kubernetes","resources","deployments","*","spec","paused"] sch
+        `shouldBe` Just OTBool
+    it "keeps an unmodelled optional's wording verbatim (it feeds the refusal)" $ do
+      sch <- kubeSchema
+      Map.lookup ["kubernetes","resources","deployments","*","metadata","labels"] sch
+        `shouldBe` Just (OTOther "null or (attribute set of (string))")
+    it "drops every inner node, which would swallow any path below it" $ do
+      sch <- kubeSchema
+      Map.lookup ["kubernetes","resources"] sch `shouldBe` Nothing
+      Map.lookup ["kubernetes","api","resources"] sch `shouldBe` Nothing
+      Map.lookup ["kubernetes","resources","deployments"] sch `shouldBe` Nothing
+    it "keeps the world's own leaf options" $ do
+      sch <- kubeSchema
+      Map.lookup ["kubenix","project"] sch `shouldBe` Just OTString
+      Map.lookup ["kubernetes","namespace"] sch `shouldBe` Just OTString
+    it "grounds a real emit and refuses a misspelled field" $ do
+      sch <- kubeSchema
+      let emit p v = MapRule "r1" Fact ["replicas"] [Emit p v]
+          good = emit ["kubernetes","resources","deployments","web","spec","replicas"] (VInt 3)
+          bad  = emit ["kubernetes","resources","deployments","web","spec","replicaz"] (VInt 3)
+          mist = emit ["kubernetes","resources","deployments","web","spec","replicas"] (VStr [PLit "three"])
+      checkEmits sch [good] `shouldBe` []
+      checkEmits sch [bad]  `shouldBe` [UnknownOption "r1" ["kubernetes","resources","deployments","web","spec","replicaz"]]
+      checkEmits sch [mist] `shouldBe`
+        [TypeMismatch "r1" ["kubernetes","resources","deployments","web","spec","replicas"] OTInt (VStr [PLit "three"])]
+
+  -- Knob 3 of a target: what the compiled flake exposes, and the stock nix
+  -- commands compile prints. A world with no machine must show no machine rung.
+  describe "compiled flake per target (Lips.Nix.Flake)" $ do
+    it "kubenix exposes the module and kubenix's own rendered outputs" $ do
+      let t = flakeText Kubenix False
+      mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
+        [ "kubenixModules.default", "kubenix.evalModules", "kubenix.modules.k8s"
+        , "config.kubernetes", "cfg.resultYAML", "cfg.result", "kubectl" ]
+      mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
+        [ "nixosModules", "run-lips-vm", "eval-config.nix" ]
+    it "kubenix prints how to write, check and shell the manifests" $ do
+      let ls = T.unlines (runCommands Kubenix [] "/tmp/out")
+      mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
+        [ "nix run", "path:/tmp/out#manifest", "manifests.yaml"
+        , "nix build", "#manifest-json", "nix develop" ]
+      ls `shouldNotSatisfy` T.isInfixOf "#vm"
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).

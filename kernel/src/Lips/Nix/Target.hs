@@ -15,10 +15,10 @@ module Lips.Nix.Target
 
 import Data.Text (Text)
 
--- | The two Nix worlds lips targets. A closed set: adding a world (darwin,
--- terranix, kubenix) is a deliberate extension here plus a schema source,
--- never an open list the kernel enumerates.
-data Target = Nixos | HomeManager
+-- | The Nix worlds lips targets. A closed set: adding a world (darwin,
+-- terranix) is a deliberate extension here plus a schema source, never an open
+-- list the kernel enumerates.
+data Target = Nixos | HomeManager | Kubenix
   deriving (Eq, Show, Enum, Bounded)
 
 -- | Absent an explicit choice, lips targets NixOS (the original world).
@@ -29,9 +29,11 @@ defaultTarget = Nixos
 parseTarget :: String -> Maybe Target
 parseTarget "nixos"        = Just Nixos
 parseTarget "home-manager" = Just HomeManager
+parseTarget "kubenix"      = Just Kubenix
 parseTarget _              = Nothing
 
 -- | The canonical slug, used on the CLI and in the .generation record.
 targetSlug :: Target -> Text
 targetSlug Nixos       = "nixos"
 targetSlug HomeManager = "home-manager"
+targetSlug Kubenix     = "kubenix"

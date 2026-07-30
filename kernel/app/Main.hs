@@ -69,7 +69,7 @@ import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOv
 import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Flake                (flakeText, runCommands)
-import           Lips.Nix.Options              (parseNixOptionsJson)
+import           Lips.Nix.Schema               (schemaFor)
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
 import           Lips.Lsp.Server               (runLsp)
 
@@ -569,7 +569,7 @@ optionsQuery target limit query = do
       [tshow e]
       "→ run it again.")
     Right b -> pure b
-  case parseNixOptionsJson bytes of
+  case schemaFor target bytes of
     Left why -> die (report
       ("lips can't parse the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
       [why]
@@ -713,9 +713,9 @@ assertOptionsAdmissible target file eng = do
       ("lips can't read the NixOS option schema at " <> T.pack schemaPath <> ":")
       [tshow e]
       "→ run generate again.")
-    Right bytes -> case parseNixOptionsJson bytes of
+    Right bytes -> case schemaFor target bytes of
       Left why -> die (report
-        ("lips can't parse the NixOS option schema at " <> T.pack schemaPath <> ":")
+        ("lips can't parse the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
         [why]
         "→ run generate again.")
       Right schema -> case checkEmits schema (edRules eng) of
@@ -746,6 +746,10 @@ ensureOptionSchema target remedy = do
       let (envVar, subPath) = case target of
             Nixos       -> ("LIPS_NIXPKGS_FLAKE", "/share/doc/nixos/options.json")
             HomeManager -> ("LIPS_HM_FLAKE",      "/share/doc/home-manager/options.json")
+            -- kubenix ships no options document of its own, so lips builds one
+            -- with nixosOptionsDoc; that helper's default output path is the
+            -- nixos one, hence the same sub-path as NixOS.
+            Kubenix     -> ("LIPS_KUBENIX_FLAKE", "/share/doc/nixos/options.json")
       mflake <- lookupEnv envVar
       case mflake of
         Nothing -> die (report
@@ -788,6 +792,20 @@ schemaExpr Nixos flakeref = T.pack $ concat
 schemaExpr HomeManager flakeref = T.pack $ concat
   [ "let hm = builtins.getFlake \"", flakeref, "\"; in "
   , "hm.packages.${builtins.currentSystem}.docs-json" ]
+-- kubenix declares its Kubernetes resource fields as module options generated
+-- from the Kubernetes API, so the document comes from nixosOptionsDoc over an
+-- otherwise EMPTY kubenix evaluation: the option TREE is what grounds a rule,
+-- and no program's own values may enter the schema.
+-- nixpkgs comes from the kubenix flake's OWN pinned input, never resolved
+-- ambiently: a grounding schema must be reproducible from the recorded ref
+-- alone.
+schemaExpr Kubenix flakeref = T.pack $ concat
+  [ "let k = builtins.getFlake \"", flakeref, "\"; "
+  , "system = builtins.currentSystem; "
+  , "pkgs = import k.inputs.nixpkgs { inherit system; }; "
+  , "e = k.evalModules.${system} { module = { kubenix, ... }: "
+  , "{ imports = [ kubenix.modules.k8s ]; }; }; in "
+  , "(pkgs.nixosOptionsDoc { options = e.options; warningsAreErrors = false; }).optionsJSON" ]
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.

@@ -55,13 +55,17 @@ flakeText target hasArtifacts = T.unlines $
   , "{"
   , "  description = \"lips-compiled program (nixpkgs resolved ambiently)\";"
   , "  inputs.nixpkgs.url = \"flake:nixpkgs\";"
-  , "  outputs = { self, nixpkgs }:"
+  ]
+  ++ worldInputs target
+  ++
+  [ "  outputs = { self, nixpkgs" <> worldArgs target <> " }:"
   , "    let"
   , "      systems = [ \"x86_64-linux\" \"aarch64-linux\" ];"
   , "      forSystems = nixpkgs.lib.genAttrs systems;"
   , "      pkgsFor = system: import nixpkgs { inherit system; };"
   ]
   ++ nixosBuildsLet target hasArtifacts
+  ++ kubenixBuildsLet target
   ++ [ "    in {" ]
   ++ moduleOutput target
   ++ packagesOutput target hasArtifacts
@@ -76,6 +80,38 @@ flakeText target hasArtifacts = T.unlines $
 moduleOutput :: Target -> [Text]
 moduleOutput Nixos       = [ "      nixosModules.default = import ./default.nix;" ]
 moduleOutput HomeManager = [ "      homeManagerModules.default = import ./default.nix;" ]
+-- kubenix has no module-output convention of its own, so lips names one, and a
+-- config that wants to compose this program imports it like any other module.
+moduleOutput Kubenix     = [ "      kubenixModules.default = import ./default.nix;" ]
+
+-- | The world's extra flake inputs. kubenix is a module system of its own, so
+-- rendering needs it; it is resolved ambiently (unpinned), the same Heile-Welt
+-- softness @flake:nixpkgs@ already carries.
+worldInputs :: Target -> [Text]
+worldInputs Kubenix = [ "  inputs.kubenix.url = \"github:hall/kubenix\";" ]
+worldInputs _       = []
+
+-- | The output-function arguments those inputs add.
+worldArgs :: Target -> Text
+worldArgs Kubenix = ", kubenix"
+worldArgs _       = ""
+
+-- | The per-system kubenix evaluation, defined once in the outer @let@ so both
+-- the buildable manifest (@packages@) and the printing rung (@apps@) reference
+-- the SAME rendered file. Both output spellings are kubenix's OWN options
+-- (@resultYAML@, @result@), so lips converts nothing and owns no format code.
+kubenixBuildsLet :: Target -> [Text]
+kubenixBuildsLet Kubenix =
+  [ "      kubenixBuilds = system:"
+  , "        let"
+  , "          cfg = (kubenix.evalModules.${system} {"
+  , "            module = { kubenix, ... }: {"
+  , "              imports = [ kubenix.modules.k8s ./default.nix ];"
+  , "            };"
+  , "          }).config.kubernetes;"
+  , "        in { yaml = cfg.resultYAML; json = cfg.result; };"
+  ]
+kubenixBuildsLet _ = []
 
 -- | The per-system system-rung derivations (nixos only), defined once in the
 -- outer @let@ so both @packages@ (build, don't activate) and @apps@ (build +
@@ -84,6 +120,7 @@ moduleOutput HomeManager = [ "      homeManagerModules.default = import ./defaul
 -- two definitions. home-manager has no machine, so it emits nothing here.
 nixosBuildsLet :: Target -> Bool -> [Text]
 nixosBuildsLet HomeManager _ = []
+nixosBuildsLet Kubenix _     = []
 nixosBuildsLet Nixos hasArtifacts =
   [ "      nixosBuilds = system:"
   , "        let"
@@ -140,6 +177,10 @@ packagesOutput target hasArtifacts
       -- check; booting it (the app) needs KVM.
       Nixos       -> [ "        vm = (nixosBuilds system).vm;" ]
       HomeManager -> []
+      -- Building the manifest IS the check that the program renders: kubenix
+      -- refuses an unknown field, and a wrong-typed one, at evaluation.
+      Kubenix     -> [ "        manifest = (kubenixBuilds system).yaml;"
+                     , "        manifest-json = (kubenixBuilds system).json;" ]
 
 -- | @apps@ (@nix run \<x\>@ builds + activates), nixos only. Each references
 -- the shared 'nixosBuildsLet' derivations, so run and build agree.
@@ -151,11 +192,28 @@ appsOutput Nixos =
   , "          vm = { type = \"app\"; program = \"${b.vm}/bin/run-lips-vm\"; };"
   , "        });"
   ]
+-- The manifest rungs PRINT: a rendered file is not executable, so the app is a
+-- script that cats it, which is what makes @nix run … > manifests.yaml@ (and a
+-- pipe into kubectl) the way to write manifests out.
+appsOutput Kubenix =
+  [ "      apps = forSystems (system:"
+  , "        let b = kubenixBuilds system; p = pkgsFor system; in {"
+  , "          manifest = { type = \"app\"; program = \"${p.writeShellScript \"print-manifest\" \"cat ${b.yaml}\"}\"; };"
+  , "          manifest-json = { type = \"app\"; program = \"${p.writeShellScript \"print-manifest-json\" \"cat ${b.json}\"}\"; };"
+  , "        });"
+  ]
 
 -- | @devShells@ (@nix develop \<x\>@ enters), nixos only. @default@ so the
 -- command needs no attribute: @nix develop path:\<dir\>@.
 devShellsOutput :: Target -> [Text]
 devShellsOutput HomeManager = []
+-- The shell a human needs here holds the client that consumes the manifests.
+devShellsOutput Kubenix =
+  [ "      devShells = forSystems (system:"
+  , "        let p = pkgsFor system; in {"
+  , "          default = p.mkShell { packages = [ p.kubectl ]; };"
+  , "        });"
+  ]
 devShellsOutput Nixos =
   [ "      devShells = forSystems (system: {"
   , "        default = (nixosBuilds system).shell;"
@@ -192,4 +250,13 @@ runCommands target artNames dir =
     -- config, not run standalone. Name that instead of a build that can't work.
     systemLines HomeManager =
       [ "  import into your home config: imports = [ " <> T.pack dir <> " ];"
+      ]
+    -- Rendering is what this world DOES, so the first rung writes the
+    -- manifests; the build rung is the same derivation, reached the other way,
+    -- and it is the cheap "does it render and validate" check.
+    systemLines Kubenix =
+      [ cmd "write the manifests" "run"     (ref "manifest")      "   > manifests.yaml"
+      , cmd "check it renders"    "build"   (ref "manifest")      ""
+      , cmd "the JSON form"       "run"     (ref "manifest-json") "   > manifests.json"
+      , cmd "a shell with kubectl" "develop" ("path:" <> T.pack dir) ""
       ]

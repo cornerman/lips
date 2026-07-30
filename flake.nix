@@ -7,8 +7,14 @@
   # generate ever resolves it; print/run/check stay nixpkgs/home-manager-free.
   inputs.home-manager.url = "github:nix-community/home-manager";
   inputs.home-manager.inputs.nixpkgs.follows = "nixpkgs";
+  # kubenix is the grounding-schema source for the kubenix target. It ships no
+  # options document, so lips builds one with nixosOptionsDoc over an empty
+  # kubenix evaluation; the rev is baked as a string, like the other two worlds,
+  # so only generate ever resolves it.
+  inputs.kubenix.url = "github:hall/kubenix";
+  inputs.kubenix.inputs.nixpkgs.follows = "nixpkgs";
 
-  outputs = { self, nixpkgs, home-manager }:
+  outputs = { self, nixpkgs, home-manager, kubenix }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
@@ -58,6 +64,7 @@
             --argv0 lips \
             --set-default LIPS_NIXPKGS_FLAKE "github:NixOS/nixpkgs/${nixpkgs.rev}" \
             --set-default LIPS_HM_FLAKE "github:nix-community/home-manager/${home-manager.rev}" \
+            --set-default LIPS_KUBENIX_FLAKE "github:hall/kubenix/${kubenix.rev}" \
             --set-default LIPS_MINT_TOOLS "$out/share/lips/mint-tools.ts" \
             --set-default LIPS_BIN "$out/bin/lips"
           # Completion scripts derive from the SAME optparse-applicative Parser

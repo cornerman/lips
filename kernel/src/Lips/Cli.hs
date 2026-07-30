@@ -22,13 +22,14 @@ module Lips.Cli
   ) where
 
 import Control.Monad      (filterM)
-import Data.List          (isPrefixOf, isSuffixOf)
+import Data.List          (intercalate, isPrefixOf, isSuffixOf)
+import qualified Data.Text as T
 import Options.Applicative
 import System.Directory    (doesDirectoryExist, listDirectory)
 import System.FilePath     (splitFileName, (</>))
 import Text.Read          (readMaybe)
 
-import Lips.Nix.Target (Target (..), defaultTarget, parseTarget)
+import Lips.Nix.Target (Target (..), defaultTarget, parseTarget, targetSlug)
 
 -- | Everything @generate@ needs. @-m\/--model@ is the ONLY way to name a
 -- model -- no positional guessing (deleted with @Lips.Generate.Args@'s
@@ -155,7 +156,13 @@ programCompleter = mkCompleter $ \word -> do
 targetReader :: ReadM Target
 targetReader = eitherReader $ \s -> case parseTarget s of
   Just t  -> Right t
-  Nothing -> Left ("unknown target " <> s <> " (expected nixos or home-manager)")
+  Nothing -> Left ("unknown target " <> s <> " (expected " <> targetMetavar <> ")")
+
+-- | Every world's slug, listed from the type itself, so adding a target cannot
+-- leave the help text or the error message naming a world that no longer is the
+-- whole set.
+targetMetavar :: String
+targetMetavar = intercalate "|" [ T.unpack (targetSlug t) | t <- [minBound .. maxBound] ]
 
 -- | @--confidence@'s reader: a Double in [0,1], the same range check
 -- @Lips.Generate.Args.parseGenerate@ did inline, now in the reader so an
@@ -169,7 +176,7 @@ generateOpts :: Double -> Parser GenerateOpts
 generateOpts defConf = GenerateOpts
   <$> option targetReader
         (long "target" <> short 't' <> value defaultTarget
-          <> metavar "nixos|home-manager" <> help "The Nix world to realize into (default: nixos).")
+          <> metavar targetMetavar <> help "The Nix world to realize into (default: nixos).")
   <*> option confidenceReader
         (long "confidence" <> value defConf
           <> metavar "0..1" <> help "Minimum pattern confidence to accept (default: 0.7).")
@@ -227,7 +234,7 @@ optionsOpts :: Parser OptionsOpts
 optionsOpts = OptionsOpts
   <$> option targetReader
         (long "target" <> short 't' <> value defaultTarget
-          <> metavar "nixos|home-manager" <> help "Which world's schema to search (default: nixos).")
+          <> metavar targetMetavar <> help "Which world's schema to search (default: nixos).")
   <*> option limitReader
         (long "limit" <> value 40
           <> metavar "N" <> help "Maximum entries to print (default: 40).")
