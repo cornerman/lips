@@ -4,6 +4,21 @@ Closed items are dropped from this file once they land; the record of what
 closed and why lives in `DESIGN.md` §13 (the milestone ledger). This file
 tracks only what is still open.
 
+## Unmerged work sitting on a branch
+
+- **`decision-roundtrip` (tip `8edd8dc`, three commits) is NOT on main.** It
+  closes two silent defects that `examples/website` (untracked) exposed: a
+  decision whose subject carried a two-word capture could no longer be read back
+  from its canonical line (`crystallize` now renders, re-reads and refuses,
+  `CrystError.Unreadable`), and a fact built from several holes lost the boundary
+  between its parts, so `<value.N>` read a word (parts are now stored quoted,
+  with `Surface.valueTokens`/`valueText` as the inverse). Green at that tip:
+  `just test` 467/0, `lips check` on all 15 examples, and the `web` mint's own
+  gap fixed (`return 200 'hello world';`). Main moved meanwhile, so it needs
+  `git rebase main` (conflicts expected only in `TODO.md` and `DESIGN.md`) and
+  then `git merge --ff-only`. Its own TODO edits carry the follow-ups it leaves
+  open, including the static part-alignment gate.
+
 ## Next up (priority order)
 
 1. **Honesty gates, structural half** (decided 2026-07-30; these two need no
