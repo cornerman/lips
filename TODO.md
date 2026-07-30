@@ -204,6 +204,48 @@ tracks only what is still open.
    domain-blind. Do it after item 4's sweep, or every committed engine fails
    the new gate at once.
 
+6. **The schema pin is recorded, but nothing relates it to the nixpkgs the
+   module is evaluated with** (open half of the schema-pin work, DESIGN §13
+   "Option-schema grounding"; the mechanism landed cbd3f1f). Four separate
+   questions, in the order they hurt:
+
+   a. TWO NIXPKGS, NO RELATION. A mint is grounded against the `schema:` pin,
+      while the realized module is evaluated against whatever nixpkgs the
+      importing flake has -- and a compiled directory's own `flake.nix` says
+      `inputs.nixpkgs.url = "flake:nixpkgs"`, resolved ambiently on purpose. So
+      an engine can be grounded against one option set and evaluated against
+      another, and nothing compares them. Loud in the common case (a renamed or
+      absent option fails the user's eval), silent in the bad case (an option
+      that survived but changed meaning). Candidate: `check` reads the pin from
+      `.generation` and, when nix is available, warns when the ambient nixpkgs
+      differs -- but `check` must stay nixpkgs-free, so this may belong in the
+      flake helper (`lib.modulesFromDir`, which already has a `pkgs`) instead.
+      Decide where before building anything.
+
+   b. THE PIN IS NOT STICKY, BY DECISION. A re-mint defaults to the pin baked
+      into the running binary, not the one the committed record names: a re-mint
+      is the moment you want fresh grounding, and replay is impossible anyway
+      (the model is nondeterministic), so the record is an audit trail, not a
+      lock to obey. Consequence nobody is warned about: re-minting with a newer
+      lips silently re-grounds, and the `schema:` line only shows it afterwards.
+      Candidate if that ever bites: `generate` prints the old and new pin when
+      they differ, which is one line of prose and no new knob.
+
+   c. `--schema` IS PER INVOCATION AND REMEMBERED NOWHERE. A caller on a stable
+      channel must pass it on every mint of every language, and forgetting it
+      silently reverts to the baked pin (the record shows which, after the fact).
+      Deliberate for now -- a per-directory default would be the lock file this
+      design rejected, since the engine and its pin already travel together in
+      `.generation`. Revisit only with a real user who mints often enough to be
+      hurt; the honest cheap fix is (b)'s printed diff, not new state.
+
+   d. `LIPS_OPTIONS_JSON` PINS BY CONTENT, NOT BY ORIGIN. A supplied document is
+      recorded as `options-json:<hash>` of its bytes, which is checkable but
+      says nothing about which nixpkgs produced it. Fine for the suite's offline
+      fixture (its whole point is to be nixpkgs-free); a real caller who builds
+      the document themselves loses the ref. Candidate: accept a ref alongside
+      the path, or nothing at all -- prefer `--schema` for that caller.
+
 ## Backlog (larger / deferred by design)
 
 - **Cross-program composition (one program naming another).** Nix composes;
@@ -233,6 +275,10 @@ tracks only what is still open.
   is refused as unknown although the cluster has it. The schema source must be
   able to take extra resource definitions (kubenix's own imported-CRD path)
   and record what it took, or grounding is honest only for vanilla clusters.
+  The recording half is now solved in shape: a mint's grounding is pinned in the
+  record as `schema:` and overridable with `--schema` (DESIGN §13), so the CRD
+  work is "let the schema source take extra definitions and pin each of them",
+  not "invent a way to record a schema source".
   (ii) CONVENTION HAS NO WORLD-LEVEL CHANNEL. Label keys, naming, namespace
   policy, resource limits are mechanism taste -- exactly what
   `<language>.direction` carries -- but nothing today states a direction shared
@@ -268,7 +314,10 @@ tracks only what is still open.
   generate time -- which generate could afford (it is already online). What holds
   it back: that schema is per provider AND per provider version, so it needs a
   pin per program to stay reproducible, which is a new recorded knob, not just a
-  new parser.
+  new parser. Half of that knob now exists: the generation record carries a
+  `schema:` pin and `--schema` overrides it (DESIGN §13), so what is missing is
+  per-provider granularity -- one pin per provider and version, recorded beside
+  the world's own pin, rather than the single pin per event there is today.
 
 - **Mint round loop** — deferred, analysis kept so it is not redone. The idea:
   when the gate rejects an engine, re-prompt the model with the findings
