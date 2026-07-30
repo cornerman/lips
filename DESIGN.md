@@ -1177,10 +1177,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
   buys nothing over an explicit pipe. Proven live by two committed examples in
   two languages: `examples/web.deploy.lips` (Deployment + Service, namespace,
   container and service ports) and `examples/report.cron.lips` (CronJob,
-  schedule, history limits, deadline), both rendering real YAML. One finding
-  fixed on the way: the module header and several messages named "NixOS" from
-  domain-blind layers (`Realize`, `OptionType.renderOptionError`), which was
-  wrong the moment a third world existed. Design in
+  schedule, history limits, deadline), both rendering real YAML. Three findings
+  fixed on the way, each one a third world made visible. (1) The module header
+  and several messages named "NixOS" from domain-blind layers (`Realize`,
+  `OptionType.renderOptionError`). (2) `modulesFromDir` decided a program's world
+  by testing for the single string `target: home-manager`, so a kubenix program
+  was labeled nixos; it now reads the recorded slug and exposes
+  `kubenixModules.<instance>`, and `lipsModules-eval` instantiates each one
+  through `kubenix.evalModules` (forcing `resultYAML.drvPath`), the
+  manifest-world equivalent of forcing a `toplevel`. (3) The bug underneath:
+  reads followed the AMBIENT locale encoding while writes were pinned to UTF-8,
+  so inside a nix build (no `LANG`) reading a `.generation` -- which embeds the
+  mint prompt, em dashes included -- threw, `tryRead` turned the throw into
+  "absent", and `compile` silently emitted a NixOS flake for a kubenix program.
+  Fixed at the root (`setLocaleEncoding utf8`) and made loud: a record that
+  exists but cannot be read now dies instead of defaulting to a world. The
+  standing lesson, paid again: a silent fallback beats a crash only until its
+  plausible-looking output reaches a human. Design in
   `docs/superpowers/specs/2026-07-30-kubenix-terranix-targets-design.md`; its
   phase 2 (terranix) is designed but unbuilt, and its grounding weakness is
   recorded in `TODO.md` rather than hidden.

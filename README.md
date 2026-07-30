@@ -210,7 +210,7 @@ it by the world its engine was minted for:
     in { imports = [ lips.nixosModules.ledger ]; }
 
 A home-manager engine appears under `lips.homeManagerModules.<instance>`
-instead. Nix flakes see only git-tracked files, so `git add` your program and
+instead, a kubenix one under `lips.kubenixModules.<instance>`. Nix flakes see only git-tracked files, so `git add` your program and
 its language folder before rebuilding. Both program shapes work here, the
 singleton `<language>.lips` included.
 
