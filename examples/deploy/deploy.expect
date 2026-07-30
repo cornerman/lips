@@ -1,0 +1,6 @@
+a1 expect kubernetes.resources.deployments.<self>.spec.replicas from deploy.replicas
+a2 expect kubernetes.resources.deployments.<self>.spec.template.spec.containers.app.image from deploy.image
+a3 expect kubernetes.resources.deployments.<self>.spec.template.spec.containers.app.ports.http.containerPort from deploy.port
+a4 expect kubernetes.resources.services.<self>.spec.ports.http.targetPort from deploy.port
+a5 expect kubernetes.resources.services.<self>.spec.ports.http.port from service.port
+a6 expect kubernetes.namespace from deploy.namespace

@@ -1,0 +1,4 @@
+run 3 replicas of the image nginx:1.27.
+listen on container port 80.
+expose it in the cluster on port 8080.
+deploy into the namespace storefront.

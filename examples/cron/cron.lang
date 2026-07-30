@@ -1,0 +1,11 @@
+p1 meta lang.pattern.p1 stated "run the image <image> every night at <hh>:<mm> => fact job.image \"<image>\" ; fact job.schedule \"<hh> <mm>\"" @gen:4ee11db906680e99
+p2 meta lang.pattern.p2 stated "the command is <cmd.words> => fact job.command \"<cmd>\"" @gen:4ee11db906680e99
+p3 meta lang.pattern.p3 stated "keep <count> finished runs in the history => fact job.history \"<count>\"" @gen:4ee11db906680e99
+p4 meta lang.pattern.p4 stated "give up on a run after <secs> seconds => fact job.timeout \"<secs>\"" @gen:4ee11db906680e99
+q1 meta engine.demand.q1 stated "demand job.image \"which container image should the scheduled run use?\"" @gen:4ee11db906680e99
+q2 meta engine.demand.q2 stated "demand job.schedule \"at what time of night should it run (hh:mm)?\"" @gen:4ee11db906680e99
+r1 meta engine.rule.r1 stated "match fact job.image => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.image \"\\\"<value>\\\"\" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.restartPolicy \"\\\"OnFailure\\\"\"" @gen:4ee11db906680e99
+r2 meta engine.rule.r2 stated "match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule \"\\\"<value.2> <value.1> * * *\\\"\"" @gen:4ee11db906680e99
+r3 meta engine.rule.r3 stated "match fact job.command => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.command \"[ \\\"/bin/sh\\\" \\\"-c\\\" \\\"<value>\\\" ]\"" @gen:4ee11db906680e99
+r4 meta engine.rule.r4 stated "match fact job.history => kubernetes.resources.cronJobs.<self>.spec.successfulJobsHistoryLimit \"<value:int>\" ; kubernetes.resources.cronJobs.<self>.spec.failedJobsHistoryLimit \"<value:int>\"" @gen:4ee11db906680e99
+r5 meta engine.rule.r5 stated "match fact job.timeout => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.activeDeadlineSeconds \"<value:int>\"" @gen:4ee11db906680e99

@@ -1,0 +1,4 @@
+run the image ghcr.io/acme/report:2.3 every night at 02:30.
+the command is /bin/report --daily.
+keep 3 finished runs in the history.
+give up on a run after 900 seconds.

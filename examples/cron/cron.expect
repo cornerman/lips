@@ -1,0 +1,7 @@
+a1 expect kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.image from job.image
+a2 expect kubernetes.resources.cronJobs.<self>.spec.schedule from job.schedule#1
+a3 expect kubernetes.resources.cronJobs.<self>.spec.schedule from job.schedule#2
+a4 expect kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.command from job.command
+a5 expect kubernetes.resources.cronJobs.<self>.spec.successfulJobsHistoryLimit from job.history
+a6 expect kubernetes.resources.cronJobs.<self>.spec.failedJobsHistoryLimit from job.history
+a7 expect kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.activeDeadlineSeconds from job.timeout
