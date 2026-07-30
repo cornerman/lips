@@ -47,6 +47,7 @@ import Lips.Generate.Record (corpusText, genId, record, recordedProgram)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
+import Lips.Kernel.Lang.Nest
 import Lips.Kernel.Lang.Store
 import Lips.Kernel.Source
 import Lips.Lsp.Derive
@@ -1801,6 +1802,43 @@ main = hspec $ do
           ds  -> expectationFailure ("expected one emitted decision, got " ++ show (length ds))
         Left e -> expectationFailure ("unexpected refine error: " ++ show e)
 
+  describe "pattern nesting (blocks: a line's scope, Lang.Nest)" $ do
+    let host  = patOne "p2" [TLit "host", THole "domain"]
+                  Concept [SLit "host.", SHole "domain"] [SLit "a virtual host"]
+        route = patUnder "p3" "p2" [TLit "-", THole "path", TLit "proxies", TLit "to", THole "up"]
+                  [ PatEmit Fact
+                      [SLit "host.", SHole "domain", SLit ".route.", SHole "path", SLit ".proxy"]
+                      [SHole "up"] ]
+
+    it "puts an ancestor's captures in a child's scope" $
+      holesInScope [host, route] route `shouldMatchList` ["path", "up", "domain"]
+
+    it "leaves a top-level pattern with only its own holes" $
+      holesInScope [host, route] host `shouldMatchList` ["domain"]
+
+    it "refuses a parent no pattern defines" $
+      checkNesting [patUnder "p3" "nope" [TLit "x"] [PatEmit Concept [SLit "a"] [SLit "b"]]]
+        `shouldBe` [UnknownParent "p3" "nope"]
+
+    it "refuses a nesting cycle" $
+      checkNesting [ patUnder "p3" "p4" [TLit "x"] [PatEmit Concept [SLit "a"] [SLit "b"]]
+                   , patUnder "p4" "p3" [TLit "y"] [PatEmit Concept [SLit "c"] [SLit "d"]] ]
+        `shouldBe` [NestCycle ["p3", "p4"]]
+
+    it "allows a pattern nested under itself (unbounded depth)" $
+      checkNesting [patUnder "p3" "p3" [TLit "-", THole "x"]
+                      [PatEmit Concept [SLit "n.", SHole "x"] [SLit "a node"]]]
+        `shouldBe` []
+
+    it "refuses an emit hole no ancestor binds" $
+      checkNesting [ patOne "p2" [TLit "host"] Concept [SLit "host"] []
+                   , patUnder "p3" "p2" [TLit "-"]
+                       [PatEmit Fact [SLit "r.", SHole "ghost"] []] ]
+        `shouldBe` [UnboundInScope "p3" ["ghost"]]
+
+    it "accepts the two-level engine whose child reads its parent's capture" $
+      checkNesting [host, route] `shouldBe` []
+
   describe "language storage (crystallization plan: .lang round-trip)" $ do
     let engine = EngineData
           { edPatterns =
@@ -1876,6 +1914,21 @@ main = hspec $ do
     it "keeps the bare id as the pattern's own id" $
       fmap pId (parsePatternBody "p3.under.p2" "- <path> => concept a.<path> \"x\"")
         `shouldBe` Right "p3"
+
+    it "readLang refuses an engine whose nesting does not close" $ do
+      -- One door: every verb reads a .lang through readLang, so generate,
+      -- compile, check and lsp all inherit the nesting checks.
+      let orphan = "p3 meta lang.pattern.p3.under.p2 stated \"- <x> => fact a.<x> \\\"<x>\\\"\"\n"
+      readLang orphan `shouldSatisfy` isLeft
+
+    it "readLang anchors a nesting error to the offending pattern's line" $ do
+      let src = T.unlines
+            [ "p1 meta lang.pattern.p1 stated \"host <d> => concept host.<d> \\\"h\\\"\""
+            , "p3 meta lang.pattern.p3.under.p1 stated \"- <x> => fact a.<ghost> \\\"<x>\\\"\""
+            ]
+      case readLang src of
+        Left es -> map peLine es `shouldBe` [2]
+        Right _ -> expectationFailure "expected a nesting error"
 
     it "rejects an unrecognized engine line loudly (never silently dropped)" $ do
       -- Regression (kernel review): a mistyped group subject must fail, not be

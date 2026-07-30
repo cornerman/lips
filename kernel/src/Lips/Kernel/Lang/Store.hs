@@ -34,6 +34,7 @@ module Lips.Kernel.Lang.Store
   ) where
 
 import           Data.List  (sortOn)
+import qualified Data.Map.Strict as Map
 import           Data.Text  (Text)
 import qualified Data.Text  as T
 
@@ -46,6 +47,7 @@ import qualified Lips.Kernel.Surface as Q
 import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Reader   (ParseError (..), readDecision, renderBase)
+import Lips.Kernel.Lang.Nest    (NestError (..), checkNesting, renderNestError)
 import Lips.Kernel.Lang.Pattern
 
 -- | A whole minted engine: the language (front half) and the semantics (back
@@ -87,19 +89,35 @@ readLang :: Text -> Either [ParseError] EngineData
 readLang src =
   let cands   = [ (n, t) | (n, l) <- zip [1 ..] (T.lines src)
                          , let t = T.strip l, not (skip t) ]
-      results = map (uncurry readEngineLine) cands
+      results = [ fmap ((,) n) (readEngineLine n t) | (n, t) <- cands ]
       errs    = [ e | Left e <- results ]
       oks     = [ x | Right x <- results ]
-   in if null errs
+      pats    = sortOn pId [p | (_, ELPat p) <- oks]
+      patLine = Map.fromList [(pId p, n) | (n, ELPat p) <- oks]
+      -- Nesting is a whole-engine property (a child's holes may be bound by an
+      -- ancestor, which one pattern's parse cannot see), so it is judged here,
+      -- at the ONE door every verb reads a .lang through. Each error is anchored
+      -- to the offending pattern's own line, so the report points where the fix
+      -- goes.
+      nestErrs = [ ParseError (Map.findWithDefault 0 (nestSubject e) patLine)
+                              (renderNestError e)
+                 | e <- checkNesting pats ]
+   in if null errs && null nestErrs
         then Right EngineData
-               { edPatterns = sortOn pId  [p | ELPat p  <- oks]
-               , edRules    = sortOn mrId [r | ELRule r <- oks]
-               , edDemands  = sortOn dsId [q | ELDem q  <- oks]
-               , edMerges   = sortOn mgId [m | ELMerge m <- oks]
+               { edPatterns = pats
+               , edRules    = sortOn mrId [r | (_, ELRule r) <- oks]
+               , edDemands  = sortOn dsId [q | (_, ELDem q)  <- oks]
+               , edMerges   = sortOn mgId [m | (_, ELMerge m) <- oks]
                }
-        else Left errs
+        else Left (errs ++ nestErrs)
   where
     skip t = T.null t || "#" `T.isPrefixOf` t
+    -- Which pattern a nesting error is about, so it lands on that line.
+    nestSubject e = case e of
+      UnknownParent p _  -> p
+      UnboundInScope p _ -> p
+      NestCycle (p : _)  -> p
+      NestCycle []       -> ""
     -- Read the decision envelope (re-stamping its line), then classify and
     -- parse the group body -- both errors anchored to the real line n.
     readEngineLine n t = do
