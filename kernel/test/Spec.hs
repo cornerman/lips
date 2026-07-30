@@ -1179,6 +1179,87 @@ main = hspec $ do
       parsePatternBody "p" "install <pkgs.words> on <host> => fact pkg.<host> \"<pkgs>\""
         `shouldSatisfy` isRight
 
+  describe "template fused hole (a value fused to punctuation inside one token)" $ do
+    -- The gap this closes: a language whose values sit inside a token --
+    -- `println("hallo")`, `--port=8080`, `k=v` -- was unreadable, because a
+    -- hole could only be a WHOLE whitespace token. Nothing here is
+    -- per-language: the kernel learns no call syntax, it only stops requiring
+    -- a space around a hole.
+    let pat body = case parsePatternBody "p" body of
+          Right ok -> ok
+          Left e   -> error (T.unpack e)
+    it "lexes a quoted span fused to a prefix as one token" $
+      -- The quote is already the kernel's atomicity mark; it applies wherever
+      -- the span starts, not only at the head of a token, or a call argument
+      -- with a space would split into two tokens.
+      lexTokens "println_to_stdout(\"hallo du\")"
+        `shouldBe` ["println_to_stdout(\"hallo du\")"]
+    it "a quoted value closing a sentence still hands over its inner text" $ do
+      -- Once a quoted span may start mid-token, the sentence period lands on
+      -- the SAME token as the value; stripping it before unquoting is what
+      -- keeps `respond with "hi".` a value rather than a quoted-looking word.
+      tokenizeLine "respond with \"hello from lips\"."
+        `shouldBe` [("respond", "respond"), ("with", "with"), ("hello from lips", "hello from lips")]
+      matchTemplate (pTemplate (pat "respond with \"<msg>\". => fact m \"<msg>\""))
+                    (tokenizeLine "respond with \"hello from lips\".")
+        `shouldBe` Just (Map.fromList [("msg", "hello from lips")])
+
+    it "a hole inside a token binds the text between its literal pieces" $ do
+      let p = pat "println_to_stdout(\"<text>\") => fact print.text \"<text>\""
+      matchTemplate (pTemplate p) (tokenizeLine "println_to_stdout(\"hallo\")")
+        `shouldBe` Just (Map.fromList [("text", "hallo")])
+      matchTemplate (pTemplate p) (tokenizeLine "println_to_stdout(\"hallo du\")")
+        `shouldBe` Just (Map.fromList [("text", "hallo du")])
+    it "a fused hole is a binding the target may use" $
+      holesOf (pat "println_to_stdout(\"<text>\") => fact print.text \"<text>\"")
+        `shouldBe` ["text"]
+    it "the literal pieces around a fused hole must match" $ do
+      let p = pat "println_to_stdout(\"<text>\") => fact print.text \"<text>\""
+      matchTemplate (pTemplate p) (tokenizeLine "eprintln_to_stdout(\"hallo\")")
+        `shouldBe` Nothing
+      matchTemplate (pTemplate p) (tokenizeLine "println_to_stdout(hallo)")
+        `shouldBe` Nothing
+    it "a fused hole binds at least one character (deduce-or-fail)" $
+      matchTemplate (pTemplate (pat "println(<x>) => fact a \"<x>\""))
+                    (tokenizeLine "println()")
+        `shouldBe` Nothing
+    it "reads a key=value shape, hole and literal in one token" $
+      matchTemplate (pTemplate (pat "--port=<n> => fact port \"<n>\""))
+                    (tokenizeLine "--port=8080")
+        `shouldBe` Just (Map.fromList [("n", "8080")])
+    it "captures the surface verbatim while literals compare case-insensitively" $
+      matchTemplate (pTemplate (pat "Print(<x>) => fact a \"<x>\""))
+                    (tokenizeLine "print(Hallo)")
+        `shouldBe` Just (Map.fromList [("x", "Hallo")])
+    it "a fused template token round-trips through the .lang store" $ do
+      let p  = pat "println_to_stdout(\"<text>\") => fact print.text \"<text>\""
+          rt = decisionToPattern . patternToDecision
+      rt p `shouldBe` Right p
+    it "refuses a multi-token hole inside a token instead of mis-binding it" $
+      -- <x.words> spans whitespace, which a token cannot; saying so beats
+      -- silently binding a hole named "x.words".
+      parsePatternBody "p" "println(<x.words>) => fact a \"<x>\""
+        `shouldSatisfy` isLeft
+    it "the engine that exposed the gap now closes its nesting" $ do
+      -- The failing mint: p2 emits <text>, bound only by a hole inside the
+      -- call token. Before fused holes this was an UnboundInScope error the
+      -- mint could not fix, i.e. a missing grammar case.
+      let p1 = pat "function println_to_stdout(x: String) => glue runtime.stdout \"one line per call\""
+          p2 = case parsePatternBody "p2.under.p"
+                      "println_to_stdout(\"<text>\") => fact print.<n:index>.text \"<text>\"" of
+                 Right ok -> ok
+                 Left e   -> error (T.unpack e)
+          src = T.unlines
+            [ "function println_to_stdout(x: String)"
+            , ""
+            , "println_to_stdout(\"hallo\")"
+            , "println_to_stdout(\"du\")"
+            , "println_to_stdout(\"!\")"
+            ]
+      checkNesting [p1, p2] `shouldBe` []
+      fmap (map (\d -> case dAssertion d of Assertion a -> a) . toList) (crystallize "function" [p1, p2] src)
+        `shouldBe` Right ["one line per call", "hallo", "du", "!"]
+
   describe "source fills (a program word inside baked source)" $ do
     it "reads the markers a source text names, once each, in order" $
       sourceMarkers "module @name@\nfunc main() { print(\"@name@ @greeting@\") }"
@@ -2105,7 +2186,7 @@ main = hspec $ do
       parsePatternBody "po" "say <msg> => fact out stated \"<msg>\""
         `shouldSatisfy` isLeft
 
-    it "reads a hole with glued trailing punctuation: '<when>.' binds <when>" $
+    it "reads a hole with fused trailing punctuation: '<when>.' binds <when>" $
       case parsePatternBody "p9" "back up <src> every <when>. => fact backup.job \"<src> <when>\"" of
         Right p -> pTemplate p `shouldBe`
           [TLit "back", TLit "up", THole "src", TLit "every", THole "when"]
@@ -2592,6 +2673,18 @@ main = hspec $ do
     it "skips a template that repeats a hole name instead of guessing" $
       patternOverlaps [pat "p1" [THole "a", THole "a"], pat "p2" [TLit "p", TLit "q"]]
         `shouldBe` []
+    it "two fused templates overlap only when a token could satisfy both" $ do
+      let fused i lit = case parsePatternBody i (lit <> "(<x>) => fact s \"<x>\"") of
+            Right ok -> ok
+            Left e   -> error (T.unpack e)
+      ids (patternOverlaps [fused "p1" "println", fused "p2" "println"])
+        `shouldBe` [("p1", "p2")]
+      patternOverlaps [fused "p1" "println", fused "p2" "eprintln"] `shouldBe` []
+    it "a whole-token hole overlaps a fused template" $ do
+      let fused = case parsePatternBody "p2" "println(<x>) => fact s \"<x>\"" of
+            Right ok -> ok
+            Left e   -> error (T.unpack e)
+      ids (patternOverlaps [pat "p1" [THole "a"], fused]) `shouldBe` [("p1", "p2")]
     it "catches an overlap no program line in the corpus witnesses" $ do
       -- crystallize reports Overlapping only for a line that hits both; a corpus
       -- of one line that hits neither leaves the defect inside the engine.
@@ -2997,7 +3090,7 @@ main = hspec $ do
       t `shouldSatisfy` T.isInfixOf "services.restic"
       t `shouldSatisfy` T.isInfixOf "list of string"
     -- Tools end the one-assistant-message world: a model that narrates before
-    -- acting would otherwise get its narration glued in front of the engine.
+    -- acting would otherwise get its narration fused in front of the engine.
     it "takes the reply after the tool call, not the narration before it" $
       prReply (parsePiReply stream) `shouldBe` "pattern p 1.0"
     it "a stream with no tool call has an empty transcript" $
@@ -3113,7 +3206,7 @@ main = hspec $ do
           , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
           ]
         -- reconstruct a surface line from a template, filling its single hole
-        surface toks fill = T.unwords [ case t of TLit l -> l; THole _ -> fill; TMulti _ -> fill | t <- toks ]
+        surface toks fill = T.unwords [ case t of TLit l -> l; TFused _ -> fill; THole _ -> fill; TMulti _ -> fill | t <- toks ]
         runProg prog = do
           base <- either (Left . show) Right (crystallize "feed" pats prog)
           either (Left . show) Right

@@ -206,6 +206,10 @@ renderTplTok :: TplTok -> Text
 renderTplTok (TLit t)   = t
 renderTplTok (THole h)  = "<" <> h <> ">"
 renderTplTok (TMulti h) = "<" <> h <> ".words>"
+renderTplTok (TFused segs) = T.concat (map seg segs)
+  where
+    seg (FLit t)  = t
+    seg (FHole h) = "<" <> h <> ">"
 
 renderParts :: [StrPart] -> Text
 renderParts = T.concat . map r
@@ -222,11 +226,17 @@ parseBody idTok body = do
   (tplStr, rest0) <- maybe (Left ("pattern " <> pid <> ": missing =>")) Right
                        (splitOnSeparator body)
   -- Drop empty-literal tokens (pure punctuation), symmetric with 'tokenizeLine',
-  -- so a period glued to a quoted value never survives as a phantom token that
+  -- so a period fused to a quoted value never survives as a phantom token that
   -- would unbalance the match after a render/read round-trip.
   let template = filter (not . emptyLit) (map parseTplTok (lexTokens tplStr))
       emptyLit (TLit t) = T.null t
       emptyLit _        = False
+  -- A multi-token hole spans whitespace, which one token cannot contain: say so
+  -- rather than bind a hole literally named "x.words".
+  case [h | TFused segs <- template, h <- fusedHoles segs, ".words" `T.isSuffixOf` h] of
+    (h : _) -> Left ("pattern " <> pid <> ": <" <> h
+                       <> "> is fused inside a token, but a multi-token hole spans whitespace")
+    []      -> Right ()
   emits <- mapM (parseEmit pid . T.strip) (splitOutsideQuotes " ; " rest0)
   let p = Pattern { pId = pid, pParents = parents, pTemplate = template, pEmits = emits }
   -- Every hole in the target must be bound, so 'applyPattern' is total. A
@@ -276,7 +286,8 @@ parseTplTok w
   -- inner text, spaces and all); a fixed "literal" matches a quoted token.
   -- Symmetric with 'tokenizeLine', which lexes a quoted line value as one
   -- token, so the two line up.
-  | Just inner <- unquote w = maybe (TLit (T.toLower inner)) THole (holeName inner)
+  | Just inner <- unquote (stripTrailingPunct w) =
+      maybe (TLit (T.toLower inner)) THole (holeName inner)
   -- Symmetric with 'tokenizeLine': trailing sentence punctuation is noise on
   -- the template side too, so a minted "<when>." is the hole <when> (live
   -- mints glue the line's final period onto the hole; kernel physics, not a
@@ -286,7 +297,34 @@ parseTplTok w
        in case T.stripSuffix ".words" h of
             Just name -> TMulti name
             Nothing   -> THole h
+  -- A hole FUSED to literal text inside one token: a call argument, a flag
+  -- value, a key=value. Recognized last, so the whole-token forms above keep
+  -- their meaning.
+  | segs <- fusedSegs (stripTrailingPunct w), any isHole segs = TFused segs
   | otherwise = TLit (normalizeToken w)
+  where
+    isHole (FHole _) = True
+    isHole (FLit _)  = False
+
+-- | Split a template token into its literal pieces and its holes. Literal
+-- pieces are lowercased, matching how a whole-token literal is stored, so the
+-- comparison is case-insensitive on both sides.
+fusedSegs :: Text -> [FusedSeg]
+fusedSegs t
+  | T.null t = []
+  | otherwise = case T.breakOn "<" t of
+      (before, rest)
+        | T.null rest -> [FLit (T.toLower before)]
+        | otherwise ->
+            let (body, afterClose) = T.breakOn ">" (T.drop 1 rest)
+             in if T.null afterClose || T.null body
+                  -- An unclosed "<" is ordinary text (a shell redirect, a
+                  -- comparison), not a broken hole.
+                  then [FLit (T.toLower t)]
+                  else lit before ++ [FHole (dropHoleType body)]
+                         ++ fusedSegs (T.drop 1 afterClose)
+  where
+    lit b = [FLit (T.toLower b) | not (T.null b)]
 
 -- | Drop a redundant @:type@ from a TEMPLATE hole name. A template hole binds a
 -- token of program TEXT, so a type annotation carries no information there, and

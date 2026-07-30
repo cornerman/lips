@@ -200,7 +200,12 @@ tokens joined by single spaces, may sit anywhere in the template, and ends
 where the template's next literal matches -- 'back up <src.words> to
 <target>' reads 'back up my home folder to nas' as src='my home folder'. As
 the LAST template token it binds the rest of the line, which is how one line
-carries several items ('install <pkgs.words>'). A BULLETED list item begins
+carries several items ('install <pkgs.words>'). A hole may also sit INSIDE a
+token, fused to punctuation, which is how a call or a flag is read:
+'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
+reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
+cannot be a multi-token hole; a value with spaces must be quoted (a quoted
+span is one token wherever it starts). A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes

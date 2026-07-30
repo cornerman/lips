@@ -1784,6 +1784,27 @@ but the loop around it is incomplete; "missing" means specced, not built.
   mark it) and dedup as a global kernel law (that decides a semantic question about
   a target world the kernel may not know).
 
+- **The fused capture (a hole inside a token).** A hole could only be a whole
+  whitespace token, so a value pressed against punctuation was unreadable: the
+  first program written in a call syntax (`println_to_stdout("hallo")`) minted a
+  pattern whose emit hole nothing could bind, and the mint gate refused it with
+  "emits `<text>`, which neither it nor every block it can sit in binds". No
+  re-mint could fix that -- a template had no way to say it -- so it was a
+  missing grammar case, i.e. a kernel bug (`TFused [FusedSeg]`, third of the
+  enumerated capture forms). A fused token's literal pieces must appear in the
+  token and each of its holes binds the non-empty run of characters between
+  them, shortest first with backtracking, exactly as the multi-token hole works
+  one level up; literals still compare case-insensitively and the capture is the
+  surface text. Two consequences fell out. A quoted span is now atomic wherever
+  it STARTS, not only at the head of a token, or `println("hallo du")` would
+  split in two; and a fused hole may not be `<name.words>` (that spans
+  whitespace, which one token cannot), which the `.lang` reader refuses by name.
+  Static overlap stays exact: two fused templates meet through the same product
+  walk one level down, over characters instead of words. The kernel learns no
+  call syntax from this -- it learns only to stop requiring a space around a
+  hole -- and the mint prompt now offers the form, since a capability the model
+  is never told about is dead capability.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
@@ -2092,7 +2113,10 @@ gate on an artifact-only engine, and the concept escape.
     hole `<name.words>` closes the second form: it binds one or more tokens
     anywhere in the template, ending where the template's next literal matches,
     so an unquoted several-word value needs no quotes (the end-of-template case
-    generalizes the former `<name.tail>`, its only spelling now). Blocks closed
+    generalizes the former `<name.tail>`, its only spelling now). The FUSED hole
+    closes the third form (see "The fused capture" in Done): literal text and
+    holes inside one token, which is how a value pressed against punctuation --
+    `println("<text>")`, `--port=<n>` -- is read at all. Blocks closed
     the last piece (see "Blocks" in Done): the deferred framing was wrong -- what
     was missing was never a decision that owns a list, but a line's ability to see
     the block it sits in.

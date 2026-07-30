@@ -23,8 +23,8 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..))
 import Lips.Kernel.Lang.Diagnose    (Diagnosis (..))
-import Lips.Kernel.Lang.Pattern     (Pattern (..), TplTok (..), normalizeToken,
-                                     tokenizeLine)
+import Lips.Kernel.Lang.Pattern     (FusedSeg (..), Pattern (..), TplTok (..),
+                                     matchFused, normalizeToken, tokenizeLine)
 
 -- | One completion candidate: the human-readable sentence form of a pattern,
 -- and a snippet with numbered tab-stops for its holes.
@@ -110,6 +110,12 @@ matchComplete (TLit lit : ts) ((_, norm) : rs) binds
   | otherwise   = Nothing
 matchComplete (THole h : ts) ((surface, _) : rs) binds =
   matchComplete ts rs (Map.insert h surface binds)
+-- A fused token is one token: it either matches whole, or the line is not a
+-- prefix of this pattern.
+matchComplete (TFused segs : ts) ((surface, _) : rs) binds =
+  case matchFused segs surface of
+    Just caps -> matchComplete ts rs (foldr (uncurry Map.insert) binds caps)
+    Nothing   -> Nothing
 matchComplete (TMulti h : ts) rest binds
   | null rest  = Just (binds, TMulti h : ts)   -- tokens ran out: hole unfilled
   | otherwise  = case ts of
@@ -146,6 +152,9 @@ applyPartial binds remaining (Just frag) = case remaining of
   (TMulti h : ts)
     | not (T.null frag) -> Just (Map.insert h frag binds, ts)
     | otherwise         -> Nothing
+  -- A half-typed fused token cannot bind yet (its closing literal is missing),
+  -- so it stays as the suffix to complete.
+  (TFused _ : _)         -> Just (binds, remaining)
   []                    -> Nothing                          -- prefix outgrew template
   where norm = normalizeToken frag
 
@@ -163,6 +172,16 @@ renderPattern binds p =
     step (ls, ss, nums) (TLit t)   = (t : ls, t : ss, nums)
     step (ls, ss, nums) (THole h)  = holeStep ls ss nums h False
     step (ls, ss, nums) (TMulti h) = holeStep ls ss nums h True
+    -- A fused token is one word: its literal pieces are typed as they stand and
+    -- each hole inside it becomes its own tab-stop.
+    step (ls, ss, nums) (TFused segs) =
+      let (l, s, nums') = foldl fusedStep ("", "", nums) segs
+       in (l : ls, s : ss, nums')
+    fusedStep (l, s, nums) (FLit t)  = (l <> t, s <> t, nums)
+    fusedStep (l, s, nums) (FHole h) = case Map.lookup h binds of
+      Just v  -> (l <> v, s <> v, nums)
+      Nothing -> let (n, nums') = assign h nums
+                  in (l <> "<" <> h <> ">", s <> "${" <> T.pack (show n) <> ":" <> h <> "}", nums')
     holeStep ls ss nums h isMulti =
       case Map.lookup h binds of
         Just v  -> (v : ls, v : ss, nums)                -- filled: literal

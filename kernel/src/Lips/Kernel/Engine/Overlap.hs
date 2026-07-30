@@ -50,7 +50,7 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Capture      (captureName)
 import Lips.Kernel.Engine.Data  (MapRule (..), renderAttrPath)
-import Lips.Kernel.Lang.Pattern (Pattern (..), TplTok (..))
+import Lips.Kernel.Lang.Pattern (FusedSeg (..), Pattern (..), TplTok (..), fusedHoles)
 
 -- | Two rules that could claim one decision, with the subject family that
 -- witnesses it (still-open captures rendered as @\<name\>@).
@@ -185,9 +185,10 @@ patternOverlaps pats =
     tails' t@(_:xs) = t : tails' xs
     repeatsHole p = let hs = [ h | tok <- pTemplate p, h <- holeName tok ]
                      in length hs /= length (Set.toList (Set.fromList hs))
-    holeName (THole h)  = [h]
-    holeName (TMulti h) = [h]
-    holeName (TLit _)   = []
+    holeName (THole h)   = [h]
+    holeName (TMulti h)  = [h]
+    holeName (TFused seg) = fusedHoles seg
+    holeName (TLit _)    = []
 
 -- | Could one token sequence match both templates? 'Just' the shortest witness
 -- the walk finds, 'Nothing' when the two templates read disjoint line shapes.
@@ -220,6 +221,17 @@ templatesOverlap l r = go Set.empty (l, r)
     step (TMulti h) (THole _) = Just (word h, [(Stay, Next), (Next, Next)])
     step (TMulti h) (TMulti _) =
       Just (word h, [(Stay, Stay), (Stay, Next), (Next, Stay), (Next, Next)])
+    -- A fused token reads ONE word, so it meets the other forms as a hole does;
+    -- against another fused token the question is whether one word satisfies
+    -- both, which 'fusedMeet' answers exactly, the same product walk one level
+    -- down (characters instead of words).
+    step (TFused g) (TFused g') = (\w -> (w, [(Next, Next)])) <$> fusedMeet g g'
+    step (TFused g) (TLit y)   = (\w -> (w, [(Next, Next)])) <$> fusedMeet g [FLit y]
+    step (TLit x) (TFused g')  = (\w -> (w, [(Next, Next)])) <$> fusedMeet [FLit x] g'
+    step (TFused g) (THole _)  = Just (renderFused g, [(Next, Next)])
+    step (THole _) (TFused g') = Just (renderFused g', [(Next, Next)])
+    step (TFused g) (TMulti _) = Just (renderFused g, [(Next, Stay), (Next, Next)])
+    step (TMulti _) (TFused g') = Just (renderFused g', [(Stay, Next), (Next, Next)])
     pick _ whole _    Stay = whole
     pick _ _     rest Next = rest
     word h = "<" <> h <> ">"
@@ -229,6 +241,53 @@ templatesOverlap l r = go Set.empty (l, r)
 
 -- | How a side continues after consuming one word.
 data Step = Stay | Next
+
+-- | Could ONE token satisfy both fused templates? 'Just' a witness word, or
+-- 'Nothing' when their literal pieces cannot line up. The walk consumes one
+-- CHARACTER at a time from each side; a hole may keep the character (staying
+-- open) or end on it, exactly as a multi-token hole may stay or advance.
+fusedMeet :: [FusedSeg] -> [FusedSeg] -> Maybe Text
+fusedMeet l r = go Set.empty (norm l, norm r)
+  where
+    -- An exhausted literal piece is no piece at all.
+    norm (FLit t : ss) | T.null t = norm ss
+    norm ss = ss
+    go seen st@(as, bs)
+      | st `Set.member` seen = Nothing
+      | otherwise = case (as, bs) of
+          ([], [])  -> Just ""
+          ([], _)   -> Nothing   -- a piece still to match, nothing left to match it
+          (_, [])   -> Nothing
+          (a : as', b : bs') -> case chars a b of
+            Nothing      -> Nothing
+            Just (c, ks) -> firstJust
+              [ T.cons c <$> go (Set.insert st seen) (norm (pick a as' ka), norm (pick b bs' kb))
+              | (ka, kb) <- ks ]
+      where
+        -- A literal piece keeps its remaining characters; a hole either stays
+        -- open or ends here.
+        pick (FLit t) rest _    = FLit (T.drop 1 t) : rest
+        pick (FHole h) rest Stay = FHole h : rest
+        pick (FHole _) rest Next = rest
+    -- The one character both sides consume, plus how each may continue.
+    chars (FLit x) (FLit y)
+      | T.head x == T.head y = Just (T.head x, [(Next, Next)])
+      | otherwise            = Nothing
+    chars (FLit x) (FHole _) = Just (T.head x, [(Next, Stay), (Next, Next)])
+    chars (FHole _) (FLit y) = Just (T.head y, [(Stay, Next), (Next, Next)])
+    chars (FHole _) (FHole _) =
+      Just ('x', [(Stay, Stay), (Stay, Next), (Next, Stay), (Next, Next)])
+    firstJust xs = case [x | Just x <- xs] of
+      (x : _) -> Just x
+      []      -> Nothing
+
+-- | A fused template as the line shape a reader sees: its literal pieces with
+-- each hole spelled by name.
+renderFused :: [FusedSeg] -> Text
+renderFused = T.concat . map seg
+  where
+    seg (FLit t)  = t
+    seg (FHole h) = "<" <> h <> ">"
 
 -- | One overlap in the words the mint needs: which two patterns, and a line
 -- shape they both read.

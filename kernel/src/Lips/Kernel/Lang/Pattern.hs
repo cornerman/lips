@@ -29,6 +29,8 @@
 -- is the common case ('patOne').
 module Lips.Kernel.Lang.Pattern
   ( TplTok (..)
+  , FusedSeg (..)
+  , matchFused
   , StrPart (..)
   , PatEmit (..)
   , StructType (..)
@@ -46,10 +48,12 @@ module Lips.Kernel.Lang.Pattern
   , unquote
   , tokenizeLine
   , matchTemplate
+  , fusedHoles
   , applyPattern
   , holesOf
   ) where
 
+import           Control.Monad   (foldM)
 import           Data.Char       (isSpace)
 import           Data.Maybe      (listToMaybe)
 import           Data.Map.Strict (Map)
@@ -69,8 +73,22 @@ import Lips.Kernel.Surface  (stripTrailingPunct)
 -- matches (at the end of the template it binds the rest of the line, so one
 -- line may carry many items without the kernel dictating any collection
 -- syntax).
-data TplTok = TLit Text | THole Text | TMulti Text
+--
+-- A FUSED token holds literal text and holes inside ONE token, which is
+-- how a value sits against punctuation (@println("\<text>")@, @--port=\<n>@,
+-- @k=\<v>@). Without the fused form a hole had to be a whole whitespace token,
+-- so no language with call or flag syntax could be read at all -- a missing
+-- grammar case, not a program defect. A fused hole binds within its token only:
+-- it stops where the next literal piece matches, and a value that must span
+-- whitespace is either quoted (the quote makes it one token) or a @TMulti@.
+data TplTok = TLit Text | THole Text | TMulti Text | TFused [FusedSeg]
   deriving (Eq, Show)
+
+-- | A piece of a fused template token: literal text (stored lowercased, matched
+-- case-insensitively like 'TLit') or a hole binding one non-empty run of
+-- characters inside the same token.
+data FusedSeg = FLit Text | FHole Text
+  deriving (Eq, Show, Ord)
 
 -- | A piece of a target (subject or assertion) string: literal text or a hole
 -- reference filled from the bindings in scope.
@@ -204,7 +222,12 @@ holesOf p = [h | tok <- pTemplate p, h <- tokHoles tok]
   where
     tokHoles (THole h) = [h]
     tokHoles (TMulti h) = [h]
+    tokHoles (TFused segs) = fusedHoles segs
     tokHoles _         = []
+
+-- | The hole names a fused token binds, in order.
+fusedHoles :: [FusedSeg] -> [Text]
+fusedHoles segs = [h | FHole h <- segs]
 
 -- | Normalize a token for literal comparison: lowercase after stripping
 -- trailing punctuation. Total and deterministic (no morphology yet).
@@ -216,17 +239,26 @@ normalizeToken = T.toLower . stripTrailingPunct
 -- line tokenizer and the template parser, so quoting is treated identically on
 -- both sides: a quoted hole @"<body>"@ in a template and a quoted value in a
 -- line lex to single tokens that line up.
+-- A quoted span is atomic wherever it STARTS, not only at the head of a token:
+-- @println("hallo du")@ is one token, since the quote is the mark that says
+-- "these spaces belong to a value". Reading it as two tokens would make a call
+-- argument with a space unreadable.
 lexTokens :: Text -> [Text]
 lexTokens = go . T.stripStart
   where
     go t
-      | T.null t       = []
-      | T.head t == '"' =
-          let (inner, after) = T.breakOn "\"" (T.tail t)
-           in ("\"" <> inner <> "\"") : go (T.stripStart (T.drop 1 after))
-      | otherwise =
-          let (w, rest) = T.break isSpace t
-           in w : go (T.stripStart rest)
+      | T.null t  = []
+      | otherwise = let (w, rest) = word "" t in w : go (T.stripStart rest)
+    -- Accumulate one token: whitespace ends it, a quote pulls in the whole
+    -- quoted span (spaces included) and the token continues after it.
+    word acc t = case T.uncons t of
+      Nothing -> (acc, t)
+      Just (c, cs)
+        | isSpace c -> (acc, cs)
+        | c == '"' ->
+            let (inner, after) = T.breakOn "\"" cs
+             in word (acc <> "\"" <> inner <> "\"") (T.drop 1 after)
+        | otherwise -> word (T.snoc acc c) cs
 
 -- | If a token is a @"..."@ quoted span, its inner text; else Nothing.
 unquote :: Text -> Maybe Text
@@ -242,11 +274,14 @@ unquote w
 tokenizeLine :: Text -> [(Text, Text)]
 tokenizeLine = filter (not . T.null . snd) . map tok . lexTokens
   where
-    tok w = case unquote w of
+    -- Trailing sentence punctuation goes first, so a quoted value closing a
+    -- sentence (@"hello".@) is still recognized as quoted and hands over its
+    -- inner text.
+    tok w = case unquote (stripTrailingPunct w) of
       Just inner -> (inner, T.toLower inner)
       Nothing    -> (stripTrailingPunct w, normalizeToken w)
     -- A token that normalizes to empty is pure sentence punctuation (a lone
-    -- "." left when a period is glued to a quoted value). It carries no
+    -- "." left when a period is fused to a quoted value). It carries no
     -- meaning and is dropped, symmetric with the template side, so trailing
     -- punctuation never changes the token count a match depends on.
 
@@ -275,6 +310,15 @@ matchTemplate toks line = listToMaybe (go toks line Map.empty)
     go (THole h : ts) ((surface, _) : rs) binds =
       [ b' | b <- bind h surface binds, b' <- go ts rs b ]
     go (THole _ : _) [] _ = []
+    -- A fused token matches within one token: its literal pieces must appear,
+    -- and each of its holes binds the characters between them.
+    go (TFused segs : ts) ((surface, _) : rs) binds =
+      [ b'
+      | caps <- maybe [] (: []) (matchFused segs surface)
+      , b <- foldM (\acc (h, v) -> bind h v acc) binds caps
+      , b' <- go ts rs b
+      ]
+    go (TFused _ : _) [] _ = []
     -- Never guess: a multi-token hole binds at least one token, so `splits`
     -- starts at one and an empty rest yields no match at all.
     go (TMulti h : ts) rest binds =
@@ -289,6 +333,24 @@ matchTemplate toks line = listToMaybe (go toks line Map.empty)
       Nothing                    -> [Map.insert h v binds]
       Just prev | prev == v      -> [binds]
                 | otherwise      -> []
+
+-- | Match a fused token's segments against one token's surface text, yielding
+-- what each hole binds, in order. Literals compare case-insensitively (as
+-- 'TLit' does); a hole binds a non-empty run of characters and takes the
+-- FEWEST it can, so the literal after it lands on its first occurrence, and the
+-- search backtracks when the rest of the token then fails.
+matchFused :: [FusedSeg] -> Text -> Maybe [(Text, Text)]
+matchFused segs surface = listToMaybe (go segs surface)
+  where
+    go [] rest = [[] | T.null rest]
+    go (FLit l : ss) rest = case T.stripPrefix l (T.toLower rest) of
+      Just _  -> go ss (T.drop (T.length l) rest)
+      Nothing -> []
+    go (FHole h : ss) rest =
+      [ (h, T.take n rest) : caps
+      | n <- [1 .. T.length rest]
+      , caps <- go ss (T.drop n rest)
+      ]
 
 -- | Apply a matched pattern's bindings to produce one (subject, kind,
 -- assertion, strength) tuple per emit. Bindings are complete by construction:
