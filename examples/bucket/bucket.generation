@@ -1,19 +1,3 @@
-# lips generate refusal report. Machine-readable; rewritten on every refusal, never hand-edited.
-# fingerprint: 1db020357abf7bcd (re-hash the record below with the same function '.generation' uses to verify)
-
---- refused lines (a line the AI wrote that lips's grammar can't express) ---
-- rule r2: ${aws_s3_bucket.<self>.id} is not a value lips can use. Inside ${...} you can only name a package (pkgs.<path>) or a build (artifact.<name>); each part after the dot must be a plain identifier, with no spaces, holes, or operators. (item r2)
-      as written: 0.85 r2 match fact bucket.versioning => resource.aws_s3_bucket_versioning.<self>.bucket "\"${aws_s3_bucket.<self>.id}\"" ; resource.aws_s3_bucket_versioning.<self>.versioning_configuration.status "\"<value>\""
-- rule r3: ${aws_s3_bucket.<self>.bucket} is not a value lips can use. Inside ${...} you can only name a package (pkgs.<path>) or a build (artifact.<name>); each part after the dot must be a plain identifier, with no spaces, holes, or operators. (item r3)
-      as written: 0.85 r3 match fact bucket.report => output.<self>_bucket_name.value "\"${aws_s3_bucket.<self>.bucket}\""
-
---- underspecified (the program didn't pin these down with enough confidence) ---
-(none)
-
---- missing capability (the mint's own words; each names its blocked line and a repro) ---
-(none)
-
---- generation record (model, target, thinking, confidence, system prompt, program, tool transcript, raw reply) ---
 model: claude-opus-5
 target: terranix
 thinking: high
@@ -37,8 +21,13 @@ themselves:
 - variable.<name>.* -- an input the human supplies at apply time.
 
 Reference another resource the way Terraform does, with a string carrying its
-address ("${aws_instance.web.id}"); nothing in this world resolves such a
-reference at Nix time.
+address -- and ESCAPE it, because ${...} is Nix's own interpolation and a
+Terraform reference is plain text to Nix:
+
+    resource.aws_s3_bucket_versioning.<self>.bucket "\${aws_s3_bucket.<self>.id}"
+
+The backslash is required: written bare, the value is rejected. Terraform
+resolves such a reference at apply time; nothing here resolves it at Nix time.
 
 query_options searches exactly this world's pinned schema, and here it is
 WEAK on purpose: terranix declares resource, data, provider, output and
@@ -823,27 +812,20 @@ keep every version of a file.
 report the bucket name after apply.
 
 --- tool transcript ---
--> query_options "resource"
 -> query_options "provider"
-<- query_options
-resource : bool, int, float or str
-
+-> query_options "resource"
 <- query_options
 provider : bool, int, float or str
 
+<- query_options
+resource : bool, int, float or str
+
 -> query_options "output"
--> query_options "backend"
+-> query_options "backend.s3"
 <- query_options
 output : bool, int, float or str
 
 <- query_options
-backend.etcd : null or (submodule)
-backend.etcd.endpoints : string
-backend.etcd.password : null or string
-backend.etcd.path : string
-backend.etcd.username : null or string
-backend.local : null or (submodule)
-backend.local.path : string
 backend.s3 : null or (submodule)
 backend.s3.bucket : string
 backend.s3.encrypt : null or boolean
@@ -855,77 +837,68 @@ backend.s3.use_lockfile : null or boolean
 
 
 --- raw reply ---
-0.95 p1 pattern store files in the aws region <region>. => fact bucket.region "<region>"
-0.95 p2 pattern keep every version of a file. => fact bucket.versioning "Enabled"
-0.93 p3 pattern report the bucket name after apply. => fact bucket.report "bucket name"
-0.9 r1 match fact bucket.region => provider.aws.region "\"<value>\"" ; resource.aws_s3_bucket.<self>.bucket_prefix "\"<self>-\""
-0.85 r2 match fact bucket.versioning => resource.aws_s3_bucket_versioning.<self>.bucket "\"${aws_s3_bucket.<self>.id}\"" ; resource.aws_s3_bucket_versioning.<self>.versioning_configuration.status "\"<value>\""
-0.85 r3 match fact bucket.report => output.<self>_bucket_name.value "\"${aws_s3_bucket.<self>.bucket}\""
-0.9 q1 demand bucket.region "in which aws region should the bucket be created?"
-0.95 a1 expect provider.aws.region from bucket.region
-0.85 a2 expect resource.aws_s3_bucket_versioning.<self>.versioning_configuration.status from bucket.versioning
+0.95 p1 pattern store files in the aws region <region>. => fact store.region "<region>"
+0.95 p2 pattern keep every version of a file. => fact store.versioning "Enabled"
+0.95 p3 pattern report the bucket name after apply. => fact store.report "bucket name"
+0.9 r1 match fact store.region => provider.aws.region "\"<value>\"" ; resource.aws_s3_bucket.<self>.force_destroy "false"
+0.9 r2 match fact store.versioning => resource.aws_s3_bucket_versioning.<self>.bucket "\"\${aws_s3_bucket.<self>.id}\"" ; resource.aws_s3_bucket_versioning.<self>.versioning_configuration.status "\"<value>\""
+0.9 r3 match fact store.report => output.<self>.value "\"\${aws_s3_bucket.<self>.id}\"" ; output.<self>.description "\"<value>\""
+0.95 q1 demand store.region "in which aws region should the files be stored?"
+0.95 a1 expect provider.aws.region from store.region
+0.9 a2 expect resource.aws_s3_bucket_versioning.<self>.versioning_configuration.status from store.versioning
+0.9 a3 expect output.<self>.description from store.report
 0.95 d1 report <<<lips
-This little language describes one S3 bucket per program, and renders a
+This language describes one S3 file store per program, and it renders a
 Terraform configuration (`config.tf.json`) -- nothing is installed on any
-machine here.
+machine.
 
-**The three line shapes it accepts**
+## The three sentences it reads
 
 - `store files in the aws region <region>.` -- the only required line. The
-  region is a hole: edit the word `eu-central-1` and the rendered config
-  moves. It does two things at once, because it is the line that says a
-  bucket exists at all: it sets `provider.aws.region`, and it creates
-  `resource.aws_s3_bucket.<self>`, where `<self>` is the program's own
-  instance name (`assets` for `assets.bucket.lips`). Keying the resource by
-  the instance name is what lets a second bucket program sit beside this one
-  without the two resource blocks colliding.
-- `keep every version of a file.` -- turns on versioning. It carries no
-  value of its own, so it has no hole; the whole line is the switch. It
-  emits a separate `aws_s3_bucket_versioning` resource with
-  `versioning_configuration.status = "Enabled"`, pointing at the bucket via
-  the Terraform address `${aws_s3_bucket.<self>.id}`. I deliberately did not
-  use the old inline `versioning { }` block on `aws_s3_bucket`: that form is
-  deprecated in AWS provider v4 and gone in v5, so the separate resource is
-  the form that still applies. Leave the line out and the bucket is simply
-  unversioned.
-- `report the bucket name after apply.` -- adds a Terraform output,
-  `output.<self>_bucket_name.value`, holding the address
-  `${aws_s3_bucket.<self>.bucket}`. Also optional; drop the line and nothing
-  is reported.
+  region is a hole: it configures the `aws` provider (`provider.aws.region`)
+  and it is what makes the bucket exist at all. This line creates
+  `resource.aws_s3_bucket.<self>`, where `<self>` is the program's instance
+  name (the middle part of the filename, `assets` for `assets.bucket.lips`),
+  so two such programs compose in one configuration without colliding.
+- `keep every version of a file.` -- optional. It adds
+  `resource.aws_s3_bucket_versioning.<self>` pointing at the bucket
+  (`bucket = "${aws_s3_bucket.<self>.id}"`, escaped so Nix passes the
+  reference through to Terraform verbatim) with
+  `versioning_configuration.status = "Enabled"`. This is the modern,
+  separate-resource form of bucket versioning, not the deprecated inline
+  `versioning` block.
+- `report the bucket name after apply.` -- optional. It adds an output named
+  after the instance (`output.<self>`) whose value is the bucket's id and
+  whose description is the phrase the sentence used ("bucket name"), so
+  `terraform apply` prints the real name.
 
-**Vocabulary**
+Line shapes are fixed except for the region; a sentence lips cannot match
+fails the build at compile time, so keep the wording as above.
 
-Decisions are named the way the sentences talk -- `bucket.region`,
-`bucket.versioning`, `bucket.report` -- not the way Terraform names things.
-That is the surface your future programs are written against.
+## Choices I made, and why
 
-**What the programs did not say, and what I did about it**
+- **The bucket has no explicit name.** No program line states one, and the
+  third sentence ("report the bucket name after apply") only makes sense for
+  a name that is not known beforehand -- so I let the AWS provider generate a
+  unique bucket name and let the output report it. I did not invent a name
+  and I did not demand one, since no line shape in these programs states one.
+  If you want to name buckets yourself, that is a new sentence and needs a
+  fresh `generate`.
+- **`force_destroy = false`** is emitted on the bucket. A Terraform resource
+  block needs at least one argument to be written out, and this is the
+  provider's own default made explicit: a bucket that still holds objects is
+  never silently destroyed. It is a constant of the mechanism, not a value
+  you are expected to edit.
+- **Region lives on the provider**, not on the bucket resource: that is the
+  portable spelling across AWS provider versions.
+- Nothing is said about a state backend, so none is configured; state stays
+  local unless you add one.
 
-- *The bucket's name.* The program never states one, and it asks for the
-  name to be *reported after apply*, which only makes sense for a generated
-  name. So I did not invent a literal name and I did not demand one: the
-  bucket is created with `bucket_prefix = "<self>-"`, i.e. `assets-` here,
-  and AWS appends a unique suffix. The prefix follows the file name, so the
-  generated name is recognisable, and the output line reports whatever AWS
-  actually chose. If you ever want a fixed name instead, that is a new line
-  shape and a fresh mint.
-- *The region* is the one thing a program in this language must state; a
-  program missing it is stopped at compile time with the question "in which
-  aws region should the bucket be created?" rather than being given a
-  silent default.
-- I set nothing else on the bucket -- no encryption, no lifecycle, no public
-  access block, no `force_destroy`. The programs did not ask for them, and
-  guessing security posture is exactly the kind of invention that costs you
-  a debugging session later. Each of those is a new sentence when you want
-  it.
+## What the contract pins
 
-**What the contract checks**
-
-Every future compile re-checks that the region you wrote lands in
-`provider.aws.region`, and that the versioning line lands as `Enabled` in
-the versioning resource. The two reference strings (the bucket address in
-the versioning resource and in the output) are not expect-checked: they hold
-Terraform addresses, resolved by Terraform at plan time, not values this
-config can read.
+`<language>.expect` checks, on every future compile, that the region you
+write lands in `provider.aws.region`, that versioning really reads `Enabled`
+on the versioning resource, and that the report line produces the output
+description. Those are the three places a program's own words reach the
+rendered Terraform.
 lips>>>
-

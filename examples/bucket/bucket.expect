@@ -1,0 +1,3 @@
+a1 expect provider.aws.region from store.region
+a2 expect resource.aws_s3_bucket_versioning.<self>.versioning_configuration.status from store.versioning
+a3 expect output.<self>.description from store.report
