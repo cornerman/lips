@@ -18,6 +18,7 @@ import Test.Hspec
 import Test.QuickCheck hiding (Confidence)
 
 import Lips.Kernel.Base
+import Lips.Kernel.Surface (valueTokens)
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader
@@ -2091,6 +2092,57 @@ main = hspec $ do
       crystallize "w" [patOne "p1" [TLit "say", THole "m"] Fact [SLit "s"] [SHole "m"]]
                      "say \"hello world\"\n"
         `shouldSatisfy` isRight
+
+  describe "a several-part value (<value.N> must read the part, not the word)" $ do
+    -- The defect this closes (examples/website, 2026-07-31; filed by the web
+    -- mint as gap multiword-route-body): a pattern stating two program words as
+    -- one fact ("<label> <target>") lost the boundary between them, so a rule
+    -- reading <value.1>/<value.2> got "drück" and "mich" and the real target
+    -- "main" was dropped. Every gate stayed green, since every token WAS spent
+    -- -- into the wrong hole. A several-part value now quotes its parts.
+    let two = patOne "p" [TLit "button", THole "label", TLit "opens", THole "target"]
+                Fact [SLit "button.click"] [SHole "label", SLit " ", SHole "target"]
+        one = patOne "p" [TLit "install", TMulti "pkgs"]
+                Fact [SLit "install.1"] [SHole "pkgs"]
+        assn p binds = case applyPattern p (Map.fromList binds) of
+          [(_, _, Assertion a, _)] -> a
+          other                    -> error (show other)
+    it "quotes every part of a several-part value" $
+      assn two [("label", "drück mich"), ("target", "main")]
+        `shouldBe` "\"drück mich\" \"main\""
+    it "leaves a one-part value alone, so its own words stay its words" $
+      assn one [("pkgs", "htop ripgrep tmux")] `shouldBe` "htop ripgrep tmux"
+    it "reads back one part per hole, whatever a part contains" $ do
+      valueTokens (assn two [("label", "drück mich"), ("target", "main")])
+        `shouldBe` ["drück mich", "main"]
+      -- A part carrying a quote must not close its own quoting.
+      valueTokens (assn two [("label", "say \"hi\""), ("target", "main")])
+        `shouldBe` ["say \"hi\"", "main"]
+      valueTokens (assn one [("pkgs", "htop ripgrep tmux")])
+        `shouldBe` ["htop", "ripgrep", "tmux"]
+    it "hands a rule the part, and the whole value without the quoting" $ do
+      -- End to end: the shape examples/website got wrong. <value.1> is the
+      -- two-word label, <value.2> the target, <value> the parts joined.
+      let rule = MapRule "r" Fact ["button", "click"]
+            [ Emit ["services", "x", "label"] (VStr [PHole "value.1"])
+            , Emit ["services", "x", "target"] (VStr [PHole "value.2"])
+            , Emit ["services", "x", "both"] (VStr [PHole "value"]) ]
+          prog = "button \"drück mich\" opens main\n"
+      case crystallize "w" [two] prog of
+        Left e -> expectationFailure ("crystallize failed: " <> show e)
+        Right base -> case runBase (mergeModeOf [rule]) assembleSubject 100 (map toRule [rule]) [] base of
+          Left e   -> expectationFailure ("run failed: " <> show e)
+          Right rl -> do
+            rlModule rl `shouldSatisfy` T.isInfixOf "services.x.label = \"drück mich\";"
+            rlModule rl `shouldSatisfy` T.isInfixOf "services.x.target = \"main\";"
+            rlModule rl `shouldSatisfy` T.isInfixOf "services.x.both = \"drück mich main\";"
+    it "a contract on part #N reads the same part the rule does" $ do
+      let base = case crystallize "w" [two] "button \"drück mich\" opens main\n" of
+            Right b -> b
+            Left e  -> error (show e)
+          ex n = Expect "a1" ["services","x","label"] (Subject ["button","click"]) (Just n)
+      expectedValue base (ex 1) `shouldBe` Right "drück mich"
+      expectedValue base (ex 2) `shouldBe` Right "main"
 
   describe "language storage (crystallization plan: .lang round-trip)" $ do
     let engine = EngineData

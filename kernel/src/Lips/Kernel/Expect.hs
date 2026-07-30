@@ -47,6 +47,7 @@ import Lips.Kernel.Capture  (captureName, fillCaptures, fillName, matchSubject, 
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Data (renderAttrPath, splitAttrPath)
 import Lips.Kernel.Reader   (ParseError (..))
+import Lips.Kernel.Surface  (valueText, valueTokens)
 
 -- | One behavioral assertion: option 'exPath' carries the value drawn from
 -- decision 'exFrom' (optionally its 'exToken'th token).
@@ -162,8 +163,10 @@ expectedValue base e =
   case [ a | d <- toList base, dSubject d == exFrom e, let Assertion a = dAssertion d ] of
     []      -> Left ("expect " <> exId e <> ": no decision with subject " <> renderFrom e)
     (a : _) -> case exToken e of
-      Nothing -> Right a
-      Just n  -> case drop (n - 1) (T.words a) of
+      Nothing -> Right (valueText a)
+      -- The value's PARTS (a several-part value quotes them), so a contract on
+      -- part #2 reads the same text the rule's <value.2> does.
+      Just n  -> case drop (n - 1) (valueTokens a) of
         (t : _) -> Right t
         []      -> Left ("expect " <> exId e <> ": token #" <> tshow n
                           <> " out of range in " <> tshow a)

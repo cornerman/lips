@@ -63,7 +63,7 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Decision (Assertion (..), Kind, Strength (Stated), Subject (..))
 import Lips.Kernel.Reader   (splitSubject)
-import Lips.Kernel.Surface  (stripTrailingPunct)
+import Lips.Kernel.Surface  (quoteText, stripTrailingPunct)
 
 -- | A template token: a literal to match (stored already normalized), a hole
 -- that binds one loose token's surface form, or a multi-token hole that binds
@@ -366,9 +366,22 @@ applyPattern p binds = map one (pEmits p)
     one e =
       ( Subject (segsOf (peSubject e))
       , peKind e
-      , Assertion (subst (peAssertion e))
+      , Assertion (assertionOf e)
       , Stated  -- a pattern reads a program line: its emit is always a stated fact
       )
+    -- A value built from SEVERAL holes is several program words at once, and a
+    -- rule reads one of them by position (<value.N>). Whitespace alone cannot
+    -- say where one part ends -- a two-word part shifted every later index and
+    -- dropped the last part, silently. So each part of a several-part value is
+    -- quoted, which is exactly what 'Lips.Kernel.Surface.valueTokens' takes
+    -- apart again. A one-part value is untouched: its own words stay its words,
+    -- which is what a rule building a list out of it reads.
+    assertionOf e
+      | length [() | SHole _ <- peAssertion e] > 1 =
+          T.concat (map quoted (peAssertion e))
+      | otherwise = subst (peAssertion e)
+    quoted (SLit t)  = t
+    quoted (SHole h) = quoteText (fill (SHole h))
     subst parts = T.concat (map fill parts)
     fill (SLit t)  = t
     fill (SHole h) = Map.findWithDefault (missing h) (refName h) binds

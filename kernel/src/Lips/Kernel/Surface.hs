@@ -25,10 +25,48 @@ module Lips.Kernel.Surface
   , breakFirstOutsideQuotes
   , breakLastOutsideQuotes
   , stripTrailingPunct
+  , valueTokens
+  , valueText
   ) where
 
+import           Data.Char (isSpace)
 import           Data.Text (Text)
 import qualified Data.Text as T
+
+-- | The parts of a STATED value: whitespace-separated, except that a @"..."@
+-- span is one part and hands over its inner text (escapes undone by
+-- 'parseQuoted').
+--
+-- A value can be built from several program words at once (a route's status and
+-- its body, a button's label and its target), and a rule then reads one part by
+-- position (@\<value.N\>@). Splitting on whitespace alone lost the boundary
+-- between the parts, so a two-word part silently shifted every later index and
+-- dropped the last part -- wrong output, every gate green. So a several-part
+-- value quotes its parts ('Lips.Kernel.Lang.Pattern.applyPattern') and this is
+-- the inverse: one part per hole, whatever a part contains. A one-part value
+-- carries no quotes and still splits into words, which is what a rule building a
+-- LIST out of one many-word value needs.
+valueTokens :: Text -> [Text]
+valueTokens = go . T.stripStart
+  where
+    go t
+      | T.null t = []
+      | T.head t == '"' = case parseQuoted t of
+          -- An unterminated quote is not a part boundary: fall back to the plain
+          -- word, so a value carrying a lone quote still yields tokens.
+          Left _              -> plain t
+          Right (inner, rest) -> inner : go (T.stripStart rest)
+      | otherwise = plain t
+    plain t = let (w, rest) = T.break isSpace t in w : go (T.stripStart rest)
+
+-- | A stated value as one text, with the part quoting undone: the parts joined
+-- by single spaces. A value with no quoted part is returned verbatim, so the
+-- quoting stays an encoding of the multi-part case and a rule reading the whole
+-- value never sees it.
+valueText :: Text -> Text
+valueText t
+  | T.any (== '"') t = T.unwords (valueTokens t)
+  | otherwise        = t
 
 -- | Wrap text as a transport-quoted lips string, escaping @"@ and @\\@.
 -- Inverse of 'parseQuoted'.

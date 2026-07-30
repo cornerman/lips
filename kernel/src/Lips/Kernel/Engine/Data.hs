@@ -54,7 +54,8 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe      (isJust, mapMaybe)
 
 import Lips.Kernel.Capture         (captureName, fillCaptures, fillName, matchSubject, selfName)
-import           Lips.Kernel.Surface (breakFirstOutsideQuotes, quoteText, splitOutsideQuotes)
+import           Lips.Kernel.Surface (breakFirstOutsideQuotes, quoteText, splitOutsideQuotes,
+                                      valueText, valueTokens)
 import qualified Lips.Kernel.Surface as Q
 import Lips.Kernel.Engine.Value    (Value, bindCaptureValue, bindSelfValue, fillValue, holeIndex, parseValue, renderValue, valueCaptures)
 import Lips.Kernel.Base     (Base, toList)
@@ -190,10 +191,13 @@ toRule mr =
     -- shared primitive so rules, expects, and demands resolve captures alike.
     fillSeg caps seg = either (\r -> Left ("engine rule " <> mrId mr <> ": emit path " <> r))
                               Right (fillCaptures caps seg)
-    pick _ val "value" = Right val
+    -- The parts of a stated value, not its whitespace words: a several-part
+    -- value quotes its parts, so <value.N> is the N-th PART and <value> is the
+    -- parts joined, never the quoting itself.
+    pick _ val "value" = Right (valueText val)
     pick caps val h
       | Just n <- holeIndex h =
-          case drop (n - 1) (T.words val) of
+          case drop (n - 1) (valueTokens val) of
             (w : _) -> Right w
             []      -> Left ("engine rule " <> mrId mr <> ": <" <> h
                                 <> "> out of range for value: " <> val)
