@@ -251,7 +251,7 @@ Developing on lips itself, rather than using it, is a separate mode: the repo
 clone above already gives you everything. `justfile` is the command index
 (`just` alone lists every recipe); with direnv installed, `direnv allow` once
 wires the dev shell automatically, otherwise prefix commands with
-`nix develop -c` or run via `nix run .`. The full suite (conformance tests, module eval, and a VM boot) is a separate recipe, `just ci`; run it yourself before a merge. It is red today: the module-eval check cannot read a singleton `<language>.lips` program (DESIGN §13, "Verified Breakages", V1 in `TODO.md`).
+`nix develop -c` or run via `nix run .`. The full suite (conformance tests, module eval, and a VM boot) is a separate recipe, `just ci`; run it yourself before a merge. The module-eval check reads both program name shapes -- `<instance>.<language>.lips` and the singleton `<language>.lips` -- verified against `examples/`, which commits both.
 
 ## The Files
 

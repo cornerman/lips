@@ -6,9 +6,11 @@
    `examples/greet/`). ~~`check-expect` and `lipsModules-eval` stay RED for the
    three programs still without an engine~~ -- `examples/{board,habit,logscan}`
    are committed (f0e8d13) and all 13 example programs `check` green.
-   **Correction (2026-07-29 review): `lipsModules-eval` is still RED**, for an
-   unrelated reason -- `nix/modulesFromDir.nix` cannot parse a singleton
-   `<language>.lips` name (item V1 below). The
+   **Correction (2026-07-29 review): `lipsModules-eval` was RED**, for an
+   unrelated reason -- `nix/modulesFromDir.nix` could not parse a singleton
+   `<language>.lips` name (item V1 below). **Since fixed** (V1, 5df0bc2):
+   `lipsModules-eval` now reads both name shapes and is green, verified
+   directly (`nix build .#checks.x86_64-linux.lipsModules-eval`). The
    original text follows for its target-shape notes.
 
    One line,
