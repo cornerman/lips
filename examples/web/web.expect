@@ -1,6 +1,5 @@
-a1 expect systemd.services.<self>.environment.PORT from server.port
-a2 expect environment.etc.http-routes<path>/status.text from route.<path>.status
-a3 expect environment.etc.http-routes<path>/body.text from route.<path>.body
-a4 expect artifact.<name>.args.pname from service.<name>
-a5 expect artifact.<name>.fill.name from service.<name>
-a6 expect artifact.<name>.args.src from service.<name>
+a1 expect services.nginx.virtualHosts.<self>.listen from server.port
+a2 expect networking.firewall.allowedTCPPorts from server.port
+a3 expect services.nginx.virtualHosts.<self>.serverName from service.name
+a4 expect services.nginx.virtualHosts.<self>.locations.<path>.extraConfig from route.<path>.spec#1
+a5 expect services.nginx.virtualHosts.<self>.locations.<path>.extraConfig from route.<path>.spec#2

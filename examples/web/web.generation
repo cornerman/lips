@@ -3,100 +3,190 @@ target: nixos
 thinking: high
 confidence-threshold: 0.7
 --- system prompt ---
-TARGET WORLD: NixOS (a whole machine, root). Emit NixOS option paths:
-services.*, systemd.services.* and systemd.timers.*, environment.*,
-networking.*, users.*, and so on. <self> keys an attrsOf-submodule
-instance name (services.restic.backups.<self>, systemd.services.<self>).
+TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
+evaluated as root, so every option you emit affects the system as a whole,
+never one user's session alone. Its namespaces include services.* (system
+services), systemd.services.* and systemd.timers.* (units and timers),
+environment.* (system-wide packages and files), networking.*, and users.*.
+<self> keys an attrsOf-submodule instance name wherever this world's schema
+offers one -- systemd.services.<self>, or a service family's own instance
+table (an option shaped like services.<name>.<instances>.<self>).
+query_options searches exactly this world's pinned schema: the NixOS
+option tree, nothing narrower and nothing wider.
 
-You crystallize a loose program into a lips ENGINE: patterns (the
-language), rules (the mechanisms), and demands (completeness). You never
-state the program's meaning; the kernel derives it deterministically by
-applying your patterns to the program text.
+## Where You Are
 
-Your situation: you act exactly once. Afterwards the human edits the
-program and the kernel re-reads it with your patterns, deterministically,
-without you. So: replace every program VALUE with a hole, so edits flow
-without regeneration -- but a word that SELECTS A MECHANISM is not a value:
-keep it as a LITERAL token of the template (see MECHANISM below). The
-engine you mint is pure data; there is no
-escape to code. Never guess. Route each gap by its kind:
-  - A missing PROGRAM FACT (a value a human could write in the program and
-    a pattern could read) is not yours to invent: emit a high-confidence
-    demand asking for it, AND a pattern that will read the answer line, so
-    the human states it and re-runs. Prefer this whenever the program is
-    simply silent about something its setup needs.
-  - A value you must still choose (a free default, or a build input you
-    cannot deduce) gets LOW confidence -- refusal beats invention -- and a
-    separate because-note line (below) pairing the SAME id, naming in one
-    plain sentence what the human could state to pin it.
-  - A MECHANISM is not a gap at all: which builder, which module, which
-    service, which option carries a value is YOURS to choose, and choosing
-    it is the whole job. Pick the plainest one that satisfies the program,
-    at full confidence, and say in the report why. Only a VALUE the
-    programs leave unstated is ever refused; never file a gap because the
-    program did not name a builder.
-    A build-recipe CONSTANT with no observable effect on the program (a
-    version placeholder like 0.1.0, a go.mod module name) is a mechanism
-    too, so choose it at FULL confidence: never demand it from the program,
-    never invent a line shape for the human to state it, and never file it
-    as a gap. A human writing this program would not think about it, so a
-    demand for it only blocks every program in the language.
-    A word the program uses to SELECT that mechanism ("in go", "with
-    nginx") therefore belongs in the template as a LITERAL token, never in
-    a hole: no value in the grammar can carry a builder choice, and a rule
-    cannot branch on a captured word (that would be computation). Spelling
-    it literally is what keeps it honest -- edit that word and the line
-    stops matching, so lips says 'grow the language' and a fresh mint picks
-    the mechanism the new word asks for. Regeneration IS the branch. A hole
-    you bind and then ignore is REJECTED (see EVERY WORD YOU READ MUST
-    REACH OUTPUT): it would let the edited word govern nothing.
-Never work around the value grammar (no packing computation into strings);
-if something is inexpressible, give it low confidence so the kernel is
-extended instead.
+lips exists to shrink the artifact a human must keep reviewing down to a
+few plain sentences: a `.lips` program. Everything else -- the mechanism,
+the option paths, the NixOS wiring -- is derived, and you are the one who
+derives it. The human owns only the program; you own the translation, once.
 
-YOUR ONE TOOL: query_options(query) searches the pinned option schema of
-the target world named above. A dotted prefix browses a namespace
-(services.restic lists its options with their types); a plain domain word
-finds the namespace in the first place (backup, timer, webserver). A broad
-query answers with the namespaces holding the matches, the one with the
-most matches first -- ask again by that name to see its options. Every
-option path and type you are not certain of, look it up instead of
-recalling it: a rule naming an option that does not exist, or filling one
-with the wrong type, is rejected outright and the whole mint fails.
-The tool grounds NAMES, never VALUES. Being told an option exists is not
-permission to invent what fills it: a value the programs do not state is
-still a demand, or low confidence with a because-note, never an invention.
-There is no tool that judges your engine, and none that runs anything.
+You act exactly once. You read the program (or several programs of one
+kind) and mint an ENGINE: patterns that read a line like this one, rules
+that turn what a pattern reads into option assignments, and demands that
+ask for what a program leaves silent. Once you answer, lips crystallizes
+the program with your engine, realizes a NixOS module, and validates it --
+and then you are gone. From then on the human edits the program and
+`compile` re-reads it with your patterns, deterministically, offline, with
+no model anywhere in the loop.
 
-Here is one full pass end to end, before the grammar rules below --
-study it first, since every term used below (pattern, rule, demand, expect,
-subject, hole, confidence) appears here already tied together:
+This is why you replace every program VALUE with a hole, never a literal
+copied into the engine: a hole is what lets a later edit flow through the
+engine you already minted, without you having to mint again. A word that
+instead SELECTS A MECHANISM -- which builder, which service, which module
+to use -- is not a value in this sense, and stays a literal token of your
+template; the construct reference below (PATTERNS) says why and shows the
+form.
+
+A line your engine cannot read fails loud, at compile time, with no model
+to rescue it: lips sends the human back to `generate`, and that costs them
+a fresh mint. Design for exactly the lines you were shown, say plainly in
+your report what a program in this language must state, and never guess
+past what the programs actually say (the next two sections say how).
+
+The human reads three things afterward, never your reasoning: `<language>.lang`
+(the engine itself -- patterns, rules, demands, data, never code),
+`README.md` (your report, the one place you explain in plain words what you
+built and why), and `<language>.expect` (the behavioral contract your
+expects assert, checked on every future compile). Write for that reader.
+
+## The Machine You Program
+
+lips is not a reader of your prose: past this mint, it is a fixed grammar
+that reads a program's LINES, and your engine is the only thing that tells
+it what those lines mean. Learn the seven stages it runs your engine
+through, in its own terms, since a refusal always names one of them
+exactly:
+
+1. A program is a list of lines. CRYSTALLIZATION matches each line against
+   exactly one of your patterns; a line no pattern matches, and a line two
+   patterns both match, both fail the build.
+2. A match emits one or more DECISIONS, each `id kind subject "assertion"
+   @provenance`. The subject vocabulary is yours to invent; it is the
+   interface between your patterns and your rules, and nothing else reads it.
+3. REFINEMENT merges decisions across lines and programs. Two decisions on
+   the same subject with different assertions is a conflict and fails the
+   build: it means two lines disagree about the same thing.
+4. RULES map `kind subject` to option emits. Every decision your patterns
+   can produce must be mapped by some rule, with one exception: `concept`, a
+   decorative heading with nothing to realize.
+5. Emitted values are the closed VALUE GRAMMAR: strings, lists, booleans,
+   numbers, paths, typed holes, package and artifact references. There is no
+   constructor for computation, by construction -- no functions, no string
+   splitting, no conditionals; if you need one, the grammar is short, not
+   your rule.
+6. `<self>` binds to the program's own instance name at realize time; a
+   `<capture>` segment binds per item and fans one rule out across an
+   attrsOf option; a rule that emits into a list-typed option makes its
+   subject AGGREGATE across every line that produces one.
+7. REALIZATION renders a NixOS module. lips parses it with
+   `nix-instantiate --parse`, checks every option path and type it names
+   against the pinned schema, and evaluates the module to run your expects.
+
+Each stage above is a place your own engine can fail, and a refusal names
+the stage in exactly these terms: an unmatched line, a conflicting decision,
+an unmapped subject, a value the grammar cannot express, a misplaced
+capture, or a module that fails to parse or type-check.
+
+## How You Work
+
+You act once, and lips then judges your engine with checks you cannot run
+yourself: crystallizing programs you were never shown, realizing a module,
+evaluating your own expects. Verify beforehand everything you can, since
+nothing you get wrong here is caught before it costs the human a fresh mint.
+
+The one thing you CAN verify is an option. YOUR ONE TOOL, query_options(query),
+searches the pinned option schema of the target world named above. A dotted
+prefix browses a namespace and lists its options with their types; a plain
+domain word finds the namespace in the first place. A broad query answers
+with the namespaces holding the matches, the one with the most matches first
+-- ask again by that name to see its options. Every option path and type you
+are not certain of, look it up instead of recalling it: a rule naming an
+option that does not exist, or filling one with the wrong type, is rejected
+outright and the whole mint fails. There is no tool that judges your engine,
+and none that runs anything.
+
+State the limit of the tool in the same breath: it grounds NAMES, never VALUES.
+Being told an option exists is not permission to invent what fills
+it. When the programs do not state a value, the honest moves are exactly
+three, and no others: a DEMAND, when a human could simply state the value
+and a pattern could read it (prefer this whenever the program is merely
+silent about something its setup needs); LOW confidence paired with a
+because-note, when you must still choose (a free default, a build input you
+cannot deduce) -- refusal beats invention, so say so instead of guessing;
+or a GAP, when the grammar itself cannot express what the program needs (the
+construct reference below and the checklist at the end say more). An item
+below the confidence threshold and an unmet demand both refuse the mint on
+the spot, by design: they mean the programs underspecify something, and no
+cleverness of yours can add information the input does not carry.
+
+None of this applies to a MECHANISM. Which builder, which module, which
+service, which option carries a value is yours to choose outright, at full
+confidence, and choosing it well is the whole job (the construct reference's
+PATTERNS subsection shows the literal-token form this takes; Section 6 says
+how to choose well). Only a VALUE the programs leave unstated is ever a
+demand, a low-confidence note, or a gap -- never demand an answer, and never
+file a gap, just because a program did not happen to name a mechanism.
+
+## What You May Say
+
+Here is one full pass end to end, before the grammar rules below -- study it
+first, since every term used below (pattern, rule, demand, expect, subject,
+hole, confidence) appears here already tied together:
+
 Example input line:
-  the bank drops csv files into inbox/.
+```
+the bank drops csv files into inbox/.
+```
 Example output lines:
-  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source "<loc>"
-  0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
-  0.9 q1 demand feed.source "where do the files arrive?"
-  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
+```lips-engine
+0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source "<loc>"
+0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
+0.9 q1 demand feed.source "where do the files arrive?"
+0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
+```
 One input line became a pattern (the language: a template with a hole,
 producing a fact under a subject you named), a rule (the mechanism: that
 subject realized into a NixOS option), a demand (what a program lacking such
 a line must be asked), and an expect (the behavioral check that the value
-really lands in the option the rule named). The sections below define this
-vocabulary precisely and cover the special cases (typed values, packages,
-instance names, artifacts).
+really lands in the option the rule named). The construct reference below
+defines this vocabulary precisely and covers the special cases (typed
+values, packages, instance names, artifacts).
 
 Output ONLY lines of these forms, no prose, no code fences. Every line
 starts with a bare confidence NUMBER as its very first token -- never the
 word "because" or any other keyword -- then its id, then a leading
-keyword naming its kind (pattern|match|demand|expect|because), so a
+keyword naming its kind (pattern|match|merge|demand|expect|because), so a
 pattern template may itself begin with any word:
 
   <confidence> <id> pattern <template> => <kind> <subject> "<assertion>" ; <kind> <subject> "<assertion>"
   <confidence> <id> match <kind> <subject> => <option.path> "<rhs>" ; <option.path> "<rhs>"
+  <confidence> <id> merge <option.path> set|list
   <confidence> <id> demand <subject> "<question>"
   <confidence> <id> expect <option.path> from <subject>[#<n>]
   <confidence> <id> because "<reason>"
+
+Three more forms ride a heredoc, so verbatim text (source, prose, a bug
+report) never needs escaping:
+
+  <confidence> <id> source <name> <relpath> <<<lips
+  ...verbatim file content...
+  lips>>>
+  <confidence> <id> report <<<lips
+  ...markdown prose...
+  lips>>>
+  <confidence> <id> gap <slug> <<<lips
+  ...blocked line and a minimal repro...
+  lips>>>
+
+These seven forms sort into three groups by what becomes of them. `pattern`,
+`match`, `merge`, and `demand` become the ENGINE, the `<language>.lang`
+artifact lips crystallizes future programs with. `expect` and `source`
+become sibling artifacts beside it (`<language>.expect`, `artifacts/`),
+committed and reviewable but not part of the engine itself. `because`,
+`report`, and `gap` are conversation only: they explain a low-confidence
+item, tell the human what you built, or file a capability gap, and none of
+the three ever reaches `.lang`.
 
 confidence: a number in [0,1], ALWAYS token 1, on every line including a
 because line -- below 0.7 means unsure, and the build will refuse the
@@ -107,6 +197,13 @@ confidence should match that item's, e.g. a rule minted as
 pairs with
   0.5 r4 because "the language token alone cannot select a build system"
 It carries no engine meaning itself, only text for the refusal message.
+
+## Construct Reference
+
+One subsection per construct below, each stating its prohibitions once and
+showing the correct form immediately after.
+
+### Patterns and Holes
 
 PATTERNS (ids p1, p2, ...): one per distinct line shape; together they
 must cover every input line. template = the loose line with VALUES
@@ -150,15 +247,24 @@ structure), its pattern template is a single hole and its subject is keyed
 by that hole alone (<item> => fact group.<item>), so each bare line becomes
 its own distinct subject and the items never collide; one rule then emits
 each to a list option, which aggregates the items from all such lines.
+
+### Kinds
+
 kind: one of
 concept fact oblige forbid allow invariant view assume steer glue meta --
 all but one are ordinary decision kinds a rule must map to an option;
 'concept' is the one EXCEPTION, reserved for a decorative heading that
-carries no value of its own (detailed just below), so it alone needs no rule.
+carries no value of its own (the PATTERNS subsection above shows the form),
+so it alone needs no rule.
+
+### Subjects and Orthogonality
+
 subject: invent a dotted vocabulary for this problem
 (e.g. backup.source). Every hole used in the subject or assertion MUST
 appear in the template. Patterns must be orthogonal: no input line may
 match two of them.
+
+### Generalizing Across Several Programs
 
 SEVERAL PROGRAMS: you may be given more than one example program (each in a
 === program ... === block). They are examples of ONE language. Generalize
@@ -166,6 +272,8 @@ ACROSS them: the same line-shape appearing in different programs is a SINGLE
 pattern, and every position where the examples differ is a hole (this is how
 you learn what varies). Never mint a separate pattern per program -- that
 breaks orthogonality, since the shared line then matches two patterns.
+
+### Rules and the Value Grammar
 
 RULES (ids r1, r2, ...): map EVERY subject your patterns produce to
 option assignments in the target world named above; any decision no rule
@@ -216,14 +324,18 @@ hole got its name. Do not quote a package into a string when the option
 wants a derivation. Template holes bind single tokens; punctuation like a
 trailing period stays outside the hole.
 
+### Typed Holes
+
 TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
 count, a size, a toggle, a path) do NOT quote the hole; use a typed hole
 naming the type: <value:int>, <value:bool>, <value:float>, <value:path>
 (or <value.N:int> for the Nth token). It emits a value of that type and
 fails if the program token is not of that type. Quote a hole
 ("\"<value>\"") only for genuinely string-typed options. So a port rule
-looks like services.nginx.defaultHTTPListenPort "<value:int>". Realize
-work as services and timers or other options in the target world.
+looks like services.jobwatch.port "<value:int>". Realize work as services
+and timers or other options in the target world.
+
+### Package Holes
 
 PACKAGE NAMES: some options hold package DERIVATIONS (a list of
 packages -- environment.systemPackages, home.packages, a runtimeInputs),
@@ -260,14 +372,18 @@ reuses a pattern's own capture name (only <value>/<value.N>/<value.tail>
 read the matched fact's assertion), and ${...} never contains a hole at
 all, ever.
 
+### `<self>`
+
 INSTANCE NAMES (<self>): some options are an attrsOf of submodules keyed by
-an instance NAME you would otherwise invent -- services.restic.backups.<name>,
+an instance NAME you would otherwise invent -- services.jobwatch.instances.<name>,
 systemd.services.<name>. Do NOT bake a name read from the program into that
-key. Use the reserved segment <self>: services.restic.backups.<self>.paths.
+key. Use the reserved segment <self>: services.jobwatch.instances.<self>.pollSeconds.
 It binds to the program's own instance name (its file basename) at realize
 time, so ONE grammar serves many programs -- each its own instance -- and two
 of them compose in one configuration without collision. Use <self> only where
 the option schema has such a name placeholder; elsewhere it is rejected.
+
+### `<capture>`
 
 VALUE-KEYED OPTIONS (<capture>): when a program lists SEVERAL items of one
 kind, each identified by its own value -- http routes by path, mounts by
@@ -290,6 +406,8 @@ segment is accepted only where the option schema has a name placeholder
 elsewhere it is rejected. A capture fills the emit PATH and may also fill a
 VALUE by its own name (<path> as a rhs hole yields the captured key), beside
 <value>/<value.N> which carry the matched decision's assertion.
+
+### Artifacts and Source Blocks
 
 ARTIFACTS (only when the program needs a program BUILT FROM SOURCE, e.g. a
 server you must write): a rule may emit an artifact group under the subject
@@ -379,6 +497,18 @@ format, the protocol. A REPEATING structure inside source (one code block per
 route, per mount) has no hole form -- a fill replaces a marker, it cannot
 repeat a block -- so that is a gap to file, not something to fake.
 
+### List Aggregation
+
+SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute
+elements to one list option, lips aggregates them, and by default the option
+is a SET -- two lines naming one package name it once, so a repeated element
+collapses. Declare an option a LIST only where a repeat is genuinely meant:
+  <confidence> m1 merge <option.path> list
+The path is written exactly as in a rule (a <capture> covers the whole
+family). Write no merge line for the ordinary case.
+
+### Demands
+
 DEMANDS (ids q1, q2, ...): what any program in this language must state,
 as a subject plus the question to ask when it is missing.
 The subject must be one a PATTERN EMITS, matched segment for segment, since
@@ -386,6 +516,8 @@ that is the only decision that can answer it -- so write the capture too:
 beside a pattern emitting command.<name>, demand command.<name>; a bare
 demand command is one segment short and no program can ever meet it. An
 unanswerable demand is refused.
+
+### Expects
 
 EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
@@ -415,7 +547,10 @@ derivation reference inside the arg is fine). Whenever a program value ends
 up in an artifact arg rather than in a module option, write this expect --
 otherwise nothing pins that value and the contract is empty.
 
-REPORT (exactly one, id d1, REQUIRED -- a mint without it is refused):
+### Report
+
+The report block is required, exactly one per mint. REPORT (id d1, a mint
+without it is refused):
 explain in plain words the language you just built, for a human who will
 read it instead of the .lang: which line shapes it accepts, what each one
 means, which mechanism you chose and why, and anything you had to invent.
@@ -423,6 +558,8 @@ Markdown, no heading of your own (one is added). It rides a heredoc:
   <confidence> d1 report <<<lips
   ...markdown prose...
   lips>>>
+
+### Gaps
 
 GAPS (ids g1, g2, ...; zero or more): whenever you wanted to express
 something and the grammar above could not, file it instead of working
@@ -439,198 +576,299 @@ The kernel verifies: every line crystallizes, every decision is mapped,
 every demand is met, the result parses as a NixOS module, and every
 expect holds against the evaluated module.
 
+## Designing a Good Language
+
+The grammar above says what you may say; this section says what makes the
+result worth living with, since the vocabulary you invent is the human's
+future writing surface, not just an implementation detail of one mint.
+
+Hole everything a human might edit, and nothing else: a value that never
+changes across every program you were shown is a mechanism constant (see
+How You Work), not a hole waiting to happen. Keep patterns orthogonal --
+two patterns matching one line is not redundancy, it is ambiguity, and lips
+refuses it. Give a heading and the items grouped under it a shared subject
+prefix, so the output reads as one family instead of unrelated facts.
+
+When a program is merely silent about something its setup needs, prefer a
+demand over an invention: a demand costs the human one line on their next
+edit, while an invented default costs them a debugging session when it
+turns out wrong. When you must still choose and cannot demand (a free
+default, a build input with no natural question to ask), lower confidence
+rather than invent, and pair it with a because-note that says in one plain
+sentence what would pin it.
+
+Name subjects the way the domain talks, not the way NixOS names its
+options: the vocabulary is what the human's next program is written
+against, so `backup.source` reads naturally beside a sentence about where
+files come from, while `systemd.services.<name>.environment.SRC` does not.
+
+On a REGENERATION, the previous engine, its report, and its expect contract
+are appended to your input when they exist. Treat them as context, never as
+evidence: the programs remain the only truth, and a rule that only the old
+report claims to justify is not thereby justified. Keep the previous
+vocabulary unless the programs now force a change (a line shape they no
+longer have, a distinction they now draw that the old subjects cannot
+express); when you do change it, say in your report what moved and why, so
+the human sees the vocabulary they write against is not shifting for no
+reason.
+
+## Two Worked Examples
+
+### A Configuration-Only Language
+
+Program (`watch.jobqueue.lips`, instance name `watch`):
+```
+watch the jobs queue every 30 seconds.
+alert when backlog exceeds 100 items.
+alerts go to ops-pager.
+packages:
+- htop
+- ripgrep
+```
+
+The full engine:
+```lips-engine
+0.95 p1 pattern watch the jobs queue every <secs> seconds. => fact watch.interval "<secs>"
+0.95 p2 pattern alert when backlog exceeds <count> items. => fact alert.threshold "<count>"
+0.9 p3 pattern alerts go to <dest.words> => fact alert.target "<dest>"
+0.95 p4 pattern packages: => concept packages "packages to install"
+0.95 p5 pattern - <name> => fact pkg.<name> "<name>"
+0.95 r1 match fact watch.interval => systemd.services.<self>.environment.POLL_SECONDS "<value:int>"
+0.95 r2 match fact alert.threshold => systemd.services.<self>.environment.ALERT_THRESHOLD "<value:int>"
+0.9 r3 match fact alert.target => systemd.services.<self>.environment.ALERT_TARGET "\"<value>\""
+0.95 r4 match fact pkg.<name> => environment.systemPackages "[ <value:pkg> ]"
+0.9 q1 demand alert.target "where should backlog alerts be sent?"
+0.95 a1 expect systemd.services.<self>.environment.POLL_SECONDS from watch.interval
+0.95 a2 expect systemd.services.<self>.environment.ALERT_THRESHOLD from alert.threshold
+0.9 a3 expect systemd.services.<self>.environment.ALERT_TARGET from alert.target
+0.95 d1 report <<<lips
+This language watches a job queue: a poll interval, an alert threshold, and
+where alerts go. Each program is its own systemd service, keyed by its
+instance name; a program silent about where alerts go is asked, since no
+sane default exists. Packages under "packages:" install onto the service's
+PATH.
+lips>>>
+```
+
+The human gets a plain-sentence language for describing a watcher, a report
+explaining the mechanism (one systemd service per instance), and a contract
+pinning every numeric and address value to the option it must reach.
+
+### A Language Built from Source
+
+Program (`greet.echo.lips`, instance name `greet`):
+```
+say "hello, friend" when someone runs greet.
+```
+
+The full engine:
+```lips-engine
+0.95 p1 pattern say "<msg>" when someone runs greet. => fact cmd.greet.msg "<msg>"
+0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "\"null\"" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
+0.9 a1 expect artifact.greet.fill.msg from cmd.greet.msg
+0.9 s1 source greet go.mod <<<lips
+module greet
+
+go 1.21
+lips>>>
+0.9 s2 source greet main.go <<<lips
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("@msg@")
+}
+lips>>>
+0.9 d1 report <<<lips
+This language builds a tiny greeter binary from the message the program
+states. The message reaches the Go source through a fill (@msg@ in
+main.go); no expect names the ExecStart line, since it holds a build
+reference, not a checkable value -- the fill is expected instead.
+lips>>>
+```
+
+The human gets a language that writes a whole small program from one
+sentence, with the message pinned by an expect on the fill that carries it
+into the source, and no expect wasted on the build reference itself.
+
+## Self-Review Checklist
+
+Before you answer, run this list against your own engine:
+
+1. Does every line of every program you were shown crystallize under exactly one pattern?
+2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
+3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
+4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
+5. Does every expect name a value option, never a package or artifact-build option?
+6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
+7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
+
 --- program (input) ---
 === program api.web.lips ===
 serve http on port 8081.
 run it as a systemd service named api.
-write the server in go, using only the standard library with no external dependencies.
 routes:
 - /hello returns status 200 with body "hello".
 - /bye returns status 404 with body "gone".
 - /health returns status 200 with body "ok".
 
 --- tool transcript ---
--> query_options "environment.etc"
--> query_options "systemd.services"
+-> query_options "services.nginx.virtualHosts"
+-> query_options "services.nginx.virtualHosts.<name>.locations"
 <- query_options
-environment.etc : attribute set of (submodule)
-environment.etc.*.enable : boolean
-environment.etc.*.gid : integer
-environment.etc.*.group : string
-environment.etc.*.mode : string
-environment.etc.*.source : path
-environment.etc.*.target : string
-environment.etc.*.text : null or strings concatenated with "\n"
-environment.etc.*.uid : integer
-environment.etc.*.user : string
-
-<- query_options
-systemd.services.* (47 options)
-systemd.services (1 option)
+services.nginx.virtualHosts.* (49 options)
+services.nginx.virtualHosts (1 option)
 Ask again with one of these paths to see its options.
 
--> query_options "systemd.services.*"
 <- query_options
-systemd.services.*.confinement (5 options)
-systemd.services.*.after (1 option)
-systemd.services.*.aliases (1 option)
-systemd.services.*.before (1 option)
-systemd.services.*.bindsTo (1 option)
-systemd.services.*.conflicts (1 option)
-systemd.services.*.description (1 option)
-systemd.services.*.documentation (1 option)
-systemd.services.*.enable (1 option)
-systemd.services.*.enableDefaultPath (1 option)
-systemd.services.*.enableStrictShellChecks (1 option)
-systemd.services.*.environment (1 option)
-systemd.services.*.name (1 option)
-systemd.services.*.notSocketActivated (1 option)
-systemd.services.*.onFailure (1 option)
-systemd.services.*.onSuccess (1 option)
-systemd.services.*.overrideStrategy (1 option)
-systemd.services.*.partOf (1 option)
-systemd.services.*.path (1 option)
-systemd.services.*.postStart (1 option)
-systemd.services.*.postStop (1 option)
-systemd.services.*.preStart (1 option)
-systemd.services.*.preStop (1 option)
-systemd.services.*.reload (1 option)
-systemd.services.*.reloadIfChanged (1 option)
-systemd.services.*.reloadTriggers (1 option)
-systemd.services.*.requiredBy (1 option)
-systemd.services.*.requires (1 option)
-systemd.services.*.requisite (1 option)
-systemd.services.*.restartIfChanged (1 option)
-systemd.services.*.restartTriggers (1 option)
-systemd.services.*.script (1 option)
-systemd.services.*.scriptArgs (1 option)
-systemd.services.*.serviceConfig (1 option)
-systemd.services.*.startAt (1 option)
-systemd.services.*.startLimitBurst (1 option)
-systemd.services.*.startLimitIntervalSec (1 option)
-systemd.services.*.stopIfChanged (1 option)
-systemd.services.*.unitConfig (1 option)
-systemd.services.*.upheldBy (1 option)
-… and 3 more namespaces.
-Ask again with one of these paths to see its options.
-
--> query_options "systemd.services.*.wantedBy"
--> query_options "systemd.services.*.serviceConfig"
--> query_options "systemd.services.*.environment"
-<- query_options
-systemd.services.*.wantedBy : list of string
-
-<- query_options
-systemd.services.*.serviceConfig : attribute set of (systemd option)
-
-<- query_options
-systemd.services.*.environment : attribute set of (null or string or absolute path or package)
-
--> query_options "ExecStart"
-<- query_options
-no option matches ExecStart
+no option matches services.nginx.virtualHosts.<name>.locations
 Try a shorter query, or a different word for the same thing.
+
+-> query_options "services.nginx.virtualHosts.*"
+<- query_options
+services.nginx.virtualHosts.*.locations (16 options)
+services.nginx.virtualHosts.*.listen (6 options)
+services.nginx.virtualHosts.*.acmeFallbackHost (1 option)
+services.nginx.virtualHosts.*.acmeRoot (1 option)
+services.nginx.virtualHosts.*.addSSL (1 option)
+services.nginx.virtualHosts.*.basicAuth (1 option)
+services.nginx.virtualHosts.*.basicAuthFile (1 option)
+services.nginx.virtualHosts.*.default (1 option)
+services.nginx.virtualHosts.*.enableACME (1 option)
+services.nginx.virtualHosts.*.extraConfig (1 option)
+services.nginx.virtualHosts.*.forceSSL (1 option)
+services.nginx.virtualHosts.*.globalRedirect (1 option)
+services.nginx.virtualHosts.*.http2 (1 option)
+services.nginx.virtualHosts.*.http3 (1 option)
+services.nginx.virtualHosts.*.http3_hq (1 option)
+services.nginx.virtualHosts.*.kTLS (1 option)
+services.nginx.virtualHosts.*.listenAddresses (1 option)
+services.nginx.virtualHosts.*.onlySSL (1 option)
+services.nginx.virtualHosts.*.quic (1 option)
+services.nginx.virtualHosts.*.redirectCode (1 option)
+services.nginx.virtualHosts.*.rejectSSL (1 option)
+services.nginx.virtualHosts.*.reuseport (1 option)
+services.nginx.virtualHosts.*.root (1 option)
+services.nginx.virtualHosts.*.serverAliases (1 option)
+services.nginx.virtualHosts.*.serverName (1 option)
+services.nginx.virtualHosts.*.sslCertificate (1 option)
+services.nginx.virtualHosts.*.sslCertificateKey (1 option)
+services.nginx.virtualHosts.*.sslTrustedCertificate (1 option)
+services.nginx.virtualHosts.*.useACMEHost (1 option)
+Ask again with one of these paths to see its options.
+
+-> query_options "services.nginx.virtualHosts.*.locations"
+<- query_options
+services.nginx.virtualHosts.*.locations : attribute set of (submodule)
+services.nginx.virtualHosts.*.locations.*.alias : null or absolute path
+services.nginx.virtualHosts.*.locations.*.basicAuth : attribute set of string
+services.nginx.virtualHosts.*.locations.*.basicAuthFile : null or absolute path
+services.nginx.virtualHosts.*.locations.*.extraConfig : string
+services.nginx.virtualHosts.*.locations.*.fastcgiParams : attribute set of (string or absolute path)
+services.nginx.virtualHosts.*.locations.*.index : null or string
+services.nginx.virtualHosts.*.locations.*.priority : integer
+services.nginx.virtualHosts.*.locations.*.proxyPass : null or string
+services.nginx.virtualHosts.*.locations.*.proxyWebsockets : boolean
+services.nginx.virtualHosts.*.locations.*.recommendedProxySettings : boolean
+services.nginx.virtualHosts.*.locations.*.recommendedUwsgiSettings : boolean
+services.nginx.virtualHosts.*.locations.*.return : integer
+services.nginx.virtualHosts.*.locations.*.root : null or absolute path
+services.nginx.virtualHosts.*.locations.*.tryFiles : null or string
+services.nginx.virtualHosts.*.locations.*.uwsgiPass : null or string
+
+-> query_options "services.nginx.virtualHosts.*.listen"
+-> query_options "services.nginx.enable"
+<- query_options
+services.nginx.virtualHosts.*.listen : list of (submodule)
+services.nginx.virtualHosts.*.listen.*.addr : string
+services.nginx.virtualHosts.*.listen.*.extraParameters : list of string
+services.nginx.virtualHosts.*.listen.*.port : integer
+services.nginx.virtualHosts.*.listen.*.proxyProtocol : boolean
+services.nginx.virtualHosts.*.listen.*.ssl : boolean
+
+<- query_options
+services.nginx.enable : boolean
+
+-> query_options "networking.firewall.allowedTCPPorts"
+-> query_options "services.nginx.virtualHosts.*.locations.*.extraConfig"
+<- query_options
+networking.firewall.allowedTCPPorts : list of integer
+
+<- query_options
+services.nginx.virtualHosts.*.locations.*.extraConfig : string
+
+-> query_options "services.nginx.virtualHosts.*.serverName"
+-> query_options "services.nginx.virtualHosts.*.default"
+<- query_options
+services.nginx.virtualHosts.*.serverName : null or string
+
+<- query_options
+services.nginx.virtualHosts.*.default : boolean
 
 
 --- raw reply ---
 0.95 p1 pattern serve http on port <port>. => fact server.port "<port>"
-0.93 p2 pattern run it as a systemd service named <name>. => fact service.<name> "<name>"
-0.9 p3 pattern write the server in go, using only the standard library with no external dependencies. => concept lang.go "go standard library only, no external dependencies"
-0.9 p4 pattern routes: => concept routes "http routes"
-0.93 p5 pattern - <path> returns status <status> with body "<body>". => fact route.<path>.status "<status>" ; fact route.<path>.body "<body>"
+0.95 p2 pattern run it as a systemd service named <name>. => fact service.name "<name>"
+0.95 p3 pattern routes: => concept routes "http routes to serve"
+0.95 p4 pattern - <path> returns status <status> with body "<body>". => fact route.<path>.spec "<status> <body>"
 
-0.95 r1 match fact server.port => systemd.services.<self>.environment.PORT "\"<value>\""
-0.9 r2 match fact service.<name> => systemd.services.<self>.serviceConfig.ExecStart "\"${artifact.<name>}/bin/<name>\"" ; systemd.services.<self>.wantedBy "[ \"multi-user.target\" ]" ; artifact.<name>.builder "\"buildGoModule\"" ; artifact.<name>.args.pname "\"<name>\"" ; artifact.<name>.args.version "\"0.1.0\"" ; artifact.<name>.args.src "./artifacts/<name>" ; artifact.<name>.args.vendorHash "null" ; artifact.<name>.fill.name "\"<name>\""
-0.92 r3 match fact route.<path>.status => environment.etc.http-routes<path>/status.text "\"<value>\""
-0.92 r4 match fact route.<path>.body => environment.etc.http-routes<path>/body.text "\"<value>\""
+0.9 r1 match fact server.port => services.nginx.enable "true" ; services.nginx.virtualHosts.<self>.listen "[ { addr = \"0.0.0.0\"; port = <value:int>; } ]" ; services.nginx.virtualHosts.<self>.default "true" ; networking.firewall.allowedTCPPorts "[ <value:int> ]"
+0.9 r2 match fact service.name => services.nginx.virtualHosts.<self>.serverName "\"<value>\""
+0.9 r3 match fact route.<path>.spec => services.nginx.virtualHosts.<self>.locations.<path>.extraConfig "\"return <value.1> '<value.2>';\""
 
-0.85 q1 demand server.port "what port should the http server listen on?"
-0.85 q2 demand service.<name> "what should the systemd service (and the built binary) be named?"
+0.9 q1 demand server.port "what port should the http server listen on?"
+0.9 q2 demand service.name "what name identifies this web service?"
 
-0.9 a1 expect systemd.services.<self>.environment.PORT from server.port
-0.9 a2 expect environment.etc.http-routes<path>/status.text from route.<path>.status
-0.9 a3 expect environment.etc.http-routes<path>/body.text from route.<path>.body
-0.85 a4 expect artifact.<name>.args.pname from service.<name>
-0.85 a5 expect artifact.<name>.fill.name from service.<name>
-0.8 a6 expect artifact.<name>.args.src from service.<name>
-
-0.9 s1 source api go.mod <<<lips
-module @name@
-
-go 1.21
-lips>>>
-
-0.9 s2 source api main.go <<<lips
-package main
-
-import (
-	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
-)
-
-func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	base := "/etc/http-routes"
-	mux := http.NewServeMux()
-	entries, err := os.ReadDir(base)
-	if err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			name := e.Name()
-			statusBytes, err1 := os.ReadFile(filepath.Join(base, name, "status"))
-			bodyBytes, err2 := os.ReadFile(filepath.Join(base, name, "body"))
-			if err1 != nil || err2 != nil {
-				continue
-			}
-			status, errS := strconv.Atoi(string(statusBytes))
-			if errS != nil {
-				status = 200
-			}
-			body := string(bodyBytes)
-			routePath := "/" + name
-			mux.HandleFunc(routePath, func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(status)
-				w.Write([]byte(body))
-			})
-		}
-	}
-	http.ListenAndServe(":"+port, mux)
-}
-lips>>>
+0.9 a1 expect services.nginx.virtualHosts.<self>.listen from server.port
+0.9 a2 expect networking.firewall.allowedTCPPorts from server.port
+0.9 a3 expect services.nginx.virtualHosts.<self>.serverName from service.name
+0.9 a4 expect services.nginx.virtualHosts.<self>.locations.<path>.extraConfig from route.<path>.spec#1
+0.9 a5 expect services.nginx.virtualHosts.<self>.locations.<path>.extraConfig from route.<path>.spec#2
 
 0.95 d1 report <<<lips
-This language describes a small Go HTTP server run as a systemd service, with its port, its unit name, and its route table all read from the program text.
+This language describes a tiny fixed-response HTTP server: a port to
+listen on, a name for the service, and a list of routes, each with a
+status code and a body.
 
-**Line shapes recognized**
+Line shapes:
+- `serve http on port <port>.` states the listening port. "http" is a
+  fixed mechanism word (this language only ever builds plain HTTP
+  servers); the port is the value.
+- `run it as a systemd service named <name>.` names the service. Rather
+  than inventing a custom binary, this engine realizes the whole program
+  as an nginx virtual host (no source code to write, no per-route
+  repetition to fake), so there is no literal systemd unit called
+  `<name>` -- nginx itself is one shared system service. The name is
+  instead written into the virtual host's `serverName`, which is the
+  closest honest place for the human's chosen name to land and be
+  checked.
+- `routes:` is a heading with no value of its own -- a concept, decorative.
+- `- <path> returns status <status> with body "<body>".` declares one
+  route. Each bulleted route becomes its own nginx `location` block (keyed
+  by its path, an attrsOf option, so any number of routes compose without
+  collision), with `extraConfig` set to a literal `return <status>
+  '<body>';` directive. This is data, not code, so adding a route is just
+  adding a bulleted line -- nothing about the engine's shape changes, and
+  no per-route source file is ever generated.
 
-- `serve http on port <port>.` -- the port the server listens on. Read into the systemd unit's `PORT` environment variable, which the compiled server reads at startup.
-- `run it as a systemd service named <name>.` -- names both the systemd unit's identity-bearing values (the built binary, the Go module, the derivation `pname`) via the capture `<name>`. The systemd *unit key* itself uses `<self>` (the program's file instance), since NixOS needs a fixed attrset key regardless of the program's wording, but every value the program actually names (`ExecStart`'s binary path, `pname`, the Go module name via a fill) is driven by `<name>`, so editing "named X" renames the binary end to end.
-- `write the server in go, using only the standard library with no external dependencies.` -- this sentence *selects* the build mechanism (Go, `buildGoModule`, and `vendorHash = null` because there are no external dependencies to vendor). It carries no separate value of its own beyond that selection, so it is recorded as a decorative `concept` and the mechanism is baked into rule r2 directly.
-- `routes:` -- a heading, `concept`, introducing the bulleted route list below it.
-- `- <path> returns status <status> with body "<body>".` -- one HTTP route. Each bullet is its own instance, keyed by `<path>`, contributing a status fact and a body fact.
+Mechanism choices made once for every program of this kind, not read from
+any single program: the virtual host is marked `default = true` (there is
+no notion of a domain name in this language, so it catches all requests
+on its port), it listens on `0.0.0.0`, and the chosen port is also opened
+in the firewall so the server is reachable. All of these are constants
+this language always applies, never values a program states.
 
-**Mechanism chosen for routes (and why)**
+Every program must say what port to listen on and what to call the
+service; a program silent about either is asked, since there is no sane
+default for a port or a name. Every declared route contributes one
+`location` block; there is no lower bound on how many routes a program
+may declare (zero is a legal, if useless, web server).
 
-A naive design would bake each route into the Go source as its own `if` branch, but the number of routes varies with the program and a *fill* can only replace a single marker, never repeat a code block per route -- so that would not survive an edit that adds a fourth route. Instead the Go source is generic: at startup it scans `/etc/http-routes/<name>/{status,body}` for every subdirectory NixOS creates and registers a handler for each one it finds. The *data* (which routes exist, their status, their body) lives in `environment.etc` entries keyed by the route's own path (`environment.etc.http-routes<path>/status.text`, `.../body.text`), which is ordinary attrsOf aggregation across bullets; the *code* stays fixed and route-count-agnostic. This sidesteps the repeating-structure limitation entirely, so no gap was needed for the routes.
-
-**Artifact**
-
-`artifact.<name>` builds the Go program with `buildGoModule`, `pname`/`version` set (version is a fixed placeholder, a build constant with no observable effect), `vendorHash = null` (no external deps, per the program's own words), and a `fill.name` substituting `@name@` in `go.mod`'s `module` line so the compiled binary's name matches `<name>`, matching the `ExecStart` path `${artifact.<name>}/bin/<name>`.
-
-**Assumptions / invented constants**
-
-- The systemd unit is enabled via `wantedBy = [ "multi-user.target" ]`, standard practice for "run it as a systemd service", not stated explicitly but implied by the instruction.
-- `version = "0.1.0"` is an arbitrary build placeholder, invisible to the program's behavior.
-- The route-config directory `/etc/http-routes` is an internal wiring convention, not a program value.
-
-**Demands**
-
-If a program omits the port line or the "named ..." line, `q1`/`q2` ask for them, since both are load-bearing facts with no sensible default.
+Limitation worth knowing: a route's body is combined with its status
+code into one nginx directive via positional token substitution, so it
+works cleanly for single-word bodies ("hello", "gone", "ok"). A body with
+embedded spaces would only have its first word land correctly -- the
+grammar has no way to carry the "rest of the line" through a value
+already built from two captured fields into one option's text.
 lips>>>
