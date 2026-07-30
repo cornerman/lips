@@ -177,6 +177,19 @@ tracks only what is still open.
       bodies keep it from firing.
 
 
+2. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
+   minted line is stamped `@gen:<id>` and the id must re-hash from the
+   committed `.generation` record, but no code re-hashes anything: `check`
+   reads the stamps as text. So a change to what the record contains silently
+   invalidates every committed engine's stamps while all gates stay green.
+   This is not hypothetical -- the schema-pin work adds a `schema:` line to the
+   record, which changes every generation hash, and main noticed nothing.
+   Remedy: `check` recomputes `genId` from the `.generation` beside the engine
+   and refuses when a `@gen:` stamp disagrees, which makes a re-mint sweep
+   verifiable instead of a matter of remembering. Deterministic, offline,
+   domain-blind. Blocked until the schema-pin branch ff-merges, since the gate
+   must call the same `genId` that branch is changing (`Lips.Generate.Record`).
+
 ## Backlog (larger / deferred by design)
 
 - **Cross-program composition (one program naming another).** Nix composes;
