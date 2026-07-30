@@ -1227,6 +1227,17 @@ main = hspec $ do
       matchTemplate (pTemplate (pat "--port=<n> => fact port \"<n>\""))
                     (tokenizeLine "--port=8080")
         `shouldBe` Just (Map.fromList [("n", "8080")])
+    it "reads two holes glued by literal text inside one token" $ do
+      -- A declaration's parameter list, `<fname>(<param>: <ptype>)`: the token
+      -- `<fname>(<param>:` starts with '<' and (once the ':' is stripped) ends
+      -- with '>', so a naive whole-token reading would bind one hole named
+      -- "fname>(<param" and leave the emit's <fname> and <param> unbound -- a
+      -- refusal for a template that is plainly inside the grammar.
+      let p = pat "function <fname>(<param>: <ptype>) => fact function.<fname>.signature \"<fname> <param> <ptype>\""
+      holesOf p `shouldBe` ["fname", "param", "ptype"]
+      matchTemplate (pTemplate p) (tokenizeLine "function println_to_stdout(x: String)")
+        `shouldBe` Just (Map.fromList
+          [("fname", "println_to_stdout"), ("param", "x"), ("ptype", "String")])
     it "captures the surface verbatim while literals compare case-insensitively" $
       matchTemplate (pTemplate (pat "Print(<x>) => fact a \"<x>\""))
                     (tokenizeLine "print(Hallo)")

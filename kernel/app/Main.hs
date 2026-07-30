@@ -410,6 +410,9 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- the same in-scope values), so a refusal is pinned exactly as an
       -- acceptance would have been.
       let rec = record model target (T.pack thinking) confidence prompt corpus transcript reply
+      -- The refusal is the first thing written for a language, so its directory
+      -- (<language>/, home of .lang/.expect/.generation) need not exist yet.
+      createDirectoryIfMissing True (langDir rep)
       TIO.writeFile (gapPath rep) (gapArtifact rec errs unsure gaps)
       die (refusalReport rep (gapPath rep) confidence errs unsure notes gaps)
     else do

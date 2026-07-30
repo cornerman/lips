@@ -355,10 +355,17 @@ parseHoley t
                            ++ [SHole holeBody]
                            ++ parseHoley (T.drop 1 afterClose)
 
+-- | A token that is ONE hole and nothing else: @\<name>@. The body may hold no
+-- angle bracket, otherwise a token carrying several holes glued by literal text
+-- (@\<fname>(\<param>@, a call signature) would read as the single absurd hole
+-- named @fname>(\<param@ -- swallowing both real holes and leaving the emit's
+-- references unbound. Rejecting it here sends the token on to 'fusedSegs',
+-- which is the form that actually describes it.
 holeName :: Text -> Maybe Text
 holeName w = do
   b <- T.stripPrefix "<" w
-  T.stripSuffix ">" b
+  n <- T.stripSuffix ">" b
+  if T.any (`elem` ("<>" :: String)) n then Nothing else Just n
 
 firstToken :: Text -> Text -> Either Text (Text, Text)
 firstToken t err =
