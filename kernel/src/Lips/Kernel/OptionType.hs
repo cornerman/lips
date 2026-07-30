@@ -97,8 +97,17 @@ checkEmits schema rules =
         Nothing -> case [ t | (k, t) <- entries, matchesPath k path ] of
           (t : _) -> mismatch rid path t v              -- wildcard leaf match
           []
-            | any (\(k, _) -> isPrefixPath k path) entries -> []   -- descends into a declared option
+            -- Descends into a declared option whose children the schema does
+            -- not enumerate. Only an UNMODELLED type can have such children (a
+            -- submodule, an attrset, a target's "anything"): a modelled scalar
+            -- or list is a leaf by construction, so a path below one names
+            -- nothing, in any world.
+            | any freeformAncestor entries -> []
             | otherwise -> [UnknownOption rid path]
+          where
+            freeformAncestor (k, t) = isPrefixPath k path && unmodelled t
+            unmodelled (OTOther _) = True
+            unmodelled _           = False
     mismatch rid path t v =
       -- Whole-element mismatch (a non-submodule list, or a scalar in the wrong
       -- slot): one TypeMismatch at the option path. For a listOf-submodule the
@@ -201,6 +210,10 @@ dotted = T.intercalate "."
 -- namespace with one or two merely references it.
 data Answer
   = Leaves     [([Text], OptionType)]  -- ^ few enough to name exactly, with types
+  | Freeform   [Text] OptionType       -- ^ inside a declared free-form option:
+                                       --   the nearest declared ancestor and its
+                                       --   type. Accepted by 'checkEmits',
+                                       --   typed by nothing.
   | Nowhere                            -- ^ no match at all
   | Namespaces [([Text], Int)] Int     -- ^ where the matches live, heaviest
                                        --   first, plus how many namespaces the
@@ -219,9 +232,18 @@ data Answer
 -- Case-sensitive throughout: option names are lowercase-dotted by convention,
 -- and the kernel must not invent a casing rule for a target it knows nothing
 -- about.
+-- A query with no match is not always absent: 'checkEmits' accepts any path
+-- that descends into a declared option whose children the schema does not
+-- enumerate (a free-form attrset, a target's "anything" valueType). The lookup
+-- and the gate read ONE schema, so they must answer alike -- otherwise the
+-- lookup calls a legal path a typo, and the caller refuses a program the gate
+-- would have passed. 'Freeform' names the nearest declared ancestor, so the
+-- answer also says where typing stops.
 answerQuery :: Int -> Text -> OptionSchema -> Answer
 answerQuery cap q schema
-  | null matches          = Nowhere
+  | null matches          = case freeformAncestors of
+      (a : _) -> uncurry Freeform a
+      []      -> Nowhere
   | length matches <= cap = Leaves (List.sortOn fst matches)
   | otherwise             = Namespaces (take cap groups) (length groups - cap)
   where
@@ -234,6 +256,12 @@ answerQuery cap q schema
     matches
       | not (null byPrefix) = byPrefix
       | otherwise           = [ e | e@(k, _) <- entries, q `T.isInfixOf` dotted k ]
+    -- Longest first: the nearest declared ancestor is the one that tells the
+    -- reader how deep the schema's knowledge actually reaches.
+    freeformAncestors =
+      List.sortOn (negate . length . fst)
+        [ e | e@(k, t) <- entries, k `List.isPrefixOf` segments, k /= segments
+            , case t of OTOther _ -> True; _ -> False ]
     depth  = max 2 (length segments + 1)
     groups = List.sortOn (\(p, n) -> (negate n, p))
            . Map.toList

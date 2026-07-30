@@ -3377,6 +3377,19 @@ main = hspec $ do
       checkEmits Map.empty
         [ optRule "r" ["artifact", "srv", "builder"] (VStr [PLit "buildGoModule"]) ]
         `shouldBe` []
+    -- Only an option whose type this layer does NOT model can have children the
+    -- schema omits (a submodule, an attrset, a target's "anything"). A modelled
+    -- scalar or list is a leaf by construction, so a path descending BELOW one
+    -- names nothing in any world -- accepting it let a whole namespace of
+    -- invented fields through under one real string option.
+    it "refuses a path below a modelled leaf, and accepts one below an unmodelled option" $ do
+      let sch = Map.fromList
+            [ (["services","nginx","appendConfig"], OTString)
+            , (["services","nginx","settings"], OTOther "attribute set of anything") ]
+          under p = optRule "r1" p (VInt 1)
+      checkEmits sch [under ["services","nginx","appendConfig","foo"]]
+        `shouldBe` [UnknownOption "r1" ["services","nginx","appendConfig","foo"]]
+      checkEmits sch [under ["services","nginx","settings","foo"]] `shouldBe` []
     it "echoes exactly the bogus option in a mixed rule set (deduce-or-fail)" $ do
       let sch  = Map.fromList [ (["services", "restic", "backups", "x", "paths"], OTListOf OTString) ]
           good = optRule "r1" ["services", "restic", "backups", "x", "paths"] (VList [VStr [PHole "value"]])
@@ -3403,6 +3416,28 @@ main = hspec $ do
         Namespaces [ (["services","restic"], 2), (["services","nginx"], 1) ] 0
     it "an unmatched query says so rather than guessing" $
       answerQuery 40 "nosuchthing" sch `shouldBe` Nowhere
+    -- The lookup and the grounding gate are two doors onto ONE schema, so they
+    -- must answer alike: 'checkEmits' accepts any path descending into a
+    -- declared free-form option, and the lookup has to say that instead of
+    -- "no option matches" -- which would tell the mint its legal path is a
+    -- typo. The answer must also state what it costs: nothing below is typed.
+    it "a path inside a free-form option is answered as unchecked, not absent" $ do
+      let freeSch = Map.insert ["services","x","settings"] (OTOther "attribute set of anything")
+                      (Map.insert ["services","x","note"] OTString sch)
+      answerQuery 40 "services.x.settings.compression.level" freeSch
+        `shouldBe` Freeform ["services","x","settings"] (OTOther "attribute set of anything")
+      -- and the gate agrees, which is the point of the case
+      let r = MapRule "r1" Fact ["level"]
+                [Emit ["services","x","settings","compression","level"] (VInt 9)]
+      checkEmits freeSch [r] `shouldBe` []
+      -- a modelled leaf is no such region: below it there is nothing to reach
+      answerQuery 40 "services.x.note.deeper" freeSch `shouldBe` Nowhere
+    it "the nearest declared ancestor wins, so the reader learns where typing stops" $ do
+      let freeSch = Map.fromList
+            [ (["resource"], OTOther "bool, int, float or str")
+            , (["resource","aws_instance"], OTOther "attribute set of anything") ]
+      answerQuery 40 "resource.aws_instance.web.ami" freeSch
+        `shouldBe` Freeform ["resource","aws_instance"] (OTOther "attribute set of anything")
     it "a wrong leaf is answered with the real leaves beside it" $
       nearOptions 40 ["services","restic","backups","*","path"] sch `shouldBe` Leaves
         [ (["services","restic","backups","*","paths"], OTListOf OTString)

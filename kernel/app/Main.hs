@@ -606,6 +606,16 @@ renderAnswer query ans = case ans of
     [ dotted p <> " (" <> plural n "option" <> ")" | (p, n) <- ns ]
       ++ [ "… and " <> plural hidden "more namespace" <> "." | hidden > 0 ]
       ++ [ "Ask again with one of these paths to see its options." ]
+  -- The honest answer for a free-form region: the path is admissible (the same
+  -- schema's gate accepts it), and the schema knows nothing about it. Saying
+  -- "no option matches" here would call a legal path a typo; saying only "fine"
+  -- would sell an unchecked name as confirmed.
+  Freeform anc t -> T.unlines
+    [ query <> " is below " <> dotted anc <> " : " <> renderOptionType t
+    , "That option is free-form: every path under it is accepted, and none of"
+    , "them is checked -- this schema cannot confirm the name " <> query <> "."
+    , "Emit it only from documentation you actually have; otherwise refuse."
+    ]
   Nowhere -> T.unlines
     [ "no option matches " <> query
     , "Try a shorter query, or a different word for the same thing."
