@@ -15,6 +15,7 @@
 module Lips.Generate.Record
   ( record
   , genId
+  , hashBytes
   , corpusText
   , recordedProgram
   ) where
@@ -45,6 +46,12 @@ import           Lips.Nix.Target    (Target, targetSlug)
 -- event and enters 'genId': a re-mint targeting a different world yields a
 -- different id, so every engine line's @gen stamp pins the world it was minted
 -- for.
+-- The schema pin is the LOCKED flakeref (as @nix flake metadata@ reports it)
+-- whose option document grounded the mint, or @options-json:\<hash\>@ when a
+-- caller supplied the document directly. It co-determines the engine: an option
+-- present in one nixpkgs and absent in the next decides whether a rule was
+-- admitted at all, so a record omitting it would leave a mint input
+-- unaccounted for (invariant 6). It enters 'genId' like every other input.
 -- The tool transcript sits between the corpus and the reply because that is
 -- where it belongs causally: what the mint was told is an input, like the
 -- corpus, and the reply is what it made of both. Being inside the record, it is
@@ -53,10 +60,11 @@ import           Lips.Nix.Target    (Target, targetSlug)
 -- The thinking level is an input like the model: it changes what the mint
 -- produces, so a record omitting it would not pin the event. lips always passes
 -- it explicitly, so nothing ambient can steer a mint unrecorded.
-record :: Text -> Target -> Text -> Double -> Text -> Text -> Text -> Text -> Text
-record model target thinking confidence sysPrompt program transcript reply = T.unlines
+record :: Text -> Target -> Text -> Text -> Double -> Text -> Text -> Text -> Text -> Text
+record model target schema thinking confidence sysPrompt program transcript reply = T.unlines
   [ "model: " <> model
   , "target: " <> targetSlug target
+  , "schema: " <> schema
   , "thinking: " <> thinking
   , "confidence-threshold: " <> T.pack (show confidence)
   , "--- system prompt ---", sysPrompt
@@ -69,7 +77,14 @@ record model target thinking confidence sysPrompt program transcript reply = T.u
 -- Deterministic, dependency-free; collision odds are negligible for its job
 -- (naming generation events within one repository).
 genId :: Text -> Text
-genId = hex . BS.foldl' step offset . encodeUtf8
+genId = hashBytes . encodeUtf8
+
+-- | The same content id over raw bytes, for the one input that is not text lips
+-- wrote: a caller-supplied options document, which the record pins by content
+-- because it has no flakeref to name ('ensureOptionSchema'). One hash function
+-- serves the whole provenance story.
+hashBytes :: BS.ByteString -> Text
+hashBytes = hex . BS.foldl' step offset
   where
     offset = 14695981039346656037 :: Word64
     prime  = 1099511628211 :: Word64

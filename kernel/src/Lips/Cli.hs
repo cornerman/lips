@@ -36,6 +36,7 @@ import Lips.Nix.Target (Target (..), defaultTarget, parseTarget, targetSlug)
 -- @looksLikeModel@); omitting it lets @pi@'s own configured default apply.
 data GenerateOpts = GenerateOpts
   { goTarget     :: Target
+  , goSchema     :: Maybe String
   , goConfidence :: Double
   , goRenew      :: Bool
   , goVerbose    :: Bool
@@ -78,6 +79,7 @@ data CheckOpts = CheckOpts
 -- schema to search, how many entries an answer may print, and the query.
 data OptionsOpts = OptionsOpts
   { ooTarget :: Target
+  , ooSchema :: Maybe String
   , ooLimit  :: Int
   , ooQuery  :: String
   } deriving (Eq, Show)
@@ -172,11 +174,26 @@ confidenceReader = eitherReader $ \s -> case readMaybe s of
   Just d | d >= 0, d <= 1 -> Right d
   _                       -> Left (s <> " is not a confidence in [0,1]")
 
+-- | @--schema@: the flake whose option document grounds the mint, overriding
+-- the pin baked into this binary. This is the knob for a caller whose own world
+-- is not the one lips was built against (a stable channel, a company nixpkgs, a
+-- home-manager release): grounding against the schema the module will actually
+-- be evaluated with is what makes the mint's option check mean anything.
+-- lips resolves it through @nix flake metadata@ and records the LOCKED result in
+-- @.generation@, so a floating ref cannot make the record lie about what was
+-- used. Shared by generate and options, since the lookup verb must read exactly
+-- what a mint would read.
+schemaOpt :: Parser (Maybe String)
+schemaOpt = optional (strOption
+  (long "schema" <> metavar "FLAKEREF"
+    <> help "Flake to build this world's option schema from (default: the pin baked into this lips). Recorded, locked, in .generation."))
+
 generateOpts :: Double -> Parser GenerateOpts
 generateOpts defConf = GenerateOpts
   <$> option targetReader
         (long "target" <> short 't' <> value defaultTarget
           <> metavar targetMetavar <> help "The Nix world to realize into (default: nixos).")
+  <*> schemaOpt
   <*> option confidenceReader
         (long "confidence" <> value defConf
           <> metavar "0..1" <> help "Minimum pattern confidence to accept (default: 0.7).")
@@ -235,6 +252,7 @@ optionsOpts = OptionsOpts
   <$> option targetReader
         (long "target" <> short 't' <> value defaultTarget
           <> metavar targetMetavar <> help "Which world's schema to search (default: nixos).")
+  <*> schemaOpt
   <*> option limitReader
         (long "limit" <> value 40
           <> metavar "N" <> help "Maximum entries to print (default: 40).")

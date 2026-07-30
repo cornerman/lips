@@ -28,7 +28,11 @@ import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (filterM, forM, forM_, unless, when)
 import           Data.Bifunctor     (first)
 import           Data.List          (partition)
+import           Data.Aeson         (Value (..), decode)
+import qualified Data.Aeson.KeyMap  as KM
+import qualified Data.ByteString    as BS
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
@@ -54,7 +58,7 @@ import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, unnamedSources)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
-import           Lips.Generate.Record   (corpusText, genId, record, recordedProgram)
+import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedProgram)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isArtifactExpect, readExpect, renderExpect)
@@ -103,10 +107,10 @@ main = do
   setLocaleEncoding utf8
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
-    Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+    Generate go -> generate (goTarget go) (goSchema go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co    -> () <$ checkLoose True (ceLangDir co) (ceFile co)
-    Options oo  -> optionsQuery (ooTarget oo) (ooLimit oo) (T.pack (ooQuery oo))
+    Options oo  -> optionsQuery (ooTarget oo) (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
     Lsp         -> runLsp
 
 -- | @compile@: verify the program's committed contract, then crystallize +
@@ -378,11 +382,11 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Target -> Double -> Bool -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
+generate :: Target -> Maybe String -> Double -> Bool -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
-generate _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate target confidence renew verbose mmodel thinking files@(rep : _) = do
+generate _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
+generate target mschema confidence renew verbose mmodel thinking files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -401,6 +405,10 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- holes, tokens that agree stay literal. One program is the corpus-of-one
       -- case. The same set is the regeneration corpus below.
       corpus = corpusText progs
+  -- Resolve the grounding schema BEFORE the model runs: it is an input of the
+  -- generation event (it decides which rules are admissible), it is recorded as
+  -- such, and a schema that cannot be built must not cost an AI call first.
+  (schemaPath, schemaPin) <- ensureOptionSchema target mschema ("generate " <> T.pack rep)
   (reply, model, transcript) <- callPi mmodel thinking prompt corpus target
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
@@ -427,7 +435,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- scheme as a successful '.generation' record (built the same way, from
       -- the same in-scope values), so a refusal is pinned exactly as an
       -- acceptance would have been.
-      let rec = record model target (T.pack thinking) confidence prompt corpus transcript reply
+      let rec = record model target schemaPin (T.pack thinking) confidence prompt corpus transcript reply
       -- The refusal is the first thing written for a language, so its directory
       -- (<language>/, home of .lang/.expect/.generation) need not exist yet.
       createDirectoryIfMissing True (langDir rep)
@@ -455,7 +463,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       assertValuesReach rep eng
       assertNoPathHoles rep eng
       assertDemandsAnswerable rep eng
-      assertOptionsAdmissible target rep eng
+      assertOptionsAdmissible target schemaPath rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
       validated <- forM progs $ \(f, t) -> case validate f eng t of
@@ -533,7 +541,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
-      let rec = record model target (T.pack thinking) confidence prompt corpus transcript reply
+      let rec = record model target schemaPin (T.pack thinking) confidence prompt corpus transcript reply
       -- The language folder holds every minted and derived file; create it (and
       -- its derived out/ subtree) before writing, so a first mint beside a bare
       -- program just works.
@@ -577,9 +585,11 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
 --
 -- It never calls a model (invariant 1 holds trivially: no model runs anywhere
 -- but generate) and it never writes anything.
-optionsQuery :: Target -> Int -> Text -> IO ()
-optionsQuery target limit query = do
-  schemaPath <- ensureOptionSchema target ("options " <> query)
+optionsQuery :: Target -> Maybe String -> Int -> Text -> IO ()
+optionsQuery target mschema limit query = do
+  -- The pin is discarded here: a lookup records nothing. Only generate, which
+  -- commits an engine, has a record to name it in.
+  (schemaPath, _) <- ensureOptionSchema target mschema ("options " <> query)
   mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
   bytes <- case mbytes of
     Left e -> die (report
@@ -727,14 +737,14 @@ unanswerableReport file uds = validationReport file
     <> "the capture too (demand command.<name>, not demand command).")
 
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
--- option. The schema is the pinned nixpkgs @optionsJSON@; its path arrives via
--- @LIPS_OPTIONS_JSON@ (the justfile wires it from the flake). An unset variable
--- or an unreadable schema fails loud -- an unverifiable engine is not written.
+-- option. The schema document is located ONCE per run by 'ensureOptionSchema'
+-- and handed in, so the schema this gate judges against is the very one the
+-- record names -- a second resolution could disagree with it. An unreadable
+-- schema fails loud: an unverifiable engine is not written.
 -- The check is domain-blind: 'checkEmits' takes a typed schema, and the NixOS
 -- specifics live in 'Lips.Nix.Options'.
-assertOptionsAdmissible :: Target -> FilePath -> EngineData -> IO ()
-assertOptionsAdmissible target file eng = do
-  schemaPath <- ensureOptionSchema target ("generate " <> T.pack file)
+assertOptionsAdmissible :: Target -> FilePath -> FilePath -> EngineData -> IO ()
+assertOptionsAdmissible target schemaPath file eng = do
   mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
   case mbytes of
     Left e -> die (report
@@ -752,59 +762,137 @@ assertOptionsAdmissible target file eng = do
           ("its rules use " <> targetSlug target <> " options that don't exist or have the wrong type:\n"
             <> T.unlines (map (("  - " <>) . renderOptionError) errs)))
 
--- | Locate the NixOS @options.json@ used for the check. An explicit
--- @LIPS_OPTIONS_JSON@ wins (a test seam, or a caller-supplied schema).
--- Otherwise build it lazily from the pinned nixpkgs baked into
--- @LIPS_NIXPKGS_FLAKE@ (set by the packaged binary). The build is announced,
--- since the first one evaluates the whole NixOS manual (~11 MB) before nix
--- caches it; every later generate is a store cache hit. Only generate and the
--- read-only @options@ lookup pay this -- compile\/check never touch the schema.
+-- | Locate the target world's @options.json@, and say WHICH schema that is:
+-- the returned pin is what @.generation@ records, so grounding stops being
+-- invisible after the mint.
+--
+-- Precedence is by explicitness. @--schema \<flakeref\>@ (a caller whose own
+-- world is not the one lips was built against) beats @LIPS_OPTIONS_JSON@ (a
+-- prebuilt document: the suite's offline fixture), which beats the flakeref
+-- baked into the packaged binary -- the zero-configuration default, so nobody
+-- has to author a pin to run generate at all.
+--
+-- A flakeref is resolved through @nix flake metadata@ and both BUILT and
+-- RECORDED as the locked url nix reports, so the pin cannot float: recording
+-- @nixpkgs@ or a branch name would name a different schema every week and the
+-- record would lie about what admitted the rules. A supplied document has no
+-- ref, so it is pinned by content instead ('genId' over its bytes).
+--
+-- The build is announced, since the first one evaluates the whole NixOS manual
+-- (~11 MB) before nix caches it; every later generate is a store cache hit. Only
+-- generate and the read-only @options@ lookup pay this -- compile\/check never
+-- touch the schema.
 --
 -- @remedy@ is the invocation to suggest when the schema cannot be had; it is a
 -- parameter because this function serves two verbs and knows about neither.
-ensureOptionSchema :: Target -> Text -> IO FilePath
-ensureOptionSchema target remedy = do
+ensureOptionSchema :: Target -> Maybe String -> Text -> IO (FilePath, Text)
+ensureOptionSchema target (Just ref) remedy = do
+  locked <- lockFlakeRef ref remedy
+  path <- buildOptionSchema target locked remedy
+  pure (path, locked)
+ensureOptionSchema target Nothing remedy = do
   override <- lookupEnv "LIPS_OPTIONS_JSON"
   case override of
-    Just p  -> pure p
+    -- Pinned by content: a path names a file that changes, so the record would
+    -- say nothing checkable. The hash is the same function the record's own id
+    -- uses, so one hash function serves the whole provenance story.
+    Just p  -> do
+      mbytes <- try (BS.readFile p) :: IO (Either IOException BS.ByteString)
+      case mbytes of
+        Left e -> die (report
+          ("lips can't read the option schema at " <> T.pack p <> " (LIPS_OPTIONS_JSON):")
+          [tshow e]
+          ("→ point LIPS_OPTIONS_JSON at a readable options.json, or unset it: " <> remedy))
+        Right bytes -> pure (p, "options-json:" <> hashBytes bytes)
     Nothing -> do
-      -- Each world builds its own optionsJSON from its own pinned flake, baked
-      -- into the binary. The file sub-path differs per world; the JSON shape
-      -- is identical (both are nixosOptionsDoc output).
-      let (envVar, subPath) = case target of
-            Nixos       -> ("LIPS_NIXPKGS_FLAKE", "/share/doc/nixos/options.json")
-            HomeManager -> ("LIPS_HM_FLAKE",      "/share/doc/home-manager/options.json")
-            -- kubenix ships no options document of its own, so lips builds one
-            -- with nixosOptionsDoc; that helper's default output path is the
-            -- nixos one, hence the same sub-path as NixOS.
-            Kubenix     -> ("LIPS_KUBENIX_FLAKE", "/share/doc/nixos/options.json")
-            Terranix    -> ("LIPS_TERRANIX_FLAKE", "/share/doc/nixos/options.json")
-      mflake <- lookupEnv envVar
+      -- The world's own env var, set by the packaged binary from lips's flake
+      -- lock. Unset means no schema source is configured at all.
+      mflake <- lookupEnv (bakedPinVar target)
       case mflake of
         Nothing -> die (report
           ("lips can't read the setup's options: no " <> targetSlug target <> " option schema source is configured.")
-          ["neither LIPS_OPTIONS_JSON nor " <> T.pack envVar <> " is set."]
+          ["none of --schema, LIPS_OPTIONS_JSON or " <> T.pack (bakedPinVar target) <> " is set."]
           ("→ run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
         Just flakeref -> do
-          TIO.hPutStrLn stderr
-            ("checking options against the " <> targetSlug target
-              <> " schema: building it from pinned flake (" <> T.pack flakeref <> ").")
-          TIO.hPutStrLn stderr
-            "  the first build evaluates the manual and can take a few minutes; nix caches it afterwards."
-          built <- try (readProcessWithExitCode "nix"
-            [ "build", "--impure", "--no-link", "--print-out-paths"
-            , "--expr", T.unpack (schemaExpr target flakeref) ] "")
-          case built of
-            Left e -> die (report
-              "lips needs nix to build the option schema, but couldn't run it:"
-              (T.lines (tshow (e :: IOException)))
-              ("→ install nix, or run lips through it: nix run . -- " <> remedy))
-            Right (ExitFailure _, _, err) -> die (report
-              ("lips couldn't build the " <> targetSlug target <> " option schema:")
-              (T.lines (T.pack err))
-              ("→ run it again: nix run . -- " <> remedy))
-            Right (ExitSuccess, out, _) ->
-              pure (T.unpack (T.strip (T.pack out)) <> T.unpack subPath)
+          locked <- lockFlakeRef flakeref remedy
+          path <- buildOptionSchema target locked remedy
+          pure (path, locked)
+
+-- | The env var carrying the flakeref baked into the packaged binary for one
+-- world. Per world, because each world's schema comes from its own flake.
+bakedPinVar :: Target -> String
+bakedPinVar Nixos       = "LIPS_NIXPKGS_FLAKE"
+bakedPinVar HomeManager = "LIPS_HM_FLAKE"
+bakedPinVar Kubenix     = "LIPS_KUBENIX_FLAKE"
+bakedPinVar Terranix    = "LIPS_TERRANIX_FLAKE"
+
+-- | Resolve any flakeref to the LOCKED url nix reports for it, which is then
+-- both built and recorded. Asking nix (rather than inspecting the ref's shape)
+-- keeps one authority for what a ref locks to: @flake:nixpkgs@, a branch, a
+-- @path:@ working tree and an already-pinned @github:owner\/repo\/\<rev\>@ all
+-- come back naming fixed content.
+lockFlakeRef :: String -> Text -> IO Text
+lockFlakeRef ref remedy = do
+  res <- try (readProcessWithExitCode "nix" ["flake", "metadata", "--json", ref] "")
+  case res of
+    Left e -> die (report
+      "lips needs nix to resolve the option schema's flake, but couldn't run it:"
+      (T.lines (tshow (e :: IOException)))
+      ("→ install nix, or run lips through it: nix run . -- " <> remedy))
+    Right (ExitFailure _, _, err) -> die (report
+      ("lips can't resolve the option schema's flake " <> T.pack ref <> ":")
+      (T.lines (T.pack err))
+      "→ pass a flakeref nix can fetch, e.g. --schema github:NixOS/nixpkgs/nixos-24.11.")
+    Right (ExitSuccess, out, _) -> case lockedUrl (BLC.pack out) of
+      Just u  -> pure u
+      -- Deduce-or-fail: without the locked url the record could only name the
+      -- ref the caller typed, which may float. Refuse rather than record that.
+      Nothing -> die (report
+        ("lips can't tell what " <> T.pack ref <> " locks to: nix reported no locked url.")
+        []
+        "→ update nix, or pass an already-pinned ref (github:owner/repo/<rev>).")
+
+-- | The @url@ field of @nix flake metadata --json@: nix's own locked form of the
+-- ref it was given.
+lockedUrl :: BL.ByteString -> Maybe Text
+lockedUrl bytes = do
+  Object o <- decode bytes
+  String u <- KM.lookup "url" o
+  pure u
+
+-- | Build one world's optionsJSON from a locked flakeref and return the path of
+-- the document inside it.
+buildOptionSchema :: Target -> Text -> Text -> IO FilePath
+buildOptionSchema target locked remedy = do
+  TIO.hPutStrLn stderr
+    ("checking options against the " <> targetSlug target
+      <> " schema: building it from pinned flake (" <> locked <> ").")
+  TIO.hPutStrLn stderr
+    "  the first build evaluates the manual and can take a few minutes; nix caches it afterwards."
+  built <- try (readProcessWithExitCode "nix"
+    [ "build", "--impure", "--no-link", "--print-out-paths"
+    , "--expr", T.unpack (schemaExpr target (T.unpack locked)) ] "")
+  case built of
+    Left e -> die (report
+      "lips needs nix to build the option schema, but couldn't run it:"
+      (T.lines (tshow (e :: IOException)))
+      ("→ install nix, or run lips through it: nix run . -- " <> remedy))
+    Right (ExitFailure _, _, err) -> die (report
+      ("lips couldn't build the " <> targetSlug target <> " option schema:")
+      (T.lines (T.pack err))
+      ("→ run it again: nix run . -- " <> remedy))
+    Right (ExitSuccess, out, _) ->
+      pure (T.unpack (T.strip (T.pack out)) <> schemaSubPath target)
+
+-- | Where the options document sits inside the built derivation. The JSON shape
+-- is identical across worlds (all are nixosOptionsDoc output); only the path
+-- differs -- and kubenix and terranix, whose documents lips builds itself with
+-- nixosOptionsDoc, inherit that helper's NixOS default path.
+schemaSubPath :: Target -> FilePath
+schemaSubPath Nixos       = "/share/doc/nixos/options.json"
+schemaSubPath HomeManager = "/share/doc/home-manager/options.json"
+schemaSubPath Kubenix     = "/share/doc/nixos/options.json"
+schemaSubPath Terranix    = "/share/doc/nixos/options.json"
 
 -- | The Nix expression producing the target world's optionsJSON derivation.
 -- NixOS: the pinned nixpkgs NixOS manual optionsJSON (the same options.json
@@ -1282,7 +1370,7 @@ nixEvalFailed file cmd detail = report
 
 -- | The machine-readable twin of 'refusalReport', written to 'gapPath'
 -- whenever generate refuses. Same content the record for a SUCCESSFUL mint
--- would have carried (model, target, thinking, confidence, the full system
+-- would have carried (model, target, schema pin, thinking, confidence, the full system
 -- prompt, program corpus, tool transcript and raw reply -- 'record', the same
 -- function '.generation' uses), fingerprinted the same way ('genId'), plus
 -- the refusal-specific summary up front: this is what makes it a shippable
@@ -1302,7 +1390,7 @@ gapArtifact rec errs unsure gaps = T.unlines $
   [ "", "--- missing capability (the mint's own words; each names its blocked line and a repro) ---" ] ++
   (if null gaps then ["(none)"]
    else concat [ ("- " <> gapSlug g) : [ "    " <> l | l <- T.lines (T.strip (gapBody g)) ] | g <- gaps ]) ++
-  [ "", "--- generation record (model, target, thinking, confidence, system prompt, program, tool transcript, raw reply) ---", rec ]
+  [ "", "--- generation record (model, target, schema, thinking, confidence, system prompt, program, tool transcript, raw reply) ---", rec ]
 
 -- | generate couldn't build a setup: either lines lips couldn't read (a
 -- capability may be missing) or values the program leaves underspecified.

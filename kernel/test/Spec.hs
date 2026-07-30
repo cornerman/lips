@@ -102,33 +102,33 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
     it "defaults target to nixos, confidence to the default, renew/verbose off" $
       parseArgs ["ledger.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos 0.7 False False Nothing "high" ["ledger.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False Nothing "high" ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseArgs ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager 0.7 False False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.7 False False Nothing "high" ["a.backup.lips"])
     it "rejects an unknown target" $
       parseArgs ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
     it "reads an explicit --model alongside multiple programs" $
       parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos 0.7 False False (Just "anthropic/claude") "high" ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") "high" ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager 0.9 False False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.9 False False Nothing "high" ["a.backup.lips"])
     it "rejects an out-of-range confidence" $
       parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
     it "reads --renew in any position" $ do
       parseArgs ["--renew", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos 0.7 True False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing "high" ["a.backup.lips"])
       parseArgs ["a.backup.lips", "--renew"]
-        `shouldBe` Just (GenerateOpts Nixos 0.7 True False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing "high" ["a.backup.lips"])
     it "reads -v/--verbose in any position" $ do
       parseArgs ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos 0.7 False True Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing "high" ["a.backup.lips"])
       parseArgs ["a.backup.lips", "-v"]
-        `shouldBe` Just (GenerateOpts Nixos 0.7 False True Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing "high" ["a.backup.lips"])
     it "reads -m as the short alias for --model" $
       parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos 0.7 False False (Just "anthropic/claude") "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") "high" ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     -- The thinking level is always passed to pi and always recorded, so an
@@ -136,6 +136,13 @@ main = hspec $ do
     it "defaults --thinking to high and reads an override" $ do
       goThinking <$> parseArgs ["a.backup.lips"] `shouldBe` Just "high"
       goThinking <$> parseArgs ["--thinking", "max", "a.backup.lips"] `shouldBe` Just "max"
+    -- The grounding schema defaults to the pin baked into this binary, so nobody
+    -- has to author one; --schema is how a caller whose own world differs (a
+    -- stable channel, a company nixpkgs) grounds the mint against it instead.
+    it "defaults --schema to the baked pin and reads an override" $ do
+      goSchema <$> parseArgs ["a.backup.lips"] `shouldBe` Just Nothing
+      goSchema <$> parseArgs ["--schema", "github:NixOS/nixpkgs/nixos-24.11", "a.backup.lips"]
+        `shouldBe` Just (Just "github:NixOS/nixpkgs/nixos-24.11")
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 
@@ -173,12 +180,17 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info optionsOpts idm)
     it "defaults to the default target and cap" $
       parseArgs ["services.restic"]
-        `shouldBe` Just (OptionsOpts Nixos 40 "services.restic")
+        `shouldBe` Just (OptionsOpts Nixos Nothing 40 "services.restic")
     it "takes a target, a limit and a query" $
       parseArgs ["--target", "home-manager", "--limit", "10", "services.restic"]
-        `shouldBe` Just (OptionsOpts HomeManager 10 "services.restic")
+        `shouldBe` Just (OptionsOpts HomeManager Nothing 10 "services.restic")
     it "rejects an unknown target, like generate does" $
       parseArgs ["--target", "darwin", "services.restic"] `shouldBe` Nothing
+    -- The lookup verb is the mint's own tool, so it must be able to read exactly
+    -- the schema a mint would read -- including an overridden one.
+    it "takes the same --schema override generate takes" $
+      parseArgs ["--schema", "github:NixOS/nixpkgs/nixos-24.11", "services.restic"]
+        `shouldBe` Just (OptionsOpts Nixos (Just "github:NixOS/nixpkgs/nixos-24.11") 40 "services.restic")
     it "fails with no query at all" $
       parseArgs [] `shouldBe` Nothing
 
@@ -2162,12 +2174,13 @@ main = hspec $ do
             `shouldBe` []
 
     it "generation ids are deterministic and content-sensitive" $ do
-      let r  = record "m" Nixos "high" 0.7 "sp" "prog" "tt" "reply"
-          r' = record "m" Nixos "high" 0.7 "sp" "prog" "tt" "reply2"
-          rc = record "m" Nixos "high" 0.5 "sp" "prog" "tt" "reply"
-          rt = record "m" HomeManager "high" 0.7 "sp" "prog" "tt" "reply"
-          rl = record "m" Nixos "high" 0.7 "sp" "prog" "other lookup" "reply"
-          rk = record "m" Nixos "low" 0.7 "sp" "prog" "tt" "reply"
+      let r  = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+          r' = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply2"
+          rc = record "m" Nixos "github:o/r/aaa" "high" 0.5 "sp" "prog" "tt" "reply"
+          rt = record "m" HomeManager "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+          rl = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "other lookup" "reply"
+          rk = record "m" Nixos "github:o/r/aaa" "low" 0.7 "sp" "prog" "tt" "reply"
+          rs = record "m" Nixos "github:o/r/bbb" "high" 0.7 "sp" "prog" "tt" "reply"
       genId r `shouldBe` genId r
       genId r `shouldNotBe` genId r'
       -- the confidence threshold is pinned: changing it changes the id
@@ -2178,13 +2191,23 @@ main = hspec $ do
       genId r `shouldNotBe` genId rl
       -- the reasoning level steers the reply, so it is pinned too
       genId r `shouldNotBe` genId rk
+      -- the option schema decides which rules were admissible, so the pin that
+      -- names it is an input of the event like every other
+      genId r `shouldNotBe` genId rs
       T.length (genId r) `shouldBe` 16
+
+    it "names the option schema the mint was grounded against" $
+      -- A reader (and the re-mint that wants the same grounding) must be able to
+      -- see WHICH schema admitted these rules, without re-deriving it from
+      -- whichever lips binary happens to be installed.
+      T.lines (record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply")
+        `shouldContain` ["schema: github:o/r/aaa"]
     -- The record stores the corpus verbatim, which makes it the one offline
     -- witness of what each program SAID when the language (and any baked
     -- artifact source) was minted. The source-specification gate reads it back.
     it "reads one program's text back out of the record it was minted from" $ do
       let progs = [("a/one.log.lips", "first line\nsecond line\n"), ("a/two.log.lips", "other\n")]
-          r     = record "m" Nixos "high" 0.7 "sp" (corpusText progs) "tt" "reply"
+          r     = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" (corpusText progs) "tt" "reply"
       recordedProgram "a/one.log.lips" r `shouldBe` Just "first line\nsecond line\n"
       -- addressed by file NAME, so the same program under another directory reads
       recordedProgram "b/two.log.lips" r `shouldBe` Just "other\n"
@@ -2194,13 +2217,14 @@ main = hspec $ do
       recordedProgram "a/two.log.lips" r `shouldSatisfy` maybe False (not . T.isInfixOf "transcript")
 
     it "writes the target slug into the record text" $
-      record "m" HomeManager "high" 0.7 "sp" "prog" "tt" "reply"
+      record "m" HomeManager "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
         `shouldSatisfy` T.isInfixOf "target: home-manager"
     -- readRecordedTarget scans for the FIRST line starting with "target:", so
     -- the headers must stay above every section a lookup answer could pollute.
     it "keeps the headers above the tool transcript" $ do
-      let r = record "m" Nixos "high" 0.7 "sp" "prog" "<- query_options\ntarget: not-this" "reply"
-      take 3 (T.lines r) `shouldBe` ["model: m", "target: nixos", "thinking: high"]
+      let r = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "<- query_options\ntarget: not-this" "reply"
+      take 4 (T.lines r)
+        `shouldBe` ["model: m", "target: nixos", "schema: github:o/r/aaa", "thinking: high"]
       r `shouldSatisfy` T.isInfixOf "--- tool transcript ---"
 
     it "emit grammar carries no strength: body parses and applies to a Stated fact" $
