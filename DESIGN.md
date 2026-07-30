@@ -457,6 +457,29 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Reserved value-hole names cannot be a subject capture.** A rule subject may
+  name a capture with any word (`cmd.<port>.msg`), and a rule rhs may reference
+  either that capture or the reserved `<value>`/`<value.N>` (the ground
+  decision's own assertion) -- two different vocabularies that look identical,
+  which TODO 1f named as a confusion "a weaker model reliably" makes. The
+  existing unbound-capture check ("Captures are first-class", below) already
+  catches a rhs hole the subject never bound, but it could not catch the
+  sharper case: a subject capture literally NAMED `<value>` (a natural word
+  choice, since it IS the value the mint is capturing) parsed with no error at
+  all, because `captureName` has no reserved words. Downstream, `pick`'s first
+  clause matches the literal string "value" unconditionally, before ever
+  consulting the capture map -- so the rhs silently read the decision's
+  assertion instead of the captured subject segment the mint clearly intended,
+  with nothing anywhere naming the collision (confirmed live: `parseRuleBody`
+  accepted `match fact cmd.<value>.msg => a.b "<value>"` cleanly, and `refine`
+  filled it from the assertion, never the capture). `parseRuleBody` now rejects
+  a subject capture named `value` or shaped `value.N` at the same door the
+  unbound-capture check already uses, naming the collision and suggesting a
+  rename, before the unbound check ever runs -- so the reserved word can no
+  longer be silently shadowed, only cleanly refused. No committed example was
+  affected (none names a subject capture `<value>`). Closes TODO item 1f.
+  Verified: 393/393, `-Wall` clean, `check` still green on all 13 examples.
+
 - **Gap report file writer (`<language>.gap`).** `generate` refusing was, until
   now, only on-screen text: a mint that fails in a downstream repo had nothing
   to commit, paste, or send upstream. `generate` now writes

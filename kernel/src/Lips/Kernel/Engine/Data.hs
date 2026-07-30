@@ -250,10 +250,27 @@ parseRuleBody rid body = do
       -- subject is in hand right here, so an unbound name fails at the door
       -- every minted engine enters, not later at refine on an author's machine.
       let bound = mapMaybe captureName subj
-      case [ nm | e <- emits, nm <- valueCaptures (emRhs e), nm `notElem` bound ] of
-        (nm : _) -> Left (pre <> "<" <> nm <> "> is neither <value>/<value.N> nor a"
-                            <> " capture bound by the subject " <> renderAttrPath subj)
-        []       -> Right (MapRule rid kind subj emits)
+          -- <value>/<value.N> are reserved for the RULE's own matched value
+          -- (the ground decision's assertion) -- but 'captureName' has no
+          -- reserved words, so a subject capture named <value> parsed clean
+          -- with no error, and 'pick' matches the literal "value" clause
+          -- before ever consulting the capture map: the rhs then silently read
+          -- the decision's assertion instead of the captured subject segment
+          -- the mint clearly intended, with nothing anywhere naming the
+          -- collision. This is the two-hole-namespaces confusion TODO named
+          -- (pattern-invented names vs the rule side's fixed <value>) in its
+          -- sharpest form: not an unbound name (already caught below) but a
+          -- bound one silently meaning something else. Reject the name choice
+          -- itself, at the same door, before the unbound check ever runs.
+          reserved = [ nm | nm <- bound, nm == "value" || isJust (holeIndex nm) ]
+      case reserved of
+        (nm : _) -> Left (pre <> "the subject captures <" <> nm <> ">, but <value>/<value.N>"
+                            <> " are reserved for the rule's own matched value, never a subject"
+                            <> " capture -- rename this capture (e.g. <name>, <key>)")
+        [] -> case [ nm | e <- emits, nm <- valueCaptures (emRhs e), nm `notElem` bound ] of
+          (nm : _) -> Left (pre <> "<" <> nm <> "> is neither <value>/<value.N> nor a"
+                              <> " capture bound by the subject " <> renderAttrPath subj)
+          []       -> Right (MapRule rid kind subj emits)
   where
     pre = "rule " <> rid <> ": "
     parseEmit t = do

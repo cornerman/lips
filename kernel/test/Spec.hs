@@ -1520,6 +1520,31 @@ main = hspec $ do
       parseRuleBody "r" "match fact x => artifact.a.args.src ./artifacts/<name>"
         `shouldSatisfy` isLeft
 
+    -- <value>/<value.N> are reserved for the rule's OWN matched value (the
+    -- ground decision's assertion), never a subject capture -- but a subject
+    -- capture may be named ANYTHING (captureName has no reserved words), so a
+    -- mint that names a capture <value> (a natural word choice) got no error
+    -- at all: 'pick' matches the literal "value" clause before ever consulting
+    -- the capture map, so the rhs silently read the decision's assertion
+    -- instead of the captured subject segment the mint clearly intended.
+    -- Confirmed live: 'parseRuleBody' accepted
+    -- "match fact cmd.<value>.msg => a.b \"<value>\"" with no error, and
+    -- 'refine' filled it from the assertion, never the capture. Reject the
+    -- name collision at the same door the unbound-capture check already uses.
+    it "rejects a subject capture named <value>, reserved for the rule's own value" $
+      parseRuleBody "r" "match fact cmd.<value>.msg => a.b \"\\\"<value>\\\"\""
+        `shouldSatisfy` isLeft
+    -- A dot inside a bare subject segment would split it (subject segments are
+    -- dot-delimited), so the only way to write a single capture segment named
+    -- "value.1" is quoted, the same escape hatch a real dotted key (a route
+    -- "/file.json") already uses.
+    it "rejects a quoted subject capture named <value.1>, reserved the same way" $
+      parseRuleBody "r" "match fact cmd.\"<value.1>\".msg => a.b \"\\\"<value.1>\\\"\""
+        `shouldSatisfy` isLeft
+    it "still accepts an ordinarily-named capture used correctly" $
+      parseRuleBody "r" "match fact cmd.<port>.msg => a.b \"\\\"<port>\\\"\""
+        `shouldSatisfy` isRight
+
     it "accepts value, value.N and a bound capture in one rule's values" $ do
       let r = MapRule "r" Fact ["cmd", "<name>", "msg"]
                 [ Emit ["artifact", "<name>", "args", "name"] (VStr [PHole "name"])

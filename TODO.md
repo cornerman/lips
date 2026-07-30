@@ -192,9 +192,16 @@
       rule requiring `name`/`pname`/`version`, which enumerates nixpkgs arg names
       inside a domain-blind kernel.
 
-   f. **Two hole namespaces, one syntax** (pattern holes named by the template
-      vs the rule side's fixed `<value>`). A weaker model confuses them
-      reliably, which makes it a format question, not a prompt question.
+   f. ~~**Two hole namespaces, one syntax**~~ CLOSED. See DESIGN §13, "Reserved
+      value-hole names cannot be a subject capture." The confusable case an
+      unbound-capture check cannot see was a subject capture literally NAMED
+      `<value>` (or `<value.N>`): it parsed clean, and the rule's own
+      `<value>` reference silently read the decision's assertion instead of
+      the capture the mint clearly intended, with no error anywhere. Naming
+      the capture anything else was always legal; only the collision with the
+      reserved word was unguarded. `parseRuleBody` now rejects a subject
+      capture named `value` or `value.N` at the same door the unbound-capture
+      check already uses, before it can be silently shadowed.
 
 2. **Mint prompt rewrite** — plan
    `docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md`. Move the
