@@ -176,32 +176,32 @@ tracks only what is still open.
       `examples/web` engine has the shape today; only the corpus's single-word
       bodies keep it from firing.
 
-2. **The 18 committed engines predate the recorded schema pin, so their stamps
+4. **The 18 committed engines predate the recorded schema pin, so their stamps
    no longer re-hash.** The generation record gained a `schema:` line (the locked
    flakeref, or `options-json:<hash>`, that grounded the mint -- DESIGN §13
    "Option-schema grounding"), which changes every record's `genId`. Every
    committed `.lang` is stamped `@gen:<id>` from a record written before that
    line existed, so re-hashing a committed `.generation` today yields a different
    id than its engine carries: invariant 6 is broken for every language in
-   `examples/`, and item 3 is why nothing says so. The remedy is a re-mint sweep
+   `examples/`, and item 5 is why nothing says so. The remedy is a re-mint sweep
    of all 18 languages, so each record and its stamps agree again. Open question
    to settle first: mint the sweep with sonnet-5 rather than opus (cheaper, and
    the gates rather than the model's taste decide what is admitted); the risk is
    a weaker engine on the harder languages, so compare `.expect` survival per
    language and keep opus for any that regress. Order matters: sweep first, then
-   land item 3 -- a verifier landed first would turn the whole repo red.
+   land item 5 -- a verifier landed first would turn the whole repo red.
 
-3. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
+5. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
    minted line is stamped `@gen:<id>` and the id must re-hash from the
    committed `.generation` record, but no code re-hashes anything: `check`
    reads the stamps as text. So a change to what the record contains silently
    invalidates every committed engine's stamps while all gates stay green.
    This is not hypothetical -- the schema pin added a `schema:` line to the
-   record, which changed every generation hash, and no gate noticed (item 2).
+   record, which changed every generation hash, and no gate noticed (item 4).
    Remedy: `check` recomputes `genId` from the `.generation` beside the engine
    and refuses when a `@gen:` stamp disagrees, which makes a re-mint sweep
    verifiable instead of a matter of remembering. Deterministic, offline,
-   domain-blind. Do it after item 2's sweep, or every committed engine fails
+   domain-blind. Do it after item 4's sweep, or every committed engine fails
    the new gate at once.
 
 ## Backlog (larger / deferred by design)
