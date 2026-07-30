@@ -176,6 +176,25 @@ tracks only what is still open.
       `examples/web` engine has the shape today; only the corpus's single-word
       bodies keep it from firing.
 
+2. **The 18 committed engines predate the recorded schema pin, so their stamps
+   no longer re-hash.** The generation record gained a `schema:` line (the locked
+   flakeref, or `options-json:<hash>`, that grounded the mint -- DESIGN §13
+   "Option-schema grounding"), which changes every record's `genId`. Every
+   committed `.lang` is stamped `@gen:<id>` from a record written before that
+   line existed, so re-hashing a committed `.generation` today yields a different
+   id than its engine carries: invariant 6 is broken for every language in
+   `examples/`. Nothing catches it, which is the second half of the item -- no
+   code re-hashes a record and compares (the only mechanical use of `genId` is
+   WRITING the stamp), so `just ci` and `check-expect` stay green on a repo whose
+   provenance chain is severed. Two things to land, in order: (i) re-mint all 18
+   languages so each record and its stamps agree again -- open question: do it
+   with sonnet-5 rather than opus (cheaper, and the mint prompt is now strict
+   enough that the gates, not the model's taste, decide what is admitted; the
+   risk is a weaker engine on the harder languages, so compare `.expect`
+   survival per language); (ii) then add the verifier that would have caught it
+   -- `check` re-hashes the committed record and refuses a stamp that disagrees,
+   which is offline and nixpkgs-free, so it belongs in `check`, not the flake.
+   Doing (ii) first would turn the whole repo red.
 
 2. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
    minted line is stamped `@gen:<id>` and the id must re-hash from the

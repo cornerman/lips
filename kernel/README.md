@@ -85,8 +85,15 @@ the engine), not trusted. The option schema is domain-blind in the kernel
 shape and its type-string wording live in `Lips.Nix.Options`. `generate` builds
 the schema lazily from the pinned nixpkgs baked into the packaged binary
 (`LIPS_NIXPKGS_FLAKE`), announcing the one-time build; `compile`/`check`
-never touch it. A caller may override with `LIPS_OPTIONS_JSON` (a prebuilt
-`options.json`), which the suite uses for an offline fixture.
+never touch it. Two overrides, in order of explicitness: `--schema <flakeref>`
+names another flake to build this world's schema from (a stable channel, a
+company nixpkgs), and `LIPS_OPTIONS_JSON` supplies a prebuilt `options.json`,
+which the suite uses for an offline fixture. Whichever is used, `generate`
+resolves it once, before the model call, and writes it into `.generation` as a
+`schema:` line: a flakeref as the locked url `nix flake metadata` reports, a
+supplied document as `options-json:<hash>` of its bytes. So the grounding is an
+input of the generation event like the model and the prompt, and it enters the
+record's own id.
 
 `compile` takes the loose program directly and crystallizes it with the
 language's `.lang`, with no model. Edits that stay within the language (changing a value or

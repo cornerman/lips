@@ -1356,8 +1356,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `generate` builds the schema lazily from the pinned nixpkgs baked into the
   packaged binary as a plain rev string (`LIPS_NIXPKGS_FLAKE`), so nixpkgs
   never enters `compile`/`run`/`check`'s closure; the one-time build is
-  announced. `LIPS_OPTIONS_JSON` overrides it (the suite passes an offline
-  fixture). `artifact.*` build-group emits are exempt (they
+  announced. Two overrides, in order of explicitness: `--schema <flakeref>`
+  builds this world's schema from another flake, and `LIPS_OPTIONS_JSON`
+  supplies a prebuilt document (the suite passes an offline fixture). Which
+  schema grounded a mint is recorded: `generate` resolves the source once,
+  before the model call, and writes a `schema:` line into `.generation` -- a
+  flakeref as the locked url `nix flake metadata` reports (never the floating
+  ref the caller typed), a supplied document as `options-json:<hash>` of its
+  bytes. So the grounding is an input of the generation event like the model,
+  the prompt and the thinking level, and it enters the event id; the pin the
+  record names is exactly the one the gate judged against, since resolution
+  happens once and the path is handed to the gate. `artifact.*` build-group emits are exempt (they
   realize as a derivation, not an option). Verified against the committed
   backup, feed, and hello-server engines. This is steal #1 of the
   Compiled-AI/NixOS prior-art scan (`survey/e-compiled-ai-paradigm-and-nixos-targeting.md`).
