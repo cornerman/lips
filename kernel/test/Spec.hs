@@ -553,7 +553,7 @@ main = hspec $ do
 
     it "emits a valid module with sorted, provenance-tagged assignments" $ do
       let expected = T.unlines
-            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            [ "# lips-realized module. Generated from a ground decision base; do not edit."
             , "{ config, lib, pkgs, ... }:"
             , "{"
             , "  # <-m31 via ingest"
@@ -603,7 +603,7 @@ main = hspec $ do
             , (mk "e" "x" "\"${artifact.myserver}/bin/myserver\"" Stated) { dSubject = Subject ["systemd","services","myserver","serviceConfig","ExecStart"], dProv = FromSource (SourceLoc "app" 1) }
             ]
           expected = T.unlines
-            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            [ "# lips-realized module. Generated from a ground decision base; do not edit."
             , "{ config, lib, pkgs, ... }:"
             , "let"
             , "  artifact = {"
@@ -818,7 +818,7 @@ main = hspec $ do
 
     it "realization: a satisfied program refines and realizes to a module" $ do
       let expected = T.unlines
-            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            [ "# lips-realized module. Generated from a ground decision base; do not edit."
             , "{ config, lib, pkgs, ... }:"
             , "{"
             , "  # <-o1 via ingest"
@@ -834,7 +834,7 @@ main = hspec $ do
       -- the module as an option assignment.
       let withHeading = "h1 concept http.routes stated \"routes\" @prog:1\n" <> prog
           expected = T.unlines
-            [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+            [ "# lips-realized module. Generated from a ground decision base; do not edit."
             , "{ config, lib, pkgs, ... }:"
             , "{"
             , "  # <-o1 via ingest"
@@ -2268,7 +2268,7 @@ main = hspec $ do
           either (Left . show) Right
             (runBaseReplace 10000 (map toRule (edRules eng)) (map toDemand (edDemands eng)) base)
         moduleWith inbox oncal = T.unlines
-          [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+          [ "# lips-realized module. Generated from a ground decision base; do not edit."
           , "{ config, lib, pkgs, ... }:"
           , "{"
           , "  # <-d3 via r1"
@@ -3382,7 +3382,7 @@ main = hspec $ do
           good = optRule "r1" ["services", "restic", "backups", "x", "paths"] (VList [VStr [PHole "value"]])
           bad  = optRule "r2" ["services", "restic", "backups", "x", "nonsuch"] (VStr [PHole "value"])
       map renderOptionError (checkEmits sch [good, bad])
-        `shouldBe` ["rule r2: unknown NixOS option services.restic.backups.x.nonsuch"]
+        `shouldBe` ["rule r2: unknown option services.restic.backups.x.nonsuch"]
 
   describe "schema lookup (what the mint may ask)" $ do
     let sch = Map.fromList

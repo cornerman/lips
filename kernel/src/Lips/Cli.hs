@@ -99,7 +99,7 @@ data Command
 cliParserInfo :: Double -> ParserInfo Command
 cliParserInfo defConf = info (cliParser defConf <**> helper) $
   fullDesc <> progDesc
-    "lips turns an <instance>.<language> program, written in your own plain lines, into a NixOS configuration."
+    "lips turns an <instance>.<language> program, written in your own plain lines, into a module for the Nix world you chose."
 
 cliParser :: Double -> Parser Command
 cliParser defConf = hsubparser

@@ -539,7 +539,7 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
       -- Prose to stderr so stdout stays a pipeable module (the first program's).
       TIO.hPutStr stderr $ T.unlines $
         [ "lips set up ." <> T.pack lang <> " from " <> tshow (length files)
-            <> " program(s) and verified each produces a valid NixOS configuration."
+            <> " program(s) and verified each produces a valid " <> targetSlug target <> " configuration."
         , "" ]
         ++ take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ]
         ++ [ "\8594 read the whole account: " <> T.pack (readmePath rep) ]
@@ -673,7 +673,7 @@ assertNoPathHoles file eng =
         <> T.unlines [ "  - rule " <> rid <> " fills " <> renderAttrPath pth
                          <> " with <" <> h <> ":path>"
                      | (rid, pth, h) <- bad ]
-        <> "\nWrite the value as a quoted STRING instead (\"\\\"<value>\\\"\"): a NixOS\n"
+        <> "\nWrite the value as a quoted STRING instead (\"\\\"<value>\\\"\"): an\n"
         <> "option of type path accepts a string, and a directory the program names\n"
         <> "exists on the running machine, not in the store. Keep a Nix path for a\n"
         <> "literal the engine itself writes, like ./artifacts/<name>."))
@@ -710,7 +710,7 @@ assertOptionsAdmissible target file eng = do
   mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
   case mbytes of
     Left e -> die (report
-      ("lips can't read the NixOS option schema at " <> T.pack schemaPath <> ":")
+      ("lips can't read the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
       [tshow e]
       "→ run generate again.")
     Right bytes -> case schemaFor target bytes of
@@ -721,7 +721,7 @@ assertOptionsAdmissible target file eng = do
       Right schema -> case checkEmits schema (edRules eng) of
         []   -> pure ()
         errs -> die (validationReport file
-          ("its rules use NixOS options that don't exist or have the wrong type:\n"
+          ("its rules use " <> targetSlug target <> " options that don't exist or have the wrong type:\n"
             <> T.unlines (map (("  - " <>) . renderOptionError) errs)))
 
 -- | Locate the NixOS @options.json@ used for the check. An explicit

@@ -181,7 +181,7 @@ renderModule winners = do
   requireDefined defined (concatMap (valueArtifactNames . valOf) optVals ++ argRefs)
   entries <- artifactEntries arts
   Right $ T.unlines $
-    [ "# lips-realized NixOS module. Generated from a ground decision base; do not edit."
+    [ "# lips-realized module. Generated from a ground decision base; do not edit."
     , "{ config, lib, pkgs, ... }:"
     ]
       ++ letBlock entries

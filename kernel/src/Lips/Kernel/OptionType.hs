@@ -183,7 +183,7 @@ renderOptionType (OTOther x)    = x
 -- straight at the offending minted line.
 renderOptionError :: OptionError -> Text
 renderOptionError (UnknownOption rid p) =
-  "rule " <> rid <> ": unknown NixOS option " <> dotted p
+  "rule " <> rid <> ": unknown option " <> dotted p
 renderOptionError (TypeMismatch rid p t _) =
   "rule " <> rid <> ": option " <> dotted p <> " has type " <> renderOptionType t
     <> " but the rule fills it with an incompatible value"
