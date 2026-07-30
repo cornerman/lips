@@ -63,10 +63,30 @@ let
     let p = parse name;
     in lib.nameValuePair p.instance {
          target = targetOf p.language;
-         module = realize name p;   # the compiled directory (imports resolves default.nix)
+         module = realize name p;   # the compiled DIRECTORY (artifact.nix lives beside default.nix in it)
        }) entries;
 
-  byTarget = t: lib.mapAttrs (_: v: v.module)
+  # The PUBLIC value must be importable exactly as the README shows it
+  # (`imports = [ lips.nixosModules.<instance> ]`), and a bare derivation is
+  # NOT: NixOS's own module loader (nixpkgs lib/modules.nix's `loadModule`)
+  # checks `isFunction`, then `isAttrs` (true for a derivation, which is an
+  # attrset with no `_type`, so `m._type or "module" == "module"` is true and
+  # the DERIVATION ITSELF is read as literal module content -- its own
+  # `outPath`/`drvPath`/build-system bookkeeping attrs surface as bogus
+  # options, e.g. "the option `...__ignoreNulls` does not exist"), and only
+  # falls through to `import (toString m)` for a value that is neither. This
+  # is exactly the workaround this repo's OWN `vm-smoke`/`artifact-vm` checks
+  # already carry (`imports = [ "${realized}" ]`, commented there for the same
+  # reason) -- it was never propagated to this public helper, so any external
+  # consumer following the README literally hit the bug first, on a real
+  # machine, ahead of any check here. A STRING (Nix's `import` resolves a
+  # directory string to its `default.nix`, same as a literal `./dir` path) is
+  # neither `isFunction` nor `isAttrs` nor `isList`, so it takes that branch
+  # correctly. String interpolation of an already-string value is a no-op, so
+  # every internal consumer of `nixosModules`/`homeManagerModules` (the eval
+  # and build checks below, which read `${p}/default.nix` and `${p}/artifact.nix`)
+  # is unaffected: they see the identical text either way.
+  byTarget = t: lib.mapAttrs (_: v: "${v.module}")
                   (lib.filterAttrs (_: v: v.target == t) built);
 in {
   nixosModules = byTarget "nixos";

@@ -457,6 +457,48 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A public `nixosModules`/`homeManagerModules` value is now actually
+  importable, as documented.** Found by the first real live deployment (a
+  home-manager module nested inside a NixOS host on a real machine, not this
+  repo's own VM checks): `imports = [ lips.nixosModules.<instance> ]`, the
+  README's own literal example, crashed with
+  `the option '...__ignoreNulls' does not exist` -- a NixOS-internal
+  bookkeeping attribute of the DERIVATION `modulesFromDir` handed back, read
+  as if it were config. Root cause: nixpkgs' `lib/modules.nix` `loadModule`
+  dispatches `isFunction` -> call it, else `isAttrs` -> if `_type or "module"
+  == "module"` (the DEFAULT when absent) treat the value AS LITERAL MODULE
+  CONTENT, else `import (toString m)`. A derivation is `isAttrs` and carries
+  no `_type` (only an unrelated `type = "derivation"`), so it always took the
+  "literal content" branch, never the `import` branch that would have worked.
+  This repo's OWN `vm-smoke`/`artifact-vm` checks already carried the fix as a
+  silent local workaround (`imports = [ "${realized}" ]`, commented there:
+  "a bare derivation in imports is misread as an inline attrset module") --
+  it was simply never propagated to the PUBLIC `nix/modulesFromDir.nix`
+  helper, so external consumers hit the bug fresh, and no check here could
+  have caught it: `lipsModules-eval` only did `test -f ${p}/default.nix`; a
+  file existing on disk says nothing about whether NixOS's module loader can
+  read it. Fixed at the source: `byTarget` now exposes `"${v.module}"` (a
+  plain string) instead of the bare derivation `v.module` -- a string is
+  `isAttrs`/`isFunction`/`isList` false, so it correctly falls to `import`,
+  which resolves a directory string to its `default.nix` exactly as a literal
+  `./dir` path would. String interpolation of an already-string value is a
+  no-op, so the three internal consumers (`lipsModules-eval`,
+  `lipsArtifacts-eval`, `lipsArtifacts-build`), which all read `${p}/...`
+  paths, are unaffected. `lipsModules-eval` is strengthened to match: for
+  every committed example it now instantiates (never builds, same technique
+  as `lipsArtifacts-eval`'s drvPath-forcing) a REAL `nixosSystem` or
+  `homeManagerConfiguration` over the exact PUBLIC value an external
+  consumer's flake would get, with a minimal hardware/home stub supplying the
+  generic boilerplate (root filesystem, bootloader, username, state version)
+  no committed example states an opinion on -- so a future regression of this
+  exact class fails here, in seconds, instead of on someone's real machine.
+  No README change needed: `imports = [ lips.nixosModules.ledger ]` was
+  always the intended contract, and it is now simply true. Verified: 394/394,
+  `-Wall` clean, all four `check-expect` programs unchanged, `lipsModules-eval`
+  / `lipsArtifacts-eval` / `lipsArtifacts-build` all green, and the exact
+  failure reproduced against the OLD code (bare derivation) before the fix,
+  confirmed gone after it.
+
 - **The mint prompt is reviewable prose, not escaped Haskell string literals.**
   The prompt accreted over many milestones as `T.unlines`/string-literal blocks
   inside `Lips.Generate.Minting`, which is how it ended up stating the same

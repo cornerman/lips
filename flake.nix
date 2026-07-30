@@ -93,8 +93,21 @@
           touch "$out"
         '';
         # The module helper labels each committed example by its recorded world
-        # and produces an importable module path. Both worlds must be non-empty
-        # and every realized module must build (test -f forces it).
+        # and produces an importable module path. Both worlds must be non-empty,
+        # every realized module must build (test -f forces it), and -- the part
+        # that actually caught a real bug -- every one must import CORRECTLY
+        # through a real evalModules, not just exist on disk. `test -f` alone
+        # cannot see that: a bare derivation in `imports` is misread by NixOS's
+        # module loader as literal module content (its own `outPath`/`drvPath`
+        # bookkeeping attrs surface as bogus options), which this check missed
+        # for as long as `nixosModules`/`homeManagerModules` exposed a bare
+        # derivation instead of a string (see modulesFromDir.nix's byTarget
+        # comment) -- caught only by a real deployment, on a real machine,
+        # nesting a home-manager module inside a NixOS host. Instantiate (never
+        # build, same technique as lipsArtifacts-eval's drvPath-forcing) a real
+        # nixosSystem/homeManagerConfiguration per instance, exactly the way an
+        # external consumer's flake would, over the PUBLIC value this helper
+        # hands out -- not a hand-rolled workaround local to this file.
         lipsModules-eval =
           let
             mods  = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
@@ -104,10 +117,44 @@
             # broken filename rule survived here.
             paths = builtins.attrValues mods.nixosModules
                     ++ builtins.attrValues mods.homeManagerModules;
+            # A real nixosSystem's system.build.toplevel forces the generic
+            # "is this bootable" assertions (a root filesystem, a bootloader),
+            # which no committed example states an opinion on -- so a minimal
+            # stub module supplies them, purely as literals (never built, only
+            # instantiated, so none of this touches a real disk).
+            hardwareStub = {
+              fileSystems."/" = { device = "/dev/sda1"; fsType = "ext4"; };
+              boot.loader.grub.devices = [ "/dev/sda" ];
+              system.stateVersion = nixpkgs.lib.trivial.release;
+            };
+            nixosDrvPaths = map
+              (p: (nixpkgs.lib.nixosSystem {
+                     system = pkgs.stdenv.hostPlatform.system;
+                     modules = [ p hardwareStub ];
+                   }).config.system.build.toplevel.drvPath)
+              (builtins.attrValues mods.nixosModules);
+            # Same idea as hardwareStub: the generic "whose home is this"
+            # boilerplate every home-manager config needs, which no committed
+            # example states an opinion on either.
+            homeStub = {
+              home.username = "lips-modules-eval";
+              home.homeDirectory = "/home/lips-modules-eval";
+              home.stateVersion = nixpkgs.lib.trivial.release;
+            };
+            homeDrvPaths = map
+              (p: (home-manager.lib.homeManagerConfiguration {
+                     inherit pkgs;
+                     modules = [ p homeStub ];
+                   }).activationPackage.drvPath)
+              (builtins.attrValues mods.homeManagerModules);
+            # unsafeDiscardStringContext: proof of instantiation as TEXT, not a
+            # build dependency of this check (lipsArtifacts-eval's own idiom).
+            allDrvPaths = map builtins.unsafeDiscardStringContext (nixosDrvPaths ++ homeDrvPaths);
           in pkgs.runCommand "lips-modules-eval" { } ''
             test -n "${toString (builtins.attrNames mods.nixosModules)}"
             test -n "${toString (builtins.attrNames mods.homeManagerModules)}"
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
+            ${pkgs.lib.concatMapStringsSep "\n" (d: "test -n '${d}'") allDrvPaths}
             touch "$out"
           '';
         # Every artifact a committed example declares must INSTANTIATE: a green

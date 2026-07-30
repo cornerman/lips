@@ -227,6 +227,16 @@
 4. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
    Wire one realized module into `~/nixos` on `wolf`. Reduced to "import one
    file"; proves survival on a real system, not just a VM boot.
+   IN PROGRESS: `examples/logscan.lips`'s already-minted engine is staged in
+   `~/nixos` (a separate repo), `lips check` + `lips compile` +
+   `nixos-rebuild build` all green; no `switch` run yet, pending explicit
+   go-ahead. It already paid for itself before switching anything: see
+   DESIGN §13, "A public `nixosModules`/`homeManagerModules` value is now
+   actually importable, as documented" -- the exact bug this line's own
+   promise ("proves survival on a real system, not just a VM boot") was
+   written to catch, caught on the first real attempt, invisible to every VM
+   check because they carried the fix as a silent local workaround instead of
+   in the public contract.
 
 5. **Template grammar completeness** (completeness plan Target 2) — the
    multi-token hole LANDED (2026-07-30, DESIGN 13): `<name.words>` binds several
