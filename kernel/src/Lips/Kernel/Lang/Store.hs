@@ -216,12 +216,21 @@ parseBody idTok body = do
   -- A NESTED one also sees its ancestors' captures, which one pattern's parse
   -- cannot know, so its holes are judged where every pattern is in hand:
   -- 'Lips.Kernel.Lang.Nest.checkNesting', run by 'readLang' -- the one door.
-  let bound = holesOf p
-      used  = concat [ [h | SHole h <- peSubject e] ++ [h | SHole h <- peAssertion e] | e <- emits ]
-      loose = filter (`notElem` bound) used
-  if null loose || parent /= Nothing
-    then Right p
-    else Left ("pattern " <> pid <> ": target holes not bound by template: " <> T.intercalate "," loose)
+  let structs = map fst (structHoles p)
+      bound   = holesOf p ++ structs
+      used    = map refName
+        (concat [ [h | SHole h <- peSubject e] ++ [h | SHole h <- peAssertion e] | e <- emits ])
+      loose   = filter (`notElem` bound) used
+      -- A structure-bound hole is filled by the kernel, a template hole by a
+      -- program word: one name cannot mean both, and the collision would
+      -- silently pick one.
+      clash   = filter (`elem` holesOf p) structs
+  if not (null clash)
+    then Left ("pattern " <> pid <> ": <" <> T.intercalate ">, <" clash
+                 <> "> is bound by the template, so it cannot also be a structure hole")
+    else if null loose || parent /= Nothing
+      then Right p
+      else Left ("pattern " <> pid <> ": target holes not bound by template: " <> T.intercalate "," loose)
   where
     -- Emit grammar is <kind> <subject> "<assertion>": no strength token. A
     -- pattern reads a program line the human wrote, so 'applyPattern' fixes the

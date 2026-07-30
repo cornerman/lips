@@ -1819,6 +1819,33 @@ main = hspec $ do
     it "round-trips the whole engine: readLang . renderLang == Right" $
       readLang (renderLang (FromGeneration "cafe0123") engine) `shouldBe` Right engine
 
+    it "declares a structure-bound hole in an emit subject" $
+      -- An item with no key of its own (no word in the line identifies it) still
+      -- needs an identity, or two such lines collapse onto one subject. <n:index>
+      -- is filled from the line's position among its siblings, not from a token
+      -- -- the same move as <value:pkg>, which fills from something other than a
+      -- program word.
+      structHoles (patOne "p1" [TLit "-", TMulti "s"] Fact
+                     [SLit "step.", SHole "n:index"] [SHole "s"])
+        `shouldBe` [("n", SIndex)]
+
+    it "fills a struct hole and a plain reference to it from one binding" $
+      -- The declaration is <n:index>; every reference (here, and in a descendant
+      -- pattern) is the plain <n>, so nesting two anonymous levels needs no
+      -- shadowing rule.
+      applyPattern (patOne "p1" [TLit "-"] Fact [SLit "s.", SHole "n:index"] [SHole "n"])
+                   (Map.fromList [("n", "2")])
+        `shouldBe` [(Subject ["s", "2"], Fact, Assertion "2", Stated)]
+
+    it "refuses a struct hole whose name a template hole already binds" $
+      parsePatternBody "p1" "- <n> => fact s.<n:index> \"<n>\"" `shouldSatisfy` isLeft
+
+    it "round-trips a struct hole through the .lang" $ do
+      let ed = EngineData
+            [patOne "p1" [TLit "-", TMulti "s"] Fact
+               [SLit "step.", SHole "n:index", SLit ".command"] [SHole "s"]] [] [] []
+      readLang (renderLang (FromGeneration "cafe0123") ed) `shouldBe` Right ed
+
     it "round-trips a pattern that names the pattern it nests under" $ do
       -- Nesting rides the pattern id, so the template grammar is untouched: a
       -- template may still begin with the word "under" (a body prefix could not

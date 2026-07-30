@@ -31,6 +31,10 @@ module Lips.Kernel.Lang.Pattern
   ( TplTok (..)
   , StrPart (..)
   , PatEmit (..)
+  , StructType (..)
+  , structHole
+  , structHoles
+  , refName
   , Pattern (..)
   , patOne
   , patUnder
@@ -68,9 +72,52 @@ data TplTok = TLit Text | THole Text | TMulti Text
   deriving (Eq, Show)
 
 -- | A piece of a target (subject or assertion) string: literal text or a hole
--- reference filled from the template's bindings.
+-- reference filled from the bindings in scope.
 data StrPart = SLit Text | SHole Text
   deriving (Eq, Show)
+
+-- | What a STRUCTURE-BOUND hole is filled from. A template hole binds a token of
+-- the line; a structure-bound hole binds a fact about where the line SITS, which
+-- no token can carry. Written @\<name:index\>@ in an emit, never in a template.
+--
+-- Closed, and the extension point for any further structural fact (a depth, a
+-- sibling count): one constructor, one entry in 'structTypes', and the fill site
+-- in 'Lips.Kernel.Lang.Nest' -- never an open list the kernel enumerates.
+data StructType = SIndex
+  deriving (Eq, Show)
+
+-- | The closed table of structure-bound hole types, by their spelling.
+structTypes :: [(Text, StructType)]
+structTypes = [("index", SIndex)]
+
+-- | Read a hole reference as a structure-bound DECLARATION: @\"n:index\"@ is the
+-- hole @n@, filled from the line's position among its siblings. An unrecognized
+-- suffix is not one (a name may legitimately contain a colon), matching how a
+-- template hole only drops a RECOGNIZED type.
+structHole :: Text -> Maybe (Text, StructType)
+structHole h = case T.breakOn ":" h of
+  (name, ty) | not (T.null ty), not (T.null name)
+             , Just st <- lookup (T.drop 1 ty) structTypes -> Just (name, st)
+  _ -> Nothing
+
+-- | The name a hole reference resolves to: @\"n:index\"@ and @\"n\"@ are the same
+-- binding, so the declaration and every reference to it (including from a
+-- descendant pattern) line up without a second spelling.
+refName :: Text -> Text
+refName h = maybe h fst (structHole h)
+
+-- | The structure-bound holes a pattern declares, in emit order, deduplicated.
+structHoles :: Pattern -> [(Text, StructType)]
+structHoles p = nubFst
+  [ s
+  | e <- pEmits p
+  , part <- peSubject e ++ peAssertion e
+  , SHole h <- [part]
+  , Just s <- [structHole h]
+  ]
+  where
+    nubFst = foldr keep []
+    keep x acc = if fst x `elem` map fst acc then acc else x : acc
 
 -- | One decision a pattern emits: its kind, plus subject and assertion as
 -- holey strings filled from the matched line's captured tokens. A pattern
@@ -131,10 +178,11 @@ parsePatternId tok = case T.splitOn ".under." tok of
 renderPatternId :: Pattern -> Text
 renderPatternId p = maybe (pId p) ((pId p <> ".under.") <>) (pParent p)
 
--- | The hole names a pattern binds, in template order. A multi-token hole binds
--- a name too, so a target @<name>@ may be filled from such a capture (otherwise
--- 'applyPattern' could be partial and the reader would reject a target hole
--- bound only by a multi-token hole).
+-- | The hole names a pattern's TEMPLATE binds, in template order. A multi-token
+-- hole binds a name too, so a target @<name>@ may be filled from such a capture
+-- (otherwise 'applyPattern' could be partial and the reader would reject a
+-- target hole bound only by a multi-token hole). Structure-bound holes are not
+-- here: they are declared in the emits ('structHoles').
 holesOf :: Pattern -> [Text]
 holesOf p = [h | tok <- pTemplate p, h <- tokHoles tok]
   where
@@ -241,7 +289,7 @@ applyPattern p binds = map one (pEmits p)
       )
     subst parts = T.concat (map fill parts)
     fill (SLit t)  = t
-    fill (SHole h) = Map.findWithDefault (missing h) h binds
+    fill (SHole h) = Map.findWithDefault (missing h) (refName h) binds
     -- A missing hole is a pattern the reader should have rejected; make it loud.
     missing h = error ("applyPattern: unbound hole <" <> T.unpack h <> "> in pattern " <> T.unpack (pId p))
     -- Build the subject segments from the template structure, NOT by filling to
@@ -252,7 +300,7 @@ applyPattern p binds = map one (pEmits p)
     segsOf = foldr step [""] . map fill'
       where
         fill' (SLit t)  = Left t                     -- separator-bearing literal
-        fill' (SHole h) = Right (Map.findWithDefault (missing h) h binds)
+        fill' (SHole h) = Right (Map.findWithDefault (missing h) (refName h) binds)
         step (Right v) (seg : rest) = (v <> seg) : rest
         step (Right _) []           = []             -- unreachable: acc always non-empty
         step (Left t)  acc          = prepend (T.splitOn "." t) acc
