@@ -2729,6 +2729,9 @@ main = hspec $ do
     it "the language's minted explanation is the folder's README.md" $ do
       readmePath prog          `shouldBe` "examples/backup/README.md"
       readmePath "examples/backup.lips" `shouldBe` "examples/backup/README.md"
+    it "a refused mint's shippable artifact sits beside the other language-level files" $ do
+      gapPath prog `shouldBe` "examples/backup/backup.gap"
+      gapPath "examples/backup.lips" `shouldBe` "examples/backup/backup.gap"
     it "keeps the human-written direction at the top level, beside the programs" $ do
       directionPath prog `shouldBe` "examples/backup.direction"
       directionPath "examples/photos.backup.lips" `shouldBe` directionPath prog

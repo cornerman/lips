@@ -457,6 +457,30 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Gap report file writer (`<language>.gap`).** `generate` refusing was, until
+  now, only on-screen text: a mint that fails in a downstream repo had nothing
+  to commit, paste, or send upstream. `generate` now writes
+  `Lips.Identity.gapPath` (`<language>.gap`, beside `.lang`/`.expect`/`.generation`)
+  on every refusal, never on a successful mint (where a mint-reported `gap`
+  already lands inside `readmePath`'s README -- see "Mint expression channels"
+  below). The file carries the refused lines (grammar errors), the
+  underspecified items (below the confidence threshold), every mint-reported
+  `Gap` verbatim (each already names its own blocked line and repro, per that
+  channel's own contract), and the full generation record -- model, target,
+  thinking, confidence, system prompt, program corpus, tool transcript, raw
+  reply -- fingerprinted with the same `genId` a successful `.generation`
+  uses, from the same in-scope values (`Lips.Generate.Record.record`), so a
+  refusal is pinned exactly as an acceptance would have been. The on-screen
+  refusal now names the file's path. This operationalizes the cross-repo
+  escalation workflow the doctrine section already named as the intended use
+  (generate refuses -> gap report travels upstream -> kernel grows under the
+  suite -> downstream regenerates): before this, step one had no artifact to
+  travel. No kernel change -- this is Generate-tier plumbing over data the
+  mint and the record already produced. Closes TODO item 3. Verified: `-Wall`
+  clean, full suite green (390/390, one new test pinning `gapPath`'s naming
+  alongside `readmePath`'s), and the whole CLI binary compiles clean end to
+  end.
+
 - **One name grammar: an artifact name composes literal text with `<self>` and
   `<capture>`.** A name was a whole token in three places, so `<self>-core` --
   a second build beside the instance's own -- could not exist. `parseRef`
@@ -1779,12 +1803,6 @@ gate on an artifact-only engine, and the concept escape.
   A repo-wide direction file was rejected (ambiguous search root, comes from
   nowhere); ambient `AGENTS.md` is deliberately excluded (the mint is hermetic
   via `pi -nc`), so this per-language file is the sole owner-taste channel.
-- **Gap report (`<program>.gap`).** When generate refuses because physics is
-  missing (deduce-or-fail on an inexpressible need), the refusal must be a
-  shippable artifact, not a mood: refused lines, the missing capability
-  (which extension point: value form, emission type, realization target), a
-  minimal reproducing program, model + prompt fingerprint. A compiler bug
-  report for the kernel, machine-readable, pinned. Cheap; do soon.
 - **Kernel modules (shared verified capabilities).** Successor of the
   vocabulary milestone under a better name: loadable units OF the guarantee
   regime, not plugins around it. A module extends closed grammars at declared

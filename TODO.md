@@ -206,13 +206,16 @@
    examples, a self-review checklist. A suite guard parses every fenced
    `lips-engine` example block, so an example cannot outlive its grammar.
 
-3. **Gap report (`<program>.gap`)** — §13 Missing, tagged "cheap; do soon".
-   When `generate` refuses because physics is missing, write a machine-readable
-   artifact (refused lines, missing capability / extension point, minimal repro,
-   model+prompt fingerprint) instead of on-screen-only text. Operationalizes the
-   cross-repo escalation workflow (DESIGN Doctrine). The `gap` block already
-   supplies the producer and prints on both paths; this item is only the file
-   writer.
+3. ~~**Gap report (`<program>.gap`)**~~ CLOSED. See DESIGN §13, "Gap report file
+   writer". `generate` now writes `<language>.gap` (`Lips.Identity.gapPath`)
+   on every refusal: the refused lines, the underspecified items, the mint's
+   own `gap` blocks, and the full generation record (model, target, thinking,
+   confidence, system prompt, program, tool transcript, raw reply),
+   fingerprinted with the same `genId` a successful `.generation` uses. The
+   on-screen refusal now names the file. Operationalizes the cross-repo
+   escalation workflow (DESIGN Doctrine): a refusal in a downstream repo is a
+   shippable, git-committable artifact instead of text that scrolls off a
+   terminal.
 
 4. **Live host deployment** — the headline missing proof (§13 Shortest Summary).
    Wire one realized module into `~/nixos` on `wolf`. Reduced to "import one

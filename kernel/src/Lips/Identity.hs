@@ -43,6 +43,7 @@ module Lips.Identity
   , langPath
   , expectPath
   , generationPath
+  , gapPath
   , directionPath
   , readmePath
   , langDir
@@ -132,6 +133,15 @@ expectPath = langLevel "expect"
 -- | The shared mint record: @examples/backup/backup.generation@.
 generationPath :: FilePath -> FilePath
 generationPath = langLevel "generation"
+
+-- | The machine-readable refusal artifact: @examples/backup/backup.gap@.
+-- Written only when @generate@ refuses (never on a successful mint, where a
+-- mint-reported gap already lands inside 'readmePath'); the point is the
+-- cross-repo escalation workflow (DESIGN Doctrine) -- a refusal a user hits in
+-- their OWN repo must be a shippable, git-committable artifact, not only
+-- on-screen text that scrolls away.
+gapPath :: FilePath -> FilePath
+gapPath = langLevel "gap"
 
 -- | The owner's taste steering the mint: @examples/backup.direction@. A human
 -- writes it, so it sits at the TOP level with the programs, not in the machine's

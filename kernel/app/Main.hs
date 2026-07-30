@@ -46,7 +46,7 @@ import           System.Process     (CreateProcess (..), proc, readCreateProcess
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
-import           Lips.Identity                 (requireProgram, readmePath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
+import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
@@ -375,7 +375,16 @@ generate target confidence renew verbose mmodel thinking files@(rep : _) = do
                   , let Confidence x = icConfidence c, x < confidence]
       gaps = gapsOf (map icItem candidates)
   if not (null errs) || not (null unsure)
-    then die (refusalReport rep confidence errs unsure notes gaps)
+    then do
+      -- Machine-readable twin of the on-screen refusal: the cross-repo
+      -- escalation workflow (DESIGN Doctrine) needs a shippable artifact, not
+      -- only text that scrolls off a terminal. Same fields, same fingerprint
+      -- scheme as a successful '.generation' record (built the same way, from
+      -- the same in-scope values), so a refusal is pinned exactly as an
+      -- acceptance would have been.
+      let rec = record model target (T.pack thinking) confidence prompt corpus transcript reply
+      TIO.writeFile (gapPath rep) (gapArtifact rec errs unsure gaps)
+      die (refusalReport rep (gapPath rep) confidence errs unsure notes gaps)
     else do
       -- A mint without an explanation is incomplete: the human's review
       -- artifact is the report, not the .lang. A structural guard, so the
@@ -1148,12 +1157,38 @@ nixEvalFailed file cmd detail = report
   (T.lines detail)
   ("→ this usually means nixpkgs isn't available. Try: nix run . -- " <> cmd <> " " <> T.pack file)
 
+-- | The machine-readable twin of 'refusalReport', written to 'gapPath'
+-- whenever generate refuses. Same content the record for a SUCCESSFUL mint
+-- would have carried (model, target, thinking, confidence, the full system
+-- prompt, program corpus, tool transcript and raw reply -- 'record', the same
+-- function '.generation' uses), fingerprinted the same way ('genId'), plus
+-- the refusal-specific summary up front: this is what makes it a shippable
+-- bug report for the cross-repo escalation workflow (DESIGN Doctrine) rather
+-- than only on-screen text. A mint-reported 'Gap' already names its own
+-- blocked line and repro (the mint's job, not this renderer's), so it is
+-- listed verbatim.
+gapArtifact :: Text -> [Text] -> [ItemCandidate] -> [Gap] -> Text
+gapArtifact rec errs unsure gaps = T.unlines $
+  [ "# lips generate refusal report. Machine-readable; rewritten on every refusal, never hand-edited."
+  , "# fingerprint: " <> genId rec <> " (re-hash the record below with the same function '.generation' uses to verify)"
+  , ""
+  , "--- refused lines (a line the AI wrote that lips's grammar can't express) ---"
+  ] ++ (if null errs then ["(none)"] else map ("- " <>) errs) ++
+  [ "", "--- underspecified (the program didn't pin these down with enough confidence) ---" ] ++
+  (if null unsure then ["(none)"] else [ "- " <> icLine c | c <- unsure ]) ++
+  [ "", "--- missing capability (the mint's own words; each names its blocked line and a repro) ---" ] ++
+  (if null gaps then ["(none)"]
+   else concat [ ("- " <> gapSlug g) : [ "    " <> l | l <- T.lines (T.strip (gapBody g)) ] | g <- gaps ]) ++
+  [ "", "--- generation record (model, target, thinking, confidence, system prompt, program, tool transcript, raw reply) ---", rec ]
+
 -- | generate couldn't build a setup: either lines lips couldn't read (a
 -- capability may be missing) or values the program leaves underspecified.
-refusalReport :: FilePath -> Double -> [Text] -> [ItemCandidate] -> [(Text, Text)] -> [Gap] -> Text
-refusalReport file _threshold errs unsure notes gaps = T.intercalate "\n" $
+refusalReport :: FilePath -> FilePath -> Double -> [Text] -> [ItemCandidate] -> [(Text, Text)] -> [Gap] -> Text
+refusalReport file gapFile _threshold errs unsure notes gaps = T.intercalate "\n" $
   ["lips couldn't build a setup for " <> T.pack file <> "."]
     ++ grammar ++ underspecified ++ missing
+    ++ [ "", "\8594 the full refusal (refused lines, fingerprint, raw reply) is saved to " <> T.pack gapFile
+       , "  -- a shippable artifact for a bug report if this looks like a lips gap." ]
   where
     -- A dead mint that names the capability it lacked yields a work item
     -- rather than a shrug: the gap is a kernel bug in the model's own words.
