@@ -183,31 +183,26 @@ tracks only what is still open.
    committed `.lang` is stamped `@gen:<id>` from a record written before that
    line existed, so re-hashing a committed `.generation` today yields a different
    id than its engine carries: invariant 6 is broken for every language in
-   `examples/`. Nothing catches it, which is the second half of the item -- no
-   code re-hashes a record and compares (the only mechanical use of `genId` is
-   WRITING the stamp), so `just ci` and `check-expect` stay green on a repo whose
-   provenance chain is severed. Two things to land, in order: (i) re-mint all 18
-   languages so each record and its stamps agree again -- open question: do it
-   with sonnet-5 rather than opus (cheaper, and the mint prompt is now strict
-   enough that the gates, not the model's taste, decide what is admitted; the
-   risk is a weaker engine on the harder languages, so compare `.expect`
-   survival per language); (ii) then add the verifier that would have caught it
-   -- `check` re-hashes the committed record and refuses a stamp that disagrees,
-   which is offline and nixpkgs-free, so it belongs in `check`, not the flake.
-   Doing (ii) first would turn the whole repo red.
+   `examples/`, and item 3 is why nothing says so. The remedy is a re-mint sweep
+   of all 18 languages, so each record and its stamps agree again. Open question
+   to settle first: mint the sweep with sonnet-5 rather than opus (cheaper, and
+   the gates rather than the model's taste decide what is admitted); the risk is
+   a weaker engine on the harder languages, so compare `.expect` survival per
+   language and keep opus for any that regress. Order matters: sweep first, then
+   land item 3 -- a verifier landed first would turn the whole repo red.
 
-2. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
+3. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
    minted line is stamped `@gen:<id>` and the id must re-hash from the
    committed `.generation` record, but no code re-hashes anything: `check`
    reads the stamps as text. So a change to what the record contains silently
    invalidates every committed engine's stamps while all gates stay green.
-   This is not hypothetical -- the schema-pin work adds a `schema:` line to the
-   record, which changes every generation hash, and main noticed nothing.
+   This is not hypothetical -- the schema pin added a `schema:` line to the
+   record, which changed every generation hash, and no gate noticed (item 2).
    Remedy: `check` recomputes `genId` from the `.generation` beside the engine
    and refuses when a `@gen:` stamp disagrees, which makes a re-mint sweep
    verifiable instead of a matter of remembering. Deterministic, offline,
-   domain-blind. Blocked until the schema-pin branch ff-merges, since the gate
-   must call the same `genId` that branch is changing (`Lips.Generate.Record`).
+   domain-blind. Do it after item 2's sweep, or every committed engine fails
+   the new gate at once.
 
 ## Backlog (larger / deferred by design)
 
