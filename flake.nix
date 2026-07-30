@@ -15,7 +15,9 @@
       # The kernel needs only base, containers, text; the Generate tier adds
       # aeson (parsing pi's json event stream); hspec + QuickCheck drive the
       # conformance suite (spec section 12).
-      ghc = pkgs: pkgs.haskellPackages.ghcWithPackages (p: [ p.hspec p.QuickCheck p.aeson p.optparse-applicative ]);
+      # file-embed: the mint prompt lives as markdown under assets/mint/,
+      # embedded at compile time (see kernel/src/Lips/Generate/Minting.hs).
+      ghc = pkgs: pkgs.haskellPackages.ghcWithPackages (p: [ p.hspec p.QuickCheck p.aeson p.optparse-applicative p.file-embed ]);
     in
     {
       # Everything a developer needs: the compiler for the suite, and just
@@ -29,7 +31,11 @@
       packages = forAll (pkgs: {
         default = pkgs.runCommand "lips"
           { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper pkgs.installShellFiles ]; } ''
-          cp -r ${./kernel}/. build && cd build
+          # assets/ is copied as build's SIBLING (not build/assets/), so the
+          # embedStringFile path "../assets/mint/..." in Minting.hs resolves
+          # the same way here as it does from kernel/ under a direct `ghc`
+          # invocation, where ".." is likewise the repo root.
+          mkdir -p assets && cp -r ${./assets}/. assets && cp -r ${./kernel}/. build && cd build
           mkdir -p "$out/bin"
           ghc -Wall -isrc -iapp app/Main.hs -outputdir "$TMPDIR/o" -o "$out/bin/.lips-unwrapped"
           # generate checks minted rules against the NixOS option schema, which
@@ -81,7 +87,7 @@
       checks = forAll (pkgs: {
         kernel-tests = pkgs.runCommand "lips-kernel-tests"
           { nativeBuildInputs = [ (ghc pkgs) ]; } ''
-          cp -r ${./kernel}/. build && cd build
+          mkdir -p assets && cp -r ${./assets}/. assets && cp -r ${./kernel}/. build && cd build
           ghc -Wall -isrc -itest test/Spec.hs -outputdir "$TMPDIR/o" -o "$TMPDIR/spec"
           "$TMPDIR/spec"
           touch "$out"
