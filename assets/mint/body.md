@@ -231,6 +231,69 @@ structure), its pattern template is a single hole and its subject is keyed
 by that hole alone (<item> => fact group.<item>), so each bare line becomes
 its own distinct subject and the items never collide; one rule then emits
 each to a list option, which aggregates the items from all such lines.
+That keying works only when the item carries a value that IDENTIFIES it (a
+package name, a route path). When it does not, or when the program repeats a
+group, nest the item pattern in the heading's BLOCK -- next subsection.
+
+### Blocks
+
+A heading line and the lines under it form a BLOCK. Declare it on the item
+pattern's id: `p5.under.p4` means "a line matching p5 is an item of the block
+opened by the nearest preceding p4 line". The item's emits may then use any
+hole THAT heading bound, so the heading's word keys what the items realize:
+
+```lips-engine
+0.95 p1 pattern queue <name>: => concept queue.<name> "a work queue"
+0.95 p2.under.p1 pattern - workers <count> => fact queue.<name>.workers "<count>"
+0.95 p3.under.p1 pattern - retry after <secs> seconds => fact queue.<name>.retry "<secs>"
+```
+
+reads two blocks without collision:
+
+  queue emails:
+  - workers 4
+  - retry after 30 seconds
+  queue reports:
+  - workers 1
+
+Without the block, both `- workers N` lines emit the SAME subject and lips
+refuses the program -- while the two `queue <name>:` lines, the only ones
+saying which queue is meant, would realize nothing. Reach for a block whenever
+an item needs a word from the line above it, or whenever a program could state
+the same group twice.
+
+Blocks are recognized by your PATTERNS, never by punctuation or indentation:
+lips has no idea that `-` or `:` marks anything. Any wording works, as long as
+the heading has its own pattern.
+
+TWO STRUCTURE HOLES, for items that cannot key themselves. Both are filled
+from the program's SHAPE, so they are declared in an emit and need no template
+token:
+
+  <n:index>  this line's position among the items of its block, from 1.
+             Use it when nothing in the item identifies it -- an ordered step,
+             an anonymous record. Refer to it later as plain <n>.
+  <k:key>    the subject of the line that opens this line's block. Only in a
+             nested pattern.
+
+```lips-engine
+0.95 p4 pattern steps: => concept steps "the ordered steps"
+0.95 p5.under.p4 pattern - <cmd.words> => fact step.<n:index>.command "<cmd>"
+```
+
+keeps four steps four, in order, even when two of them read the same.
+
+A pattern may name SEVERAL parents, tried in the order written. The use for
+this is unbounded depth: `p6.under.p6.under.p4` reads an item that sits inside
+another item of its own shape when it is more indented, and roots in the p4
+heading otherwise. Combined with `<k:key>` the keys compose
+(tree.File.New.Item), so two branches may hold the same node name. This is the
+ONLY construct for which leading whitespace means anything; every other
+pattern ignores it.
+
+lips refuses, at the gate: a parent id no pattern defines; a nesting cycle
+through two or more patterns; an emit hole bound by neither the pattern nor
+every block it can sit in; `<k:key>` in a pattern that nests under nothing.
 
 ### Kinds
 
@@ -244,8 +307,9 @@ so it alone needs no rule.
 ### Subjects and Orthogonality
 
 subject: invent a dotted vocabulary for this problem
-(e.g. backup.source). Every hole used in the subject or assertion MUST
-appear in the template. Patterns must be orthogonal: no input line may
+(e.g. backup.source). Every hole used in the subject or assertion MUST be
+bound: by this pattern's template, by a structure hole it declares
+(<n:index>, <k:key>), or by the block it nests in (see BLOCKS). Patterns must be orthogonal: no input line may
 match two of them.
 
 ### Generalizing Across Several Programs
@@ -681,6 +745,7 @@ into the source, and no expect wasted on the build reference itself.
 Before you answer, run this list against your own engine:
 
 1. Does every line of every program you were shown crystallize under exactly one pattern?
+1b. Does every item line that needs a word from its heading nest under that heading's pattern (`pN.under.pM`), and does every item with no value of its own key itself by `<n:index>`?
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?

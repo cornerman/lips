@@ -2941,7 +2941,15 @@ main = hspec $ do
   -- Examples teach the grammar, so a stale one teaches a grammar that no longer
   -- exists. Extract every ```lips-engine block from the prompt and require the
   -- real parser to accept it: an example cannot outlive the syntax it shows.
-  describe "prompt examples stay parseable" $
+  describe "prompt examples stay parseable" $ do
+    -- A capability the model is never told about is dead, so the prompt must
+    -- carry the block constructs, and the fenced-block guard below then checks
+    -- that the taught spelling actually parses.
+    it "teaches blocks and both structure holes" $
+      mapM_ (\clause -> systemPrompt `shouldSatisfy` T.isInfixOf clause)
+        [ "p5.under.p4", "<n:index>", "<k:key>"
+        , "never by punctuation or indentation" ]
+
     it "every lips-engine block in the prompt parses" $ do
       let blocks = fencedBlocks "lips-engine" systemPrompt
       blocks `shouldSatisfy` (not . null)
