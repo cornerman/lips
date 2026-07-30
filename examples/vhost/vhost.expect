@@ -1,0 +1,2 @@
+a1 expect services.nginx.virtualHosts.<domain>.locations.<path>.proxyPass from route.<domain>.<path>.proxy
+a2 expect services.nginx.virtualHosts.<domain>.locations.<path>.root from route.<domain>.<path>.root
