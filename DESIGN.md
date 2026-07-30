@@ -1606,7 +1606,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   since a fill writes into it and a language folder read from the nix store is
   read-only (this broke `lipsArtifacts-eval`, a compile inside a derivation).
 
-- **Repeating source: not needed, closed by evidence (`examples/api.web.lips`).**
+- **Repeating source: not needed, closed by evidence (`examples/api.web.lips`,
+  as minted in 8393727; the example itself realizes differently today, see the
+  note at the end of this entry).**
   The open question was how N items (routes, mounts) reach a built program when a
   fill replaces one marker and cannot repeat a code block. A compile-time repeat
   block was designed and REJECTED: it needs a second templating layer inside
@@ -1631,6 +1633,39 @@ but the loop around it is incomplete; "missing" means specced, not built.
   minted `"200\n404"` into `"200n404"` -- valid output, wrong text, invisible to
   every gate. Only `\"` and `\\` are transport escapes now; anything else passes
   through to the value grammar, which reads `\n` as a newline.
+  Where the witness lives now (2026-07-30): `api.web.lips` stopped naming an
+  implementation language, and the free mint answered three fixed-body routes with
+  nginx `locations.<path>.extraConfig` instead of a built program -- a valid answer
+  the example is entitled to give. The doctrine is unaffected either way (routes
+  are data in the config, no code block repeats), and the built-program witness is
+  the tree at 8393727, not a live example. An example demonstrates what it is; it
+  is not held to a shape to serve as a proof.
+
+- **A program never names its implementation language (2026-07-30).** Five
+  example programs carried `write the server/tool in go, using only the standard
+  library with no external dependencies` -- mechanism, and mechanism belongs in
+  `<language>.direction` or nowhere, since the program states what must be true.
+  The line was provably inert: three engines read it as a `concept`, and `http`
+  had already been re-minted once because it BOUND the word and discarded it (the
+  `droppedValues` guard exists because of that line). `examples/greet.lips` names
+  no language and mints fine, so nothing needed replacing: the line is simply
+  gone, with no direction file compensating for it. The kernel never learns a
+  language either way -- it reaches `buildGoModule` as a name inherited from
+  nixpkgs.
+  What the free mints then chose, which is the interesting part: `logscan` and
+  `http` came back Go; `board` and `habit` came back as a shell script under
+  `stdenv.mkDerivation`; `web` dropped the built program entirely for nginx
+  `locations.<path>.extraConfig`. So an unpinned mechanism really does churn
+  across regenerations, exactly as the direction-file entry predicts, and the
+  churn is a gated, reviewable event (each re-mint re-blessed its `.expect`), not
+  a silent one. Two mints were refused by their own contract before one passed,
+  and the `web` mint filed a real gap on the way (TODO 1d, `<value.N>` cannot
+  carry a multi-word tail). The `http` mint churned twice: the first pass named
+  `bin/hello` in `ExecStart` while `go.mod` said `module server`, which only
+  `lipsArtifacts-build` caught (TODO 1c -- `generate` should run that build
+  itself); the accepted pass builds an artifact called `http-echo` and carries the
+  port and the response text in `systemd.services.hello.environment` instead of
+  source fills, so editing either no longer rebuilds the binary.
 
 - **A path inside a build must exist (`lipsArtifacts-build`).** Instantiating an
   artifact proves the build is well-formed and says nothing about what it

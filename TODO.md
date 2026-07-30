@@ -23,6 +23,17 @@ tracks only what is still open.
       baked source came from, so an edit to one of them compiles to an
       unchanged binary. Candidate: record the source's line dependencies at
       mint and fail loud when one changes.
+      (iv) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
+      source") puts the algorithm, the format and the protocol in baked source,
+      so a behavior sentence is a specification for the mint and correctly not a
+      decision -- `logscan` says "keep a line only when every field ... equals
+      the value given with it" and reaches output through hand-written source
+      only. Reword `equals` to `differs` without re-minting and every gate stays
+      green (the V6 source-specification gate catches DELETION only). No trace
+      can fix this: the words never appear in the code. The one candidate that
+      fits the doctrine is a behavioral assertion -- extend `.expect` to run a
+      built artifact, feed input, compare output -- which keeps `check` offline
+      but makes it execute a binary. Not urgent: no program has been hurt yet.
 
    b. **An option's own semantics can make an honest engine wrong.** postgres's
       re-mint emits `ensureUsers = [ { name = "app"; ensureDBOwnership = true;
@@ -32,6 +43,35 @@ tracks only what is still open.
       guard is satisfied), so lips sees nothing wrong, and the kernel cannot
       know option semantics either. Candidate: nothing kernel-side — belongs
       in the mint's own review, or as a `gap` the mint should have filed.
+      Second instance (2026-07-30, `examples/web` re-mint): the program line
+      "run it as a systemd service named api" is spent into
+      `services.nginx.virtualHosts.api.serverName`, but nginx runs under the
+      unit `nginx` and `serverName` is a HOSTNAME, so the sentence is honored by
+      an option that means something else. Every gate is green. Same shape as
+      postgres, same absent remedy.
+
+   c. **`generate` accepts an engine whose binary does not exist.** The http
+      re-mint of 2026-07-30 emitted `ExecStart = "${artifact.hello}/bin/hello"`
+      with `module server` in `go.mod`, so the unit named a binary called
+      `server`: past the mint gate, past `check`, caught only by the flake check
+      `lipsArtifacts-build` (which is why that check exists -- the same defect
+      shipped once before with `module app`). The gate lives in the flake because
+      `check` must stay offline and nixpkgs-free, but `generate` is already
+      online and already builds a pinned nixpkgs for the option schema, so it
+      could run this build itself and refuse. Cost: one build per mint, seconds
+      to minutes. Until then, run `nix build
+      .#checks.x86_64-linux.lipsArtifacts-build` by hand after every mint.
+
+   d. **`<value.N>` cannot carry a multi-word tail** (filed by the `web` mint
+      itself as gap `multiword-route-body`, 2026-07-30; the refusal report is
+      recoverable from that mint's `.gap` in this branch's history). A route's
+      status and body are one fact (`"<status> <body>"`) so both reach one
+      `extraConfig` option through `<value.1>`/`<value.2>`. `<value.N>` takes
+      exactly token N, so `- /msg returns status 200 with body "hello world"`
+      would silently truncate to `hello`. The grammar has no "rest from token
+      N" hole. Silent wrong output, not a loud failure, and the committed
+      `examples/web` engine has the shape today; only the corpus's single-word
+      bodies keep it from firing.
 
 2. **Template grammar completeness — the one deferred piece.** True
    parent-child block aggregation (a decision owning a list) is deferred:
