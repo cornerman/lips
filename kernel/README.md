@@ -19,6 +19,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Source` | ledger 13 | source fills: the `@marker@` grammar of an artifact's baked source and the two-way check that its markers and the engine's declared fills agree |
 | `Lips.Kernel.Expect` | ledger 13 | the `.expect` behavioral contract: relational option-value assertions, parsed/rendered/judged (pure) |
 | `Lips.Kernel.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
+| `Lips.Kernel.Lang.Nest` | ledger 13 | blocks: the pattern-nesting relation, a line's scope in the block it sits in (ancestors' captures, `<n:index>`, `<k:key>`), and the checks that close it |
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
 | `Lips.Kernel.Lang.Store` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
 | `Lips.Kernel.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |

@@ -73,10 +73,6 @@ tracks only what is still open.
       `examples/web` engine has the shape today; only the corpus's single-word
       bodies keep it from firing.
 
-2. **Template grammar completeness — the one deferred piece.** True
-   parent-child block aggregation (a decision owning a list) is deferred:
-   subject-keyed bulleted items plus `Append` already carry every list the
-   corpus states. Revisit when a program needs a block no subject can key.
 
 ## Backlog (larger / deferred by design)
 

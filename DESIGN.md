@@ -457,6 +457,77 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Blocks (pattern nesting): the last piece of template completeness.** A
+  program line can now state a block, and a line inside it sees the block it sits
+  in. Three invented languages drove it, each failing differently under the old
+  physics: two nginx vhosts each stating a `/` location collided on one subject,
+  so lips told the author to delete one of two correct lines while calling the two
+  `host <domain>:` headers decoration; a release pipeline whose fourth step
+  repeated its second realized three steps from four lines at exit 0, invisible to
+  `diagInert` (per kind) and `diagDropped` (per hole); and a program naming two
+  anonymous scrape targets could not be written at all, because nothing in the
+  domain names a target and position is the only identity there is.
+
+  The TODO framing ("true parent-child block aggregation -- a decision that owns
+  a list") was wrong, and saying so is the point: `Append` already assembles a
+  list from N same-option contributors in source order, so no decision needs to
+  own one. What was missing was SCOPE. So the atom, merge, refine, realize,
+  `.expect` and the canonical `.decisions` text are untouched; a block is a
+  crystallize-time scope (`kernel/src/Lips/Kernel/Lang/Nest.hs`).
+
+  How it is spelled. Nesting is a relation between PATTERNS, carried in the
+  subject path (`lang.pattern.p3.under.p2`, mint side `p3.under.p2 pattern ...`),
+  and a child line belongs to the nearest preceding line that matched its parent
+  pattern. Its binding environment is its own captures over its ancestors',
+  own shadowing. Two structure-bound holes fill from shape rather than from a
+  token: `<n:index>`, the line's position among the items of its block (so an
+  anonymous record keeps an identity and a repeated item stays distinct), and
+  `<k:key>`, the subject of the line that opens the block (so keys compose).
+  A pattern may name several parents, tried in order, which is what unbounded
+  depth needs: `n1.under.n1.under.n0` reads an item inside an item of its own
+  shape, rooting in the header otherwise, and `<k:key>` makes the keys accumulate
+  (`tree.File.New.Item`), so two branches may share a node name.
+
+  There is NO surface convention, and that is deliberate: the kernel must not
+  dictate a collection syntax any more than it may name a domain word, so it
+  never learns that `-` or `:` marks anything. The language's own words mark a
+  block, through the parent's template. Leading whitespace carries meaning in
+  exactly one place, a pattern that names itself as a parent, since nothing else
+  can say how deep an item sits; every committed program is flat, so every one of
+  them compiles to a byte-identical module (verified).
+
+  Rejected spellings, with reasons: a body prefix (`under p2 :: <template>`),
+  because it must be read out of free template text and a template legitimately
+  starting with the word "under" would then be refused -- a missing template case,
+  which invariant 3 calls a kernel bug; and a separate `nest p3 under p2` item,
+  because it lets one pattern carry two conflicting parents, where the id makes
+  the chain structural.
+
+  Refused at the gate, inside `readLang` so `generate`, `compile`, `check` and
+  `lsp` all inherit it: a parent id no pattern defines, a nesting cycle through
+  two or more patterns, an emit hole bound by neither the pattern nor every block
+  it can sit in (the INTERSECTION over possible parents, since the line attaches
+  to whichever it finds), and `<k:key>` in a pattern that heads no block. The
+  static gates that run a pattern's own substitution (`Reach.droppedValues`,
+  `Answerable.emittedFamilies`) now bind every hole in scope, since `applyPattern`
+  is total only over a complete binding map.
+
+  Proof: `examples/gateway.vhost.lips`, minted live (`anthropic/claude-sonnet-5`),
+  and the mint reached for `p3.under.p2` on its own. Two more hosts were then
+  added with no model, `check` still green. The report also stopped lying: a line
+  that opens a block is no longer listed as "decorative, realizing nothing --
+  editing these changes no output", because editing it changes every option its
+  items realize.
+
+- **A line that restates an earlier one is named.** Found while trialling blocks:
+  two program lines crystallizing to an identical decision (same subject, same
+  assertion) merge into one, and nothing could see it -- `diagInert` works per
+  kind, `diagDropped` per hole, and a whole absorbed line is neither. Reported per
+  line (`Crystallize.restatements`, `Diagnosis.diagRestated`), not refused,
+  because merge doctrine and the committed edit-tolerance property both hold that
+  two statements of one fact ARE one fact; what was missing was saying so out
+  loud.
+
 - **Live host deployment.** The headline missing proof (§13 "Shortest
   Summary"): `examples/logscan.lips`'s already-minted engine (a JSON-log
   filter CLI, target `home-manager`, needing no `pi`/model call to reuse) is
@@ -2006,12 +2077,10 @@ gate on an artifact-only engine, and the concept escape.
     hole `<name.words>` closes the second form: it binds one or more tokens
     anywhere in the template, ending where the template's next literal matches,
     so an unquoted several-word value needs no quotes (the end-of-template case
-    generalizes the former `<name.tail>`, its only spelling now). Bullets need no
-    block machinery: `-` is just a literal token, and each item stays a distinct
-    decision by putting its own value (the path) in the subject. Deferred, with
-    the reason: true parent-child block aggregation (a decision that owns a
-    list), because subject-keyed items already carry every bulleted list the
-    corpus states, and `Append` aggregates them.
+    generalizes the former `<name.tail>`, its only spelling now). Blocks closed
+    the last piece (see "Blocks" in Done): the deferred framing was wrong -- what
+    was missing was never a decision that owns a list, but a line's ability to see
+    the block it sits in.
   - Glue: TODO. The one documented incompleteness (computation).
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
