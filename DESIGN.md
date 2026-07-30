@@ -1921,6 +1921,48 @@ but the loop around it is incomplete; "missing" means specced, not built.
   hole -- and the mint prompt now offers the form, since a capability the model
   is never told about is dead capability.
 
+- **Every decision a line states must re-read from its canonical line.** A
+  minted engine keyed a button by its label, the program's label was two words
+  (`button "drück mich":`), and the decision came out as
+  `d4 concept button.drück mich stated "..."` -- whitespace separates the fields
+  of a decision line, so `readDecision` then read `mich` as a strength and
+  failed. Every gate was green while `out/*.decisions` had stopped being readable
+  text, which quietly removes the ground under "regeneration is gated": the guard
+  compares against a document lips can no longer parse. The `.lang` had a
+  round-trip gate and pattern OUTPUT had none, so `crystallize` now renders each
+  decision it builds, reads it back, and insists on the identical decision
+  (`CrystError.Unreadable`, reported per line with the reader's own complaint).
+  The check is the round trip itself, not a list of forbidden characters, so it
+  closes over the whole canonical grammar and over every field added later; it is
+  offline, domain-blind, and every deterministic verb inherits it through
+  `crystallize`. The remedy it names is the engine's, not the program's: key such
+  an item by `<n:index>`, which the grammar already has. Three suite fixtures had
+  the same defect and were corrected with it. Not covered: the per-line table
+  still prints `ok` for the offending line before the file fails (TODO 1e).
+
+- **A several-part value quotes its parts, so `<value.N>` reads a part.** When
+  several program words must land in ONE option (a route's status and its body, a
+  button's label and its target), doctrine puts them in one assertion and lets
+  the rule spend them positionally. The stored text was the parts joined by
+  spaces, so the boundary between them was gone: a two-word part shifted every
+  later index and the last part fell off the end. The `web` mint filed this
+  itself as gap `multiword-route-body`; `examples/website` then hit it for real,
+  and it is invisible to the dropped-value guard because every word IS spent --
+  into the wrong hole. So `applyPattern` now quotes every part of an assertion
+  built from SEVERAL holes, and `Surface.valueTokens` is the inverse (one part per
+  hole, whatever a part contains, escapes undone by `parseQuoted`);
+  `Surface.valueText` joins them for a rule reading the whole value, so the
+  quoting stays an encoding a rule never sees. An assertion of ONE hole is
+  untouched, which is what a rule building a LIST out of one many-word value
+  reads. One lexer, not two: the quoting convention is `Surface`'s, the same one
+  every stored lips line uses. Verified: a two-word route body realizes
+  `return 200 'hello world';` where it used to realize `return 200 'hello';`, and
+  the whole corpus checks unchanged (no committed engine's output moves, since
+  their parts are single words). Not covered: nothing yet refuses a rule that
+  reads only part 1 of a two-part value, or a `<value.tail>` over a several-part
+  value (TODO 1a(i)) -- the static map those need is now trivial, since part N is
+  hole N by construction.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and

@@ -4,49 +4,22 @@ Closed items are dropped from this file once they land; the record of what
 closed and why lives in `DESIGN.md` §13 (the milestone ledger). This file
 tracks only what is still open.
 
-## Unmerged work sitting on a branch
-
-- **`decision-roundtrip` (tip `8edd8dc`, three commits) is NOT on main.** It
-  closes two silent defects that `examples/website` (untracked) exposed: a
-  decision whose subject carried a two-word capture could no longer be read back
-  from its canonical line (`crystallize` now renders, re-reads and refuses,
-  `CrystError.Unreadable`), and a fact built from several holes lost the boundary
-  between its parts, so `<value.N>` read a word (parts are now stored quoted,
-  with `Surface.valueTokens`/`valueText` as the inverse). Green at that tip:
-  `just test` 467/0, `lips check` on all 15 examples, and the `web` mint's own
-  gap fixed (`return 200 'hello world';`). Main moved meanwhile, so it needs
-  `git rebase main` (conflicts expected only in `TODO.md` and `DESIGN.md`) and
-  then `git merge --ff-only`. Its own TODO edits carry the follow-ups it leaves
-  open, including the static part-alignment gate.
-
 ## Next up (priority order)
 
-1. **Honesty gates, structural half** (decided 2026-07-30; these two need no
-   new representation, so they ship before the meaning spec).
+1. **Honesty gates, structural half** (decided 2026-07-30; needs no new
+   representation, so it ships before the meaning spec). The quote-preserving
+   half landed with the decision round-trip work (DESIGN §13): it closed 3d and
+   gave 3a(i) its sound hole-to-part map. What remains is the artifact gate.
 
-   a. **`<value.N>` must keep the author's quotes** (closes 3d, and gives 3a(i)
-      a sound hole-to-field map). Root cause: `Lang/Pattern.hs` tokenizes a
-      program line quote-aware, so `body "hello world"` is ONE token, but it
-      strips the quotes into the surface, so the fact assertion becomes
-      `200 hello world`; `Engine/Data.hs:196` then re-guesses the boundary with
-      `T.words` and `<value.2>` silently takes `hello`. Fix: keep the quotes in
-      the assertion, and make the fill split quote-aware and unquote the picked
-      field, reusing `Pattern.tokens` / `Pattern.unquote` on both sides, so one
-      tokenizer governs program and rule alike. Rejected: a joined-tail hole
-      `<value.N..>` (an unquoted multi-word value still truncates and the
-      hole-to-token map stays unsound); refusing a multi-word value
-      (cannot-express is a kernel bug too). Cost: `.decisions` shows
-      `200 "hello world"`.
-
-   b. **`generate` must build the artifact and stat what the module names**
-      (closes 3c). Build each `artifact.<name>`, then collect every
-      `${artifact.<name>}/rel/path` in realized output (the kernel's artifact-ref
-      extraction in `Engine/Value.hs` already finds them) and assert each exists
-      and is executable in the build result. Building alone is not enough: the
-      defect that shipped twice was a unit naming `/bin/hello` while `go.mod`
-      said `module server`, which compiles fine. `check` stays offline and
-      nixpkgs-free; `generate` is already online and already builds a pinned
-      nixpkgs for grounding, so it pays this cost.
+   **`generate` must build the artifact and stat what the module names**
+   (closes 3c). Build each `artifact.<name>`, then collect every
+   `${artifact.<name>}/rel/path` in realized output (the kernel's artifact-ref
+   extraction in `Engine/Value.hs` already finds them) and assert each exists
+   and is executable in the build result. Building alone is not enough: the
+   defect that shipped twice was a unit naming `/bin/hello` while `go.mod`
+   said `module server`, which compiles fine. `check` stays offline and
+   nixpkgs-free; `generate` is already online and already builds a pinned
+   nixpkgs for grounding, so it pays this cost.
 
 2. **The meaning dimension: observable claims + source-line provenance**
    (design decided 2026-07-30, spec not yet written; supersedes the "no remedy"
@@ -124,8 +97,16 @@ tracks only what is still open.
    a. **Silent concept demotion — three cases still open** (`diagInert` and
       `droppedValues` cover the rest; DESIGN §13):
       (i) a PARTIAL drop — a rule reading `<value.1>` of a value built from two
-      holes silently drops the second; needs a sound static map from holes to
-      token positions (a multi-token capture breaks the naive one).
+      holes silently drops the second. The static map this needed is now cheap:
+      a several-part value stores ONE quoted part per hole (see DESIGN §13, "A
+      several-part value"), so part N of an assertion is hole N by construction.
+      What is missing is the gate that uses it, in `Engine/Reach.dropOf`, whose
+      `carries` still counts any `<value*>` use as carrying every hole. Same
+      place would catch two siblings for free: a statically out-of-range
+      `<value.N>` (today a loud runtime Left, but only if a program reaches it),
+      and a `<value.tail>` over a several-part value, which splits the parts'
+      WORDS again (`Engine/Value.fillV` sees the joined text `pick` returns, not
+      the parts) — no committed engine does it, and nothing refuses it.
       (ii) a per-hole DECORATIVE report — a hole demoted to a `Concept` on a
       line that otherwise realizes is invisible, since `diagInert` works per
       line, not per hole. Call sites exist: `board`, `habit`, `logscan` each
@@ -167,8 +148,7 @@ tracks only what is still open.
       postgres, same absent remedy.
 
    c. **`generate` accepts an engine whose binary does not exist.** DECIDED,
-      see item 1b. The http
-      re-mint of 2026-07-30 emitted `ExecStart = "${artifact.hello}/bin/hello"`
+      see item 1. The http re-mint of 2026-07-30 emitted `ExecStart = "${artifact.hello}/bin/hello"`
       with `module server` in `go.mod`, so the unit named a binary called
       `server`: past the mint gate, past `check`, caught only by the flake check
       `lipsArtifacts-build` (which is why that check exists -- the same defect
@@ -179,17 +159,22 @@ tracks only what is still open.
       to minutes. Until then, run `nix build
       .#checks.x86_64-linux.lipsArtifacts-build` by hand after every mint.
 
-   d. **`<value.N>` cannot carry a multi-word tail.** DECIDED, see item 1a.
-      (Filed by the `web` mint
-      itself as gap `multiword-route-body`, 2026-07-30; the refusal report is
-      recoverable from that mint's `.gap` in this branch's history.) A route's
-      status and body are one fact (`"<status> <body>"`) so both reach one
-      `extraConfig` option through `<value.1>`/`<value.2>`. `<value.N>` takes
-      exactly token N, so `- /msg returns status 200 with body "hello world"`
-      would silently truncate to `hello`. The grammar has no "rest from token
-      N" hole. Silent wrong output, not a loud failure, and the committed
-      `examples/web` engine has the shape today; only the corpus's single-word
-      bodies keep it from firing.
+   d. **A red fixture is parked untracked**: `examples/website*` in the main
+      worktree (a minted canvas/button program) is the program that exposed both
+      2026-07-31 defects. It now fails LOUD (`lips check` names lines 4 and 5:
+      the engine keys a subject by a two-word label), which is the correct
+      outcome, so it cannot be committed as an example — the corpus must stay
+      green. Either re-mint it against the current grammar (the mint must key
+      the button by `<n:index>`, not by its label) and commit it, or delete it.
+      Owner: whoever re-mints; the physics side is done.
+
+   e. **The per-line report contradicts itself on an unreadable decision.**
+      `lips check` prints `line 4  ok  p4  button.drück mich` from
+      `classifyLines` and then fails the whole file on that same line, because
+      the round-trip gate lives in `crystallize`, not in the per-line outcome.
+      The failure is loud and names the line, so this is cosmetic, but a reader
+      sees "ok" next to the line that broke. Candidate: carry the round-trip
+      verdict in `LineOutcome` so `Diagnose` marks the line.
 
 4. **The 18 committed engines predate the recorded schema pin, so their stamps
    no longer re-hash.** The generation record gained a `schema:` line (the locked

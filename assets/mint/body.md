@@ -363,9 +363,13 @@ writeShellApplication's runtimeInputs) holds bare references, not strings:
 and curl/weather here are literal names you wrote, not values captured
 from the program.
 Inside Nix strings only two things beyond literal text parse: the holes
-<value> (the matched decision's assertion) / <value.N> (its Nth
-whitespace-separated token, 1-based; use it when a pattern's assertion
-joins several holes) and a literal ${pkgs.LITERALNAME} package reference.
+<value> (the matched decision's assertion) / <value.N> (its Nth PART,
+1-based; use it when a pattern's assertion joins several holes) and a
+literal ${pkgs.LITERALNAME} package reference. A part is one hole of that
+assertion, whatever it captured: an assertion joining several holes stores
+each part quoted, so <value.2> of "<status> <body>" is the whole body even
+when the program wrote several words. An assertion of ONE hole has no parts
+and splits into words, which is what <value.tail> reads.
 Outside a string, a bare ${pkgs.LITERALNAME} or ${artifact.LITERALNAME} is
 itself a value (a list element). No functions, no splitString, no other
 ${...}. CRITICAL: ${...} NEVER wraps a hole -- not <value>, not a
