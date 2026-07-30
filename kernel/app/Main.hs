@@ -34,6 +34,7 @@ import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getEnvironment, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
+import           GHC.IO.Encoding     (setLocaleEncoding)
 import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist,
                                      doesPathExist, getTemporaryDirectory, listDirectory,
@@ -92,6 +93,14 @@ main = do
   -- into a crash. Pin UTF-8 so what lips prints does not depend on the
   -- environment it is run from. (@lsp@ sets its own binary mode afterwards.)
   mapM_ (`hSetEncoding` utf8) [stdout, stderr]
+  -- Every FILE lips reads is UTF-8 too, and a committed record legitimately
+  -- carries non-ASCII (a .generation embeds the mint prompt, em dashes and all).
+  -- Without this the encoding of a READ follows the ambient locale, so the same
+  -- committed engine decodes under LANG=C.UTF-8 and throws under LANG unset --
+  -- which is exactly the environment a nix build runs in. That failure was
+  -- silent where a reader treats "unreadable" as "absent", and it compiled a
+  -- kubenix program into a NixOS flake. Pin it once, here.
+  setLocaleEncoding utf8
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
     Generate go -> generate (goTarget go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
@@ -161,15 +170,24 @@ ensureDerived file = do
 
 -- | The world an engine was minted for, read from its committed .generation
 -- record (the @target:@ line). An engine minted before targets existed has no
--- such line and defaults to nixos, so old engines keep working.
+-- record line and defaults to nixos, so old engines keep working -- but a record
+-- that EXISTS and cannot be read is a loud failure, never the default world:
+-- guessing here compiles a program into the wrong world's flake, and the whole
+-- output still looks plausible (deduce-or-fail).
 readRecordedTarget :: FilePath -> FilePath -> IO Target
 readRecordedTarget dir file = do
-  m <- tryRead (generationPathIn dir file)
-  pure $ case m of
-    Nothing  -> defaultTarget
-    Just src -> case [ t | l <- T.lines src
-                         , Just rest <- [T.stripPrefix "target:" l]
-                         , Just t <- [parseTarget (T.unpack (T.strip rest))] ] of
+  let path = generationPathIn dir file
+  there <- doesPathExist path
+  m <- tryRead path
+  case (there, m) of
+    (True, Nothing) -> die (report
+      ("lips can't read the generation record at " <> T.pack path <> ",")
+      ["so it cannot tell which world this engine was minted for."]
+      "\8594 restore the file, or re-mint: lips generate <program>.")
+    (_, Nothing) -> pure defaultTarget
+    (_, Just src) -> pure $ case [ t | l <- T.lines src
+                                     , Just rest <- [T.stripPrefix "target:" l]
+                                     , Just t <- [parseTarget (T.unpack (T.strip rest))] ] of
       (t : _) -> t
       []      -> defaultTarget
 
