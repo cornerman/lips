@@ -457,6 +457,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Live host deployment.** The headline missing proof (§13 "Shortest
+  Summary"): `examples/logscan.lips`'s already-minted engine (a JSON-log
+  filter CLI, target `home-manager`, needing no `pi`/model call to reuse) is
+  imported into `~/nixos`, a real machine's own NixOS + home-manager
+  configuration, via the public `lib.modulesFromDir` helper -- not a VM, not
+  this repo. `lips check` and `lips compile` ran clean, `nixos-rebuild build`
+  proved it before anything live changed, and `nixos-rebuild switch` is now
+  applied: `logscan` runs from a real user's PATH on a real system, committed
+  in that repo (`b3ed547`). This is the coexistence defense (DESIGN §9, item
+  5) made real rather than asserted: one Solution realized as one ordinary
+  home-manager module, imported beside a repo's own hand-written modules, on
+  hardware. The attempt paid for itself before it ever switched: see the
+  entry directly below ("A public `nixosModules`/`homeManagerModules` value
+  is now actually importable") for the real bug it surfaced and fixed, which
+  no VM-only check had ever caught.
+
 - **A public `nixosModules`/`homeManagerModules` value is now actually
   importable, as documented.** Found by the first real live deployment (a
   home-manager module nested inside a NixOS host on a real machine, not this
@@ -1827,10 +1843,6 @@ gate on an artifact-only engine, and the concept escape.
   refusing anything else is a one-line, fail-loud check.
 
 ### Missing
-
-- **Live host deployment.** The VM smoke test proves the module class; wiring
-  one realized module into `~/nixos` on `wolf` is now reduced to "import one
-  file" and remains optional symbolism.
 - **Artifacts: deferred pieces.** The core landed (see Done), a program value
   reaches inside baked source through a *fill*, and repeating source is settled as
   unnecessary (both in Done). Still open: dependency-fetching builders (a
@@ -2036,5 +2048,8 @@ gate on an artifact-only engine, and the concept escape.
 
 The deterministic spine, the language-crystallization loop, and whole-engine
 synthesis are real and tested: lips now mints an engine for an unseen domain
-and absorbs edits offline. A **live NixOS deployment** is the missing proof
-that it survives a real system. Everything else is hardening or breadth.
+and absorbs edits offline. A **live host deployment** has now run and
+switched on a real machine (§13, "Live host deployment"), which is also what
+surfaced and closed the one bug a VM-only test suite could not see (the same
+section, "nixosModules/homeManagerModules ... now actually importable").
+Everything else is hardening or breadth.
