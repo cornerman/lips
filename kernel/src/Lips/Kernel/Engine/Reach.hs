@@ -46,6 +46,7 @@ import Lips.Kernel.Decision       (Assertion (..), Kind (Concept), Subject (..))
 import Lips.Kernel.Engine.Data    (Emit (..), MapRule (..), renderAttrPath)
 import Lips.Kernel.Engine.Overlap (subjectsUnify)
 import Lips.Kernel.Engine.Value   (valueCaptures, valueUsesAssertion)
+import Lips.Kernel.Lang.Nest    (holesInScope)
 import Lips.Kernel.Lang.Pattern   (Pattern (..), applyPattern, holesOf)
 
 -- | Why a word reaches no output.
@@ -72,23 +73,28 @@ droppedValues :: [Pattern] -> [MapRule] -> [DroppedValue]
 droppedValues pats rules =
   [ DroppedValue (pId p) h why
   | p <- pats
+  -- A word is judged where it is BOUND: an ancestor's capture is the ancestor
+  -- line's own word, judged when that pattern is judged.
   , h <- holesOf p
-  , Just why <- [dropOf rules p h]
+  , Just why <- [dropOf pats rules p h]
   ]
 
 -- | Where a hole's word lands, decided by running the pattern's own
 -- substitution with each hole bound to a unique marker. Reusing 'applyPattern'
 -- (rather than re-deriving how a subject splits into segments) keeps this check
 -- honest: it sees exactly the subjects and assertions crystallize will build.
-dropOf :: [MapRule] -> Pattern -> Text -> Maybe DropWhy
-dropOf rules p h
+dropOf :: [Pattern] -> [MapRule] -> Pattern -> Text -> Maybe DropWhy
+dropOf pats rules p h
   | null carrying = if decorative then Nothing else Just EmittedNowhere
   | any reached judged = Nothing
   | otherwise = case [(fam, ids) | (fam, ids, _) <- judged, not (null ids)] of
       []               -> Nothing
       ((fam, ids) : _) -> Just (IgnoredBy fam ids)
   where
-    holes  = holesOf p
+    -- Every hole IN SCOPE, not just this template's: a nested pattern's emits
+    -- may name an ancestor's capture, and applyPattern is total only over a
+    -- complete binding map.
+    holes  = holesInScope pats p
     marks  = Map.fromList [(x, marker x) | x <- holes]
     filled = [(segs, k, a) | (Subject segs, k, Assertion a, _) <- applyPattern p marks]
     mentions (segs, _, a) = any hit segs || hit a

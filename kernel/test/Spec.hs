@@ -1907,6 +1907,20 @@ main = hspec $ do
         , ["tree","Edit"], ["tree","Edit","New"]
         ]
 
+    it "names the block each line sits in, and stops calling a header decoration" $ do
+      -- Before blocks, the two host headers were reported "decorative, realizing
+      -- nothing -- editing these changes no output", which was false: their word
+      -- keys every option their items realize.
+      let eng = EngineData [host, route] [] [] []
+          src = T.unlines
+            [ "host shop.example.com:", "- / proxies to http://localhost:3000."
+            , "host blog.example.com:", "- / proxies to http://localhost:4000." ]
+          d = diagnose "g" eng src
+      [ (n, par) | Matched n _ _ par _ <- diagLines d ]
+        `shouldBe` [(1, Nothing), (2, Just 1), (3, Nothing), (4, Just 3)]
+      diagHeads d `shouldBe` [(1, "host shop.example.com:", 1), (3, "host blog.example.com:", 1)]
+      diagInert d `shouldBe` []
+
     it "refuses <key> in a pattern that heads no block" $
       checkNesting [patOne "p1" [TLit "x"] Concept [SHole "k:key", SLit ".a"] []]
         `shouldBe` [KeyWithoutBlock "p1"]

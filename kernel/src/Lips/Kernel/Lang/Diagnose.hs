@@ -54,6 +54,7 @@ data Diagnosis = Diagnosis
   , diagInert   :: [(Int, Text)] -- ^ lines that realize nothing: line no and source text
   , diagDropped :: [(Int, Text, [Text])] -- ^ lines whose bound words reach no output: line no, source text, hole names
   , diagRestated :: [(Int, Int, Text)]   -- ^ lines absorbed by an earlier one: line no, that earlier line, the shared subject
+  , diagHeads    :: [(Int, Text, Int)]   -- ^ lines that open a block: line no, source text, how many lines sit in it
   }
   deriving (Eq, Show)
 
@@ -74,6 +75,7 @@ diagnose file eng src =
         , diagInert   = inertLines outcomes
         , diagDropped = droppedLines (droppedValues (edPatterns eng) (edRules eng)) outcomes
         , diagRestated = restatements outcomes
+        , diagHeads    = blockHeads outcomes
         }
 
 -- | The lines that realize nothing. 'Concept' is the only kind realize drops
@@ -86,6 +88,20 @@ inertLines outcomes =
   | Matched n txt _ _ decs <- outcomes
   , not (null decs)
   , all ((== Concept) . dKind) decs
+  -- A line that OPENS a block is a different case, reported as one: it realizes
+  -- nothing itself, but the lines inside it carry its words into their subjects,
+  -- so "editing this changes no output" would be false.
+  , n `notElem` map (\(h, _, _) -> h) (blockHeads outcomes)
+  ]
+
+-- | The lines that open a block, with how many lines sit in them. A block head
+-- is simply a line some other line scoped to.
+blockHeads :: [LineOutcome] -> [(Int, Text, Int)]
+blockHeads outcomes =
+  [ (n, txt, kids)
+  | Matched n txt _ _ _ <- outcomes
+  , let kids = length [() | Matched _ _ _ (Just b) _ <- outcomes, b == n]
+  , kids > 0
   ]
 
 -- | Join the engine's dropped words onto the program lines that produced them.

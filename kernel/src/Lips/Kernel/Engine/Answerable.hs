@@ -35,7 +35,8 @@ import qualified Data.Text       as T
 import Lips.Kernel.Decision       (Subject (..))
 import Lips.Kernel.Engine.Data    (DemandSpec (..), renderAttrPath)
 import Lips.Kernel.Engine.Overlap (subjectsUnify)
-import Lips.Kernel.Lang.Pattern   (Pattern (..), applyPattern, holesOf)
+import Lips.Kernel.Lang.Nest      (holesInScope)
+import Lips.Kernel.Lang.Pattern   (Pattern (..), applyPattern)
 
 -- | A demand no program can answer: the demand, and every subject family the
 -- language's patterns do emit (the report names them, since the fix is almost
@@ -55,17 +56,19 @@ unanswerableDemands pats demands =
   | d <- demands
   , not (any (subjectsUnify (dsSubject d)) families)
   ]
-  where families = concatMap emittedFamilies pats
+  where families = concatMap (emittedFamilies pats) pats
 
 -- | The subject families one pattern emits, with each hole standing as its own
 -- capture. Derived by running the pattern's own substitution ('applyPattern'),
 -- so the families are exactly the subjects crystallize will build -- the same
 -- move 'Lips.Kernel.Engine.Reach' makes, rather than re-deriving how a subject
 -- splits into segments.
-emittedFamilies :: Pattern -> [[Text]]
-emittedFamilies p =
+emittedFamilies :: [Pattern] -> Pattern -> [[Text]]
+emittedFamilies pats p =
   [ segs | (Subject segs, _, _, _) <- applyPattern p bound ]
-  where bound = Map.fromList [(h, "<" <> h <> ">") | h <- holesOf p]
+  -- Every hole IN SCOPE: a nested pattern's subject may carry an ancestor's
+  -- capture, and that segment is a capture in the family too.
+  where bound = Map.fromList [(h, "<" <> h <> ">") | h <- holesInScope pats p]
 
 -- | One unanswerable demand in the words its author (the model, at the mint
 -- gate) needs: which demand, the subject nothing emits, and what is on offer.

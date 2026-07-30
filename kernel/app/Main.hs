@@ -259,7 +259,7 @@ expectGate contract dir file eng program = do
 renderDiagnosis :: FilePath -> Diagnosis -> Text
 renderDiagnosis file d =
   T.intercalate "\n" (headline : map row (diagLines d)
-                        ++ inertBlock ++ restatedBlock ++ droppedBlock ++ openBlock)
+                        ++ headBlock ++ inertBlock ++ restatedBlock ++ droppedBlock ++ openBlock)
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
@@ -278,6 +278,16 @@ renderDiagnosis file d =
     -- changes nothing. Naming it is the point: a heading is legitimately
     -- decorative, but so is a line the mint quietly declined to honor, and only
     -- the author can tell which this is.
+    -- A line that opens a block realizes nothing itself, but the lines inside it
+    -- carry its words, so it is not decoration and must not be listed as such.
+    headBlock
+      | null (diagHeads d) = []
+      | otherwise =
+          "" : ("opens a block (" <> tshow (length (diagHeads d))
+                  <> ") -- realizes nothing itself; the lines inside it do:")
+              : [ "  line " <> tshow n <> "  \"" <> t <> "\"  (" <> tshow k
+                    <> (if k == 1 then " line" else " lines") <> " inside)"
+                | (n, t, k) <- diagHeads d ]
     inertBlock
       | null (diagInert d) = []
       | otherwise =
