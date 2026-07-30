@@ -108,7 +108,9 @@ readLang src =
 
 classify :: Int -> Decision -> Either ParseError EngLine
 classify n d = case dSubject d of
-  Subject ["lang", "pattern", i]   -> tag ELPat  (parsePatternBody i body)
+  Subject ["lang", "pattern", i]              -> tag ELPat (parsePatternBody i body)
+  -- A nested pattern names its parent in the path: lang.pattern.p3.under.p2.
+  Subject ["lang", "pattern", i, "under", par] -> tag ELPat (parsePatternBody (i <> ".under." <> par) body)
   Subject ["engine", "rule", i]    -> tag ELRule (parseRuleBody   i body)
   Subject ["engine", "demand", i]  -> tag ELDem  (parseDemandBody i body)
   Subject ["engine", "merge", i]    -> tag ELMerge (parseMergeBody i body)
@@ -145,13 +147,20 @@ metaDecision i segs body =
 
 -- | Turn a pattern into its canonical @meta@ decision.
 patternToDecision :: Pattern -> Decision
-patternToDecision p = metaDecision (pId p) ["lang", "pattern", pId p] (renderBody p)
+patternToDecision p = metaDecision (pId p) ("lang" : "pattern" : idSegs) (renderBody p)
+  where
+    -- Segments, not one dotted segment: the canonical renderer escapes a dot
+    -- INSIDE a segment, so a nested id has to be spelled as the path it is.
+    idSegs = case pParent p of
+      Nothing  -> [pId p]
+      Just par -> [pId p, "under", par]
 
 -- | Parse a @lang.pattern.*@ decision back into a pattern, or explain why not.
 decisionToPattern :: Decision -> Either Text Pattern
 decisionToPattern d = do
   pid <- case dSubject d of
-    Subject ["lang", "pattern", i] -> Right i
+    Subject ["lang", "pattern", i]               -> Right i
+    Subject ["lang", "pattern", i, "under", par] -> Right (i <> ".under." <> par)
     _ -> Left "not a lang.pattern subject"
   parseBody pid (unAssertion (dAssertion d))
   where
@@ -190,7 +199,8 @@ quoteParts :: [StrPart] -> Text
 quoteParts = quoteText . renderParts
 
 parseBody :: Text -> Text -> Either Text Pattern
-parseBody pid body = do
+parseBody idTok body = do
+  (pid, parent) <- parsePatternId idTok
   (tplStr, rest0) <- maybe (Left ("pattern " <> pid <> ": missing =>")) Right
                        (splitOnSeparator body)
   -- Drop empty-literal tokens (pure punctuation), symmetric with 'tokenizeLine',
@@ -199,14 +209,17 @@ parseBody pid body = do
   let template = filter (not . emptyLit) (map parseTplTok (lexTokens tplStr))
       emptyLit (TLit t) = T.null t
       emptyLit _        = False
-  emits <- mapM (parseEmit . T.strip) (splitOutsideQuotes " ; " rest0)
-  let p = Pattern { pId = pid, pTemplate = template, pEmits = emits }
-  -- Every hole in the target must be bound by the template, so 'applyPattern'
-  -- is total. Reject a pattern that would leave any emit's hole dangling.
+  emits <- mapM (parseEmit pid . T.strip) (splitOutsideQuotes " ; " rest0)
+  let p = Pattern { pId = pid, pParent = parent, pTemplate = template, pEmits = emits }
+  -- Every hole in the target must be bound, so 'applyPattern' is total. A
+  -- top-level pattern binds only through its own template, and is judged here.
+  -- A NESTED one also sees its ancestors' captures, which one pattern's parse
+  -- cannot know, so its holes are judged where every pattern is in hand:
+  -- 'Lips.Kernel.Lang.Nest.checkNesting', run by 'readLang' -- the one door.
   let bound = holesOf p
       used  = concat [ [h | SHole h <- peSubject e] ++ [h | SHole h <- peAssertion e] | e <- emits ]
       loose = filter (`notElem` bound) used
-  if null loose
+  if null loose || parent /= Nothing
     then Right p
     else Left ("pattern " <> pid <> ": target holes not bound by template: " <> T.intercalate "," loose)
   where
@@ -214,7 +227,7 @@ parseBody pid body = do
     -- pattern reads a program line the human wrote, so 'applyPattern' fixes the
     -- emitted decision to 'Stated'; there is nothing for the mint to choose or
     -- forget here.
-    parseEmit t = do
+    parseEmit pid t = do
       (kindTok, r1) <- firstToken t ("pattern " <> pid <> ": missing kind")
       (subjTok, r2) <- firstToken r1 ("pattern " <> pid <> ": missing subject")
       kind <- maybe (Left ("pattern " <> pid <> ": unknown kind " <> kindTok)) Right (lookup kindTok kindTable)

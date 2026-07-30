@@ -33,6 +33,9 @@ module Lips.Kernel.Lang.Pattern
   , PatEmit (..)
   , Pattern (..)
   , patOne
+  , patUnder
+  , parsePatternId
+  , renderPatternId
   , normalizeToken
   , stripTrailingPunct
   , lexTokens
@@ -83,17 +86,50 @@ data PatEmit = PatEmit
 -- | A crystallization pattern: one token template and the decisions a matching
 -- loose line produces. Each 'PatEmit' becomes one decision, its subject and
 -- assertion built by filling holes with captured surface tokens.
+--
+-- 'pParent' names the pattern this one nests UNDER, if any: a matching line is
+-- then read as an item of the block headed by the nearest preceding line that
+-- matched that parent, and the parent's captures are in scope here
+-- ('Lips.Kernel.Lang.Nest'). Nothing about a block is spelled in the template,
+-- so the kernel never learns how a language marks one -- the language's own
+-- words do, through the parent's template.
 data Pattern = Pattern
   { pId       :: Text
+  , pParent   :: Maybe Text
   , pTemplate :: [TplTok]
   , pEmits    :: [PatEmit]
   }
   deriving (Eq, Show)
 
--- | The common single-emit pattern (one loose line to one decision), spelled
--- out so call sites and tests stay readable.
+-- | The common single-emit, top-level pattern (one loose line to one decision),
+-- spelled out so call sites and tests stay readable.
 patOne :: Text -> [TplTok] -> Kind -> [StrPart] -> [StrPart] -> Pattern
-patOne i tpl k subj assn = Pattern i tpl [PatEmit k subj assn]
+patOne i tpl k subj assn = Pattern i Nothing tpl [PatEmit k subj assn]
+
+-- | A pattern nested under another, by parent id.
+patUnder :: Text -> Text -> [TplTok] -> [PatEmit] -> Pattern
+patUnder i parent tpl = Pattern i (Just parent) tpl
+
+-- | Split a pattern id token into the pattern's own id and the parent it nests
+-- under: @p3.under.p2@ is the pattern @p3@ inside @p2@'s block. One spelling at
+-- both doors -- the stored subject path @lang.pattern.p3.under.p2@ and the mint
+-- item's id token -- so the two cannot drift.
+--
+-- Carried on the id rather than inside the pattern body because the body is
+-- free template text: a prefix there could not be told apart from a template
+-- that legitimately begins with the word @under@, and refusing such a template
+-- would be a missing grammar case (invariant 3). On the id it is also
+-- structurally at most one parent, so \"two parents\" needs no check.
+parsePatternId :: Text -> Either Text (Text, Maybe Text)
+parsePatternId tok = case T.splitOn ".under." tok of
+  [i]         -> Right (i, Nothing)
+  [i, parent] | not (T.null i), not (T.null parent) -> Right (i, Just parent)
+  _           -> Left ("pattern id " <> tok <> ": a nested id is <id>.under.<parent>")
+
+-- | The id token a pattern is stored and minted under (inverse of
+-- 'parsePatternId'): the bare id, or @\<id\>.under.\<parent\>@.
+renderPatternId :: Pattern -> Text
+renderPatternId p = maybe (pId p) ((pId p <> ".under.") <>) (pParent p)
 
 -- | The hole names a pattern binds, in template order. A multi-token hole binds
 -- a name too, so a target @<name>@ may be filled from such a capture (otherwise

@@ -1292,7 +1292,7 @@ main = hspec $ do
     -- "http server in <lang> on port <port>" states BOTH language and port; the
     -- one pattern that matches the line must emit both, or a demand on the
     -- second could never be met (the bug that motivated this).
-    let denseP = Pattern "p1"
+    let denseP = Pattern "p1" Nothing
                    [ TLit "http", TLit "server", TLit "in", THole "lang"
                    , TLit "on", TLit "port", THole "port" ]
                    [ PatEmit Steer [SLit "server.language"] [SHole "lang"]
@@ -1580,7 +1580,7 @@ main = hspec $ do
     -- through crystallize -> refine -> realize into two DISTINCT keyed options
     -- (the collision the value-keyed-options gap caused is gone).
     it "end to end: two routes fan out to two path-keyed options" $ do
-      let routeP = Pattern "pr"
+      let routeP = Pattern "pr" Nothing
                      [ TLit "-", THole "path", TLit "=>", TLit "status", THole "code" ]
                      [ PatEmit Fact [SLit "route.", SHole "path", SLit ".status"] [SHole "code"] ]
           routeRule = MapRule "r" Fact ["route", "<path>", "status"]
@@ -1818,6 +1818,37 @@ main = hspec $ do
 
     it "round-trips the whole engine: readLang . renderLang == Right" $
       readLang (renderLang (FromGeneration "cafe0123") engine) `shouldBe` Right engine
+
+    it "round-trips a pattern that names the pattern it nests under" $ do
+      -- Nesting rides the pattern id, so the template grammar is untouched: a
+      -- template may still begin with the word "under" (a body prefix could not
+      -- be read out of free template text without refusing such a template,
+      -- which invariant 3 calls a kernel bug).
+      let host  = patOne "p2" [TLit "host", THole "domain"]
+                    Concept [SLit "host.", SHole "domain"] [SLit "a virtual host"]
+          route = patUnder "p3" "p2" [TLit "-", THole "path", TLit "proxies", TLit "to", THole "up"]
+                    [ PatEmit Fact
+                        [SLit "host.", SHole "domain", SLit ".route.", SHole "path", SLit ".proxy"]
+                        [SHole "up"] ]
+          ed = EngineData [host, route] [] [] []
+      readLang (renderLang (FromGeneration "cafe0123") ed) `shouldBe` Right ed
+
+    it "stores the parent in the pattern's subject path" $
+      renderLang (FromGeneration "cafe0123")
+        (EngineData [patUnder "p3" "p2" [TLit "x"] [PatEmit Concept [SLit "a"] [SLit "b"]]] [] [] [])
+        `shouldSatisfy` T.isInfixOf "lang.pattern.p3.under.p2"
+
+    it "reads a qualified pattern id at the mint door" $
+      fmap pParent (parsePatternBody "p3.under.p2" "- <path> => concept a.<path> \"x\"")
+        `shouldBe` Right (Just "p2")
+
+    it "leaves an unqualified pattern id parentless" $
+      fmap pParent (parsePatternBody "p3" "- <path> => concept a.<path> \"x\"")
+        `shouldBe` Right Nothing
+
+    it "keeps the bare id as the pattern's own id" $
+      fmap pId (parsePatternBody "p3.under.p2" "- <path> => concept a.<path> \"x\"")
+        `shouldBe` Right "p3"
 
     it "rejects an unrecognized engine line loudly (never silently dropped)" $ do
       -- Regression (kernel review): a mistyped group subject must fail, not be
