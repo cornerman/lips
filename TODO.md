@@ -76,6 +76,61 @@ tracks only what is still open.
 
 ## Backlog (larger / deferred by design)
 
+- **Cross-program composition (one program naming another).** Nix composes;
+  lips does not yet. Two shapes, both wanted. SAME WORLD: a kubenix program
+  importing what a sibling program realized (a shared namespace, a config map
+  another program owns). ACROSS WORLDS: a program whose whole point is built
+  SOURCE -- an artifact today -- becoming an OCI image that a kubenix
+  Deployment's `image` field names, so "build this service" and "run it in the
+  cluster" are two programs, each in its own language, composed instead of
+  merged. Today an `artifact.<name>` is reachable only inside its own program's
+  realized module (a `let` binding), and no grammar names another program's
+  artifact or option. What is needed: a reference that stays deduce-or-fail (a
+  NAME resolved at compile from the sibling program's identity, never a
+  computation), plus a stated rule for the cross-world case -- the module shape
+  is world-specific, only the artifact is world-neutral, so the artifact is the
+  natural seam. kubenix already ships `modules/docker.nix` and
+  `docker-image-from-package.nix`, so image-from-derivation is upstream physics
+  lips can reach by name rather than invent. Dual of the existing
+  "Multi-language composition" item (several engines in one Solution): same
+  axis, one level up.
+
+- **A world's vocabulary is not fixed: CRDs and house conventions.** Two gaps
+  the kubenix target makes visible, both target-tier, neither a kernel change.
+  (i) GROUNDING STOPS AT UPSTREAM. The kubenix schema is built from the pinned
+  flake's generated Kubernetes API, so a cluster's CRDs (cert-manager, Istio,
+  ArgoCD) are absent and a rule naming `kubernetes.resources.certificates.*`
+  is refused as unknown although the cluster has it. The schema source must be
+  able to take extra resource definitions (kubenix's own imported-CRD path)
+  and record what it took, or grounding is honest only for vanilla clusters.
+  (ii) CONVENTION HAS NO WORLD-LEVEL CHANNEL. Label keys, naming, namespace
+  policy, resource limits are mechanism taste -- exactly what
+  `<language>.direction` carries -- but nothing today states a direction shared
+  by every language minted into one world. Candidate: a per-world direction
+  file beside the per-program one, entering the generation record the same way,
+  so a house convention is stated once instead of re-typed per language.
+
+- **Targets as external plugins.** A world is four knobs: mint preamble
+  (markdown, already data), schema source (a Nix expression plus an output
+  sub-path, nearly data), schema reshaping (Haskell -- kubenix needed three
+  operations: re-key an alias, drop inner nodes, unwrap optionals), and the run
+  harness (Haskell emitting flake text and printed rungs). Two of four are data
+  today, so an external world descriptor is plausible but would be designed
+  from one example. Decide after terranix lands, which shows whether the
+  reshaping and the harness really factor. Counter-argument to weigh then: a
+  plugin's harness is arbitrary Nix, i.e. an arbitrary-code channel into
+  compiled output, while the closed set keeps every world reviewed in-tree.
+
+- **terranix grounding is path-blind below the top level.** Recorded when the
+  terranix target lands (phase 2 of the kubenix/terranix spec): terranix's core
+  options (`resource`, `data`, `provider`) are one free-form "magic merge"
+  valueType, so an options document from `terranix.lib.terranixOptions`
+  describes the core only and every provider path below it is accepted
+  unchecked. The remedy is a different schema source -- `terraform providers
+  schema -json`, a per-provider network fetch at generate time -- which
+  generate could afford (it is already online) but which no minted program has
+  yet needed.
+
 - **Mint round loop** — deferred, analysis kept so it is not redone. The idea:
   when the gate rejects an engine, re-prompt the model with the findings
   instead of dying, bounded by `--max-rounds`. Why it waits: a fresh `pi -p`

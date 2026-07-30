@@ -10,11 +10,11 @@ turns your intent into a running system deterministically, with no AI in the
 loop.
 
 What it compiles to is Nix: a module of `path = value` assignments that some
-`evalModules` consumes. NixOS is one such world, home-manager another, and you
-pick which one at mint time with `--target`. The axis is open, because every
-world emits the same module shape and differs only in the option vocabulary its
-rules name (terranix and kubenix are the candidates queued behind the two that
-ship today).
+`evalModules` consumes. NixOS is one such world, home-manager another, kubenix
+a third (Kubernetes manifests), and you pick which one at mint time with
+`--target`. The axis is open, because every world emits the same module shape
+and differs only in the option vocabulary its rules name (terranix is the
+candidate queued behind the three that ship today).
 
 The point is to keep what a human owns small enough to read. AI now writes code
 faster than anyone can review it, so lips shrinks the reviewed artifact to a few
@@ -90,10 +90,11 @@ happens afterwards, offline, by lips itself. The mint's own instructions are a
 reviewable artifact, not a secret: they live as plain markdown under
 `assets/mint/` in this repo, embedded into the binary at build time.
 
-`--target nixos` (the default) or `--target home-manager` picks the world the
-engine is born into. The flag steers the mint into that world's option
-namespace (`services.*`, `boot.*`, `users.*` versus `programs.*`,
-`systemd.user.*`, `home.file.*`) and grounds every minted option path against
+`--target nixos` (the default), `--target home-manager` or `--target kubenix`
+picks the world the engine is born into. The flag steers the mint into that
+world's option namespace (`services.*`, `boot.*`, `users.*` versus `programs.*`,
+`systemd.user.*`, `home.file.*` versus
+`kubernetes.resources.<kind>.<name>.*`) and grounds every minted option path against
 that world's own schema, so a path that does not exist there is refused before
 anything is written. Nothing translates between worlds: a user-service backup
 is a different intent, minted into a different engine. The choice is recorded
@@ -105,14 +106,20 @@ your text into a directory holding `default.nix` (the Nix module, for import
 and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory
 runnable. `compile` reads the recorded world to decide what that flake offers:
 a NixOS engine gets a bootable VM, a home-manager engine gets the module and an
-import hint, since there is no machine to boot. Running is not a lips verb:
+import hint, since there is no machine to boot, and a kubenix engine gets its
+rendered manifests. Running is not a lips verb:
 `compile` prints the exact stock `nix` commands over that directory, and you
 pick one. A program that builds an
 artifact prints `nix run …#artifact.<name>` (run the binary bare) and
 `nix shell …#artifact.<name>`; a system module prints `nix run …#vm`
 (a throwaway QEMU boot of the whole system), `nix build …#vm` (build it
 without booting, no KVM -- the "does it build" check), and `nix develop …`
-(a shell holding the tools the program adds to the system PATH). The host is
+(a shell holding the tools the program adds to the system PATH). A kubenix
+module prints `nix run …#manifest > manifests.yaml` (kubenix's own
+multi-document YAML, ready to pipe into `kubectl`), `nix build …#manifest`
+(the "does it render and validate" check, since kubenix refuses an unknown or
+mistyped field at evaluation), `nix run …#manifest-json` for the JSON form, and
+`nix develop …` (a shell holding `kubectl`). The host is
 never touched.
 
 The shell is derived, never declared. `compile` evaluates the module once and

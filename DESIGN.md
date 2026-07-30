@@ -1151,6 +1151,40 @@ but the loop around it is incomplete; "missing" means specced, not built.
   provisioning that was blocked before now realizes to `services.postgresql.
   ensureUsers = [ { name = "app"; ensureDBOwnership = true; } ]`.
 
+- **Third realization target (kubenix).** `lips generate --target kubenix`
+  mints into `kubernetes.resources.<kindPlural>.<self>.*` and `compile` renders
+  Kubernetes manifests. Zero kernel change, as the target axis promised: the
+  three knobs are `assets/mint/kubenix.md` (the world preamble),
+  `Lips.Nix.Kubenix` (the grounding schema) and `Lips.Nix.Flake` (the rungs),
+  plus one dispatcher, `Lips.Nix.Schema.schemaFor`, so the two grounding call
+  sites cannot disagree about a world. Grounding is real, not nominal: lips
+  builds a 31478-entry `optionsJSON` with `nixosOptionsDoc` over an empty
+  `kubenix.evalModules` (pinned `LIPS_KUBENIX_FLAKE`, ~4 minutes once, then
+  cached), and reshapes it three ways, each a kubenix fact and none a kernel
+  one: RE-KEY the typed tree `kubernetes.api.resources.*` onto the alias every
+  kubenix module writes; DROP every inner node, because `checkEmits` accepts any
+  path descending into a declared option and kubenix declares its inner nodes
+  free-form (`attribute set of (attribute set)`), so keeping them would make
+  every misspelled field admissible; UNWRAP `null or <type>`, since almost every
+  Kubernetes field is optional and would otherwise degrade to `OTOther`.
+  `lips options --target kubenix 'kubernetes.resources.services.*.spec.ports'`
+  answers with typed leaves. The compiled flake exposes `kubenixModules.default`
+  and both of kubenix's OWN rendered outputs (`resultYAML`, `result`), so lips
+  converts nothing: `nix run …#manifest > manifests.yaml` writes,
+  `nix build …#manifest` checks (kubenix refuses an unknown or mistyped field at
+  evaluation -- a second gate independent of grounding), `nix develop` gives a
+  `kubectl` shell. No apply rung: a lips-written script mutating a live cluster
+  buys nothing over an explicit pipe. Proven live by two committed examples in
+  two languages: `examples/web.deploy.lips` (Deployment + Service, namespace,
+  container and service ports) and `examples/report.cron.lips` (CronJob,
+  schedule, history limits, deadline), both rendering real YAML. One finding
+  fixed on the way: the module header and several messages named "NixOS" from
+  domain-blind layers (`Realize`, `OptionType.renderOptionError`), which was
+  wrong the moment a third world existed. Design in
+  `docs/superpowers/specs/2026-07-30-kubenix-terranix-targets-design.md`; its
+  phase 2 (terranix) is designed but unbuilt, and its grounding weakness is
+  recorded in `TODO.md` rather than hidden.
+
 - **Realization target (NixOS / home-manager).** The world an engine targets is
   per-problem knowledge that lives in the option paths its rules emit, decided
   at mint time; the kernel stays world-blind (`realize` emits only
