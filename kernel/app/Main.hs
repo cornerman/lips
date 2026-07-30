@@ -778,6 +778,7 @@ ensureOptionSchema target remedy = do
             -- with nixosOptionsDoc; that helper's default output path is the
             -- nixos one, hence the same sub-path as NixOS.
             Kubenix     -> ("LIPS_KUBENIX_FLAKE", "/share/doc/nixos/options.json")
+            Terranix    -> ("LIPS_TERRANIX_FLAKE", "/share/doc/nixos/options.json")
       mflake <- lookupEnv envVar
       case mflake of
         Nothing -> die (report
@@ -833,6 +834,21 @@ schemaExpr Kubenix flakeref = T.pack $ concat
   , "pkgs = import k.inputs.nixpkgs { inherit system; }; "
   , "e = k.evalModules.${system} { module = { kubenix, ... }: "
   , "{ imports = [ kubenix.modules.k8s ]; }; }; in "
+  , "(pkgs.nixosOptionsDoc { options = e.options; warningsAreErrors = false; }).optionsJSON" ]
+-- terranix publishes @lib.terranixOptions@, but that helper documents the
+-- USER's modules: its jq pass deletes resource, data, provider, output and
+-- every other core namespace, which are exactly the paths a program writes. So
+-- lips evaluates terranix's own core modules and runs nixosOptionsDoc over
+-- them, the same mechanism the other worlds use. The lib.extend mirrors
+-- terranix's core/default.nix, whose modules use those lib helpers.
+schemaExpr Terranix flakeref = T.pack $ concat
+  [ "let t = builtins.getFlake \"", flakeref, "\"; "
+  , "system = builtins.currentSystem; "
+  , "pkgs = import t.inputs.nixpkgs { inherit system; }; "
+  , "lib = pkgs.lib.extend (import (t + \"/core/helpers.nix\") pkgs); "
+  , "e = lib.evalModules { modules = [ "
+  , "{ imports = [ (t + \"/core/terraform-options.nix\") (t + \"/modules\") ]; } "
+  , "{ _module.args = { inherit pkgs; }; } ]; }; in "
   , "(pkgs.nixosOptionsDoc { options = e.options; warningsAreErrors = false; }).optionsJSON" ]
 
 -- | Crystallize and fully run the program with a candidate engine; on success

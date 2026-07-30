@@ -16,9 +16,14 @@ import Lips.Nix.Kubenix       (parseKubenixOptionsJson)
 import Lips.Nix.Options       (parseNixOptionsJson)
 import Lips.Nix.Target        (Target (..))
 
--- | Parse the world's @optionsJSON@ document. NixOS and home-manager are read
--- as they come; kubenix needs reshaping first (see 'Lips.Nix.Kubenix').
+-- | Parse the world's @optionsJSON@ document. NixOS, home-manager and terranix
+-- are read as they come; kubenix needs reshaping first (see 'Lips.Nix.Kubenix').
+-- terranix needs none because its document is plain @nixosOptionsDoc@ output --
+-- but it grounds only its top-level Terraform namespaces, which are declared
+-- free-form, so every provider path below one is accepted unchecked (a known
+-- weakness, recorded in TODO.md, not a defect of this parser).
 schemaFor :: Target -> ByteString -> Either Text OptionSchema
 schemaFor Nixos       = parseNixOptionsJson
 schemaFor HomeManager = parseNixOptionsJson
 schemaFor Kubenix     = parseKubenixOptionsJson
+schemaFor Terranix    = parseNixOptionsJson

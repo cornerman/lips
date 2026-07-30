@@ -105,4 +105,6 @@ in {
   # kubenix has no module-output convention of its own, so lips names one, the
   # same name the compiled flake uses (Lips.Nix.Flake.moduleOutput).
   kubenixModules = byTarget "kubenix";
+  # Same for terranix: lips names the output, matching the compiled flake.
+  terranixModules = byTarget "terranix";
 }

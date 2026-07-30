@@ -66,6 +66,7 @@ flakeText target hasArtifacts = T.unlines $
   ]
   ++ nixosBuildsLet target hasArtifacts
   ++ kubenixBuildsLet target
+  ++ terranixBuildsLet target
   ++ [ "    in {" ]
   ++ moduleOutput target
   ++ packagesOutput target hasArtifacts
@@ -83,18 +84,21 @@ moduleOutput HomeManager = [ "      homeManagerModules.default = import ./defaul
 -- kubenix has no module-output convention of its own, so lips names one, and a
 -- config that wants to compose this program imports it like any other module.
 moduleOutput Kubenix     = [ "      kubenixModules.default = import ./default.nix;" ]
+moduleOutput Terranix    = [ "      terranixModules.default = import ./default.nix;" ]
 
 -- | The world's extra flake inputs. kubenix is a module system of its own, so
 -- rendering needs it; it is resolved ambiently (unpinned), the same Heile-Welt
 -- softness @flake:nixpkgs@ already carries.
 worldInputs :: Target -> [Text]
-worldInputs Kubenix = [ "  inputs.kubenix.url = \"github:hall/kubenix\";" ]
-worldInputs _       = []
+worldInputs Kubenix  = [ "  inputs.kubenix.url = \"github:hall/kubenix\";" ]
+worldInputs Terranix = [ "  inputs.terranix.url = \"github:terranix/terranix\";" ]
+worldInputs _        = []
 
 -- | The output-function arguments those inputs add.
 worldArgs :: Target -> Text
-worldArgs Kubenix = ", kubenix"
-worldArgs _       = ""
+worldArgs Kubenix  = ", kubenix"
+worldArgs Terranix = ", terranix"
+worldArgs _        = ""
 
 -- | The per-system kubenix evaluation, defined once in the outer @let@ so both
 -- the buildable manifest (@packages@) and the printing rung (@apps@) reference
@@ -113,6 +117,22 @@ kubenixBuildsLet Kubenix =
   ]
 kubenixBuildsLet _ = []
 
+-- | The per-system terranix render, defined once in the outer @let@ so the
+-- buildable configuration (@packages@) and the printing rung (@apps@) are the
+-- SAME file. @pkgs@ is passed explicitly, so the render uses this flake's
+-- nixpkgs rather than terranix's own input, and terranix owns the JSON format
+-- (@lib.terranixConfiguration@ produces config.tf.json); lips converts nothing.
+terranixBuildsLet :: Target -> [Text]
+terranixBuildsLet Terranix =
+  [ "      terranixBuilds = system: {"
+  , "        config = terranix.lib.terranixConfiguration {"
+  , "          pkgs = pkgsFor system;"
+  , "          modules = [ ./default.nix ];"
+  , "        };"
+  , "      };"
+  ]
+terranixBuildsLet _ = []
+
 -- | The per-system system-rung derivations (nixos only), defined once in the
 -- outer @let@ so both @packages@ (build, don't activate) and @apps@ (build +
 -- boot) reference the SAME vm\/toplevel. This is the @nix build \<x\>@ vs
@@ -121,6 +141,7 @@ kubenixBuildsLet _ = []
 nixosBuildsLet :: Target -> Bool -> [Text]
 nixosBuildsLet HomeManager _ = []
 nixosBuildsLet Kubenix _     = []
+nixosBuildsLet Terranix _    = []
 nixosBuildsLet Nixos hasArtifacts =
   [ "      nixosBuilds = system:"
   , "        let"
@@ -181,6 +202,11 @@ packagesOutput target hasArtifacts
       -- refuses an unknown field, and a wrong-typed one, at evaluation.
       Kubenix     -> [ "        manifest = (kubenixBuilds system).yaml;"
                      , "        manifest-json = (kubenixBuilds system).json;" ]
+      -- Building the configuration IS the check that the program renders: the
+      -- module must evaluate and its values must be JSON-representable. Unlike
+      -- kubenix, terranix does NOT reject an unknown field (its namespaces are
+      -- free-form), so this rung checks rendering only, never field validity.
+      Terranix    -> [ "        config = (terranixBuilds system).config;" ]
 
 -- | @apps@ (@nix run \<x\>@ builds + activates), nixos only. Each references
 -- the shared 'nixosBuildsLet' derivations, so run and build agree.
@@ -195,6 +221,12 @@ appsOutput Nixos =
 -- The manifest rungs PRINT: a rendered file is not executable, so the app is a
 -- script that cats it, which is what makes @nix run … > manifests.yaml@ (and a
 -- pipe into kubectl) the way to write manifests out.
+appsOutput Terranix =
+  [ "      apps = forSystems (system:"
+  , "        let b = terranixBuilds system; p = pkgsFor system; in {"
+  , "          config = { type = \"app\"; program = \"${p.writeShellScript \"print-config\" \"cat ${b.config}\"}\"; };"
+  , "        });"
+  ]
 appsOutput Kubenix =
   [ "      apps = forSystems (system:"
   , "        let b = kubenixBuilds system; p = pkgsFor system; in {"
@@ -207,6 +239,15 @@ appsOutput Kubenix =
 -- command needs no attribute: @nix develop path:\<dir\>@.
 devShellsOutput :: Target -> [Text]
 devShellsOutput HomeManager = []
+-- The shell a human needs here holds the client that consumes the rendered
+-- configuration. opentofu, not terraform: the same rendered JSON, under a
+-- licence nixpkgs ships unencumbered.
+devShellsOutput Terranix =
+  [ "      devShells = forSystems (system:"
+  , "        let p = pkgsFor system; in {"
+  , "          default = p.mkShell { packages = [ p.opentofu ]; };"
+  , "        });"
+  ]
 -- The shell a human needs here holds the client that consumes the manifests.
 devShellsOutput Kubenix =
   [ "      devShells = forSystems (system:"
@@ -259,4 +300,12 @@ runCommands target artNames dir =
       , cmd "check it renders"    "build"   (ref "manifest")      ""
       , cmd "the JSON form"       "run"     (ref "manifest-json") "   > manifests.json"
       , cmd "a shell with kubectl" "develop" ("path:" <> T.pack dir) ""
+      ]
+    -- Same shape as kubenix: rendering is what this world does, so the first
+    -- rung writes the file terraform/opentofu consumes, and the build rung is
+    -- that same derivation reached the other way.
+    systemLines Terranix =
+      [ cmd "write the config" "run"     (ref "config") "   > config.tf.json"
+      , cmd "check it renders" "build"   (ref "config") ""
+      , cmd "a shell with opentofu" "develop" ("path:" <> T.pack dir) ""
       ]

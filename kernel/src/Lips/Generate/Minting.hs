@@ -149,6 +149,9 @@ homeManagerDoc = T.pack $(embedStringFile "../assets/mint/home-manager.md")
 kubenixDoc :: Text
 kubenixDoc = T.pack $(embedStringFile "../assets/mint/kubenix.md")
 
+terranixDoc :: Text
+terranixDoc = T.pack $(embedStringFile "../assets/mint/terranix.md")
+
 directionDoc :: Text
 directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 
@@ -160,6 +163,7 @@ systemPromptFor :: Target -> Text
 systemPromptFor Nixos       = nixosDoc <> "\n" <> bodyDoc
 systemPromptFor HomeManager = homeManagerDoc <> "\n" <> bodyDoc
 systemPromptFor Kubenix     = kubenixDoc <> "\n" <> bodyDoc
+systemPromptFor Terranix    = terranixDoc <> "\n" <> bodyDoc
 
 -- | Kept for back-compat and the pinned-artifact test: the NixOS prompt.
 systemPrompt :: Text

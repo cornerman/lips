@@ -13,8 +13,14 @@
   # so only generate ever resolves it.
   inputs.kubenix.url = "github:hall/kubenix";
   inputs.kubenix.inputs.nixpkgs.follows = "nixpkgs";
+  # terranix is the grounding-schema source for the terranix target. Its own
+  # lib.terranixOptions documents a USER's modules (it deletes resource, data,
+  # provider and every other core namespace), so lips evaluates terranix's core
+  # modules itself; the rev is baked as a string, like the other worlds.
+  inputs.terranix.url = "github:terranix/terranix";
+  inputs.terranix.inputs.nixpkgs.follows = "nixpkgs";
 
-  outputs = { self, nixpkgs, home-manager, kubenix }:
+  outputs = { self, nixpkgs, home-manager, kubenix, terranix }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
@@ -65,6 +71,7 @@
             --set-default LIPS_NIXPKGS_FLAKE "github:NixOS/nixpkgs/${nixpkgs.rev}" \
             --set-default LIPS_HM_FLAKE "github:nix-community/home-manager/${home-manager.rev}" \
             --set-default LIPS_KUBENIX_FLAKE "github:hall/kubenix/${kubenix.rev}" \
+            --set-default LIPS_TERRANIX_FLAKE "github:terranix/terranix/${terranix.rev}" \
             --set-default LIPS_MINT_TOOLS "$out/share/lips/mint-tools.ts" \
             --set-default LIPS_BIN "$out/bin/lips"
           # Completion scripts derive from the SAME optparse-applicative Parser
@@ -124,7 +131,8 @@
             # broken filename rule survived here.
             paths = builtins.attrValues mods.nixosModules
                     ++ builtins.attrValues mods.homeManagerModules
-                    ++ builtins.attrValues mods.kubenixModules;
+                    ++ builtins.attrValues mods.kubenixModules
+                    ++ builtins.attrValues mods.terranixModules;
             # A real nixosSystem's system.build.toplevel forces the generic
             # "is this bootable" assertions (a root filesystem, a bootloader),
             # which no committed example states an opinion on -- so a minimal
@@ -166,14 +174,25 @@
                      };
                    }).config.kubernetes.resultYAML.drvPath)
               (builtins.attrValues mods.kubenixModules);
+            # A terranix module means the config.tf.json it renders, so
+            # instantiating that render is this world's proof. Weaker than
+            # kubenix's: terranix's namespaces are free-form, so this catches a
+            # module that fails to evaluate or to serialize, never a wrong field.
+            terranixDrvPaths = map
+              (p: (terranix.lib.terranixConfiguration {
+                     inherit pkgs;
+                     modules = [ "${p}" ];
+                   }).drvPath)
+              (builtins.attrValues mods.terranixModules);
             # unsafeDiscardStringContext: proof of instantiation as TEXT, not a
             # build dependency of this check (lipsArtifacts-eval's own idiom).
             allDrvPaths = map builtins.unsafeDiscardStringContext
-              (nixosDrvPaths ++ homeDrvPaths ++ kubenixDrvPaths);
+              (nixosDrvPaths ++ homeDrvPaths ++ kubenixDrvPaths ++ terranixDrvPaths);
           in pkgs.runCommand "lips-modules-eval" { } ''
             test -n "${toString (builtins.attrNames mods.nixosModules)}"
             test -n "${toString (builtins.attrNames mods.homeManagerModules)}"
             test -n "${toString (builtins.attrNames mods.kubenixModules)}"
+            test -n "${toString (builtins.attrNames mods.terranixModules)}"
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
             ${pkgs.lib.concatMapStringsSep "\n" (d: "test -n '${d}'") allDrvPaths}
             touch "$out"

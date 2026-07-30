@@ -1,0 +1,12 @@
+{
+  "_module.args":            { "type": "lazy attribute set of raw value", "description": "module args" },
+  "resource":                { "type": "bool, int, float or str", "description": "terraform resources (freeform: terranix declares one magic-merge valueType, so nothing below this path is typed)" },
+  "data":                    { "type": "bool, int, float or str", "description": "terraform data sources" },
+  "provider":                { "type": "bool, int, float or str", "description": "terraform providers" },
+  "output":                  { "type": "bool, int, float or str", "description": "terraform outputs" },
+  "variable":                { "type": "bool, int, float or str", "description": "terraform variables" },
+  "backend.s3.bucket":       { "type": "string", "description": "bucket name" },
+  "backend.s3.encrypt":      { "type": "null or boolean", "description": "encrypt state" },
+  "backend.local.path":      { "type": "string", "description": "state path" },
+  "remote_state.s3.<name>.key": { "type": "string", "description": "state key" }
+}

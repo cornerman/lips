@@ -213,6 +213,7 @@ main = hspec $ do
       parseTarget "nixos" `shouldBe` Just Nixos
       parseTarget "home-manager" `shouldBe` Just HomeManager
       parseTarget "kubenix" `shouldBe` Just Kubenix
+      parseTarget "terranix" `shouldBe` Just Terranix
       parseTarget "darwin" `shouldBe` Nothing
     it "slug round-trips through parse for every target" $
       mapM_ (\t -> parseTarget (T.unpack (targetSlug t)) `shouldBe` Just t)
@@ -3028,7 +3029,8 @@ main = hspec $ do
     it "names the tool and when to reach for it, in every world" $
       mapM_ (\p -> mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
               [ "query_options", "look it up", "grounds NAMES, never VALUES" ])
-            [ systemPromptFor Nixos, systemPromptFor HomeManager, systemPromptFor Kubenix ]
+            [ systemPromptFor Nixos, systemPromptFor HomeManager, systemPromptFor Kubenix
+            , systemPromptFor Terranix ]
     it "repeats that a confirmed option is not a licence to invent its value" $
       systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "refusal beats invention"
 
@@ -3042,6 +3044,10 @@ main = hspec $ do
     it "steers kubenix to the resource alias every kubenix example writes" $ do
       systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "kubernetes.resources."
       systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "kubenix"
+    it "steers terranix to the terraform namespaces, and says grounding stops there" $ do
+      let p = systemPromptFor Terranix
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "terranix", "resource.<type>.<self>", "data.", "provider.", "output." ]
     it "steers home-manager to its namespaces, nixos to system options" $ do
       systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "home-manager"
       systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "systemd.user.services"
@@ -3517,6 +3523,35 @@ main = hspec $ do
       checkEmits sch [mist] `shouldBe`
         [TypeMismatch "r1" ["kubernetes","resources","deployments","web","spec","replicas"] OTInt (VStr [PLit "three"])]
 
+  -- terranix needs no reshaping (its document is plain nixosOptionsDoc output),
+  -- but it grounds only the top-level terraform namespaces: they are declared
+  -- free-form options, so every provider path below them is accepted unchecked.
+  -- These cases pin that boundary, so a later provider-schema fix has a
+  -- statement of the current, weaker guarantee to replace.
+  describe "terranix optionsJSON grounding (Lips.Nix.Schema)" $ do
+    let tnxSchema = do
+          bytes <- BL.readFile "test/fixtures/options-terranix-mini.json"
+          either (fail . T.unpack) pure (schemaFor Terranix bytes)
+        emit p v = MapRule "r1" Fact ["ami"] [Emit p v]
+    it "keeps the free-form namespace as a declared option" $ do
+      sch <- tnxSchema
+      Map.lookup ["resource"] sch `shouldBe` Just (OTOther "bool, int, float or str")
+    it "accepts any provider path below a declared namespace" $ do
+      sch <- tnxSchema
+      checkEmits sch [emit ["resource","aws_instance","web","ami"] (VStr [PLit "ami-a1b2c3d4"])]
+        `shouldBe` []
+      checkEmits sch [emit ["output","ip","value"] (VStr [PLit "1.2.3.4"])] `shouldBe` []
+    it "refuses a misspelled namespace, which is what grounding still buys here" $ do
+      sch <- tnxSchema
+      checkEmits sch [emit ["resourse","aws_instance","web","ami"] (VStr [PLit "x"])]
+        `shouldBe` [UnknownOption "r1" ["resourse","aws_instance","web","ami"]]
+    it "type-checks the core options that ARE typed" $ do
+      sch <- tnxSchema
+      Map.lookup ["backend","s3","bucket"] sch `shouldBe` Just OTString
+      Map.lookup ["remote_state","s3","*","key"] sch `shouldBe` Just OTString
+      checkEmits sch [emit ["backend","s3","bucket"] (VInt 7)] `shouldBe`
+        [TypeMismatch "r1" ["backend","s3","bucket"] OTString (VInt 7)]
+
   -- Knob 3 of a target: what the compiled flake exposes, and the stock nix
   -- commands compile prints. A world with no machine must show no machine rung.
   describe "compiled flake per target (Lips.Nix.Flake)" $ do
@@ -3533,6 +3568,19 @@ main = hspec $ do
         [ "nix run", "path:/tmp/out#manifest", "manifests.yaml"
         , "nix build", "#manifest-json", "nix develop" ]
       ls `shouldNotSatisfy` T.isInfixOf "#vm"
+    it "terranix exposes the module and terranix's own config.tf.json" $ do
+      let t = flakeText Terranix False
+      mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
+        [ "terranixModules.default", "terranix.lib.terranixConfiguration"
+        , "config = ", "opentofu" ]
+      mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
+        [ "nixosModules", "run-lips-vm", "eval-config.nix", "kubenix" ]
+    it "terranix prints how to write, check and shell the configuration" $ do
+      let ls = T.unlines (runCommands Terranix [] "/tmp/out")
+      mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
+        [ "nix run", "path:/tmp/out#config", "config.tf.json"
+        , "nix build", "nix develop" ]
+      mapM_ (\c -> ls `shouldNotSatisfy` T.isInfixOf c) [ "#vm", "#manifest" ]
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).
