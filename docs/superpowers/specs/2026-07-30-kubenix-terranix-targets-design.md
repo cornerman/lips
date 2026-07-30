@@ -1,7 +1,10 @@
 # kubenix and terranix as Targets
 
 Date: 2026-07-30
-Status: design approved pending review; phase 1 (kubenix) implements first.
+Status: both phases implemented (see `DESIGN.md` §13 for what each cost and what
+it exposed). One prediction here was wrong and is corrected in the ledger:
+`terranix.lib.terranixOptions` cannot serve as the grounding source, because it
+deletes exactly the namespaces a program writes.
 
 ## Summary
 

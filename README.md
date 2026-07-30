@@ -11,10 +11,10 @@ loop.
 
 What it compiles to is Nix: a module of `path = value` assignments that some
 `evalModules` consumes. NixOS is one such world, home-manager another, kubenix
-a third (Kubernetes manifests), and you pick which one at mint time with
-`--target`. The axis is open, because every world emits the same module shape
-and differs only in the option vocabulary its rules name (terranix is the
-candidate queued behind the three that ship today).
+a third (Kubernetes manifests), terranix a fourth (Terraform configuration),
+and you pick which one at mint time with `--target`. The axis is open, because
+every world emits the same module shape and differs only in the option
+vocabulary its rules name.
 
 The point is to keep what a human owns small enough to read. AI now writes code
 faster than anyone can review it, so lips shrinks the reviewed artifact to a few
@@ -90,13 +90,17 @@ happens afterwards, offline, by lips itself. The mint's own instructions are a
 reviewable artifact, not a secret: they live as plain markdown under
 `assets/mint/` in this repo, embedded into the binary at build time.
 
-`--target nixos` (the default), `--target home-manager` or `--target kubenix`
-picks the world the engine is born into. The flag steers the mint into that
-world's option namespace (`services.*`, `boot.*`, `users.*` versus `programs.*`,
-`systemd.user.*`, `home.file.*` versus
-`kubernetes.resources.<kind>.<name>.*`) and grounds every minted option path against
-that world's own schema, so a path that does not exist there is refused before
-anything is written. Nothing translates between worlds: a user-service backup
+`--target nixos` (the default), `--target home-manager`, `--target kubenix` or
+`--target terranix` picks the world the engine is born into. The flag steers the
+mint into that world's option namespace (`services.*`, `boot.*`, `users.*`
+versus `programs.*`, `systemd.user.*`, `home.file.*` versus
+`kubernetes.resources.<kind>.<name>.*` versus `resource.<type>.<name>.*`) and
+grounds every minted option path against that world's own schema, so a path that
+does not exist there is refused before anything is written. How much that buys
+differs per world, and lips says which: kubenix types every Kubernetes field,
+while terranix declares its Terraform namespaces free-form, so there a lookup
+confirms `resource` exists and nothing below it — the answer says so in those
+words rather than implying a name was checked. Nothing translates between worlds: a user-service backup
 is a different intent, minted into a different engine. The choice is recorded
 in `backup.generation` and enters the generation id, so re-minting for another
 world is a distinct, `.expect`-gated event.
@@ -106,8 +110,8 @@ your text into a directory holding `default.nix` (the Nix module, for import
 and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory
 runnable. `compile` reads the recorded world to decide what that flake offers:
 a NixOS engine gets a bootable VM, a home-manager engine gets the module and an
-import hint, since there is no machine to boot, and a kubenix engine gets its
-rendered manifests. Running is not a lips verb:
+import hint, since there is no machine to boot, and a kubenix or terranix engine
+gets what it renders. Running is not a lips verb:
 `compile` prints the exact stock `nix` commands over that directory, and you
 pick one. A program that builds an
 artifact prints `nix run …#artifact.<name>` (run the binary bare) and
@@ -119,7 +123,11 @@ module prints `nix run …#manifest > manifests.yaml` (kubenix's own
 multi-document YAML, ready to pipe into `kubectl`), `nix build …#manifest`
 (the "does it render and validate" check, since kubenix refuses an unknown or
 mistyped field at evaluation), `nix run …#manifest-json` for the JSON form, and
-`nix develop …` (a shell holding `kubectl`). The host is
+`nix develop …` (a shell holding `kubectl`). A terranix module prints the same
+shape one file over: `nix run …#config > config.tf.json` (terranix's own
+rendered configuration, ready for `tofu plan`), `nix build …#config`, and
+`nix develop …` (a shell holding `opentofu`). No rung applies anything: piping
+into `kubectl` or `tofu` stays an explicit human act. The host is
 never touched.
 
 The shell is derived, never declared. `compile` evaluates the module once and
@@ -210,7 +218,8 @@ it by the world its engine was minted for:
     in { imports = [ lips.nixosModules.ledger ]; }
 
 A home-manager engine appears under `lips.homeManagerModules.<instance>`
-instead, a kubenix one under `lips.kubenixModules.<instance>`. Nix flakes see only git-tracked files, so `git add` your program and
+instead, a kubenix one under `lips.kubenixModules.<instance>` and a terranix one
+under `lips.terranixModules.<instance>`. Nix flakes see only git-tracked files, so `git add` your program and
 its language folder before rebuilding. Both program shapes work here, the
 singleton `<language>.lips` included.
 

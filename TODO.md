@@ -6,39 +6,7 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-1. **terranix as the fourth target** (phase 2 of
-   `docs/superpowers/specs/2026-07-30-kubenix-terranix-targets-design.md`;
-   phase 1, kubenix, landed — see DESIGN §13 for what it cost and what it
-   exposed). The three knobs, in the shape kubenix proved:
-
-   a. **World.** `Terranix` in `Lips.Nix.Target` (slug `terranix`) plus
-      `assets/mint/terranix.md` naming `resource.<type>.<name>.*`, `data.*`,
-      `provider.*`, `output.*`. The CLI metavar and `--target` reader follow the
-      type, so neither needs an edit.
-   b. **Grounding.** `LIPS_TERRANIX_FLAKE` (pin `github:terranix/terranix` in
-      `flake.nix`, bake the rev) and `terranix.lib.terranixOptions` for the
-      document, read through a new `schemaFor Terranix` arm. Known and accepted
-      weakness, already recorded in the backlog: terranix's core options are one
-      free-form "magic merge" valueType, so grounding confirms the top-level
-      namespace and nothing below it. Decide explicitly whether inner-node
-      dropping (kubenix's rule) applies here — with a free-form `resource` there
-      is nothing left to drop, so a refusal must come from somewhere else or be
-      openly absent.
-   c. **Harness.** `packages.<system>.config` = terranix's `config.tf.json`,
-      `apps.<system>.config` printing it, `devShells.default` with `opentofu`,
-      and printed rungs mirroring kubenix:
-      `nix run path:<dir>#config > config.tf.json`, `nix build path:<dir>#config`,
-      `nix develop path:<dir>`. No apply rung.
-   d. **Wiring not to forget** (all three bit us in phase 1):
-      `nix/modulesFromDir.nix` needs a `terranixModules` output, the
-      `lipsModules-eval` flake check needs a terranix instantiation arm (force
-      the `config.tf.json` derivation's `drvPath`, the world's equivalent of a
-      `toplevel`), and a committed example program must render a real
-      `config.tf.json`. Suite additions mirror the kubenix block in
-      `kernel/test/Spec.hs` (slug parse, prompt preamble, schema fixture, flake
-      text and printed rungs).
-
-2. **CLI-tool physics — remaining open questions** (context: `board`, `habit`,
+1. **CLI-tool physics — remaining open questions** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
    were re-minted honest. See DESIGN §13 for what landed getting there.)
 
@@ -147,21 +115,30 @@ tracks only what is still open.
   sub-path, nearly data), schema reshaping (Haskell -- kubenix needed three
   operations: re-key an alias, drop inner nodes, unwrap optionals), and the run
   harness (Haskell emitting flake text and printed rungs). Two of four are data
-  today, so an external world descriptor is plausible but would be designed
-  from one example. Decide after terranix lands, which shows whether the
-  reshaping and the harness really factor. Counter-argument to weigh then: a
+  today. Now that terranix has landed there is evidence on the open question:
+  the reshaping knob DOES factor (terranix needed none at all, reusing
+  `parseNixOptionsJson`), while the other two did not shrink -- the schema source
+  was a bespoke Nix expression reaching into terranix's own internals (its
+  published options helper deletes the namespaces programs write), and the
+  harness was per-world flake text either way. So a plugin format would still be
+  "ship a Nix expression plus flake text", i.e. code, not data. Counter-argument to weigh then: a
   plugin's harness is arbitrary Nix, i.e. an arbitrary-code channel into
   compiled output, while the closed set keeps every world reviewed in-tree.
 
-- **terranix grounding is path-blind below the top level.** Recorded when the
-  terranix target lands (phase 2 of the kubenix/terranix spec): terranix's core
-  options (`resource`, `data`, `provider`) are one free-form "magic merge"
-  valueType, so an options document from `terranix.lib.terranixOptions`
-  describes the core only and every provider path below it is accepted
-  unchecked. The remedy is a different schema source -- `terraform providers
-  schema -json`, a per-provider network fetch at generate time -- which
-  generate could afford (it is already online) but which no minted program has
-  yet needed.
+- **terranix grounding is path-blind below the top level.** Live as of the
+  terranix target (DESIGN §13): terranix's core options (`resource`, `data`,
+  `provider`, `output`) are one free-form "magic merge" valueType, so lips
+  confirms the top-level namespace (`resourse` is refused) and nothing under it.
+  A misspelled resource type or field reaches `config.tf.json` unchallenged and
+  fails at `tofu plan`, not at generate. Two things soften it today, both
+  shipped: the mint preamble states the limit and tells the mint to refuse rather
+  than guess a field, and a lookup inside a free-form region answers `Freeform`,
+  saying in words that the name was not checked. The remedy is a different schema
+  source -- `terraform providers schema -json`, a per-provider network fetch at
+  generate time -- which generate could afford (it is already online). What holds
+  it back: that schema is per provider AND per provider version, so it needs a
+  pin per program to stay reproducible, which is a new recorded knob, not just a
+  new parser.
 
 - **Mint round loop** — deferred, analysis kept so it is not redone. The idea:
   when the gate rejects an engine, re-prompt the model with the findings

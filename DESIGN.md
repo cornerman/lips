@@ -1198,6 +1198,52 @@ but the loop around it is incomplete; "missing" means specced, not built.
   phase 2 (terranix) is designed but unbuilt, and its grounding weakness is
   recorded in `TODO.md` rather than hidden.
 
+- **Fourth realization target (terranix).** `lips generate --target terranix`
+  mints into `resource.<type>.<self>.*`, `data.*`, `provider.*`, `output.*` and
+  `compile` renders a Terraform `config.tf.json`. Zero kernel change again, and
+  cheaper than kubenix: the schema needs no reshaping (`schemaFor Terranix` is
+  plain `parseNixOptionsJson`) and the harness is six lines of flake text
+  (`packages.config` = terranix's own `lib.terranixConfiguration`,
+  `apps.config` printing it, an `opentofu` shell). Proven live by
+  `examples/assets.bucket.lips`, whose three sentences render an
+  `aws_s3_bucket`, an `aws_s3_bucket_versioning` pointing at it, and an output
+  reporting the generated name.
+
+  Two of the world's own facts had to be discovered rather than assumed.
+  terranix's published `lib.terranixOptions` is the WRONG grounding door: its
+  `jq` pass deletes `resource`, `data`, `provider`, `output` and every other core
+  namespace, because it exists to document a *user's* modules. So lips evaluates
+  terranix's core modules itself (`core/terraform-options.nix` plus `modules`,
+  the `lib.extend` its own `core/default.nix` uses) and runs `nixosOptionsDoc`
+  over the result: 46 entries, seconds, one mechanism shared with the other
+  worlds. And grounding here is WEAK by construction, which the design states
+  instead of hiding: `resource` and its siblings are one free-form "magic merge"
+  valueType, so the schema confirms the top-level namespace (a misspelled
+  `resourse` is still refused) and nothing below it. The `terranix.md` preamble
+  says so to the mint in those words, and `TODO.md` carries the remedy
+  (`terraform providers schema -json`, a per-provider fetch at generate time).
+
+  Three fixes the fourth world forced, each generic, none per-world. (1) The
+  lookup and the gate DISAGREED about free-form regions: `checkEmits` accepts a
+  path descending into a declared free-form option, while `answerQuery` answered
+  "no option matches" -- telling a mint its legal path was a typo. `Answer` gains
+  `Freeform`, naming the nearest declared ancestor and saying what it costs
+  ("every path under it is accepted, and none of them is checked"). This was a
+  latent bug in every world, not a terranix one: NixOS free-form `settings`
+  options had the same split answer. (2) The same pass tightened the gate:
+  descending below a MODELLED leaf (a `string`, an `int`) was accepted, so a
+  whole namespace of invented fields could hide under one real scalar option.
+  Only an unmodelled type can have children the schema omits. All 15 committed
+  engines were re-grounded against the pinned schemas to prove the tightening
+  breaks nothing. (3) A Terraform reference is written `"${aws_s3_bucket.x.id}"`,
+  which collides with lips's own `${...}`; the grammar already expressed it as an
+  escaped literal (`\${…}`, realizing to a Nix string whose text is the
+  reference), but the refusal never said so, so the first mint filed it as a
+  capability gap. The message now names the escape -- deduce-or-fail means a
+  refusal states the remedy. Beside those, the world-neutral prompt body said
+  "NixOS module" nine times; with two non-NixOS worlds shipping, that is a leak,
+  and a test now pins the body to name no world at all.
+
 - **Realization target (NixOS / home-manager).** The world an engine targets is
   per-problem knowledge that lives in the option paths its rules emit, decided
   at mint time; the kernel stays world-blind (`realize` emits only
