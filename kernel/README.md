@@ -102,7 +102,10 @@ text. The boundary is explicit in the code:
 
 - `Lips.Generate.Minting` holds the *pure* minting logic: the system prompt (a
   versioned artifact, spec section 5 layer 3) and the parser that turns the
-  model's confidence-prefixed pattern lines into candidates.
+  model's confidence-prefixed pattern lines into candidates. The prompt itself
+  is not a Haskell string: it is markdown under `assets/mint/` (a world-neutral
+  body plus one preamble per target world), embedded at compile time with
+  `file-embed`, so it reads and reviews like the document it is.
 - `generate` refuses to write a language it is unsure of: any pattern below the
   confidence threshold (default 0.7, overridable with `--confidence <0..1>` and
   pinned into the generation record) aborts the write (deduce-or-fail). The minted

@@ -86,7 +86,9 @@ you). It confirms a name instead of hallucinating it, and every answer it gets
 goes into `<language>.generation` to enter the generation hash. It grounds
 names, never values; what your program does not state remains uninvented.
 Nothing in lips lets a model run or judge its own engine — that verification
-happens afterwards, offline, by lips itself.
+happens afterwards, offline, by lips itself. The mint's own instructions are a
+reviewable artifact, not a secret: they live as plain markdown under
+`assets/mint/` in this repo, embedded into the binary at build time.
 
 `--target nixos` (the default) or `--target home-manager` picks the world the
 engine is born into. The flag steers the mint into that world's option

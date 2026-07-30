@@ -457,6 +457,51 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **The mint prompt is reviewable prose, not escaped Haskell string literals.**
+  The prompt accreted over many milestones as `T.unlines`/string-literal blocks
+  inside `Lips.Generate.Minting`, which is how it ended up stating the same
+  prohibition three times and made every worked example expensive to write and
+  hard to read (docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md).
+  It now lives as markdown under `assets/mint/` (`body.md` the world-neutral
+  body, `nixos.md`/`home-manager.md` the two world preambles, `direction.md`
+  the advisory-direction wrapper), embedded at compile time with `file-embed`
+  (`Data.FileEmbed.embedStringFile`); `Minting.systemPromptFor` composes them,
+  unchanged as a public surface. The migration landed byte-identical first (an
+  empty diff against the old rendered prompt, so the embedding mechanism could
+  not be blamed for any later wording change), then the body was rewritten
+  section by section: where the mint sits and what it owns; the seven pipeline
+  stages it programs, named the way a refusal names them; how to work with the
+  one grounding tool (`query_options`) and its names-not-values limit; the
+  output contract (including the `report`/`gap` blocks the "mint expression
+  channels" milestone added, folded in for the first time rather than
+  described separately); one reference subsection per construct, each
+  prohibition stated exactly once; design guidance on what makes a language
+  worth writing against; two full worked examples in synthetic domains (a
+  job-queue watcher, a from-source greeter), neither restic nor nginx, so no
+  mint inherits a real repo engine as a default; and a closing self-review
+  checklist. A new suite guard (`fencedBlocks` + `parseEngineCandidates` over
+  every ` ```lips-engine ` block in the prompt) makes a stale worked example
+  impossible to ship silently: it caught two real mistakes while the examples
+  were being drafted (a malformed multi-token-hole reference, a missing
+  inner-quote on a fill value). The pinned-clause test
+  ("generate prompt is a pinned artifact") is rewritten to the new load-bearing
+  sentences, keeping the ones that matter across the rewrite (`act exactly
+  once`, `replace every program VALUE with a hole`, `refusal beats invention`,
+  `query_options`, the report and gap requirements). Every future `@gen` stamp
+  changes as a direct consequence (the prompt is part of `genId`), which is
+  expected, not a regression: a differently-worded prompt is a different
+  generation event by the calculus's own definition (spec section 5, "the
+  generation event is pinned"). Verified: 394/394, `-Wall` clean, the packaged
+  flake build and `checks.kernel-tests` both green (proving the embed path
+  resolves identically under a direct `ghc -isrc` invocation from `kernel/`
+  and inside the flake's build derivation, where `assets/` is copied as a
+  sibling of the copied `kernel/` tree so the same relative `../assets/mint/*`
+  path resolves in both places). Not done in this pass, deliberately: no
+  example under `examples/` was re-minted against the new prompt (that is a
+  separate, explicit action -- `generate --renew` on each -- left for whoever
+  reviews the new wording; every existing `.generation` record, and its
+  `@gen` stamps, remain valid against the OLD prompt they recorded).
+
 - **Reserved value-hole names cannot be a subject capture.** A rule subject may
   name a capture with any word (`cmd.<port>.msg`), and a rule rhs may reference
   either that capture or the reserved `<value>`/`<value.N>` (the ground
