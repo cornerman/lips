@@ -1231,6 +1231,29 @@ main = hspec $ do
       crystallize "prog" [a, b] "every hour"
         `shouldBe` Left [Overlapping 1 ["a", "b"]]
 
+    it "names a line whose fact an earlier line already stated" $ do
+      -- Two lines that crystallize to the SAME subject AND assertion merge into
+      -- one decision (the base is keyed by subject), so the later line produces
+      -- nothing and editing it changes no output -- with nothing saying so:
+      -- diagInert works per kind, diagDropped per hole, and neither sees a whole
+      -- absorbed line. Reported, never refused: duplicating a line is a pinned
+      -- edit-tolerance promise (spec 5) and two statements of one fact are one
+      -- fact (the merge doctrine).
+      let stepP = patOne "s" [TLit "-", TMulti "step"]
+                    Fact [SLit "step.", SHole "step", SLit ".command"] [SHole "step"]
+          src = "- run tests.\n- publish.\n- run tests.\n"
+      restatements (classifyLines "prog" [stepP] src)
+        `shouldBe` [(3, 1, "step.run tests.command")]
+
+    it "a restated line still crystallizes (duplication stays a no-op)" $ do
+      let stepP = patOne "s" [TLit "-", TMulti "step"]
+                    Fact [SLit "step.", SHole "step", SLit ".command"] [SHole "step"]
+      crystallize "prog" [stepP] "- run tests.\n- run tests.\n" `shouldSatisfy` isRight
+
+    it "reports nothing when two lines disagree (that is resolve's conflict)" $ do
+      let setP = patOne "s" [TLit "set", THole "v"] Fact [SLit "cfg.k"] [SHole "v"]
+      restatements (classifyLines "prog" [setP] "set a\nset b\n") `shouldBe` []
+
     it "skips comment and blank lines" $ do
       let src = "# a language\n\nthe bank drops files into inbox/.\n"
       fmap (map dId . toList) (crystallize "prog" [sourceP] src) `shouldBe` Right [DecisionId "d3"]

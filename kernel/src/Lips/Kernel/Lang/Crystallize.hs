@@ -25,15 +25,19 @@ module Lips.Kernel.Lang.Crystallize
   , LineOutcome (..)
   , classifyLines
   , crystallize
+  , restatements
   ) where
 
+import           Data.List       (sortOn)
 import           Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Base     (Base, fromList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Lang.Pattern
+import Lips.Kernel.Reader   (joinSubject)
 
 -- | A crystallization failure, anchored to the 1-based loose line.
 data CrystError
@@ -86,6 +90,36 @@ crystallize file patterns src =
     toErr (Unmatched n t)     = NoPattern n t
     toErr (Ambiguous n _ ids) = Overlapping n ids
     toErr Matched{}           = error "crystallize: Matched is not an error"
+
+-- | The lines that state what an earlier line already stated: same subject, same
+-- assertion. A base is keyed by subject, so such a line merges into the earlier
+-- one and produces no decision of its own -- the author edits it and nothing
+-- changes, with nothing anywhere saying so ('diagInert' works per kind,
+-- 'diagDropped' per hole, and neither can see a whole absorbed line).
+--
+-- Reported, never refused. Two statements of one fact ARE one fact (the merge
+-- doctrine the @set@ default rests on), and DESIGN section 5 pins duplicating a
+-- line as an edit that must keep working, so making this an error would break a
+-- promise. Visibility is the whole remedy, exactly as for an inert line: the
+-- author is told, and decides.
+--
+-- Disagreement is a different case and stays where it is: an equal-strength
+-- conflict at resolve, which already names both sides.
+--
+-- Keyed by line, since a line is what an author can delete. Comparison is by
+-- source LINE, so a dense line emitting one fact twice (an engine defect, not a
+-- program one) is never reported as restating itself.
+restatements :: [LineOutcome] -> [(Int, Int, Text)]
+restatements outcomes = sortOn (\(n, _, _) -> n) (concatMap report (Map.toList byFact))
+  where
+    byFact = Map.fromListWith (++)
+      [ ((dSubject d, dAssertion d), [n])
+      | Matched n _ _ dsn <- outcomes, d <- dsn ]
+    report ((subj, _), ns) = case dedup ns of
+      (first : laters) -> [(n, first, joinSubject (segsOf subj)) | n <- laters]
+      []               -> []
+    dedup = Map.keys . Map.fromList . map (\n -> (n, ()))
+    segsOf (Subject ss) = ss
 
 -- | Build the decision(s) a matched pattern produces at a given line. A line
 -- may state several facts, so the pattern emits several decisions; the base is

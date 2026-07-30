@@ -18,6 +18,12 @@
 -- an unreadable line is 'Unmatched'), so it is surfaced here rather than left
 -- for an author to discover by editing a sentence and seeing no effect.
 --
+-- Plus the RESTATED lines: a line whose decision an earlier line already made
+-- ('Lips.Kernel.Lang.Crystallize.restatements'). It merges away, so editing it
+-- changes nothing either -- the same harm as an inert line, from the other
+-- direction, and reported the same way rather than refused (duplicating a line
+-- is a pinned edit-tolerance promise, DESIGN section 5).
+--
 -- Plus the DISCARDED words: a line the language reads as an assertion whose word
 -- no rule carries onward ('Lips.Kernel.Engine.Reach'). @generate@ refuses such
 -- an engine at the gate, so what this reports are the engines committed before
@@ -36,7 +42,7 @@ import Lips.Kernel.Decision        (Decision (..), Kind (..))
 import Lips.Kernel.Demand          (Demand (..), openQuestions)
 import Lips.Kernel.Engine.Data     (toDemand)
 import Lips.Kernel.Engine.Reach    (DroppedValue (..), droppedValues)
-import Lips.Kernel.Lang.Crystallize (LineOutcome (..), classifyLines)
+import Lips.Kernel.Lang.Crystallize (LineOutcome (..), classifyLines, restatements)
 import Lips.Kernel.Lang.Store       (EngineData (..))
 
 -- | A whole-program authoring report.
@@ -47,6 +53,7 @@ data Diagnosis = Diagnosis
   , diagMatched :: Int           -- ^ how many lines crystallized (one line may yield several decisions)
   , diagInert   :: [(Int, Text)] -- ^ lines that realize nothing: line no and source text
   , diagDropped :: [(Int, Text, [Text])] -- ^ lines whose bound words reach no output: line no, source text, hole names
+  , diagRestated :: [(Int, Int, Text)]   -- ^ lines absorbed by an earlier one: line no, that earlier line, the shared subject
   }
   deriving (Eq, Show)
 
@@ -66,6 +73,7 @@ diagnose file eng src =
         , diagMatched = length [() | Matched{} <- outcomes]
         , diagInert   = inertLines outcomes
         , diagDropped = droppedLines (droppedValues (edPatterns eng) (edRules eng)) outcomes
+        , diagRestated = restatements outcomes
         }
 
 -- | The lines that realize nothing. 'Concept' is the only kind realize drops

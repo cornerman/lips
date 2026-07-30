@@ -22,6 +22,7 @@ module Lips.Kernel.Reader
   , readDecision
   , render
   , renderBase
+  , joinSubject
   ) where
 
 import           Data.List       (sortOn)

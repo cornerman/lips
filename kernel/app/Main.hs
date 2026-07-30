@@ -258,7 +258,8 @@ expectGate contract dir file eng program = do
 -- same outcomes as squiggles.
 renderDiagnosis :: FilePath -> Diagnosis -> Text
 renderDiagnosis file d =
-  T.intercalate "\n" (headline : map row (diagLines d) ++ inertBlock ++ droppedBlock ++ openBlock)
+  T.intercalate "\n" (headline : map row (diagLines d)
+                        ++ inertBlock ++ restatedBlock ++ droppedBlock ++ openBlock)
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
@@ -279,6 +280,17 @@ renderDiagnosis file d =
           "" : ("decorative, realizing nothing (" <> tshow (length (diagInert d))
                   <> ") -- editing these changes no output:")
               : ["  line " <> tshow n <> "  \"" <> t <> "\"" | (n, t) <- diagInert d]
+    -- A line whose fact an earlier line already stated: it merges away, so it
+    -- produces nothing of its own and editing it changes no output. Two
+    -- statements of one fact are one fact, so this is reported, never refused.
+    restatedBlock
+      | null (diagRestated d) = []
+      | otherwise =
+          "" : ("already stated (" <> tshow (length (diagRestated d))
+                  <> ") -- these lines add nothing to an earlier line:")
+              : [ "  line " <> tshow n <> "  repeats line " <> tshow earlier
+                    <> "  (" <> subj <> ")"
+                | (n, earlier, subj) <- diagRestated d ]
     -- A word the language binds and no rule carries: the line looks
     -- load-bearing and is not, so editing that word changes nothing. The gate
     -- refuses such an engine now; this names it for engines committed earlier.
