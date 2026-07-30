@@ -6,7 +6,39 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-1. **CLI-tool physics — remaining open questions** (context: `board`, `habit`,
+1. **terranix as the fourth target** (phase 2 of
+   `docs/superpowers/specs/2026-07-30-kubenix-terranix-targets-design.md`;
+   phase 1, kubenix, landed — see DESIGN §13 for what it cost and what it
+   exposed). The three knobs, in the shape kubenix proved:
+
+   a. **World.** `Terranix` in `Lips.Nix.Target` (slug `terranix`) plus
+      `assets/mint/terranix.md` naming `resource.<type>.<name>.*`, `data.*`,
+      `provider.*`, `output.*`. The CLI metavar and `--target` reader follow the
+      type, so neither needs an edit.
+   b. **Grounding.** `LIPS_TERRANIX_FLAKE` (pin `github:terranix/terranix` in
+      `flake.nix`, bake the rev) and `terranix.lib.terranixOptions` for the
+      document, read through a new `schemaFor Terranix` arm. Known and accepted
+      weakness, already recorded in the backlog: terranix's core options are one
+      free-form "magic merge" valueType, so grounding confirms the top-level
+      namespace and nothing below it. Decide explicitly whether inner-node
+      dropping (kubenix's rule) applies here — with a free-form `resource` there
+      is nothing left to drop, so a refusal must come from somewhere else or be
+      openly absent.
+   c. **Harness.** `packages.<system>.config` = terranix's `config.tf.json`,
+      `apps.<system>.config` printing it, `devShells.default` with `opentofu`,
+      and printed rungs mirroring kubenix:
+      `nix run path:<dir>#config > config.tf.json`, `nix build path:<dir>#config`,
+      `nix develop path:<dir>`. No apply rung.
+   d. **Wiring not to forget** (all three bit us in phase 1):
+      `nix/modulesFromDir.nix` needs a `terranixModules` output, the
+      `lipsModules-eval` flake check needs a terranix instantiation arm (force
+      the `config.tf.json` derivation's `drvPath`, the world's equivalent of a
+      `toplevel`), and a committed example program must render a real
+      `config.tf.json`. Suite additions mirror the kubenix block in
+      `kernel/test/Spec.hs` (slug parse, prompt preamble, schema fixture, flake
+      text and printed rungs).
+
+2. **CLI-tool physics — remaining open questions** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
    were re-minted honest. See DESIGN §13 for what landed getting there.)
 
