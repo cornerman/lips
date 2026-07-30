@@ -2700,6 +2700,15 @@ main = hspec $ do
         , "never let it override a value the program states"
         ]
 
+  -- Examples teach the grammar, so a stale one teaches a grammar that no longer
+  -- exists. Extract every ```lips-engine block from the prompt and require the
+  -- real parser to accept it: an example cannot outlive the syntax it shows.
+  describe "prompt examples stay parseable" $
+    it "every lips-engine block in the prompt parses" $ do
+      let blocks = fencedBlocks "lips-engine" systemPrompt
+      blocks `shouldSatisfy` (not . null)
+      mapM_ (\b -> fst (parseEngineCandidates b) `shouldBe` []) blocks
+
   -- The model is not baked into lips: generate omits --model so pi's own
   -- default applies, then reads the model back from the json stream to keep
   -- .generation concrete. This pins that extraction.
@@ -3182,3 +3191,14 @@ genProv = oneof
     -- generator must not mint it as a file.
     safeFile = suchThat (T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "/._"))) (/= "gen")
     hexId = T.pack <$> listOf1 (elements (['a' .. 'f'] ++ ['0' .. '9']))
+
+-- | The bodies of ```<tag> … ``` fenced blocks, in order. Used to pull every
+-- teaching example out of the mint prompt so the parser guard above can hold
+-- it to the real grammar (Task 2 of the mint-prompt rewrite).
+fencedBlocks :: Text -> Text -> [Text]
+fencedBlocks tag = go . T.lines
+  where
+    go ls = case break (== "```" <> tag) ls of
+      (_, [])        -> []
+      (_, _ : rest)  -> let (body, rest') = break (== "```") rest
+                        in T.unlines body : go (drop 1 rest')

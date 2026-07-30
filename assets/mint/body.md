@@ -64,10 +64,12 @@ subject, hole, confidence) appears here already tied together:
 Example input line:
   the bank drops csv files into inbox/.
 Example output lines:
-  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source "<loc>"
-  0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
-  0.9 q1 demand feed.source "where do the files arrive?"
-  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
+```lips-engine
+0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source "<loc>"
+0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
+0.9 q1 demand feed.source "where do the files arrive?"
+0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
+```
 One input line became a pattern (the language: a template with a hole,
 producing a fact under a subject you named), a rule (the mechanism: that
 subject realized into a NixOS option), a demand (what a program lacking such
