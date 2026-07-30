@@ -34,12 +34,18 @@ let
   langDir = language: dir + "/${language}";
 
   # The world the engine was minted for, from its committed .generation record.
+  # The slug is read, not tested against a list of known worlds, so a target
+  # added to Lips.Nix.Target needs no edit here beyond its output name below.
+  # The FIRST "target: " line is the record's own field; the mint prompt quoted
+  # further down the same file must not be able to answer this question.
   # No record, or no target line (an engine minted before targets): nixos.
   targetOf = language:
     let genFile = langDir language + "/${language}.generation";
-    in if builtins.pathExists genFile
-          && lib.hasInfix "target: home-manager" (builtins.readFile genFile)
-       then "home-manager" else "nixos";
+        hit = if builtins.pathExists genFile
+              then lib.findFirst (l: lib.hasPrefix "target: " l) null
+                     (lib.splitString "\n" (builtins.readFile genFile))
+              else null;
+    in if hit == null then "nixos" else lib.removePrefix "target: " hit;
 
   # Reproduce the on-disk shape in the build cwd -- program at top level, engine
   # and artifacts in the language folder -- so `lips compile` finds them by the
@@ -51,6 +57,11 @@ let
       mkdir -p ${p.language}
       cp ${dir + "/${name}"} ${name}
       cp ${langDir p.language + "/${p.language}.lang"} ${p.language}/${p.language}.lang
+      # The .generation record travels too: it names the world the engine was
+      # minted for, and compile reads it to decide which flake the compiled
+      # directory gets. Without it every world would silently compile as the
+      # default one and the emitted flake would offer rungs that cannot work.
+      cp ${langDir p.language + "/${p.language}.generation"} ${p.language}/${p.language}.generation
       ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}/artifacts"}
       # --no-contract: the behavioral gate evaluates the realized module with
       # nix, which a compile INSIDE a nix build cannot do (no recursive nix). The
@@ -91,4 +102,7 @@ let
 in {
   nixosModules = byTarget "nixos";
   homeManagerModules = byTarget "home-manager";
+  # kubenix has no module-output convention of its own, so lips names one, the
+  # same name the compiled flake uses (Lips.Nix.Flake.moduleOutput).
+  kubenixModules = byTarget "kubenix";
 }

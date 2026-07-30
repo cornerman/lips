@@ -123,7 +123,8 @@
             # singleton <language>.lips programs) unevaluated, which is how a
             # broken filename rule survived here.
             paths = builtins.attrValues mods.nixosModules
-                    ++ builtins.attrValues mods.homeManagerModules;
+                    ++ builtins.attrValues mods.homeManagerModules
+                    ++ builtins.attrValues mods.kubenixModules;
             # A real nixosSystem's system.build.toplevel forces the generic
             # "is this bootable" assertions (a root filesystem, a bootloader),
             # which no committed example states an opinion on -- so a minimal
@@ -154,12 +155,25 @@
                      modules = [ p homeStub ];
                    }).activationPackage.drvPath)
               (builtins.attrValues mods.homeManagerModules);
+            # A kubenix module has no machine and no home: what it MEANS is the
+            # manifest it renders, so instantiating that rendering is the same
+            # proof for this world -- and a strong one, since kubenix refuses an
+            # unknown or mistyped Kubernetes field at evaluation.
+            kubenixDrvPaths = map
+              (p: (kubenix.evalModules.${pkgs.stdenv.hostPlatform.system} {
+                     module = { kubenix, ... }: {
+                       imports = [ kubenix.modules.k8s "${p}" ];
+                     };
+                   }).config.kubernetes.resultYAML.drvPath)
+              (builtins.attrValues mods.kubenixModules);
             # unsafeDiscardStringContext: proof of instantiation as TEXT, not a
             # build dependency of this check (lipsArtifacts-eval's own idiom).
-            allDrvPaths = map builtins.unsafeDiscardStringContext (nixosDrvPaths ++ homeDrvPaths);
+            allDrvPaths = map builtins.unsafeDiscardStringContext
+              (nixosDrvPaths ++ homeDrvPaths ++ kubenixDrvPaths);
           in pkgs.runCommand "lips-modules-eval" { } ''
             test -n "${toString (builtins.attrNames mods.nixosModules)}"
             test -n "${toString (builtins.attrNames mods.homeManagerModules)}"
+            test -n "${toString (builtins.attrNames mods.kubenixModules)}"
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
             ${pkgs.lib.concatMapStringsSep "\n" (d: "test -n '${d}'") allDrvPaths}
             touch "$out"
