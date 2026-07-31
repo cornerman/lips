@@ -852,7 +852,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   true` (which in NixOS means "the database named after the user"), so a program
   naming a different database would realize wrongly and silently. All three are
   now open capability questions instead of silent engine bugs, tracked in
-  `TODO.md` item 1a; two deliberate non-goals are recorded there too (a partial
+  `TODO.md` item 3a; two deliberate non-goals are recorded there too (a partial
   drop, where a rule reads `<value.1>` of a value built from two holes, and a
   per-hole decorative report).
 
@@ -1861,11 +1861,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   across regenerations, exactly as the direction-file entry predicts, and the
   churn is a gated, reviewable event (each re-mint re-blessed its `.expect`), not
   a silent one. Two mints were refused by their own contract before one passed,
-  and the `web` mint filed a real gap on the way (TODO 1d, `<value.N>` cannot
-  carry a multi-word tail). The `http` mint churned twice: the first pass named
+  and the `web` mint filed a real gap on the way (`<value.N>` cannot carry a
+  multi-word tail, closed by the several-part value entry below). The `http` mint churned twice: the first pass named
   `bin/hello` in `ExecStart` while `go.mod` said `module server`, which only
-  `lipsArtifacts-build` caught (TODO 1c -- `generate` should run that build
-  itself); the accepted pass builds an artifact called `http-echo` and carries the
+  `lipsArtifacts-build` caught (TODO 3c/item 1 -- `generate` should run that
+  build itself); the accepted pass builds an artifact called `http-echo` and carries the
   port and the response text in `systemd.services.hello.environment` instead of
   source fills, so editing either no longer rebuilds the binary.
 
@@ -1938,7 +1938,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `crystallize`. The remedy it names is the engine's, not the program's: key such
   an item by `<n:index>`, which the grammar already has. Three suite fixtures had
   the same defect and were corrected with it. Not covered: the per-line table
-  still prints `ok` for the offending line before the file fails (TODO 1e).
+  still prints `ok` for the offending line before the file fails (TODO 3e).
 
 - **A several-part value quotes its parts, so `<value.N>` reads a part.** When
   several program words must land in ONE option (a route's status and its body, a
@@ -1960,7 +1960,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   the whole corpus checks unchanged (no committed engine's output moves, since
   their parts are single words). Not covered: nothing yet refuses a rule that
   reads only part 1 of a two-part value, or a `<value.tail>` over a several-part
-  value (TODO 1a(i)) -- the static map those need is now trivial, since part N is
+  value (TODO 3a(i)) -- the static map those need is now trivial, since part N is
   hole N by construction.
 
 ### Partial
