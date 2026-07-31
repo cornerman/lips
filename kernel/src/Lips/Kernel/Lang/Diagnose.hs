@@ -33,6 +33,8 @@ module Lips.Kernel.Lang.Diagnose
   ( Diagnosis (..)
   , diagnose
   , retiredConcepts
+  , SourceSpecVerdict (..)
+  , sourceSpecVerdict
   ) where
 
 import           Data.Text (Text)
@@ -134,3 +136,42 @@ retiredConcepts was now =
   where
     stated   = [ (dSubject d, dAssertion d) | d <- concepts now ]
     concepts b = [ d | d <- toList b, dKind d == Concept ]
+
+-- | The verdict on a baked-source language's specification, for ONE program.
+data SourceSpecVerdict
+  = SpecHolds
+  | -- | Mint-time concepts this program no longer states (deleted or reworded).
+    SpecRetired [Decision]
+  | -- | Concepts this program states that no recorded section ever stated, so
+    --   the committed source was never written from them.
+    SpecUnrecorded [Decision]
+  deriving (Eq, Show)
+
+-- | Judge a program against the corpus its language's source was minted from.
+--
+-- Two directions, because a language's source is shared by every program in it:
+--
+--   * the program HAS a recorded section: every concept the mint saw must still
+--     be stated ('retiredConcepts'), so a deleted or reworded specification
+--     sentence fails loud instead of leaving the baked source orphaned;
+--   * the program has NO recorded section (added or renamed after the mint):
+--     every concept it states must appear somewhere in the recorded corpus.
+--     That keeps sibling reuse free -- a concept pattern is all-literal, so a
+--     sibling restating one produces the identical subject and text -- while a
+--     sentence the source was never written from is refused rather than
+--     silently skipped (the escape this closes).
+--
+-- Pure: the caller reads the record, crystallizes, and reports.
+sourceSpecVerdict :: Maybe Base -> [Base] -> Base -> SourceSpecVerdict
+sourceSpecVerdict mrecorded corpus now =
+  case mrecorded of
+    Just was -> case retiredConcepts was now of
+      []      -> SpecHolds
+      retired -> SpecRetired retired
+    Nothing -> case [ d | d <- concepts now, key d `notElem` corpusKeys ] of
+      []      -> SpecHolds
+      unknown -> SpecUnrecorded unknown
+  where
+    concepts b = [ d | d <- toList b, dKind d == Concept ]
+    key d      = (dSubject d, dAssertion d)
+    corpusKeys = [ key d | sec <- corpus, d <- concepts sec ]

@@ -47,7 +47,7 @@ import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Expect
-import Lips.Generate.Record (corpusText, genId, record, recordedProgram)
+import Lips.Generate.Record (corpusText, genId, record, recordedProgram, recordedPrograms)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
@@ -2450,6 +2450,17 @@ main = hspec $ do
       -- and the section stops before the next record block
       recordedProgram "a/two.log.lips" r `shouldSatisfy` maybe False (not . T.isInfixOf "transcript")
 
+    -- The corpus reading, which the source-specification gate needs to judge a
+    -- program the record holds no section for: its sentences must at least be
+    -- sentences the mint saw somewhere in the language.
+    it "reads every program section back out of the record" $ do
+      let progs = [("a/one.log.lips", "first line\nsecond line\n"), ("a/two.log.lips", "other\n")]
+          r     = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" (corpusText progs) "tt" "reply"
+      recordedPrograms r `shouldBe`
+        [("one.log.lips", "first line\nsecond line\n"), ("two.log.lips", "other\n")]
+      -- a record with no corpus block at all yields no sections, never a crash
+      recordedPrograms "nothing here" `shouldBe` []
+
     it "writes the target slug into the record text" $
       record "m" HomeManager "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
         `shouldSatisfy` T.isInfixOf "target: home-manager"
@@ -2760,6 +2771,54 @@ main = hspec $ do
       let ds = diagsOf (diagnose "f" eng "the bank drops csv files into inbox/.")
       map dgMessage [x | x <- ds, dgSeverity x == 2]
         `shouldBe` ["Open question: how often does the feed deliver?"]
+
+  -- The whole verdict, purely: what a baked-source language's specification
+  -- requires of ONE program. Two directions, because the source is shared by
+  -- every program in the language -- a recorded program must still state what
+  -- the mint saw, and an UNRECORDED sibling must state nothing the mint never
+  -- saw (the escape the gate used to skip silently).
+  describe "source-spec verdict (baked source keeps its specification)" $ do
+    let concept subj txt = Decision
+          { dId        = DecisionId subj
+          , dSubject   = Subject [subj]
+          , dKind      = Concept
+          , dAssertion = Assertion txt
+          , dStrength  = Stated
+          , dProv      = FromSource (SourceLoc "p.x.lips" 1)
+          , dRationale = Nothing
+          }
+        fact subj txt = (concept subj txt) { dKind = Fact }
+        b = fromList
+
+    it "holds when the recorded section is restated verbatim" $
+      sourceSpecVerdict (Just (b [concept "io.filter" "keep every field"]))
+                        [b [concept "io.filter" "keep every field"]]
+                        (b [concept "io.filter" "keep every field"])
+        `shouldBe` SpecHolds
+
+    it "reports a deleted recorded concept as retired" $
+      sourceSpecVerdict (Just (b [concept "io.filter" "keep every field"]))
+                        [b [concept "io.filter" "keep every field"]]
+                        (b [fact "cmd.logscan.name" "logscan"])
+        `shouldBe` SpecRetired [concept "io.filter" "keep every field"]
+
+    it "reports a reworded concept as retired (text is part of the spec)" $
+      sourceSpecVerdict (Just (b [concept "io.filter" "every field equals it"]))
+                        [b [concept "io.filter" "every field equals it"]]
+                        (b [concept "io.filter" "every field differs from it"])
+        `shouldBe` SpecRetired [concept "io.filter" "every field equals it"]
+
+    it "lets an unrecorded sibling restate only recorded concepts" $
+      sourceSpecVerdict Nothing
+                        [b [concept "io.filter" "keep every field"]]
+                        (b [concept "io.filter" "keep every field"])
+        `shouldBe` SpecHolds
+
+    it "refuses an unrecorded sibling stating a concept the record never saw" $
+      sourceSpecVerdict Nothing
+                        [b [concept "io.filter" "keep every field"]]
+                        (b [concept "io.sort" "sort the output"])
+        `shouldBe` SpecUnrecorded [concept "io.sort" "sort the output"]
 
   describe "lsp uri decoding (file:// scheme, percent-escapes)" $ do
     it "strips the file:// scheme" $

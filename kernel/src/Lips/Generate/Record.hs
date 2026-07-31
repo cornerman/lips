@@ -18,11 +18,13 @@ module Lips.Generate.Record
   , hashBytes
   , corpusText
   , recordedProgram
+  , recordedPrograms
   ) where
 
 import           Data.Bits          (shiftR, xor)
 import qualified Data.ByteString    as BS
 import           Data.List          (dropWhileEnd)
+import           Data.Maybe         (isJust)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import           Data.Text.Encoding (encodeUtf8)
@@ -113,13 +115,29 @@ header f = "=== program " <> T.pack (takeFileName f) <> " ==="
 -- no section for that file (an older record, or a program added after the mint),
 -- which the caller treats as "nothing to compare" rather than as a failure.
 recordedProgram :: FilePath -> Text -> Maybe Text
-recordedProgram file rec =
-  case break (== header file) (dropWhile (/= "--- program (input) ---") (T.lines rec)) of
-    -- The framing separates sections with a blank line, which is not part of the
-    -- program (and is ignored by crystallize anyway); drop it so the text read
-    -- back equals the text put in.
-    (_, _ : rest) -> Just (T.unlines (dropWhileEnd T.null (takeWhile ours rest)))
-    _             -> Nothing
+recordedProgram file rec = lookup (takeFileName file) (recordedPrograms rec)
+
+-- | EVERY program section a record holds: @(recorded file name, its text)@.
+-- The record stores the corpus verbatim, so this is a read, not a
+-- reconstruction, and 'recordedProgram' is one lookup into it -- one parser for
+-- both, so the "this program" and "the whole corpus" readings cannot drift.
+--
+-- The corpus reading is what lets a baked-source language judge a program the
+-- record holds no section for (a sibling added after the mint): its sentences
+-- must at least be sentences the mint SAW, in some program of the language.
+recordedPrograms :: Text -> [(FilePath, Text)]
+recordedPrograms rec = sections (takeWhile notBlock (drop 1 (dropWhile (/= marker) (T.lines rec))))
   where
-    -- The section ends at the next program header or at the next record block.
-    ours l = not ("=== program " `T.isPrefixOf` l) && not ("--- " `T.isPrefixOf` l)
+    marker = "--- program (input) ---"
+    -- The program block ends where the next record block begins.
+    notBlock l = not ("--- " `T.isPrefixOf` l)
+    sections [] = []
+    sections (l : rest) = case sectionName l of
+      Nothing -> sections rest
+      Just n  ->
+        let (body, more) = break (isJust . sectionName) rest
+         -- The framing separates sections with a blank line, which is not part
+         -- of the program (and is ignored by crystallize anyway); drop it so the
+         -- text read back equals the text put in.
+         in (n, T.unlines (dropWhileEnd T.null body)) : sections more
+    sectionName l = T.unpack <$> (T.stripPrefix "=== program " l >>= T.stripSuffix " ===")

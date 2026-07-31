@@ -45,7 +45,7 @@ import           System.Directory   (copyFile, createDirectoryIfMissing, doesDir
                                      doesPathExist, getTemporaryDirectory, listDirectory,
                                      removeDirectoryRecursive, removePathForcibly,
                                      getPermissions, setPermissions, setOwnerWritable)
-import           System.FilePath    (takeDirectory, (</>))
+import           System.FilePath    (takeDirectory, takeFileName, (</>))
 import           System.Posix.Temp  (mkdtemp)
 import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 
@@ -59,7 +59,7 @@ import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, unnamedSources)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
-import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedProgram)
+import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isArtifactExpect, readExpect, renderExpect)
@@ -68,7 +68,8 @@ import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
-import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose, retiredConcepts)
+import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), SourceSpecVerdict (..), diagnose,
+                                                sourceSpecVerdict)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnanswerableDemand, unanswerableDemands)
 import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOverlap, renderRuleOverlap, ruleOverlaps)
@@ -1296,43 +1297,70 @@ treeFiles dir = do
 
 -- | The source-specification gate: where a language BAKES source (a committed
 -- @artifacts\/@ tree, minted from the program), the program lines that produced
--- 'Concept' decisions are part of that source's specification. So a concept the
--- mint saw and the program no longer states means the committed source was
--- written for a specification that is gone -- and nothing else notices, because a
--- Concept realizes nothing: rewording such a line breaks its all-literal pattern
--- and is reported as unmatched, adding one is unmatched too, but DELETING one is
--- silent and every gate stays green.
+-- 'Concept' decisions are part of that source's specification. A Concept
+-- realizes nothing, so without this gate such a line could be dropped or
+-- reworded while every other gate stayed green -- and the committed source would
+-- go on implementing a specification the program no longer states.
 --
--- What the program said at mint time is read from the committed @.generation@
+-- Two directions, both judged by 'sourceSpecVerdict' (pure, so the conformance
+-- suite reaches them):
+--
+--   * the program HAS a recorded section: every concept the mint saw must still
+--     be stated;
+--   * the program has NO recorded section (added or renamed after the mint):
+--     every concept it states must be one the mint saw in SOME program of the
+--     language. A sibling reusing the language restates concepts verbatim (a
+--     concept pattern is all-literal), so reuse stays free, while a sentence the
+--     source was never written from is refused instead of silently skipped.
+--
+-- What the programs said at mint time is read from the committed @.generation@
 -- record, which stores the corpus verbatim, so this stays offline and
 -- deterministic (no AI, no nix). A language with no baked source is untouched: a
 -- concept there is a heading, and a heading must stay freely editable.
---
--- Known gap: a program the record holds no section for (added or renamed after
--- the mint) has nothing to compare, so it is skipped.
 sourceSpecGate :: FilePath -> FilePath -> EngineData -> Text -> IO ()
 sourceSpecGate dir file eng program = do
   baked <- doesDirectoryExist (artifactsPathIn dir file)
   when baked $ do
     mrec <- tryRead (generationPathIn dir file)
-    case mrec >>= recordedProgram file of
-      Nothing   -> pure ()
-      Just was0 -> case (crystallize file (edPatterns eng) was0, crystallize file (edPatterns eng) program) of
-        (Left _, _) -> die (report
-          ("the program recorded in " <> T.pack (generationPathIn dir file)
-            <> " no longer crystallizes with the committed language.")
-          []
-          ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))
-        (_, Left _) -> pure ()   -- the current program's own read errors are reported by the caller
-        (Right was, Right now) -> case retiredConcepts was now of
-          []      -> pure ()
-          retired -> die (report
-            (T.pack file <> " dropped " <> plural (length retired) "line"
-              <> " that the built source was written from:")
-            [ a <> " (" <> niceSubject (dSubject d) <> ")"
-            | d <- retired, let Assertion a = dAssertion d ]
-            ("\8594 state it again, or rebuild the source for the program as it stands: "
-              <> "lips generate " <> T.pack file))
+    case mrec of
+      -- A baked tree whose record cannot be read cannot be judged at all, and an
+      -- unjudged specification must never pass as a judged one.
+      Nothing  -> die (report
+        (T.pack file <> ": the language bakes source, but its generation record"
+          <> " is missing or unreadable, so the specification that source was"
+          <> " written from cannot be read.")
+        [T.pack (generationPathIn dir file)]
+        ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))
+      Just rec -> case crystallize file (edPatterns eng) program of
+        Left _    -> pure ()  -- the current program's own read errors are reported by the caller
+        Right now -> do
+          let sections = recordedPrograms rec
+              cryst t  = crystallize file (edPatterns eng) t
+              staleRecord = die (report
+                ("the program recorded in " <> T.pack (generationPathIn dir file)
+                  <> " no longer crystallizes with the committed language.")
+                []
+                ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))
+          corpus <- forM sections $ \(_, t) -> either (const staleRecord) pure (cryst t)
+          mwas <- case lookup (takeFileName file) sections of
+            Nothing -> pure Nothing
+            Just t  -> Just <$> either (const staleRecord) pure (cryst t)
+          case sourceSpecVerdict mwas corpus now of
+            SpecHolds -> pure ()
+            SpecRetired retired -> die (report
+              (T.pack file <> " dropped " <> plural (length retired) "line"
+                <> " that the built source was written from:")
+              [ a <> " (" <> niceSubject (dSubject d) <> ")"
+              | d <- retired, let Assertion a = dAssertion d ]
+              ("\8594 state it again, or rebuild the source for the program as it stands: "
+                <> "lips generate " <> T.pack file))
+            SpecUnrecorded unknown -> die (report
+              (T.pack file <> " states " <> plural (length unknown) "line"
+                <> " the built source was never written from:")
+              [ a <> " (" <> niceSubject (dSubject d) <> ")"
+              | d <- unknown, let Assertion a = dAssertion d ]
+              ("\8594 the source is minted from the program, so rebuild it: "
+                <> "lips generate " <> T.pack file))
 
 -- | Stage a language's committed @artifacts@ tree (found under @dir@) into
 -- @dst@ (the temp module's @artifacts\/@). A no-op when the language has no
