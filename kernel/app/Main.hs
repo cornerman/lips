@@ -68,6 +68,7 @@ import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
+import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..))
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), SourceSpecVerdict (..), diagnose,
                                                 sourceSpecVerdict)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
@@ -281,7 +282,63 @@ expectGate contract dir file eng program = do
               (T.pack file <> " no longer produces what it promised:")
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
+  -- so the contract's own verdict lands before the claim gate's failure, which
+  -- goes to stderr (the same reason the diagnosis flushes above)
+  hFlush stdout
+  when contract (claimGate dir file rl)
   pure rl
+
+-- | The claim gate: every observable the program states must actually hold.
+--
+-- This is the ONE gate that observes a running thing rather than reading the
+-- module text, so it is what holds minted source -- and every future re-mint --
+-- to the author's own words.
+--
+-- It builds the compiled directory's @#claims@ rung, which is the very command
+-- @compile@ prints, so what CI runs and what an author runs cannot drift. A
+-- sandbox claim is a plain build; a machine claim boots the module, so it needs
+-- KVM, and without it the gate FAILS naming the remedy rather than skipping:
+-- "not verified" must never render as verified.
+--
+-- Consequence, stated rather than hidden: for a claim-bearing program @check@
+-- needs an ambient nixpkgs (the compiled flake resolves @flake:nixpkgs@, as it
+-- does for every other rung). A claim-free program is untouched and @check@
+-- stays nixpkgs-free for it.
+claimGate :: FilePath -> FilePath -> Realization -> IO ()
+claimGate dir file rl
+  | null (rlClaims rl) = pure ()
+  | otherwise = do
+      let machine = [ clId c | c <- rlClaims rl, clPlace c == PlaceMachine ]
+      kvm <- doesPathExist "/dev/kvm"
+      when (not kvm && not (null machine)) $ die (report
+        (T.pack file <> " states " <> plural (length machine) "claim"
+          <> " that must be observed in a booted machine, and this host has no /dev/kvm.")
+        machine
+        ("\8594 run it where KVM exists, or state the observable over the program's"
+          <> " own binary, which needs no machine."))
+      target <- readRecordedTarget dir file
+      withTempDir $ \tmp -> do
+        TIO.writeFile (tmp </> "default.nix") (rlModule rl)
+        stageFromDisk dir file (tmp </> "artifacts")
+        fillStagedTree file (tmp </> "artifacts") (rlFills rl)
+        artNames <- case rlArtifact rl of
+          Nothing            -> pure []
+          Just (body, names) -> TIO.writeFile (tmp </> "artifact.nix") body >> pure names
+        case claimsFile (not (null artNames)) (rlClaims rl) of
+          Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
+          Just body -> TIO.writeFile (tmp </> "claims.nix") body
+        TIO.writeFile (tmp </> "flake.nix") (flakeText target (not (null artNames)) True)
+        res <- try (readProcessWithExitCode "nix"
+          ["build", "--no-link", "path:" <> tmp <> "#claims"] "")
+        case res of
+          Left e -> die (nixMissing file "run the claims it states" "check" (tshow (e :: IOException)))
+          Right (ExitFailure _, _, err) -> die (report
+            (T.pack file <> ": what the program says it does is not what it does.")
+            (T.lines (T.pack err))
+            ("\8594 the behaviour lives in minted source, so rebuild it from the"
+              <> " program as it stands: lips generate " <> T.pack file))
+          Right (ExitSuccess, _, _) -> TIO.putStrLn (T.pack file <> ": all "
+            <> tshow (length (rlClaims rl)) <> " claims hold.")
 
 -- | Render the authoring diagnosis: a coverage headline, one line per program
 -- line (matched to which pattern and subject, or unread, or ambiguous), then
