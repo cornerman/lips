@@ -1207,8 +1207,8 @@ main = hspec $ do
             , (mk "t" "x" "\"echo \\\"hello from lips\\\"\"" Stated) { dSubject = Subject ["artifact","greet","args","text"] }
             ]
           onArg = Expect "a1" ["artifact","greet","args","text"] (Subject ["cmd","greet","msg"]) Nothing
-      isArtifactExpect onArg `shouldBe` True
-      isArtifactExpect (Expect "a2" ["home","packages"] (Subject ["x"]) Nothing) `shouldBe` False
+      isGroundExpect onArg `shouldBe` True
+      isGroundExpect (Expect "a2" ["home","packages"] (Subject ["x"]) Nothing) `shouldBe` False
       -- the program's value reached the arg
       checkArtifactValues ground [(onArg, "hello from lips")] `shouldBe` []
       -- a value that did NOT reach it fails, naming the slot
@@ -1216,6 +1216,34 @@ main = hspec $ do
       -- an assertion on a slot no rule fills fails loud instead of reading null
       let onNothing = Expect "a3" ["artifact","greet","args","name"] (Subject ["cmd","greet","msg"]) Nothing
       length (checkArtifactValues ground [(onNothing, "greet")]) `shouldBe` 1
+
+    -- A claim slot is pinned by the SAME mechanism, which is what makes a
+    -- re-mint that drops an author's example trip the existing gate rather than
+    -- needing a new one.
+    it "judges a claim slot against the ground base, with no eval" $ do
+      let ground = fromList
+            [ (mk "c1" "x" "\"${artifact.tool}/bin/tool\"" Stated)
+                { dSubject = Subject ["claim","echo","run"] }
+            , (mk "c2" "x" "\"hi\"" Stated)
+                { dSubject = Subject ["claim","echo","stdout"] }
+            ]
+          onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing
+      isGroundExpect onOut `shouldBe` True
+      checkArtifactValues ground [(onOut, "hi")] `shouldBe` []
+      length (checkArtifactValues ground [(onOut, "bye")]) `shouldBe` 1
+      -- a claim the engine stopped emitting fails loud, which is the drop gate
+      let dropped = Expect "e2" ["claim","gone","stdout"] (Subject ["witness","out"]) Nothing
+      checkArtifactValues ground [(dropped, "hi")]
+        `shouldSatisfy` any (T.isInfixOf "nothing realizes this slot")
+
+    it "keeps a claim expect out of the nix eval set" $ do
+      -- A claim command references an artifact, so without the exemption the
+      -- derivation-reference guard would call the author's own example
+      -- uncheckable and refuse the engine.
+      let ruleClaim = MapRule "r" Fact ["witness", "<k>"]
+            [ Emit ["claim","echo","run"] (VStr [PArt "tool", PLit "/bin/tool"]) ]
+          onRun = Expect "e1" ["claim","echo","run"] (Subject ["witness","out"]) Nothing
+      uncheckableExpects [ruleClaim] [onRun] `shouldBe` []
 
     it "an artifact arg is checkable even when it references another artifact" $ do
       -- The derivation-reference exemption is about the nix eval's pkgs stub; an

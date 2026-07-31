@@ -62,7 +62,7 @@ import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
-import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isArtifactExpect, readExpect, renderExpect)
+import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isGroundExpect, readExpect, renderExpect)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
@@ -1141,7 +1141,7 @@ runExpects stage expects0 rl =
       -- module option is read by evaluating the module, an artifact arg is a
       -- literal in the ground base (a builder consumes it, so it is no attribute
       -- of the derivation and no eval could reach it).
-      let (artExpects, optExpects) = partition (isArtifactExpect . fst) (zip expects pvs)
+      let (artExpects, optExpects) = partition (isGroundExpect . fst) (zip expects pvs)
           artFails = checkArtifactValues (rlGround rl) artExpects
       optRes <- evalOptionExpects stage (rlModule rl) optExpects
       pure $ case (artFails, optRes) of

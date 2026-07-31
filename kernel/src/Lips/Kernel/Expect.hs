@@ -32,7 +32,7 @@ module Lips.Kernel.Expect
   , expectedValue
   , evalExpr
   , checkValues
-  , isArtifactExpect
+  , isGroundExpect
   , checkArtifactValues
   ) where
 
@@ -199,17 +199,24 @@ evalExpr modPath expects = T.concat
     nixPath e = "[ " <> T.unwords (map quote (exPath e)) <> " ]"
     quote s   = "\"" <> s <> "\""
 
--- | Does this assertion name an ARTIFACT slot (@artifact.\<name\>.args...@)
--- rather than a module option? Such a slot is not part of the module a caller
--- can evaluate: it is an argument consumed by a builder, so its value never
--- reappears as an attribute of the resulting derivation. It is a literal in the
--- realized output, though, so the kernel judges it itself -- no nix, no eval.
--- This is what an artifact-only engine (a program whose whole result is a built
--- command) can pin; without it such a program had NOTHING to assert and its
--- contract was empty, which passes trivially.
-isArtifactExpect :: Expect -> Bool
-isArtifactExpect e = case exPath e of
+-- | Does this assertion name a slot the KERNEL realizes -- an artifact arg
+-- (@artifact.\<name\>.args...@) or a claim section (@claim.\<id\>.stdout@) --
+-- rather than a module option? Neither is part of the module a caller can
+-- evaluate: an artifact arg is consumed by a builder, so it never reappears as
+-- an attribute of the resulting derivation, and a claim section is consumed by
+-- an experiment. Both ARE literals in the realized output, so the kernel judges
+-- them itself -- no nix, no eval.
+--
+-- This is what an artifact-only or claim-bearing engine (a program whose whole
+-- result is a built command, or whose behaviour is stated as an observable) can
+-- pin; without it such a program had NOTHING to assert and its contract was
+-- empty, which passes trivially. Pinning the claim slots is also what makes a
+-- re-mint that DROPS an author's example trip the existing gate, with no new
+-- gate to build.
+isGroundExpect :: Expect -> Bool
+isGroundExpect e = case exPath e of
   ("artifact" : _) -> True
+  ("claim" : _)    -> True
   _                -> False
 
 -- | Judge artifact assertions against the GROUND base -- the decisions realize

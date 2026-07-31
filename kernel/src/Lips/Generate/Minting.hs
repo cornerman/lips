@@ -47,7 +47,7 @@ import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Nix.Target       (Target (..))
 import Lips.Kernel.Capture      (nameTokens)
-import Lips.Kernel.Expect          (Expect (..), isArtifactExpect, parseExpectBody)
+import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody)
 import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
 
@@ -288,10 +288,12 @@ gapsOf items = [g | ItemGap g <- items]
 uncheckableExpects :: [MapRule] -> [Expect] -> [Expect]
 uncheckableExpects rules = filter uncheckable
   where
-    -- An ARTIFACT assertion needs no eval at all (its value is a literal in the
-    -- ground base, judged by 'Lips.Kernel.Expect.checkArtifactValues'), so a
-    -- derivation-referencing artifact arg is checkable, not uncheckable.
-    uncheckable e = not (isArtifactExpect e) && exPath e `elem` derivationPaths
+    -- An artifact arg or a claim section needs no eval at all (its value is a
+    -- literal in the ground base, judged by
+    -- 'Lips.Kernel.Expect.checkArtifactValues'), so a derivation-referencing one
+    -- -- a claim command naming ${artifact.<name>}, say -- is checkable, not
+    -- uncheckable.
+    uncheckable e = not (isGroundExpect e) && exPath e `elem` derivationPaths
     derivationPaths =
       [ emPath em | r <- rules, em <- mrEmits r, valueRefsDerivation (emRhs em) ]
 
