@@ -2,51 +2,103 @@
 
 # The `logscan` language
 
-This program describes a single self-written filter tool, so the language
-has one value-bearing line shape and three fixed descriptive lines that
-only document the tool's fixed behaviour (they carry no per-program value,
-so they crystallize as `concept`s and mint no rule):
+## What this language describes
 
-- "filter JSON lines read from standard input." — describes the input
-  channel (concept `io.stdin`).
-- "keep a line only when every field named on the command line equals the
-  value given with it." — describes the filter algorithm (concept
-  `io.filter`).
-- "print each kept line unchanged." — describes the output behaviour
-  (concept `io.output`).
+A `.lips` program here describes one small command-line filter for
+JSON-lines input, in five plain sentences. The program shown reads:
 
-The one value-bearing line is:
+```
+filter JSON lines read from standard input.
+keep a line only when every field named on the command line equals the value given with it.
+print each kept line unchanged.
+install the tool as the command logscan.
+given the lines {"a":"1"} and {"a":"2"} with a=1, print only {"a":"1"}.
+```
 
-  install the tool as the command <name>.
+## The line shapes it accepts
 
-which captures the command's name (here `logscan`) as `cmd.<name>.name`.
-This is the only word in the program that varies across instances of this
-language, and everything else follows mechanically from it.
+1. `filter JSON lines read from standard input.` — states the input
+   interface. No value in it varies, so it carries no hole: it is read as
+   vocabulary (a *concept*) and realizes nothing.
+2. `keep a line only when every field named on the command line equals the
+   value given with it.` — states the matching rule. Also a concept, for the
+   reason in the gap note below.
+3. `print each kept line unchanged.` — states the output interface. Concept.
+4. `install the tool as the command <name>.` — the one word that governs
+   configuration. `<name>` is a hole: it names the derivation, becomes the
+   Go module name (so the built binary is called that), and the package is
+   put on every user's PATH via `environment.systemPackages`.
+5. `given the lines <in1> and <in2> with <args>, print only <out>.` — the
+   worked example. It is read as an *item of line 4*: lips nests this
+   pattern under the install line (`p5.under.p4`), which is how the example
+   learns which command it is exercising. **Order matters: the install line
+   must come before the example line.** All four words are holes, so editing
+   the example changes what is actually run and compared.
 
-Mechanism chosen: since the program must filter arbitrary JSON lines by
-equality on arbitrary command-line-specified fields — a small algorithm,
-not configuration of an existing package — it is written from source and
-built with `buildGoModule` (Go's standard `encoding/json` makes this a
-robust, dependency-free implementation, so `vendorHash` is `null`). The
-built derivation is exposed as an ordinary user package via
-`home.packages`, since the program only asks that the tool be *installed
-as a command*, not run as a background service.
+Sentences 1–3 must be written exactly as above; a reworded variant will not
+crystallize and will send you back to `generate`. That is deliberate: those
+sentences describe code, and code cannot be holed (see the gap).
 
-The captured command name reaches the build in two places: as the
-derivation's `pname` (so nix knows the package's name), and as a `fill`
-substituted into `go.mod`'s `module @name@` line, so the compiled binary
-is actually named `logscan` (buildGoModule names the binary after the
-module/package path) — this keeps `${artifact.logscan}/bin/logscan`
-truthful. `version` is an invented build constant ("0.1.0"), never asked
-of the program, since it has no observable effect on behaviour.
+## The mechanism I chose
 
-The Go source itself implements the fixed algorithm literally stated by
-the three descriptive lines: read newline-delimited JSON from stdin,
-parse each line, keep it only if every `field=value` pair given as a
-command-line argument matches (comparing strings directly, and JSON
-round-tripping non-string field values for comparison), and print kept
-lines unchanged to stdout.
+The program asks for a tool that does not exist in nixpkgs, so this is a
+*build*, not a configuration of an existing package:
 
-Nothing was left as a demand: the program fully names everything a
-build needs (the tool's own name); there was no silent gap to ask the
-human to fill in.
+- `buildGoModule` with a two-file Go source tree staged at
+  `artifacts/<name>/` (`go.mod`, `main.go`), `vendorHash = null` since the
+  program has no dependencies outside the standard library.
+- The command name reaches the source through a **fill**: `go.mod` says
+  `module @name@`, and `@name@` is substituted at compile time. Go names the
+  binary after the module path, so `install the tool as the command foo`
+  really produces `bin/foo` — renaming the command in the sentence rebuilds
+  and reinstalls it under the new name.
+- Installation is `environment.systemPackages`, i.e. system-wide on this
+  machine, since a NixOS module is evaluated as root.
+- Version `0.1.0` is a constant I chose: `buildGoModule` needs `pname` *and*
+  `version` to derive a name, and the program states no version. It is not a
+  value you need to maintain.
+
+## What holds the code to the sentences
+
+The module text says nothing about what the Go program *does*, so the worked
+example is realized as a **claim**: the built binary is run with the stated
+filter arguments, fed the two stated input lines on standard input, and its
+output must equal the stated line exactly (one trailing newline is stripped).
+The command names only the build, so it runs in the build sandbox — no
+machine boot. Field comparison is done on the JSON value rendered as text,
+so `a=1` matches both `{"a":"1"}` and `{"a":1}`; blank lines and lines that
+are not valid JSON are skipped rather than printed.
+
+Exactly one example line per program is supported: a second one would try to
+set the same claim twice and lips would refuse the compile, loudly.
+
+## Contract checked on every compile
+
+- the command name reaches `artifact.<name>.args.pname` and the `@name@`
+  fill in `go.mod`;
+- the expected output of the example reaches the claim's `stdout`.
+
+No expect names `environment.systemPackages` or the build reference itself:
+those hold a derivation, which the behavioral check cannot read.
+
+## If a program stays silent
+
+Two demands are minted. A program with no `install the tool as the command
+...` line is asked which command name to install; a program with no `given
+... print only ...` line is asked for a worked example. The second is not
+politeness: source is baked here, and without an example nothing at all
+would hold that source to the three sentences describing it.
+
+## Known Gaps
+
+### source-semantics-not-parametric
+
+blocked line: keep a line only when every field named on the command line equals the value given with it.
+This sentence states the filter's ALGORITHM, and an algorithm has no hole
+form: a fill substitutes a marker in the baked Go source, it cannot swap
+"every field matches" for "any field matches". So the line is read as a
+concept (vocabulary only) and the algorithm lives in main.go, held to the
+sentence solely by the worked-example claim. A program that reworded it
+("...when any field...") would not crystallize at all, which is loud but
+means a fresh mint.
+
