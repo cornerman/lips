@@ -156,7 +156,12 @@ tracks only what is still open.
    to settle first: mint the sweep with sonnet-5 rather than opus (cheaper, and
    the gates rather than the model's taste decide what is admitted); the risk is
    a weaker engine on the harder languages, so compare `.expect` survival per
-   language and keep opus for any that regress. Order matters: sweep first, then
+   language and keep opus for any that regress. First datapoint, from the
+   punctuation re-mint of `examples/function` (DESIGN §13): sonnet-5 regressed it
+   twice, dropping the built artifact for `echo` ExecStart lines and demoting the
+   declaration to a concept, while opus-5 kept the Go build and generalized
+   further -- so budget opus for the artifact-bearing languages at least.
+   Order matters: sweep first, then
    land item 4 -- a verifier landed first would turn the whole repo red.
 
 4. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
@@ -213,101 +218,6 @@ tracks only what is still open.
       fixture (its whole point is to be nixpkgs-free); a real caller who builds
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
-
-6. **Punctuation is erased by the kernel, so a language cannot make a symbol
-   mean anything** (raised 2026-08-01; ranked last of the "next up" items
-   because no committed engine is wrong today, but it is kernel physics and a
-   domain assumption, so it belongs above the backlog).
-
-   THE MECHANISM. `Surface.stripTrailingPunct` drops every trailing character
-   in `.,;:!?` from a token, and `Pattern.normalizeToken` is
-   `toLower . stripTrailingPunct`. It runs on both sides: on each program token
-   in `Pattern.tokenizeLine` and on each template token in
-   `Store.parseTplTok`, with tokens that normalize to empty dropped on both
-   sides so the counts stay balanced. Only TRAILING punctuation dies, so inner
-   punctuation survives (`http://localhost:3000`, `nginx:1.27`, `02:30`).
-
-   THE EVIDENCE. `examples/website.lips:3` states `content: shows a nice random
-   svg painting`; `examples/website/website.lang:3` mints the template `content
-   shows a nice random svg painting`. The colon is gone from the engine, and no
-   pattern could have kept it: a template `content:` parses to the literal
-   `content`.
-
-   WHY IT IS A DEFECT AND NOT A STYLE. The set `.,;:!?` says "these are English
-   sentence punctuation, hence noise", which is a fact about one natural
-   language sitting in a domain-blind kernel. For a language whose colon is the
-   key/value marker, the symbol is meaning, the engine has no way to say so,
-   and the loss is silent rather than loud (deduce-or-fail is not honored). The
-   mint prompt already states the doctrine outright (`assets/mint/body.md:270`:
-   "lips has no idea that `-` or `:` marks anything"), which is where the
-   asymmetry shows: a leading `-` is NOT erased, it is a literal token that must
-   match, as `examples/vhost/vhost.lang:3` (`- <path> proxies to <url>`) proves.
-   So one symbol is required and another is unsayable, and the prompt describes
-   neither correctly.
-
-   WHAT THE STRIPPING BUYS, so a fix does not throw it away: tolerance. A
-   program's final period never unbalances a match, and a live mint that glues
-   a line's period onto a hole (`<when>.`) still yields the hole `<when>`. Any
-   replacement must keep a sentence-final period harmless.
-
-   SKETCH (not decided). Lex punctuation as its own token and let the template
-   decide whether it matters: a template that writes `content: <rest>` requires
-   the colon, one that writes `content <rest>` matches with or without it. That
-   keeps the closed grammar closed (a punctuation token is just a literal), puts
-   significance in the engine where domain knowledge belongs, and leaves the
-   tolerant case tolerant. Open questions to settle first: whether an OPTIONAL
-   trailing period stays special-cased or becomes an engine concern too; whether
-   a required symbol may sit inside a fused token; and what a re-mint sweep costs
-   (every committed template that ends a hole in a period would re-parse the same
-   way, so the blast radius looks small, but item 3's sweep should confirm it).
-
-   VERIFICATION. `kernel/test/Spec.hs:1119` and `:2338` pin the current
-   behavior, so both change with the physics; add a case where two patterns
-   differ only by a colon and must not collide.
-
-7. **Baked source cannot repeat, so a program's list reaches the module but not
-   the code** (filed by the `website` mint itself as gap
-   `repeating-canvas-button`, 2026-08-01; ranked after item 6 because the
-   failure is LOUD and no committed engine is wrong -- it is a missing
-   capability, not a silent defect).
-
-   WHAT ALREADY WORKS, so the gap is not "lips cannot repeat". Repetition is
-   unbounded wherever it lands in an OPTION: a subject keyed by the item's own
-   word (`host.<domain>.location.<path>.proxy`) feeds an option path carrying the
-   same captures, and `examples/gateway.vhost.lips` realizes three virtual hosts
-   and four locations from a four-pattern engine. The `website` conflict (`canvas
-   name: line 2 and line 6`) is the mint's singleton subject `canvas.name`, not a
-   grammar limit: `canvas.<name>.…` would crystallize both.
-
-   WHERE THE WALL IS. `Kernel/Source.fillTree` substitutes ONE text per marker in
-   ONE pass, and the markers sit in the committed, PER-LANGUAGE source tree. A
-   rule may compose the marker name (`artifact.<self>.fill.canvas_<value>` is a
-   legal emit), but then `main.go` would have to spell `@canvas_main@` -- a
-   per-PROGRAM marker inside per-LANGUAGE source -- and `fillTree` refuses a
-   declared fill no file names. So the NUMBER of substitution sites is frozen at
-   mint time, and repeated markup (one `<div>` per canvas, one handler per
-   button) is unsayable. `examples/website` therefore supports exactly one canvas
-   and one button, and says so in its README.
-
-   THE CHEAP REMEDY, which needs no kernel change: keep the source shape fixed
-   and let the list cross into the artifact as DATA through an option path that
-   carries the item's key -- one env var per canvas
-   (`systemd.services.<self>.environment.CANVAS_<value>`), or a file per canvas
-   under `environment.etc."<self>/canvases/<value>"` -- with the binary looping
-   over that data at start-up. Expressible today; the mint simply is not told
-   that a repeating structure belongs in data, not in source. Doctrine question
-   to settle first: is "repetition crosses as data, never as repeated source" a
-   sentence for `assets/mint/body.md` (like the subject-segment rule), and does
-   anything refuse an engine that hard-codes a singleton where the program shape
-   is plainly a list?
-
-   THE EXPENSIVE REMEDY, if the cheap one proves too weak: a joined fill -- a
-   marker whose value accumulates one element per matching decision (declared
-   like a list-merged option, joined by a separator the engine states). Keeps the
-   grammar closed (no computation; the join is the kernel's, the separator is
-   data), but it makes a fill emit code shaped by a program, so the syntax of the
-   generated language becomes lips's problem. Decide only against a program that
-   the cheap remedy cannot express.
 
 ## Backlog (larger / deferred by design)
 

@@ -457,6 +457,39 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A symbol is a token's own text: only a sentence terminator is kernel noise**
+  (closes TODO 7; commits `pattern: a symbol belongs to its token`, `mint: a
+  template must write the symbols`, `function: re-mint`). The old physics ran
+  `stripTrailingPunct` (the set `.,;:!?`) over EVERY token, on the program side
+  in `tokenizeLine` and on the template side in `parseTplTok`, so a language
+  could not make a symbol mean anything: `content:` and `content` were the same
+  token. The loss was silent and it reached the committed engine, since a `.lang`
+  is re-rendered from parsed patterns -- the `function` mint wrote
+  `function println_to_stdout(<param>: String)` and the file recorded
+  `(<param> string)`. Worse, the value then carried the symbol the template had
+  dropped: under the stale engine the fused hole bound `param` = `x:` and staged
+  `func println_to_stdout(x: string)`, invalid Go that only the flake's
+  `lipsArtifacts-build` caught.
+
+  The set was a fact about English prose living in a domain-blind kernel, so it
+  went. Punctuation is now part of the token, compared literally, and
+  `normalizeToken` only lowercases; a template that writes a symbol requires it,
+  and a hole binds its token verbatim (a rule building a list still strips per
+  token in `Engine/Value.fillV`, which is where a separator the author wrote is
+  spent). The single exception is `stripTerminator`: the trailing punctuation of
+  the LAST token of a line or template, shed on both sides, so a sentence-final
+  period needs no template token and a mint that glues it onto the last hole
+  (`<when>.`) still yields the hole. One rule, symmetric, and the terminator is
+  the only place the kernel names a punctuation character at all.
+
+  Cost paid: `examples/function` was re-minted and its `.expect` re-blessed (the
+  new engine holes the function name and the declared type, closing its own
+  `declared-type-mapping` gap). Every other committed engine crystallizes and
+  checks unchanged, because no other minted template carried a symbol. A
+  sonnet-5 mint of the same program regressed it (echo lines instead of a built
+  binary), which is the evidence TODO 4's sweep wanted: keep opus where sonnet
+  regresses.
+
 - **A subject segment holds no spaces, and the prompt says so (`examples/website`
   committed).** The round-trip gate refuses a subject keyed by a multi-word
   capture, and three mints in a row walked into it: the grammar alone gives the

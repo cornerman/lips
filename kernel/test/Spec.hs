@@ -3303,7 +3303,14 @@ main = hspec $ do
     it "teaches blocks and both structure holes" $
       mapM_ (\clause -> systemPrompt `shouldSatisfy` T.isInfixOf clause)
         [ "p5.under.p4", "<n:index>", "<k:key>"
-        , "never by punctuation or indentation" ]
+        , "never by indentation" ]
+
+    -- A symbol is a literal token now, so a template that omits one reads no
+    -- line that writes it: the prompt must say so, or every mint ships an
+    -- engine that cannot read its own example program.
+    it "teaches that a template must write the symbols its line carries" $
+      mapM_ (\clause -> systemPrompt `shouldSatisfy` T.isInfixOf clause)
+        [ "A SYMBOL IS A TOKEN'S OWN TEXT", "TERMINATOR" ]
 
     it "every lips-engine block in the prompt parses" $ do
       let blocks = fencedBlocks "lips-engine" systemPrompt
