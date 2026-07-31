@@ -75,7 +75,11 @@ entry c = case clPlace c of
     , "    '';"
     ]
   PlaceMachine ->
-    [ "  " <> clId c <> " = pkgs.nixosTest {"
+    -- testers.nixosTest, not the bare pkgs.nixosTest: the latter is an alias
+    -- nixpkgs now refuses outright ("renamed to/replaced by testers.nixosTest"),
+    -- so a machine claim rendered the old way fails at evaluation, before it ever
+    -- boots.
+    [ "  " <> clId c <> " = pkgs.testers.nixosTest {"
     , "    name = \"claim-" <> clId c <> "\";"
     , "    nodes.machine = { imports = [ ./default.nix ]; };"
     , "    testScript = " <> machineScript c <> ";"

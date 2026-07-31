@@ -3115,7 +3115,7 @@ main = hspec $ do
 
     it "renders a machine claim as a nixosTest importing the module" $ do
       let txt = maybe "" id (claimsFile False [machineClaim])
-      txt `shouldSatisfy` T.isInfixOf "pkgs.nixosTest"
+      txt `shouldSatisfy` T.isInfixOf "pkgs.testers.nixosTest"
       txt `shouldSatisfy` T.isInfixOf "imports = [ ./default.nix ];"
       txt `shouldSatisfy` T.isInfixOf "machine.execute(cmd)"
       -- an artifact-free program must not import an artifact.nix nobody wrote
