@@ -2,78 +2,80 @@
 
 # The `website` language
 
-## What this language says
+## What this language describes
 
-A program describes one small website with one drawing surface and one
-button, in four kinds of line:
+A one-page canvas website: a port, one or more drawing areas ("canvases"),
+and buttons that act on a named canvas. Every program becomes one systemd
+service on this machine, named after the program file (`website.lips` ->
+`systemd.services.website`), plus the port opened in the firewall.
 
-```
-website running on port 8081
-canvas "main":
-  content: shows a nice random svg painting
-button "drück mich":
-  on click: new random painting in canvas "main"
-```
+## The line shapes it accepts
 
-* `website running on port <port>` — the TCP port the site listens on.
-* `canvas "<name>":` — opens a canvas block; the quoted name becomes the
-  element id of the drawing surface in the page.
-* `content: <words...>` — a line inside a canvas block; the words become the
-  caption shown under the surface and its accessible label.
-* `button "<label>":` — opens a button block; the quoted label is the text
-  printed on the button (spaces and umlauts are fine, it is quoted).
-* `on click: <action words...> in canvas "<name>"` — a line inside a button
-  block. The action phrase becomes the button's tooltip; the quoted canvas
-  name is the surface the click actually repaints, so it must be stated.
+- `website running on port <port>` — the tcp port the site is served on.
+  This is the one line every program must have; a program without it is
+  asked for it.
+- `canvas "<name>":` — opens a canvas block. The name identifies the canvas
+  and is what buttons refer to.
+  - `content: shows <phrase>` — the canvas description, shown as the
+    caption under the drawing area.
+- `button "<label>":` — opens a button block; the label is the button text.
+  - exactly one of these three click lines, written as-is apart from the
+    canvas name:
+    - `on click: new random painting in canvas "<name>"`
+    - `on click: erase everything in canvas "<name>"`
+    - `on click: download the picture from canvas "<name>"`
 
-Every quoted or numeric word above is a hole: edit the sentence, recompile,
-and the machine follows. Nothing in the engine hard-codes 8081, "main" or
-"drück mich".
+Everything in `<angle brackets>` is a value you can edit freely (port,
+names, labels, the content phrase). Everything else is a fixed word: the
+three click sentences *select* a behaviour, so they are literal wording, not
+prose. Reword one of them and the build fails loudly rather than silently
+dropping a button's behaviour; that is when you need a new engine.
 
-## What it builds
+Blocks are read by the heading line, not by indentation, so indenting the
+`content:` / `on click:` lines is optional but recommended. Canvases and
+buttons are keyed by their position in the program, which is why two buttons
+may carry the same label or target the same canvas without colliding, and
+why they appear on the page in the order you wrote them.
 
-The mechanism is one systemd service per program, keyed by the program's own
-file name (`website.lips` → `systemd.services.website`), running a tiny Go
-HTTP server built from source as an artifact (`buildGoModule`, no external
-dependencies, binary `bin/site`). The service runs under `DynamicUser`, wants
-`multi-user.target`, restarts on failure, and the stated port is opened in
-`networking.firewall.allowedTCPPorts`.
+## The mechanism I chose
 
-All five program values reach the server through the unit's environment —
-`PORT`, `CANVAS_ID`, `CANVAS_CAPTION`, `BUTTON_LABEL`, `BUTTON_ACTION`,
-`BUTTON_TARGET` — and the server renders the page from them at request time.
-That is deliberate: environment values are plain strings in the NixOS option
-tree, so each one is pinned by an expect in `website.expect`, and no value is
-baked into the compiled binary (there are no source fills at all). The Go
-source holds only *structure*: the HTML skeleton and the JavaScript that
-generates a random SVG painting (circles, rectangles, lines in random
-colours) into the element named by `CANVAS_ID` and regenerates it whenever
-the button is clicked.
+There is no off-the-shelf NixOS service for "a page with a canvas and three
+buttons", so the site is a small Go http server built from source
+(`buildGoModule`, sources in `artifacts/website/`). The server is generic:
+it renders the page from what it finds in its own environment, and the
+module puts the program's words there:
 
-## What I had to decide, and the limits
+- `PORT` — the port from the first line (also added to
+  `networking.firewall.allowedTCPPorts`).
+- `CANVAS_<n>_NAME`, `CANVAS_<n>_CONTENT` — one pair per canvas.
+- `BUTTON_<n>_LABEL`, `BUTTON_<n>_ACTION`, `BUTTON_<n>_TARGET` — one triple
+  per button, where the action is the normalised word `paint`, `clear` or
+  `download` chosen by which click sentence you wrote.
 
-* "shows a nice random svg painting" and "new random painting" are prose. A
-  lips engine cannot synthesise behaviour from prose, so the *behaviour* is
-  the fixed mechanism I wrote (random SVG shapes, redrawn on click) and the
-  prose itself is carried into the page as the caption and the button
-  tooltip, where a human can see the sentence they wrote. If you want a
-  different kind of painting, that is a regeneration, not an edit.
-* The click line must end with `in canvas "<name>"`. Without a named target
-  the engine would have to guess which surface to repaint, and guessing is
-  what I am forbidden to do; a missing on-click line is asked for instead
-  (see the demands below).
-* Exactly **one** canvas and **one** button per program. Their facts live at
-  fixed subjects (`canvas.name`, `button.label`, ...), so a second `canvas
-  "…":` block would be refused at compile time as a conflict. Supporting
-  several would mean repeating a block of page structure per widget, which
-  the source-fill mechanism cannot do; that is a regeneration with a
-  different design, not something to fake here.
-* Version `0.1.0` for the build and the page geometry (640x400) are free
-  constants I chose; nothing in the program pins them.
+So editing a label or a port changes only the unit's environment; nothing
+is rebuilt. The unit runs with `DynamicUser` and restarts always.
 
-## What a program must state
+The drawing itself happens in the browser (`/app.js`, served by the same
+binary): `paint` generates a random svg picture into the target canvas,
+`clear` empties it, `download` saves the current svg as `<canvas>.svg`.
+Every canvas is painted once on page load, which is what "shows a nice
+random svg painting" means here.
 
-A program is asked (at compile time, by name) for anything it leaves silent:
-the port, the canvas name and its content line, the button label, and the
-click action with its target canvas. All six are things a human can simply
-write in one line, so none of them has an invented default.
+## What I had to decide myself
+
+- **The renderer is fixed.** This language has exactly one kind of picture:
+  a randomly generated svg painting. The `content:` phrase is therefore
+  carried to the page as the canvas *caption* (the visible description),
+  not as an instruction to some other renderer. If you write
+  `content: shows a bar chart` you will get a random painting captioned
+  "a bar chart" — say so in the report of the next mint if you need real
+  renderer choice, that needs new patterns.
+- **Firewall.** The program says the site runs on a port, so the port is
+  opened. Remove that emit in a regeneration if the machine is behind a
+  reverse proxy.
+- **Build inputs.** Version `0.1.0` and `vendorHash = null` (the server has
+  no Go dependencies) are my choices; nothing in the program pins them.
+- **The binary is called `website`.** The build is a fixed mechanism named
+  `website`, while the systemd unit is named after your program file, so
+  renaming `website.lips` renames the service but keeps the same server
+  binary.

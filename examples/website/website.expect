@@ -1,6 +1,6 @@
 a1 expect systemd.services.<self>.environment.PORT from site.port
-a2 expect systemd.services.<self>.environment.CANVAS_ID from canvas.name
-a3 expect systemd.services.<self>.environment.CANVAS_CAPTION from canvas.content
-a4 expect systemd.services.<self>.environment.BUTTON_LABEL from button.label
-a5 expect systemd.services.<self>.environment.BUTTON_ACTION from button.action
-a6 expect systemd.services.<self>.environment.BUTTON_TARGET from button.target
+a2 expect systemd.services.<self>.environment.CANVAS_<i>_NAME from canvas.<i>
+a3 expect systemd.services.<self>.environment.CANVAS_<i>_CONTENT from canvas.<i>.content
+a4 expect systemd.services.<self>.environment.BUTTON_<i>_LABEL from button.<i>
+a5 expect systemd.services.<self>.environment.BUTTON_<i>_ACTION from button.<i>.action
+a6 expect systemd.services.<self>.environment.BUTTON_<i>_TARGET from button.<i>.target

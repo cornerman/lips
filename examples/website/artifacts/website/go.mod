@@ -1,3 +1,3 @@
-module site
+module website
 
 go 1.21

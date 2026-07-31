@@ -1,17 +1,14 @@
-p1 meta lang.pattern.p1 stated "website running on port <port> => fact site.port \"<port>\"" @gen:ad6fca66cb9f97df
-p2 meta lang.pattern.p2 stated "canvas <name> => fact canvas.name \"<name>\"" @gen:ad6fca66cb9f97df
-p3 meta lang.pattern.p3.under.p2 stated "content: <what.words> => fact canvas.content \"<what>\"" @gen:ad6fca66cb9f97df
-p4 meta lang.pattern.p4 stated "button <label> => fact button.label \"<label>\"" @gen:ad6fca66cb9f97df
-p5 meta lang.pattern.p5.under.p4 stated "on click: <action.words> in canvas <target> => fact button.action \"<action>\" ; fact button.target \"<target>\"" @gen:ad6fca66cb9f97df
-q1 meta engine.demand.q1 stated "demand site.port \"which TCP port should the website listen on?\"" @gen:ad6fca66cb9f97df
-q2 meta engine.demand.q2 stated "demand canvas.name \"what is the canvas called (its element id)?\"" @gen:ad6fca66cb9f97df
-q3 meta engine.demand.q3 stated "demand canvas.content \"what does the canvas show?\"" @gen:ad6fca66cb9f97df
-q4 meta engine.demand.q4 stated "demand button.label \"what text does the button carry?\"" @gen:ad6fca66cb9f97df
-q5 meta engine.demand.q5 stated "demand button.action \"what does clicking the button do?\"" @gen:ad6fca66cb9f97df
-q6 meta engine.demand.q6 stated "demand button.target \"which canvas does the click repaint?\"" @gen:ad6fca66cb9f97df
-r1 meta engine.rule.r1 stated "match fact site.port => artifact.<self>.builder \"\\\"buildGoModule\\\"\" ; artifact.<self>.args.pname \"\\\"<self>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.vendorHash \"null\" ; systemd.services.<self>.description \"\\\"lips website\\\"\" ; systemd.services.<self>.wantedBy \"[ \\\"multi-user.target\\\" ]\" ; systemd.services.<self>.after \"[ \\\"network.target\\\" ]\" ; systemd.services.<self>.serviceConfig.ExecStart \"\\\"${artifact.<self>}/bin/site\\\"\" ; systemd.services.<self>.serviceConfig.DynamicUser \"true\" ; systemd.services.<self>.serviceConfig.Restart \"\\\"on-failure\\\"\" ; systemd.services.<self>.environment.PORT \"\\\"<value>\\\"\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\"" @gen:ad6fca66cb9f97df
-r2 meta engine.rule.r2 stated "match fact canvas.name => systemd.services.<self>.environment.CANVAS_ID \"\\\"<value>\\\"\"" @gen:ad6fca66cb9f97df
-r3 meta engine.rule.r3 stated "match fact canvas.content => systemd.services.<self>.environment.CANVAS_CAPTION \"\\\"<value>\\\"\"" @gen:ad6fca66cb9f97df
-r4 meta engine.rule.r4 stated "match fact button.label => systemd.services.<self>.environment.BUTTON_LABEL \"\\\"<value>\\\"\"" @gen:ad6fca66cb9f97df
-r5 meta engine.rule.r5 stated "match fact button.action => systemd.services.<self>.environment.BUTTON_ACTION \"\\\"<value>\\\"\"" @gen:ad6fca66cb9f97df
-r6 meta engine.rule.r6 stated "match fact button.target => systemd.services.<self>.environment.BUTTON_TARGET \"\\\"<value>\\\"\"" @gen:ad6fca66cb9f97df
+p1 meta lang.pattern.p1 stated "website running on port <port> => fact site.port \"<port>\"" @gen:8c2942c4e29ca22d
+p2 meta lang.pattern.p2 stated "canvas <name> => fact canvas.<n:index> \"<name>\"" @gen:8c2942c4e29ca22d
+p3 meta lang.pattern.p3.under.p2 stated "content: shows <what.words> => fact <k:key>.content \"<what>\"" @gen:8c2942c4e29ca22d
+p4 meta lang.pattern.p4 stated "button <label> => fact button.<n:index> \"<label>\"" @gen:8c2942c4e29ca22d
+p5 meta lang.pattern.p5.under.p4 stated "on click: new random painting in canvas <target> => fact <k:key>.action \"paint\" ; fact <k:key>.target \"<target>\"" @gen:8c2942c4e29ca22d
+p6 meta lang.pattern.p6.under.p4 stated "on click: erase everything in canvas <target> => fact <k:key>.action \"clear\" ; fact <k:key>.target \"<target>\"" @gen:8c2942c4e29ca22d
+p7 meta lang.pattern.p7.under.p4 stated "on click: download the picture from canvas <target> => fact <k:key>.action \"download\" ; fact <k:key>.target \"<target>\"" @gen:8c2942c4e29ca22d
+q1 meta engine.demand.q1 stated "demand site.port \"on which tcp port should the website be served?\"" @gen:8c2942c4e29ca22d
+r1 meta engine.rule.r1 stated "match fact site.port => systemd.services.<self>.description \"\\\"canvas website served by its own small Go http server\\\"\" ; systemd.services.<self>.after \"[ \\\"network.target\\\" ]\" ; systemd.services.<self>.wantedBy \"[ \\\"multi-user.target\\\" ]\" ; systemd.services.<self>.environment.PORT \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.ExecStart \"\\\"${artifact.website}/bin/website\\\"\" ; systemd.services.<self>.serviceConfig.Restart \"\\\"always\\\"\" ; systemd.services.<self>.serviceConfig.DynamicUser \"true\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\" ; artifact.website.builder \"\\\"buildGoModule\\\"\" ; artifact.website.args.pname \"\\\"website\\\"\" ; artifact.website.args.version \"\\\"0.1.0\\\"\" ; artifact.website.args.src \"./artifacts/website\" ; artifact.website.args.vendorHash \"null\"" @gen:8c2942c4e29ca22d
+r2 meta engine.rule.r2 stated "match fact canvas.<i> => systemd.services.<self>.environment.CANVAS_<i>_NAME \"\\\"<value>\\\"\"" @gen:8c2942c4e29ca22d
+r3 meta engine.rule.r3 stated "match fact canvas.<i>.content => systemd.services.<self>.environment.CANVAS_<i>_CONTENT \"\\\"<value>\\\"\"" @gen:8c2942c4e29ca22d
+r4 meta engine.rule.r4 stated "match fact button.<i> => systemd.services.<self>.environment.BUTTON_<i>_LABEL \"\\\"<value>\\\"\"" @gen:8c2942c4e29ca22d
+r5 meta engine.rule.r5 stated "match fact button.<i>.action => systemd.services.<self>.environment.BUTTON_<i>_ACTION \"\\\"<value>\\\"\"" @gen:8c2942c4e29ca22d
+r6 meta engine.rule.r6 stated "match fact button.<i>.target => systemd.services.<self>.environment.BUTTON_<i>_TARGET \"\\\"<value>\\\"\"" @gen:8c2942c4e29ca22d
