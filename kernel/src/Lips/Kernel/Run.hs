@@ -26,7 +26,8 @@ import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
 import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile,
-                             realizeArtifactFills, realizeStagedPaths)
+                             realizeArtifactFills, realizeArtifactPaths,
+                             realizeStagedPaths)
 import Lips.Kernel.Refine
 
 -- | The four run outcomes other than success (spec section 5).
@@ -77,6 +78,11 @@ data Realization = Realization
   , rlModule   :: Text
   , rlArtifact :: Maybe (Text, [Text])
   , rlStaged   :: [(Text, Decision)]
+  , rlArtPaths :: [(Text, Text, Decision)]
+    -- ^ @(artifact, \/rel\/path, the decision that named it)@: what the output
+    -- expects to find INSIDE a build. Only building the artifact answers it,
+    -- so the caller that owns nix does, exactly as it checks 'rlStaged' against
+    -- the tree it stages.
   , rlFills    :: [(Text, Text, Text)]
     -- ^ @(artifact, marker, text)@: what the caller substitutes into the source
     -- tree it stages, so a program word reaches inside the compiled program.
@@ -94,6 +100,7 @@ runBase modeOf assemble budget rules demands base0 = do
     <$> realize modeOf assemble ground
     <*> realizeArtifactFile modeOf assemble ground
     <*> realizeStagedPaths modeOf assemble ground
+    <*> realizeArtifactPaths modeOf assemble ground
     <*> realizeArtifactFills modeOf assemble ground
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA

@@ -28,6 +28,7 @@ import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (filterM, forM, forM_, unless, when)
 import           Data.Bifunctor     (first)
 import           Data.List          (partition)
+import           Data.Maybe         (isJust)
 import           Data.Aeson         (Value (..), decode)
 import qualified Data.Aeson.KeyMap  as KM
 import qualified Data.ByteString    as BS
@@ -482,14 +483,12 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- Sources are minted in memory; stage them (not yet on disk) so a staged
       -- @src = ./artifacts/<name>@ resolves during the behavioral eval and so
       -- the staged-source gate below judges the tree this mint actually writes.
-      -- NOTE: nothing forces an artifact derivation. The contract is the only
-      -- thing lips evaluates, it is skipped entirely when empty, nix is lazy, and
-      -- 'uncheckableExpects' forbids an expect on a derivation-valued option --
-      -- so an artifact is unreachable by any gate, and a malformed one (a pname
-      -- with no version) ships and fails inside nix at the user's `nix run`.
-      -- Recorded in TODO.md item 1e with the verified remedy (force each
-      -- artifact's drvPath against the pinned nixpkgs); deliberately not built
-      -- yet, because it would put a nixpkgs eval inside a gate.
+      -- The artifact itself is BUILT by 'artifactGate' further down, which is the
+      -- only way to learn what the build contains: nothing lips evaluates forces
+      -- a derivation (the contract cannot assert one, 'uncheckableExpects'
+      -- forbids it, and nix is lazy), so before that gate a malformed builder or
+      -- a binary named differently by the source shipped and failed at the
+      -- user's `nix run`.
       let minted = sourcesOf (map icItem candidates)
       -- The contract is language-level. On regeneration the COMMITTED contract
       -- governs (the stable spec regeneration may not silently break); on first
@@ -540,6 +539,13 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
               <> "the new behavior: lips generate --renew " <> T.pack rep
               <> " (rewrites " <> T.pack (expectPath rep) <> ")."))
           Right () -> pure ()
+      -- Last gate, and the only one that observes rather than reads: build each
+      -- artifact and look inside it. Deliberately after the cheap gates, so a
+      -- mint that fails for a readable reason never pays a build.
+      when (any (isJust . rlArtifact . snd) validated) $ do
+        nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
+        forM_ validated $ \(f, rl) ->
+          artifactGate nixpkgs (\dst -> writeSources dst minted) f rl
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
@@ -1162,6 +1168,93 @@ stagedGate stage file rl
       [ p <> " (named by " <> niceSubject (dSubject d) <> ")" | (p, d) <- ms ]
       ("→ the source tree is minted, so rebuild it: lips generate " <> T.pack file))
   where staged = rlStaged rl
+
+-- | The build gate: every artifact the engine declares must BUILD, and every
+-- path the output names inside one must really be there.
+--
+-- Why observation and not a static check: what a build CONTAINS is decided by
+-- the source, and a binary's name is spelled in a @go.mod@ or a @Cargo.toml@,
+-- never in the derivation. So an engine emitting
+-- @ExecStart = "${artifact.hello}\/bin\/hello"@ beside a @go.mod@ saying
+-- @module server@ is well-formed everywhere lips can read: it passed the mint
+-- gate, @check@, and the artifact EVAL check, and shipped a unit that cannot
+-- start -- twice. Knowing the answer requires looking inside the result, and
+-- teaching lips what each builder names its output would be an open list the
+-- kernel enumerates (the doctrine forbids it).
+--
+-- Why in @generate@ only: it is the one verb that is already online and already
+-- builds a pinned nixpkgs, so the cost is a build it can afford. @compile@ and
+-- @check@ stay offline and nixpkgs-free.
+artifactGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+artifactGate nixpkgs stage file rl = case rlArtifact rl of
+  Nothing            -> pure ()
+  Just (body, names) -> withTempDir $ \dir -> do
+    -- The build reads the tree exactly as compile writes it: artifact.nix beside
+    -- a staged, FILLED artifacts/ tree, so `src = ./artifacts/<name>` resolves.
+    TIO.writeFile (dir </> "artifact.nix") body
+    stage (dir </> "artifacts")
+    fillStagedTree file (dir </> "artifacts") (rlFills rl)
+    TIO.hPutStrLn stderr ("building " <> plural (length names) "artifact"
+      <> " to look inside: " <> T.intercalate ", " names <> ".")
+    built <- forM names (\n -> (,) n <$> buildArtifact nixpkgs file dir n)
+    -- A path whose artifact did not build is unreachable: the build above dies
+    -- first, so every name here has an output path.
+    missing <- filterM (fmap not . doesPathExist . inside built) (rlArtPaths rl)
+    case missing of
+      [] -> pure ()
+      ms -> die (report
+        (T.pack file <> ": the output names " <> plural (length ms) "path"
+          <> " inside a build that does not contain it:")
+        [ "${artifact." <> n <> "}" <> p <> " (named by " <> niceSubject (dSubject d)
+            <> "), built as " <> maybe "?" T.pack (lookup n built)
+        | (n, p, d) <- ms ]
+        ("\8594 the name in that path is decided by the source lips minted, not by"
+          <> " the build, so both are rebuilt together: lips generate " <> T.pack file))
+  where
+    inside built (n, p, _) = maybe "" id (lookup n built) <> T.unpack p
+
+-- | Build ONE artifact out of a staged @artifact.nix@ and return its output
+-- path. Built against the pinned nixpkgs the generation records, so the gate
+-- observes the same world the mint was grounded against; @--impure@ covers
+-- @builtins.currentSystem@, exactly as the schema build does.
+buildArtifact :: Text -> FilePath -> FilePath -> Text -> IO FilePath
+buildArtifact nixpkgs file dir name = do
+  res <- try (readProcessWithExitCode "nix"
+    [ "build", "--impure", "--no-link", "--print-out-paths", "--expr", T.unpack expr ] "")
+  case res of
+    Left e -> die (nixMissing file "build the artifact it wrote" "generate" (tshow (e :: IOException)))
+    Right (ExitFailure _, _, err) -> die (report
+      (T.pack file <> ": the artifact " <> name <> " lips wrote does not build.")
+      (T.lines (T.pack err))
+      ("\8594 the build and its source are minted together, so rebuild both:"
+        <> " lips generate " <> T.pack file))
+    Right (ExitSuccess, out, _) -> pure (T.unpack (T.strip (T.pack out)))
+  where
+    -- The artifact name is identifier text (letters, digits, - and _), so it is
+    -- indexed as a quoted key: a '-' is legal in an attribute name but not in a
+    -- dotted selection.
+    expr = T.pack (concat
+      [ "let np = builtins.getFlake \"", T.unpack nixpkgs, "\"; "
+      , "pkgs = import np { system = builtins.currentSystem; }; in "
+      , "(import ", show (dir </> "artifact.nix"), " { inherit pkgs; })"
+      , ".${", show (T.unpack name), "}" ])
+
+-- | The nixpkgs the artifact build runs against: lips's own baked pin, locked.
+-- One authority for every world, because BUILDERS live in nixpkgs, while a
+-- world's schema pin may name home-manager, kubenix or terranix -- or no flake
+-- at all (@LIPS_OPTIONS_JSON@ pins by content). Resolved only when a mint
+-- actually declares an artifact, so a configuration-only mint needs none.
+artifactNixpkgs :: Text -> IO Text
+artifactNixpkgs remedy = do
+  mflake <- lookupEnv "LIPS_NIXPKGS_FLAKE"
+  case mflake of
+    Just ref -> lockFlakeRef ref remedy
+    -- Deduce-or-fail: an artifact lips cannot build is an artifact lips cannot
+    -- vouch for, and "not verified" must never ship as verified.
+    Nothing  -> die (report
+      "lips can't build the artifact it minted: no nixpkgs is pinned."
+      ["LIPS_NIXPKGS_FLAKE is unset, so there is no nixpkgs to build against."]
+      ("\8594 run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
 
 -- | Fill a staged source tree in place: every @\@marker\@@ becomes the text the
 -- engine declared for it (kernel physics, 'Lips.Kernel.Source.fillTree'), so a
