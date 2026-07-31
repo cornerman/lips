@@ -502,6 +502,26 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **`meta.mainProgram` is stamped from the base's own `bin/<x>` reference, never
+  guessed.** `nix run`/`nix develop`'s default program lookup assumes
+  `bin/<pname>`; a builder is free to name its output differently (a `go.mod`'s
+  own `module`, a Cargo `[[bin]]` name), so the assumption silently breaks
+  whenever the two diverge -- `examples/website`'s Go module is `site`, its
+  artifact's `pname` is `website`, so `nix develop`'s shell held no `website`
+  command (only `site`), and the printed `nix run .../artifact.website` line
+  overpromised the same way. `realize` already resolves the true in-build path
+  for every option value referencing `${artifact.<name>}/bin/<x>` (that is how
+  `ExecStart` gets its real path); a new `mainPrograms` pass in `Realize.hs`
+  reuses exactly that resolution and stamps `meta.mainProgram` on the matching
+  artifact entry, in both the module and the standalone `artifact.nix`. Fires
+  only when a base names EXACTLY one `bin/<x>` for an artifact (never zero,
+  never a guess between two); ambiguous or silent bases leave nix's unchanged
+  default in place. No kernel branch on a language: it repeats a name the base's
+  own decisions already spell out, the same way a `${pkgs.<path>}` reference is
+  forwarded without the kernel understanding it. A plain `lips compile` of
+  `examples/website` (no `generate`, no `.expect` change) now produces
+  `meta.mainProgram = "site";`.
+
 - **A symbol is a token's own text: only a sentence terminator is kernel noise**
   (closes TODO 7; commits `pattern: a symbol belongs to its token`, `mint: a
   template must write the symbols`, `function: re-mint`). The old physics ran
