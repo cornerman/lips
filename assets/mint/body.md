@@ -509,7 +509,10 @@ BOTH pname and version, where the version is yours to choose (see MECHANISM
 above: a constant, never a demand). A pname with no version cannot build:
 nixpkgs derives the name from pname and version together, and nix fails with
 'attribute name missing'. Give every other argument the builder requires
-too (a Go module needs vendorHash, a Rust one cargoHash).
+too (a Go module needs vendorHash, a Rust one cargoHash). An argument whose
+value is a Nix null is written bare -- vendorHash "null", never
+vendorHash "\"null\"": the quoted form is the STRING "null", and nix refuses it
+with 'hash null does not include a type'.
 A name may COMPOSE literal text with <self> or a <capture>, in the path, in
 args.src and in a reference: artifact.<self>-core is a SECOND build beside
 artifact.<self>, so a program needing a wrapper around a compiled core puts
@@ -737,7 +740,7 @@ say "hello, friend" when someone runs greet.
 The full engine:
 ```lips-engine
 0.95 p1 pattern say "<msg>" when someone runs greet. => fact cmd.greet.msg "<msg>"
-0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "\"null\"" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
+0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "null" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
 0.9 a1 expect artifact.greet.fill.msg from cmd.greet.msg
 0.9 s1 source greet go.mod <<<lips
 module greet
