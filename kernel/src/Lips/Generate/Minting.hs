@@ -34,6 +34,8 @@ module Lips.Generate.Minting
   , gapsOf
   , carriesEngineMeaning
   , uncheckableExpects
+  , claimlessBakedSource
+  , unplaceableClaims
   ) where
 
 import           Data.Text       (Text)
@@ -47,6 +49,7 @@ import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Nix.Target       (Target (..))
 import Lips.Kernel.Capture      (nameTokens)
+import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
 import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody)
 import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
@@ -296,6 +299,29 @@ uncheckableExpects rules = filter uncheckable
     uncheckable e = not (isGroundExpect e) && exPath e `elem` derivationPaths
     derivationPaths =
       [ emPath em | r <- rules, em <- mrEmits r, valueRefsDerivation (emRhs em) ]
+
+-- | Does this mint BAKE source without stating a single observable?
+--
+-- Where behaviour lives in minted code, the module text says nothing about what
+-- that code does: every gate lips has reads the map, and the map is silent. So
+-- without one experiment, nothing holds the implementation -- or any future
+-- re-mint -- to the author's own words, and a reworded sentence or a rewritten
+-- algorithm passes unseen.
+--
+-- A pure-configuration mint is deliberately unaffected: its behaviour IS its
+-- option assignments, which the committed contract already pins.
+claimlessBakedSource :: [SourceFile] -> [Claim] -> Bool
+claimlessBakedSource sources claims = not (null sources) && null claims
+
+-- | The claims a world cannot observe, by id. A machine claim boots the realized
+-- module, which only the NixOS world has; elsewhere an observable must be stated
+-- over the program's own artifacts, which needs no machine.
+--
+-- Refused at the gate rather than at some later check, so an engine whose claims
+-- could never run is never written.
+unplaceableClaims :: Target -> [Claim] -> [Text]
+unplaceableClaims Nixos _  = []
+unplaceableClaims _     cs = [ clId c | c <- cs, clPlace c == PlaceMachine ]
 
 parseLine :: Text -> Either Text ItemCandidate
 parseLine line = do

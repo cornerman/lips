@@ -45,7 +45,7 @@ import System.FilePath ((</>))
 import Data.List (sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
@@ -2975,6 +2975,37 @@ main = hspec $ do
       let rule = MapRule "r1" Fact ["w"]
             [ Emit ["claim","echo","run"] (VStr [PLit "x"]) ]
       checkEmits (Map.fromList [(["services","x","enable"], OTBool)]) [rule] `shouldBe` []
+
+  -- The obligation: where an engine bakes source, the author's words are held to
+  -- something observable, or nothing holds them at all.
+  describe "the mint owes an observable where it bakes source" $ do
+    let src = SourceFile { sfArtifact = "tool", sfPath = "main.go", sfContent = "package main" }
+        vstr t = case parseValue t of
+          Right v -> v
+          Left e  -> error (T.unpack e)
+        derivC = Claim "echo" (vstr "\"${artifact.tool}/bin/tool\"") Nothing (Just "hi") 0 PlaceDerivation
+        machC  = Claim "alive" (vstr "\"systemctl is-active api\"") Nothing (Just "active") 0 PlaceMachine
+
+    it "refuses baked source with no claim" $
+      claimlessBakedSource [src] [] `shouldBe` True
+
+    it "admits baked source with one claim" $
+      claimlessBakedSource [src] [derivC] `shouldBe` False
+
+    it "leaves a pure-configuration mint unaffected" $
+      claimlessBakedSource [] [] `shouldBe` False
+
+    it "refuses a machine claim in a world with no machine to boot" $ do
+      unplaceableClaims Kubenix [machC] `shouldBe` ["alive"]
+      unplaceableClaims Terranix [machC] `shouldBe` ["alive"]
+      unplaceableClaims HomeManager [machC] `shouldBe` ["alive"]
+
+    it "admits an artifact-only claim in every world" $ do
+      unplaceableClaims Kubenix [derivC] `shouldBe` []
+      unplaceableClaims Terranix [derivC] `shouldBe` []
+
+    it "admits a machine claim where there IS a machine" $
+      unplaceableClaims Nixos [machC] `shouldBe` []
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do

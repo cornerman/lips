@@ -57,7 +57,7 @@ import           Lips.Identity                 (requireProgram, readmePath, gapP
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
 import           Lips.Kernel.Base       (Conflict (..))
@@ -570,6 +570,26 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
           [ sfArtifact sf <> "/" <> sfPath sf | sf <- bad ]
           ("\8594 a baked source tree needs the concrete name this program gives it"
             <> " (the RULE keeps the hole); run generate again."))
+      -- The obligation: where an engine BAKES source, the module text says
+      -- nothing about what that code does, so without one stated observable
+      -- nothing holds the implementation -- or any future re-mint -- to the
+      -- author's own words. A pure-configuration mint is unaffected.
+      let allClaims = concatMap (rlClaims . snd) validated
+      when (claimlessBakedSource minted allClaims) $ die (report
+        (T.pack rep <> ": this setup builds a program from source, but nothing"
+          <> " observes what that program does.")
+        [ "the built source is " <> sfArtifact sf <> "/" <> sfPath sf | sf <- minted ]
+        ("\8594 state an example in the program -- what it is given and what it"
+          <> " prints -- and mint again: lips generate " <> T.pack rep))
+      case unplaceableClaims target allClaims of
+        []  -> pure ()
+        ids -> die (report
+          (T.pack rep <> ": " <> plural (length ids) "claim"
+            <> " must be observed in a booted machine, and the " <> targetSlug target
+            <> " world has none.")
+          ids
+          ("\8594 state the observable over the program's own binary, which needs no"
+            <> " machine, and mint again: lips generate " <> T.pack rep))
       -- --renew re-blesses the behavioral contract: ignore the committed
       -- .expect (do not even read it) so the minted assertions bootstrap it
       -- afresh and overwrite the file below. Every correctness gate above and
@@ -610,6 +630,13 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
           artifactGate nixpkgs (\dst -> writeSources dst minted) f rl
+      -- And the gate that observes what the program DOES: run every claim the
+      -- mint stated. Against the pinned nixpkgs, so the mint observes the world
+      -- it was grounded against.
+      when (not (null allClaims)) $ do
+        nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
+        forM_ validated $ \(f, rl) ->
+          mintClaimGate nixpkgs (\dst -> writeSources dst minted) f rl
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
@@ -1277,6 +1304,69 @@ artifactGate nixpkgs stage file rl = case rlArtifact rl of
           <> " the build, so both are rebuilt together: lips generate " <> T.pack file))
   where
     inside built (n, p, _) = maybe "" id (lookup n built) <> T.unpack p
+
+-- | The mint-time claim gate: every observable the mint stated must actually
+-- hold, before the engine is written.
+--
+-- Twin of 'artifactGate' one step further out: that one asks whether the build
+-- CONTAINS what the output names, this one asks whether the built thing DOES
+-- what the author said. Both are observations, so both live in @generate@ -- the
+-- one verb that is already online and already builds a pinned nixpkgs.
+--
+-- Built against that same pin, so the mint observes the world it was grounded
+-- against. A machine claim boots the module and so needs KVM; without it the
+-- mint REFUSES rather than admitting an engine whose claims never ran.
+mintClaimGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+mintClaimGate nixpkgs stage file rl
+  | null (rlClaims rl) = pure ()
+  | otherwise = do
+      let machine = [ clId c | c <- rlClaims rl, clPlace c == PlaceMachine ]
+      kvm <- doesPathExist "/dev/kvm"
+      when (not kvm && not (null machine)) $ die (report
+        (T.pack file <> " states " <> plural (length machine) "claim"
+          <> " that must be observed in a booted machine, and this host has no /dev/kvm.")
+        machine
+        ("\8594 mint where KVM exists: an engine whose claims lips cannot run is an"
+          <> " engine lips cannot vouch for, so it is not written."))
+      withTempDir $ \dir -> do
+        TIO.writeFile (dir </> "default.nix") (rlModule rl)
+        stage (dir </> "artifacts")
+        fillStagedTree file (dir </> "artifacts") (rlFills rl)
+        artNames <- case rlArtifact rl of
+          Nothing            -> pure []
+          Just (body, names) -> TIO.writeFile (dir </> "artifact.nix") body >> pure names
+        case claimsFile (not (null artNames)) (rlClaims rl) of
+          Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
+          Just body -> TIO.writeFile (dir </> "claims.nix") body
+        let ids = map clId (rlClaims rl)
+        TIO.hPutStrLn stderr ("observing " <> plural (length ids) "claim"
+          <> ": " <> T.intercalate ", " ids <> ".")
+        forM_ (rlClaims rl) (buildClaim nixpkgs file dir)
+
+-- | Run ONE claim out of a staged @claims.nix@. A failure is the claim's own
+-- verdict (the comparison raises inside the build), surfaced verbatim so the
+-- author reads what was observed against what they stated.
+buildClaim :: Text -> FilePath -> FilePath -> Claim -> IO ()
+buildClaim nixpkgs file dir c = do
+  res <- try (readProcessWithExitCode "nix"
+    [ "build", "--impure", "--no-link", "--print-out-paths", "--expr", T.unpack expr ] "")
+  case res of
+    Left e -> die (nixMissing file "run the claim it stated" "generate" (tshow (e :: IOException)))
+    Right (ExitFailure _, _, err) -> die (report
+      (T.pack file <> ": the setup lips minted does not do what the program says.")
+      (T.lines (T.pack err))
+      ("\8594 the behaviour lives in the source lips minted, so both are rebuilt"
+        <> " together: lips generate " <> T.pack file))
+    Right (ExitSuccess, _, _) -> pure ()
+  where
+    -- The claim id is identifier text, so it is indexed as a quoted key, exactly
+    -- as an artifact name is (a '-' is legal in an attribute name but not in a
+    -- dotted selection).
+    expr = T.pack (concat
+      [ "let np = builtins.getFlake \"", T.unpack nixpkgs, "\"; "
+      , "pkgs = import np { system = builtins.currentSystem; }; in "
+      , "(import ", show (dir </> "claims.nix"), " { inherit pkgs; })"
+      , ".${", show (T.unpack (clId c)), "}" ])
 
 -- | Build ONE artifact out of a staged @artifact.nix@ and return its output
 -- path. Built against the pinned nixpkgs the generation records, so the gate
