@@ -115,6 +115,10 @@ tracks only what is still open.
       since an example written for `equals` still passes. The behavioral
       assertion (2b) is built anyway, for the other reason: it holds the
       implementation and every re-mint to stated observables.
+      Related, and cheaper where it applies: item 7 (plurality). A singleton
+      behaviour sentence gives the mint no reason to build the dispatch a claim
+      would then verify, so enriching the program removes the defect where a
+      claim would only have detected it.
 
    b. **An option's own semantics can make an honest engine wrong.** postgres's
       re-mint emits `ensureUsers = [ { name = "app"; ensureDBOwnership = true;
@@ -241,6 +245,35 @@ tracks only what is still open.
    `demand button.<n>.target` unifies. Same expansion belongs anywhere else a
    `<k>`-rooted family is compared segment for segment; check `Engine/Reach` and
    `Engine/Overlap` for the same assumption before fixing one call site.
+
+7. **The corpus is minted from singleton programs, so its engines understand
+   one instance each** (found 2026-08-02 by the website plurality experiment;
+   DESIGN §13 "Plurality is what makes a baked-source hole mean anything" and
+   the doctrine entry beside it).
+
+   Every program in `examples/` is 1 to 9 lines, and most declare exactly one
+   of whatever the language is about. For an option-backed hole that is fine
+   (nixpkgs grounds it). For a hole reaching BAKED SOURCE it is not: with one
+   instance a hole and a constant are indistinguishable, so the mint folds the
+   words into the source and the resulting engine accepts sentences it cannot
+   honour. `website` was fixed by enriching the program to three buttons and
+   re-minting, which cost no kernel change and produced a closed action enum,
+   a real dispatch, and a loud refusal of an unsupported action.
+
+   Candidates for the same treatment, in order of how much they bake:
+   `logscan` (55 lines of source, 4 of 5 program lines are `Concept`, all
+   singleton behaviour sentences), `habit` (30), `http` (24), `function` (23,
+   and note the reverse experiment: cutting its three calls to one should
+   demote the call to a constant), `board` (22). Each is one program edit plus
+   one `generate --renew`, so this is cheap and does not wait on items 1-6.
+
+   Not decided: whether to make it a GATE. A baked-source hole binding only one
+   distinct value across the program is statically visible and domain-blind, so
+   it could join `diagInert` as an LSP diagnostic ("this hole is never
+   contrasted, so nothing holds the source to it"). Deliberately deferred: the
+   remedy is an author writing a richer program, an advisory report may be
+   enough, and item 1's claims falsify the same defect by observation rather
+   than by counting. Revisit after the re-mints above supply more datapoints.
 
 ## Backlog (larger / deferred by design)
 

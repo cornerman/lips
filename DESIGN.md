@@ -2120,6 +2120,28 @@ but the loop around it is incomplete; "missing" means specced, not built.
   reads only part 1 of a two-part value, or a `<value.tail>` over a several-part
   value (TODO 3a(i)) -- the static map those need is now trivial, since part N is
   hole N by construction.
+- **Plurality is what makes a baked-source hole mean anything** (2026-08-02,
+  `examples/website`). The committed website engine carried a hole that meant
+  nothing: `on click: <action.words> in canvas <target>` accepted any sentence,
+  and the mint spent the words into an HTML `title=` tooltip while the click
+  behaviour sat hardcoded in a 40-line `paint()`. Writing `on click: send an
+  email` matched, realized, and repainted, with every gate green. The cause was
+  not the seam. The program declared ONE button, so a hole and a constant were
+  observationally identical and the mint folded the words into the source, which
+  under that program was the correct reading; its own report said so
+  ("a lips engine cannot synthesise behaviour from prose"). The program was
+  enriched to three buttons whose actions differ (repaint, erase, download) and
+  re-minted with opus-5. Same physics, no kernel change, first attempt: the hole
+  DISAPPEARED, replaced by three literal patterns each emitting a constant
+  (`=> fact <k:key>.action "paint"` / `"clear"` / `"download"`), so the enum
+  lives in the pattern set rather than in a hole; the baked source grew a real
+  dispatch (`var actions = { paint: paint, clear: erase, download: save }`) over
+  indexed env vars with a `{{range .Buttons}}` loop, 111 to 220 lines; all 9
+  program lines crystallize with no `Concept` (the old five had one, plus an
+  action decision that was never stated at all); and `on click: send an email`
+  is now REFUSED (`line 11 no match`, remedy named). Flexibility went down and
+  understanding went up, which is one event, not two: a language understands
+  exactly the distinctions it refuses to collapse. Doctrine below.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
@@ -2508,6 +2530,22 @@ gate on an artifact-only engine, and the concept escape.
   piece as an ordinary NixOS module BESIDE the lips one (the coexistence
   defense used as intended); local kernel-module overlay under the same
   rigor gate.
+- **A hole is grounded from outside or by plurality, never by wishing.** Two
+  regimes, and they ground a hole differently. A hole reaching a TARGET OPTION
+  is grounded externally: nixpkgs defines what `networking.firewall.allowedTCPPorts`
+  does and the schema pin checks the name, so ONE occurrence is fine and a port
+  named once is real. A hole reaching BAKED SOURCE has no such anchor, and
+  plurality inside the program is the only static evidence that it is causal:
+  shown one instance, a mint may fold it into a constant and should, since a
+  hole nothing varies is a lie; shown two that differ, a single hardcoded
+  behaviour cannot serve both and a dispatch must appear. So a behaviour word
+  earns its hole by being contrasted, and an engine minted from a one-instance
+  program is honest about one instance only. Consequence for authors: to teach
+  a language a distinction, write the distinction, do not describe it. This is
+  why more program richness, not more prompt or more direction, is what deepens
+  an engine -- direction is advisory taste and cannot make a sentence causal.
+  Corollary already visible in the corpus: `logscan` demotes 4 of 5 lines to
+  `Concept` and every one of them is a singleton behaviour sentence.
 - **Forking is safe by design.** lips is defined by the calculus + conformance
   suite, not the repo; the reference implementation is non-privileged. A fork
   that keeps the suite green IS lips (`inputs.lips.url = github:you/lips`);
