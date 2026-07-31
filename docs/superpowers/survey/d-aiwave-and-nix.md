@@ -1,6 +1,6 @@
 # The AI-Era Spec Wave and the Nix Precedent
 
-Terminology used throughout, matching the lipsidea project vocabulary: **kernel** is the
+Terminology used throughout, matching the lips project vocabulary: **kernel** is the
 self-describing spec-language itself; a **vocabulary** is a problem-specific language minted
 in the kernel; a **Solution** is an application spec written in some vocabulary; the
 **System** is kernel plus vocabularies plus compiler plus Nix realization.
@@ -9,7 +9,7 @@ This document surveys two bodies of prior art relevant to that architecture. Hal
 whether any 2023-2026 "spec-driven development" tool actually makes a spec the deterministic
 source of truth, or whether all of them are prompt engineering with approval gates. Half 2
 asks what the NixOS module system gets right and wrong as a working example of "vocabulary
-over one general substrate," since that pattern is the architectural bet lipsidea rests on.
+over one general substrate," since that pattern is the architectural bet lips rests on.
 
 ## Half 1: The AI-Era Spec-Driven Wave
 
@@ -25,7 +25,7 @@ definitions I've found are spec-first, but not all strive to be spec-anchored or
 spec-as-source" (Böckeler, "Understanding Spec-Driven-Development: Kiro, spec-kit, and Tessl,"
 martinfowler.com, 15 October 2025,
 <https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html>). This distinction maps
-directly onto lipsidea's own ambition: a Solution is meant to be spec-as-source from day one,
+directly onto lips's own ambition: a Solution is meant to be spec-as-source from day one,
 not an aspiration bolted on after the fact.
 
 ### Tool-by-Tool: Where the LLM Sits, and What Breaks There
@@ -98,7 +98,7 @@ question's answer: "executable" here means graded by another LLM, not run by an 
 Grove's own worked example, the GPT-4o sycophancy incident, is instructive precisely because
 the mechanism that caught the regression was not a machine check; the Model Spec's "don't be
 sycophantic" clause let humans debate whether shipped behavior conformed to written intent, a
-social and editorial process, not a computational one. The talk is valuable to lipsidea as a
+social and editorial process, not a computational one. The talk is valuable to lips as a
 philosophy statement (specs align humans, code is downstream) but it explicitly does not
 claim, and does not achieve, deterministic execution.
 
@@ -110,7 +110,7 @@ usefully separates from "spec": a **memory bank**, project-wide context read on 
 session, not scoped to one feature. AGENTS.md's own FAQ states the design bluntly: "Are there
 required fields? No. AGENTS.md is just standard Markdown. Use any headings you like; the agent
 simply parses the text you provide." There is no schema, no validation, no compiler; it is a
-convention for where to put free text. This is useful for lipsidea mainly as a negative
+convention for where to put free text. This is useful for lips mainly as a negative
 example: it shows the AI tooling ecosystem converging on unstructured natural-language context
 even where a schema would cost little, which is the opposite of the kernel's bet on typed,
 structured vocabularies.
@@ -144,7 +144,7 @@ reviewing prose instead of reviewing code, "spending 80% of your time reading in
 thinking."
 
 **Answer to the central question of Half 1.** None of the surveyed tools make the spec a
-deterministic single source of truth in the sense lipsidea intends. Every one of them runs an
+deterministic single source of truth in the sense lips intends. Every one of them runs an
 LLM at spec-authoring time, plan time, task time, and code-generation time; the only
 genuinely deterministic components are peripheral (file scaffolding, task-dependency
 scheduling, test execution after the fact). Where a tool claims "executable" specs (Tessl,
@@ -153,7 +153,7 @@ non-deterministic and, per Böckeler's repeated-generation experiment, not even 
 Structurally, every tool in this survey is prompt engineering with added ceremony:
 approval gates, checklists, and file templates that shape what the LLM is likely to produce,
 but nothing in the pipeline can refuse to compile a Solution that violates a rule the way a
-type-checker refuses ill-typed code. This is the gap lipsidea's compiler is meant to close:
+type-checker refuses ill-typed code. This is the gap lips's compiler is meant to close:
 move the boundary between human-authored intent and machine-checked realization to a point
 where the "compile" step contains zero LLM inference, matching the Nix precedent surveyed
 next.
@@ -178,7 +178,7 @@ different Nix expressions and merge these values automatically according to thei
 I verified the four load-bearing mechanics directly with `nix-instantiate --eval` (Nix
 2.34.7) rather than trusting secondhand descriptions, since firsthand verification of a
 mechanism this central is cheap and the module system's behavior under composition is exactly
-what lipsidea's own compiler needs to reproduce or improve on.
+what lips's own compiler needs to reproduce or improve on.
 
 - **Priority-based override (`mkForce`, `mkDefault`, `mkOverride`).** Three modules setting
   `foo` to `1` (default), `42` (via `lib.mkForce`), and `7` (plain) resolve to `42`; `mkForce`
@@ -226,7 +226,7 @@ error at authoring time; this is a real gap between "declared as data" and "chec
 
 ### The Module System as Evidence for "Vocabulary Over General Substrate"
 
-The module system is the strongest existing precedent for the architectural claim lipsidea
+The module system is the strongest existing precedent for the architectural claim lips
 rests on. NixOS itself is not a general programming exercise; it is thousands of small,
 problem-specific vocabularies (`services.nginx.*`, `boot.loader.*`, `networking.*`) each
 minted as typed options on top of one general, lazy substrate, the Nix expression language.
@@ -239,7 +239,7 @@ Noogle (<https://noogle.dev/>) extends the same idea to the wider Nix function e
 indexing nixpkgs library functions by type signature. None of this documentation is
 hand-maintained prose describing the system: it is compiled from the same declarations that
 the compiler (the Nix evaluator) type-checks and merges. This is precisely the "derived
-tooling" property lipsidea wants: because a vocabulary's options are structured data, not
+tooling" property lips wants: because a vocabulary's options are structured data, not
 prose, discoverability (search, docs, editor completion) becomes a mechanical export of the
 compiler's own understanding of the vocabulary, at zero incremental authoring cost. Nickel's
 retrospective critique of this same design makes the point from the opposite direction: making
@@ -247,7 +247,7 @@ retrospective critique of this same design makes the point from the opposite dir
 code editors and IDEs" only accidentally, through nixpkgs-specific tooling built after the
 fact, not through the language itself (Nickel, `RATIONALE.md`,
 <https://raw.githubusercontent.com/tweag/nickel/master/RATIONALE.md>, section "Nix vs
-Nickel"). Lipsidea's kernel should take the derived-tooling property as a hard requirement
+Nickel"). Lips's kernel should take the derived-tooling property as a hard requirement
 from day one, not an ecosystem accident.
 
 ### Known Pain Points
@@ -276,7 +276,7 @@ with how underlying software interacts with Nix's non-standard filesystem layout
 paths, so prebuilt binaries do not simply run) (Richard Goulter, "The Three Difficult Things
 about Nix," 9 May 2024,
 <https://rgoulter.com/blog/posts/programming/2024-05-09-the-three-difficult-things-about-nix.html>).
-The lesson for lipsidea: the second difficulty, accumulated library convention indistinguishable
+The lesson for lips: the second difficulty, accumulated library convention indistinguishable
 from language feature, is largely self-inflicted by choosing to build the module system as a
 library rather than a language primitive, and is the one most directly avoidable in a
 from-scratch kernel design.
@@ -291,7 +291,7 @@ scope of the language itself, bringing uniformity and consistency, and potential
 performance and error messages... Data validation directly leverages metavalues and the
 contract system, instead of user-defined patterns such as `mkOption` and the like" (same
 RATIONALE.md URL as above, section "Nix vs Nickel"). This is the single most important piece
-of prior art for lipsidea's kernel design: the team best positioned to know exactly concluded
+of prior art for lips's kernel design: the team best positioned to know exactly concluded
 that the module system's ideas (typed merge, declarative composition) are right, but its
 implementation as a bolted-on library rather than a language primitive is precisely what
 produces bad error messages and poor tooling.
@@ -309,7 +309,7 @@ specifically examines the interaction of NixOS's two defining properties, modula
 laziness, as a case study in functional operating-system configuration (Modularity and Lazy
 Evaluation in NixOS, IEEE Xplore, <https://ieeexplore.ieee.org/document/10991248>), evidence
 that this pairing is recognized as academically interesting, not merely folklore. For
-lipsidea, whose compiler will also need to merge many small vocabulary-defined fragments into
+lips, whose compiler will also need to merge many small vocabulary-defined fragments into
 one realized System, evaluation performance is a second-order concern relative to correctness
 and error quality, but not a free one: an unbounded, uncontrolled laziness model is a known way
 to trade predictable performance for expressiveness.
@@ -326,7 +326,7 @@ OpenTofu) and the lazy, functional configuration of NixOS... generating Terrafor
 then be applied using the same providers." Its own feature list states the point plainly:
 "NixOS module system: Type-checked configuration with sensible defaults, overrides, and
 reusable modules," applied not to systemd units but to Terraform resources. This is close to
-an existence proof of lipsidea's compilation strategy: the module system's typed-merge
+an existence proof of lips's compilation strategy: the module system's typed-merge
 machinery is generic enough to be lifted out of NixOS entirely and pointed at an unrelated
 target format, with the same benefits (composability, typed defaults, per-environment
 overrides via plain function arguments) it has for system configuration.
@@ -373,9 +373,9 @@ existing general-purpose language" strategy Nickel's rationale explicitly argues
 error-message and tooling reasons, included here as the boundary case: it is popular and
 pragmatic, useful evidence that plenty of real users prefer a familiar host language over a
 new DSL even when the new DSL would type-check better, which is a real adoption-cost
-consideration for lipsidea's own vocabulary-authoring UX.
+consideration for lips's own vocabulary-authoring UX.
 
-## Synthesis: What Lipsidea Should Copy, What It Must Fix, and What the AI Wave Implies
+## Synthesis: What Lips Should Copy, What It Must Fix, and What the AI Wave Implies
 
 **Copy from the module system.** (1) Typed options as the vocabulary surface: every
 Solution-level concept should be a declared, typed option, not a free-form document, exactly
@@ -407,8 +407,8 @@ visible in the type, not merely documented in prose. (4) Treat cross-cutting inv
 (NixOS's `assertions`/`warnings`) as language-level, checked as early as static analysis
 allows, not merely collected during evaluation and surfaced only at build time.
 
-**What the AI wave implies for lipsidea's determinism bet.** The 2023-2026 spec-driven wave
-shows a market that wants exactly what lipsidea is building, a dense human artifact that is
+**What the AI wave implies for lips's determinism bet.** The 2023-2026 spec-driven wave
+shows a market that wants exactly what lips is building, a dense human artifact that is
 the real source of truth, but has so far only produced tools where an LLM sits at every stage
 of the pipeline: authoring the spec, planning from the spec, generating tasks, writing code,
 and even grading conformance to the spec (OpenAI's own "greater model" scoring described by
@@ -418,7 +418,7 @@ from an unchanged spec, and a net increase in review burden because markdown rev
 replace code review, it adds to it. The Nix module system is proof that the alternative is not
 merely theoretical: a real system, used in production for two decades, achieves dense,
 typed, mergeable vocabularies over one general substrate with fully deterministic realization
-and no LLM anywhere in its compile step. Lipsidea's differentiator against the AI wave is
+and no LLM anywhere in its compile step. Lips's differentiator against the AI wave is
 structural, not incremental: the compiler must contain zero inference at the point where a
 Solution becomes a realized System, exactly where every surveyed AI-wave tool instead inserts
 an LLM. Its differentiator against raw Nix is that the typed-vocabulary layer is user-mintable

@@ -1,7 +1,7 @@
 # The Guarantee Spectrum
 
 This survey compares three levels of formal rigor that a language design can offer and asks where
-lipsidea should spend its rigor budget. Terms used throughout: the **kernel** is the self-describing
+lips should spend its rigor budget. Terms used throughout: the **kernel** is the self-describing
 spec-language itself; a **vocabulary** is a problem-specific language minted in the kernel; a
 **Solution** is an application spec written in a vocabulary; the **System** is the kernel plus its
 vocabularies plus the compiler plus the Nix-based realization. Solutions are meant to stay thin,
@@ -108,7 +108,7 @@ exception to the type system.
 Proof-carrying systems (Dafny, F*, Idris in full theorem-proving mode, Liquid Haskell, and the
 model-checking middle ground of TLA+ and Alloy) trade reviewer speed for a machine-checked guarantee
 that a specific property holds for all inputs, not just the ones tested. The central empirical
-question for lipsidea is: how much does that guarantee cost per line of code, and does the cost
+question for lips is: how much does that guarantee cost per line of code, and does the cost
 scale with system size in a way that a Solution author could tolerate.
 
 **seL4**, a formally verified microkernel, gives the highest-profile numbers in the field. As of
@@ -168,7 +168,7 @@ Gonthier "a six-year collaborative effort" to formalize in Coq, producing "more 
 of proof scripts, including roughly 4,000 definitions and 13,000 theorems," for a proof whose
 informal version runs about 250 pages, a ratio of "4-5 lines of SSReflect code per line of informal"
 mathematics (Gonthier et al., "A Machine-Checked Proof of the Odd Order Theorem," ITP 2013,
-https://hal.inria.fr/hal-00816699/document). This matters for lipsidea because it isolates the
+https://hal.inria.fr/hal-00816699/document). This matters for lips because it isolates the
 proof-burden variable from systems-engineering variables (concurrency, hardware, adversaries): even
 in the best case, mechanized proof of a single nontrivial result is a multi-year undertaking for
 domain experts. Any guarantee level that requires a Solution author, who is not a proof engineer, to
@@ -251,7 +251,7 @@ same test programs under many optimization-flag combinations to catch bugs that 
 specific optimization passes. Csmith, discussed above for its CompCert result, found bugs by the
 same random-differential method in the other ten compilers it targeted, five open source (GCC, LLVM,
 CIL, TCC, Open64) and five commercial (https://www.cs.utah.edu/~regehr/papers/pldi11-preprint.pdf).
-The paper's own conclusion is directly relevant to lipsidea's guarantee question: "verification does
+The paper's own conclusion is directly relevant to lips's guarantee question: "verification does
 not obviate testing, but rather complements it... verification, on the other hand, typically focuses
 on a narrow slice of a stack of tools, and the parts outside the slice remain in the trusted
 computing base." Even the most proof-heavy artifact in this survey (CompCert) still needed six
@@ -304,9 +304,9 @@ an unfolded definition, a narrower search scope), so refinement-typed code accum
 annotations that have nothing to do with the domain logic and everything to do with steering the
 solver. This is the concrete mechanism by which "add a proof" quietly becomes "add proof-engineering
 skill to the required skill set of every contributor," which is precisely the density-killing
-failure mode lipsidea's guarantee level must avoid.
+failure mode lips's guarantee level must avoid.
 
-## 5. Guarantee Architecture for Lipsidea
+## 5. Guarantee Architecture for Lips
 
 **The hypothesis under test:** vocabularies are verified or model-checked once by their authors;
 Solutions written in a vocabulary get only fast decidable checks but inherit the vocabulary's
@@ -319,7 +319,7 @@ First, it matches where every real system in this survey actually put its expens
 shared substrate consumed many times, never at a leaf-level artifact written once. seL4, CompCert,
 and IronFleet all pay a large, fixed proof cost for one thing (a kernel, a compiler, a protocol
 library) that many callers reuse without re-verifying. HACL*/Firefox is the exact "verified
-vocabulary, checked application" shape lipsidea proposes, just relabeled: HACL* is the
+vocabulary, checked application" shape lips proposes, just relabeled: HACL* is the
 vocabulary-equivalent (a fixed, expert-verified building block), Firefox's use of it is the
 Solution-equivalent (an ordinary consumer that inherits the guarantee through an API boundary and is
 tested, not proved, at its own layer).
@@ -339,11 +339,11 @@ Koka's `div` effect all show that a decidable-checks core can coexist with an ex
 locally-scoped downgrade, rather than forcing an all-or-nothing choice between "fully decidable" and
 "fully general."
 
-**The complication the plain hypothesis does not address:** lipsidea's kernel is fully general by
+**The complication the plain hypothesis does not address:** lips's kernel is fully general by
 design, so a Solution is legally allowed to contain general recursion or arbitrary control flow,
 "glue," not expressible as a fold over a vocabulary's fixed constructs. No decidable check can
 certify termination or full correctness of that glue; Dhall's answer (forbid it) and CUE's answer
-(push it outside the language) are both unavailable to lipsidea by design, since the substrate must
+(push it outside the language) are both unavailable to lips by design, since the substrate must
 remain Turing-complete.
 
 **Recommended modification, ranked against the plain hypothesis:**
@@ -352,7 +352,7 @@ remain Turing-complete.
 hypothesized. Proof-carrying tools (Dafny-style SMT automation is the right cost point, not
 Isabelle/HOL-style interactive proof, given IronFleet's 3.6:1 versus seL4's 50:1) or
 TLA+/Alloy-style model checking for vocabularies whose main risk is concurrent or stateful protocol
-logic. This is where lipsidea should be willing to spend person-years, because the cost is paid once
+logic. This is where lips should be willing to spend person-years, because the cost is paid once
 per vocabulary and inherited by every Solution.
 
 2. Solution layer, default path: fast decidable checks only, in the Dhall/CUE/Nickel style, at every
@@ -382,6 +382,6 @@ visible home instead of either forbidding it (impossible, given the fully-genera
 pretending decidable checks cover it (false, given the halting problem). It ranks below a
 hypothetical "prove everything" architecture only in raw assurance ceiling, and this survey's own
 numbers (50:1 at seL4, six years for one theorem at Feit-Thompson) are the evidence that a "prove
-everything" ceiling is not reachable without destroying the comprehension-per-minute metric lipsidea
+everything" ceiling is not reachable without destroying the comprehension-per-minute metric lips
 is optimizing for.
 

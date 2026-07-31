@@ -9,7 +9,7 @@ Survey A/B/C/D).
 - **Decision**: the atom of the whole system. A tuple of subject, assertion,
   scope, strength, provenance, rationale.
 - **Decision base**: an unordered set of decisions with defined merge
-  semantics. Every artifact in lipsidea is one.
+  semantics. Every artifact in lips is one.
 - **Kernel**: the decision calculus itself: decision shape, strength and
   merging, provenance, conflict, and the refinement relation. Tiny, fixed,
   maximally verified.
@@ -20,7 +20,7 @@ Survey A/B/C/D).
   derived tooling. Engines churn; Solutions do not.
 - **Solution**: the human-authored decision base for one problem. The stable
   artifact. (The shipped name for it is **program**, the `.lips` file; this
-  document's older sections say Solution and `lipsidea` says lips. `AGENTS.md`
+  document's older sections say Solution and code says lips. `AGENTS.md`
   carries the terminology the code uses.)
 - **System**: kernel + languages + engines + compiler + Nix realization.
 - **Glue**: a decision whose assertion contains a computation. Legal, marked,
@@ -41,23 +41,23 @@ The human artifact must therefore move up to intent: dense, precise, small,
 and stable. Execution must stay deterministic, because a model guessing at
 realization time reintroduces the unreviewable gap.
 
-lipsidea's structural commitment: **zero LLM inference between a Solution and
+lips's structural commitment: **zero LLM inference between a Solution and
 its realized system.** AI participates massively, but only at authoring time,
 and only by producing decision bases that are checkable artifacts. Survey D
 confirms the position is unoccupied: every 2023-2026 spec-driven tool (Spec
 Kit, Kiro, Tessl, BMad, OpenAI's "spec is the new code") places an LLM
-exactly where lipsidea places a compiler; Tessl regenerates different code
+exactly where lips places a compiler; Tessl regenerates different code
 from an unchanged spec.
 
-The deliverable form of lipsidea is a rigorous specification of the kernel
+The deliverable form of lips is a rigorous specification of the kernel
 calculus plus a conformance suite, not a blessed runtime.
 
 ## 2. The Decision Calculus
 
 Lisp's founding move was: code is data, and eval maps data to values.
-lipsidea's founding move is: **intent is data, and realize maps decisions to
+lips's founding move is: **intent is data, and realize maps decisions to
 systems.** Lisp stayed "just code" because its atom is a computational form.
-lipsidea's atom is an asserted meaning:
+lips's atom is an asserted meaning:
 
     decision = (subject, assertion, scope, strength, provenance, rationale)
 
@@ -223,7 +223,7 @@ A small closed set of kernel-level kinds; languages refine them:
 ## 4. The Inverted Development Model
 
 Conventional software: the application churns while infrastructure
-ossifies. lipsidea inverts this. **The Solution is the stable artifact; the
+ossifies. lips inverts this. **The Solution is the stable artifact; the
 engine churns freely.**
 
 The human writes only the high-level picture: the workflow, the domain, the
@@ -350,7 +350,7 @@ in which the language's invariants simply hold, including those reality does
 not guarantee. Networks fail, APIs flake, data arrives twice, clocks skew;
 coping strategies (retry, reconciliation, idempotence, compensation) are
 engine obligations, never Solution content. TCP builds reliable streams on
-unreliable packets; transactions build atomicity on crashing disks; lipsidea
+unreliable packets; transactions build atomicity on crashing disks; lips
 generalizes this into a design law.
 
 Consequently **workarounds are unrepresentable in a Solution.** There is
@@ -358,7 +358,7 @@ nothing to work around in a world that is whole; any pressure toward a
 workaround is, structurally, a feature request against the engine. Survey B
 ranks escape-hatch decay through accumulated workarounds as the number-one
 killer of every prior intent-level attempt (CASE, MDA, Helm, low-code);
-lipsidea makes that decay impossible at the level where it kills and routes
+lips makes that decay impossible at the level where it kills and routes
 the pressure to the level built to absorb it.
 
 ## 7. Rigor Allocation
@@ -431,7 +431,7 @@ declaratively with it, any language's toolchain, any package, any service
 topology, any system state. The engine's mechanism space is therefore
 unbounded by construction: whatever an engine needs to emit (a Rust service,
 a Python pipeline, a kernel tweak, a fleet of containers) is reachable as
-derivations plus module wiring. lipsidea inherits universality from Nix
+derivations plus module wiring. lips inherits universality from Nix
 instead of building it, which is what makes "fully expressive from day one"
 hold at the realization layer, as marked glue makes it hold at the language
 layer. Completeness twice, both times deterministic. The NixOS

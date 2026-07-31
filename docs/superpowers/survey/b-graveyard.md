@@ -2,11 +2,11 @@
 
 This document catalogs major prior attempts to let humans state intent while a machine produces
 working software, and it records why each attempt failed, stalled, or survived only in a narrow
-niche. It exists to keep lipsidea from repeating a known failure under a new name. Sibling
+niche. It exists to keep lips from repeating a known failure under a new name. Sibling
 documents cover adjacent ground: `a-meta-formalisms.md` covers language workbenches and
 parsing formalisms (MPS, Spoofax, Redex, OMeta as a formalism), `c-guarantees.md` covers the
 correctness-by-construction lineage (Dhall, Dafny, TLA+), and `d-aiwave-and-nix.md` covers the
-current AI-codegen wave and the NixOS module system lipsidea targets. This document stays with
+current AI-codegen wave and the NixOS module system lips targets. This document stays with
 systems that are dead, stalled, or permanently niche.
 
 Method note: every factual claim below carries a source URL, fetched and read directly (Wikipedia
@@ -14,7 +14,7 @@ via its API, primary blogs, official docs, Hacker News via the Algolia search AP
 recalled from training data. Where a claim is my own synthesis rather than something a source
 states outright, it is marked "inference."
 
-Terminology used in the closing synthesis follows lipsidea's own vocabulary: "kernel" is
+Terminology used in the closing synthesis follows lips's own vocabulary: "kernel" is
 the spec-language itself, "vocabulary" is a problem-specific language minted in the kernel,
 "Solution" is an application spec written in a vocabulary, and "System" is the kernel plus its
 vocabularies plus the compiler plus the Nix realization.
@@ -52,7 +52,7 @@ and selling off most non-core product lines. The category survived by retreating
 can build software" to "developers build CRUD software faster," and by 2000 new development in
 these languages had mostly stopped even as old installations lingered as unkillable legacy systems.
 
-What lipsidea should keep: the DataWindow's insight that one declarative artifact can cover
+What lips should keep: the DataWindow's insight that one declarative artifact can cover
 the overwhelming majority of a business application's UI and data-binding logic is correct
 and worth preserving. The failure was coupling that declarative core to a single proprietary
 runtime with no open compilation target, so escaping the vendor meant rewriting from scratch.
@@ -86,8 +86,8 @@ tooling by the mid-1990s. The deeper failure was that the round-trip promise was
 once developers learned they could not trust the generator to preserve their edits, they stopped
 trusting the model and used the diagramming tool only for documentation, if at all.
 
-What lipsidea should keep: the idea of a single shared, machine-readable model as the source of
-truth is correct. What must differ is the direction of generation. lipsidea's compile step must
+What lips should keep: the idea of a single shared, machine-readable model as the source of
+truth is correct. What must differ is the direction of generation. lips's compile step must
 be one-directional and total (Solution to NixOS module), with no expectation of round-tripping
 hand edits back into the spec; if a capability is missing, it belongs in the vocabulary, not
 patched into the output.
@@ -133,10 +133,10 @@ Shlaer-Mellor tools still have users) but never crossed into mainstream applicat
 in part because the tooling required a dedicated commercial virtual machine and in part because
 most developers found the notation heavier than just writing code.
 
-What lipsidea should keep: Executable UML's core bet, that a model can have complete enough
-semantics to compile deterministically rather than merely document, is exactly lipsidea's bet
+What lips should keep: Executable UML's core bet, that a model can have complete enough
+semantics to compile deterministically rather than merely document, is exactly lips's bet
 too. The lesson is to avoid MDA's layered PIM/PSM split with a hand-editable middle layer;
-lipsidea's Solution should compile directly to the NixOS module in one deterministic step,
+lips's Solution should compile directly to the NixOS module in one deterministic step,
 with no intermediate artifact that invites hand-editing.
 
 ## Intentional Software (Charles Simonyi)
@@ -177,7 +177,7 @@ it could never accumulate the network effects that make a language workbench sel
 a projectional editor is only as valuable as the ecosystem of projections built for it, and an
 ecosystem cannot form around a tool nobody outside a few clients can try.
 
-What lipsidea should keep: projectional editing's insight, that intent and its various renderings
+What lips should keep: projectional editing's insight, that intent and its various renderings
 can be kept in permanent sync by making the renderings views of one model rather than one-way
 generation targets, is powerful and worth studying (sibling document `a-meta-formalisms.md` covers
 this formalism in more depth). The organizational lesson is separate and just as important: an
@@ -218,11 +218,11 @@ is possible was never converted into a maintained, adoptable system, because the
 structured from the start as a bounded science experiment rather than as the seed of a product
 with users, a support model, and an evolution path.
 
-What lipsidea should keep: the discipline of treating code volume itself as a defect to be
+What lips should keep: the discipline of treating code volume itself as a defect to be
 measured and minimized, and the practice of building each layer as its own small, legible language
-rather than one monolithic general-purpose stack, both anticipate lipsidea's own "vocabulary
+rather than one monolithic general-purpose stack, both anticipate lips's own "vocabulary
 per problem domain over one general substrate" design. The lesson to avoid is STEPS's explicit
-choice to stay a science project. lipsidea needs a Solution to be usable by a real owner on a
+choice to stay a science project. lips needs a Solution to be usable by a real owner on a
 real machine from an early milestone, not only publishable as a measurement of what is possible.
 
 ## Literate Programming (Donald Knuth)
@@ -249,14 +249,14 @@ of most working programmers, its tools were per-language and clunky to integrate
 and debuggers of the day, and it offered no answer to how a team, not a single author, keeps
 a woven narrative and a codebase consistent as both evolve under multiple hands.
 
-What lipsidea should keep: the core claim, that forcing precise explanation at authoring time
-catches design errors before they are built, is directly relevant to lipsidea's premise that AI
+What lips should keep: the core claim, that forcing precise explanation at authoring time
+catches design errors before they are built, is directly relevant to lips's premise that AI
 can write code faster than a human can review it, so the artifact a human reviews must be dense
 intent rather than generated code. [Literate programming's real afterlife is the computational
 notebook (Jupyter and similar), which Wikipedia's own account credits with an "important
 resurgence... especially in data science"](https://en.wikipedia.org/wiki/Literate_programming),
 suggesting the durable form of this idea is "prose and executable fragments interleaved for one
-author's own reasoning," not "prose as the source of truth for a shipped system." lipsidea's
+author's own reasoning," not "prose as the source of truth for a shipped system." lips's
 Solution should be closer to the latter: a dense spec that is the artifact, not an essay with
 code attached.
 
@@ -290,9 +290,9 @@ genuinely successful intent-level tool can still die because the company that ow
 decides, for reasons unrelated to the tool's merit (in HyperCard's case, the web's rise and an
 internal strategic pivot after Steve Jobs's return), to stop maintaining it.
 
-What lipsidea should keep: HyperCard's single most important property is that the "no-code"
+What lips should keep: HyperCard's single most important property is that the "no-code"
 surface and the "real code" layer were the same objects in the same tool, with no separate
-export or rewrite step to go from one to the other. lipsidea's vocabularies should aim for that
+export or rewrite step to go from one to the other. lips's vocabularies should aim for that
 same continuity between a Solution's declarative surface and whatever escape hatch it offers,
 rather than a hard wall between "spec" and "code."
 
@@ -323,9 +323,9 @@ fiction, where the vocabulary of possible actions is small and mostly agreed upo
 never attempted, and was never asked, to generalize to arbitrary software, which is exactly why
 its natural-language syntax never hit the wall that killed the 4GLs' "English for managers" promise.
 
-What lipsidea should keep: Inform 7 is proof that natural-language-adjacent syntax can be genuinely
+What lips should keep: Inform 7 is proof that natural-language-adjacent syntax can be genuinely
 deterministic and compileable when the vocabulary is narrow and well curated, which validates
-lipsidea's own bet that "vocabularies" should be freely minted per problem domain rather than one
+lips's own bet that "vocabularies" should be freely minted per problem domain rather than one
 universal natural-language grammar stretched to cover everything. The caution is scope discipline:
 Inform 7's success is inseparable from its refusal to generalize past interactive fiction.
 
@@ -358,9 +358,9 @@ bet a product's core logic on it. It is included here as the clearest example of
 excellent intent-language whose adoption ceiling is entirely a vendor-control problem, not an
 expressiveness problem.
 
-What lipsidea should keep: rule-based rewriting to a fixed point is a strong model for expressing
+What lips should keep: rule-based rewriting to a fixed point is a strong model for expressing
 "what," not "how," and worth studying for how a vocabulary's compiler might resolve a Solution. The
-lesson to avoid is single-vendor control of the only real implementation; lipsidea's kernel
+lesson to avoid is single-vendor control of the only real implementation; lips's kernel
 and compiler need to be open enough that no single company's roadmap or pricing can gate adoption.
 
 ## Dark (Darklang)
@@ -398,12 +398,12 @@ in over two years"](https://blog.darklang.com/winding-down-darklang-classic/). T
 company is rebuilding Dark as an open-source language usable in ordinary editors and runnable
 anywhere, explicitly reversing the original all-in-one, cloud-only design.
 
-What lipsidea should keep: Dark's founders converged, after the fact, on immutability as "the
+What lips should keep: Dark's founders converged, after the fact, on immutability as "the
 secret sauce," valuable specifically because it makes AI-generated code safer to read and
-to replay, which validates lipsidea's own premise that a deterministic, inspectable artifact
+to replay, which validates lips's own premise that a deterministic, inspectable artifact
 matters more once an AI is writing the first draft. The lesson to avoid is total: never require
 an owner to leave their normal editor, deployment process, and hosting choice in order to use
-the System. lipsidea's Solution compiling to an ordinary NixOS module, runnable on the owner's
+the System. lips's Solution compiling to an ordinary NixOS module, runnable on the owner's
 own machine with the owner's own tools, is the direct fix for exactly the lock-in Dark's founders
 named as fatal.
 
@@ -443,9 +443,9 @@ a team still searching for the right interface, not one iterating toward a shipp
 and the underlying relational-database semantics, however sound, were never enough on their
 own to reach the "accountant or cancer researcher" the project was named for.
 
-What lipsidea should keep: Granger's diagnosis that "we can't just paper over the complexity"
+What lips should keep: Granger's diagnosis that "we can't just paper over the complexity"
 and that the platform "has to allow for the representation" (a UI cannot be bolted onto semantics
-that were not designed to support it) is a real design constraint. lipsidea sidesteps Eve's
+that were not designed to support it) is a real design constraint. lips sidesteps Eve's
 actual failure point by not attempting to invent a novel end-user interface at all: its audience
 is software-literate owners and architects working in text, and any friendlier authoring surface
 is optional future tooling on top of a already-useful kernel, not a prerequisite for the System
@@ -498,16 +498,16 @@ mission-critical systems these platforms are trusted to go. The proprietary-runt
 is the same failure mode seen in 4GLs and Dark, recurring here at enterprise rather than
 individual-developer scale.
 
-What lipsidea should keep: low-code's visual-model-to-generated-application pipeline validates
+What lips should keep: low-code's visual-model-to-generated-application pipeline validates
 that most CRUD-shaped application logic really can be captured declaratively and compiled without
 hand-written code. The property to avoid is the proprietary escape hatch and proprietary runtime;
-lipsidea's compile target is an ordinary NixOS module, so there is no vendor-controlled runtime
+lips's compile target is an ordinary NixOS module, so there is no vendor-controlled runtime
 to be locked into in the first place, and no separate "drop into code" mode whose output cannot
 be regenerated.
 
 ## Declarative Infrastructure-as-Code (Terraform, CloudFormation, Kubernetes YAML and Helm)
 
-This is the closest living analog to lipsidea's own target: a declarative specification
+This is the closest living analog to lips's own target: a declarative specification
 that compiles deterministically to a running system, at production scale, used by nearly
 the entire software industry today. [Terraform, launched by HashiCorp in 2014, uses its
 own declarative HashiCorp Configuration Language (HCL) to describe a desired end-state,
@@ -515,7 +515,7 @@ then computes and applies the create, update, and delete operations needed to re
 it](https://en.wikipedia.org/wiki/Terraform_(software)). AWS CloudFormation and Kubernetes
 manifests (plain YAML, or YAML templated through Helm charts) follow the same declarative,
 desired-state model on their respective platforms. This is not a graveyard entry in the sense
-of being dead; it is included because its specific failure modes are exactly the ones lipsidea's
+of being dead; it is included because its specific failure modes are exactly the ones lips's
 Nix-module compilation target must design around from the outset.
 
 The intent-level artifact is the declarative file itself (an HCL module, a CloudFormation
@@ -553,13 +553,13 @@ that even a widely adopted, technically successful declarative system remains ex
 vendor-control failure mode seen elsewhere in this survey, this time expressed as a license
 change rather than a runtime lock-in.
 
-What lipsidea should keep: the desired-state, reconciliation-engine model these tools popularized
+What lips should keep: the desired-state, reconciliation-engine model these tools popularized
 (describe the end-state, let a compiler compute what to do to get there) is the right shape,
 and it is close to what a NixOS module already does, since Nix builds are themselves declarative
-and reproducible by construction. What lipsidea must design out is Helm's specific mistake: text
+and reproducible by construction. What lips must design out is Helm's specific mistake: text
 templating over a structured format, layered on before that format is ever parsed as structured
 data. A vocabulary's compiler must always emit through the kernel's own typed representation,
-never assemble the Nix output as untyped text, and the licensing lesson argues for lipsidea's
+never assemble the Nix output as untyped text, and the licensing lesson argues for lips's
 compiler and kernel staying on unambiguously open terms from the start, sibling document
 `c-guarantees.md` covers the further step some of these tools' critics took, replacing string
 templating with total, typed configuration languages such as Dhall.
@@ -569,7 +569,7 @@ templating with total, typed configuration languages such as Dhall.
 The thirteen entries above fail, stall, or niche down for a small number of recurring
 reasons. Ranked here by how many entries each mode killed or capped, and how hard the mode
 is to route around after the fact, with the design property that would have prevented it in
-lipsidea's own terms.
+lips's own terms.
 
 **1. Escape-hatch decay: the glue breaks the abstraction's guarantees.** This is the most
 lethal and most recurring pattern in the survey. CASE tools lost round-trip engineering the
@@ -580,7 +580,7 @@ code" still runs inside a proprietary runtime, so it escapes nothing. Dark's fou
 this directly as fatal: no path existed from their structured editor back to a normal one. The
 preventive property: an escape hatch must be a first-class, typed, kernel-checked construct
 that still goes through the compiler, never a side channel that lets a human or a template
-write past the type system directly into the compiled artifact. In lipsidea, a vocabulary that
+write past the type system directly into the compiled artifact. In lips, a vocabulary that
 cannot express something gets a new capability added to the vocabulary and recompiled; nobody
 hand-edits the emitted NixOS module and expects it to survive the next compile.
 
@@ -592,7 +592,7 @@ raise a Series A, then again through 2025 before running out entirely. Intention
 survived seventeen years on private capital and a handful of confidential contracts, never a
 real product business. The preventive property: the System must be useful to a single owner
 on a single machine at small scale from an early milestone, not gated behind a future critical
-mass of users, vocabularies, or funding rounds; lipsidea's own scope (one owner, one Solution,
+mass of users, vocabularies, or funding rounds; lips's own scope (one owner, one Solution,
 compiling to one NixOS module) is already structured this way.
 
 **3. Vendor or research lock-in: the only complete implementation is closed, proprietary,
@@ -601,8 +601,8 @@ company's commercial products. Low-code platforms lock generated applications to
 runtime. Dark's cloud-only runtime was named by its own founders as a top reason for user
 distrust. Even open-source Terraform was not immune: HashiCorp's 2023 license change split its
 own community. The preventive property: the compiled target must be a standard, independently
-inspectable artifact with no single-company gatekeeper. lipsidea's choice of the NixOS module as
-canonical target already satisfies this, since Nix and NixOS have their own life outside lipsidea.
+inspectable artifact with no single-company gatekeeper. lips's choice of the NixOS module as
+canonical target already satisfies this, since Nix and NixOS have their own life outside lips.
 
 **4. Loss of human legibility: the model or diagram stops being what anyone actually reads.**
 UML's own reference material concedes most developers draw informal diagrams instead of using
@@ -610,7 +610,7 @@ UML as intended; the artifact became decoration rather than source of truth. CAS
 code, once hand-patched, becomes unreadable spaghetti no one trusts the model to explain. The
 preventive property: the spec itself, not the compiled output, must be the artifact a human
 reviews, and it must remain the single source of truth permanently, not merely at the moment of
-first generation. lipsidea's one-directional compile (Solution to Nix module, never the reverse)
+first generation. lips's one-directional compile (Solution to Nix module, never the reverse)
 removes the possibility of the two drifting apart in the first place.
 
 **5. All-or-nothing adoption: no incremental path onto or off of the system.** STEPS required
@@ -627,7 +627,7 @@ clearest case: a well-designed, successful tool died because Apple stopped inves
 unrelated to any flaw in HyperCard itself. The preventive property: build on a platform with
 governance independent of the System's own maintainers, so the System's fate is not entangled
 with one company's unrelated strategic pivot. Building on the existing NixOS/Nix ecosystem,
-rather than a bespoke lipsidea-only runtime, is the direct application of this lesson.
+rather than a bespoke lips-only runtime, is the direct application of this lesson.
 
 **7. The natural-language trap: syntax that looks accessible is mistaken for semantics that are
 actually simple.** 4GLs marketed English-adjacent syntax as proof that non-programmers could
@@ -642,6 +642,6 @@ kernel's own grammar, to bridge to a non-technical stakeholder's phrasing when t
 states the semantic core (a temporal relational language and database) was comparatively settled
 while the end-user interface was never solved, and 30 UI prototypes in two years is the visible
 cost of that gap. The preventive property: do not make a novel end-user interface a precondition
-for the System to work. lipsidea's audience is software-literate owners and architects working
+for the System to work. lips's audience is software-literate owners and architects working
 in ordinary text, which sidesteps this failure mode entirely by not attempting the harder,
 still-unsolved problem Eve was actually founded to solve.

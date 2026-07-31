@@ -196,7 +196,7 @@ Across the whole episode, the review surface was:
    ingest keyed on bank reference."
 
 No generated code, no engine internals, no mechanism diffs. That surface is
-the thesis of lipsidea made concrete: AI did compiler-engineering volumes of
+the thesis of lips made concrete: AI did compiler-engineering volumes of
 work, and the human reviewed decisions.
 
 ## Extracted: Canonical Text Form, First Draft

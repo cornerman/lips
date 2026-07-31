@@ -2,7 +2,7 @@
 
 This survey covers systems whose entire purpose is to let someone write a definition of a
 language and get, from that one definition, an implementation and its supporting tools.
-That is exactly the shape lipsidea proposes: one uniform meta-structure from which the
+That is exactly the shape lips proposes: one uniform meta-structure from which the
 checker, completion, error messages, formatter, and docs for every layered vocabulary are
 derived, not hand-built per vocabulary. For each system below the survey asks five
 questions: what its meta-structure actually is (grammar formalism plus semantics
@@ -10,8 +10,8 @@ formalism), whether that meta-structure is executable and deterministic enough t
 interpreter or compiler can be *derived* from it rather than separately implemented,
 how far generated tooling (editor services, debuggers, REPLs) actually got in practice
 and where it stalled, who uses the system today and why it stayed niche, and finally
-what lipsidea should steal or reject from it. The last question ends every section with
-a clearly marked recommendation; the formalism for lipsidea's own kernel is not yet
+what lips should steal or reject from it. The last question ends every section with
+a clearly marked recommendation; the formalism for lips's own kernel is not yet
 decided, and this survey is direct input to that decision, not a retrofit of a decision
 already made.
 
@@ -74,7 +74,7 @@ itself admits is "far from being complete"
 derived code completion, and no derived in-editor error checking for a *language defined
 in K*, despite K deriving that language's runtime semantics with real rigor. This gap
 between semantics-completeness and IDE-completeness, ten-plus years into K's existence,
-is the single most important cautionary data point in this survey for lipsidea's
+is the single most important cautionary data point in this survey for lips's
 tooling ambition.
 
 **Adoption reality.** K lives almost entirely inside formal methods and, specifically,
@@ -88,11 +88,11 @@ or new language and derive an interpreter and prover from it," a narrower ambiti
 tutorial runs to dozens of lessons across five parts, evidence of real, not marketing,
 learning-curve cost.
 
-**Lipsidea verdict.** Steal the discipline of one definition driving multiple derived
+**Lips verdict.** Steal the discipline of one definition driving multiple derived
 artifacts with zero hand-written glue between them, and matching logic's choice of a
 single base logic that types, reachability, and meta-theory all reduce to, rather than
 bolting together separately-justified formalisms per concern; this is close kin to
-lipsidea's "one uniform meta-structure." Reject the assumption that IDE tooling comes
+lips's "one uniform meta-structure." Reject the assumption that IDE tooling comes
 free once semantics is nailed down: K disproves that by omission. Reject the toolchain's
 operational weight (multiple backends in different host languages, a heavyweight native
 build) as a model for a spec-language kernel that wants a small, auditable core.
@@ -145,15 +145,15 @@ concentrates in the Racket/Scheme research community and computer-science educat
 a new `#lang` remains a specialist activity, because writing a correct, hygiene-respecting
 reader/expander pair, while "just code," demands real macro expertise.
 
-**Lipsidea verdict.** Steal the core idea directly: a spec-language and its own
+**Lips verdict.** Steal the core idea directly: a spec-language and its own
 meta-language need not be two different formalisms. If the substrate is expressive
 enough (a real module system plus a principled, hygienic expansion layer), defining a new
 vocabulary is writing ordinary code in that substrate, and tooling that understands the
 substrate transfers automatically to everything that bottoms out in it. This is the
-closest existing precedent to lipsidea's "one substrate, many layered vocabularies,
+closest existing precedent to lips's "one substrate, many layered vocabularies,
 tooling derived rather than hand-built" ambition. Reject the assumption that this
 transfer reaches everywhere: DrRacket's free tooling stops exactly where a `#lang`
-introduces genuinely new structure with no shared core-form equivalent, and lipsidea
+introduces genuinely new structure with no shared core-form equivalent, and lips
 must decide that boundary explicitly rather than assume Racket's answer generalizes.
 
 ## JetBrains MPS
@@ -189,7 +189,7 @@ with syntax coloring, code completion, live constraint and type-error highlighti
 find-usages, and refactoring, described plainly on its own Wikipedia entry as providing
 "many IDE services automatically: editor, code completion, find usages, etc."
 (https://en.wikipedia.org/wiki/JetBrains_MPS). This is dev tooling genuinely derived
-from a uniform meta-structure, the closest kinship in this survey to lipsidea's
+from a uniform meta-structure, the closest kinship in this survey to lips's
 ambition. The cost is real: projectional editing means source is not text, so plain-git
 diffing, grepping, and copy-paste from outside sources interoperate poorly, a friction
 widely cited as MPS's main practical drawback in the broader language-workbench
@@ -211,12 +211,12 @@ are the projectional-editing tax described above and the standalone-IDE requirem
 adopting an MPS language means adopting MPS itself as the editor, not adding a plugin to
 whatever editor a team already uses.
 
-**Lipsidea verdict.** Steal the single strongest empirical result in this survey: a
+**Lips verdict.** Steal the single strongest empirical result in this survey: a
 uniform meta-structure genuinely can drive editor, completion, live-checking, and doc
 tooling automatically when the aspects are declarative and machine-readable; MPS proves
 this by fifteen-plus years of production existence, not by aspiration. Steal the
 bootstrapping discipline of defining the aspect languages themselves inside the same
-system. Reject projectional editing as a default: lipsidea's context, AI-authored specs
+system. Reject projectional editing as a default: lips's context, AI-authored specs
 that need human legibility, plain-text diffs in git, and NixOS-module compile targets,
 weighs toward text as the source of truth, and MPS demonstrates that tooling-generability
 and text-friendliness pull in different directions. Reject MPS's own-IDE adoption model
@@ -298,16 +298,16 @@ contributions, scannerless GLR parsing, modular composable grammars, and scope g
 for name binding, have arguably had more influence through citation and piecemeal reuse
 than through Spoofax or Rascal themselves becoming widely adopted end-user tools.
 
-**Lipsidea verdict.** Steal scope graphs and Statix's framing of "derive the type
+**Lips verdict.** Steal scope graphs and Statix's framing of "derive the type
 checker" as a scheduling problem over declarative constraints with a proven determinism
-guarantee, directly relevant if lipsidea's kernel needs a derived static checker whose
+guarantee, directly relevant if lips's kernel needs a derived static checker whose
 behavior can be formally guaranteed rather than informally trusted. Steal the ESV
 pattern of one declarative layer mapping checker and analysis output to editor behavior,
-cleanly separated from the semantics itself, a good shape for lipsidea's own
+cleanly separated from the semantics itself, a good shape for lips's own
 checker/completion/errors pipeline. Steal Rascal's proof point that generic LSP support
 can be a built-once facility of the meta-language rather than a per-vocabulary artifact.
 Reject Spoofax's multi-sublanguage complexity, four or more distinct languages glued
-together, as a starting shape; lipsidea's "one uniform meta-structure" goal argues for
+together, as a starting shape; lips's "one uniform meta-structure" goal argues for
 something closer to Rascal's single-language unification or K's single-notation
 approach.
 
@@ -330,7 +330,7 @@ typeset LaTeX, and from the same source it also generates formalizations for Coq
 Isabelle/HOL, Lem, and OCaml, plus an experimental Menhir parser
 (https://github.com/ott-lang/ott). Ott additionally auto-generates the substitution and
 free-variable functions that binding requires, sparing the well-known manual tedium of
-getting alpha-renaming-safe substitution right by hand, a hard problem lipsidea's own
+getting alpha-renaming-safe substitution right by hand, a hard problem lips's own
 semantics layer will also face.
 
 **Executable and deterministic.** Redex is directly executable, since it is a Racket
@@ -353,7 +353,7 @@ https://doi.org/10.1017/s0956796809990293).
 stepping and visualization, random test-case generation, and, through its Racket
 embedding, ordinary DrRacket editor support for the metalanguage, not for a language
 built with it. Ott generates typeset documentation directly from a spec, a legitimate
-"docs derived from spec" data point relevant to lipsidea, plus skeleton formalizations
+"docs derived from spec" data point relevant to lips, plus skeleton formalizations
 for five proof-assistant targets, but neither tool derives end-user editor tooling
 (completion, hovers, checkers) for the language being specified.
 
@@ -365,14 +365,14 @@ actively used in exactly that niche; Ott's own GitHub page states "As of 2024, O
 remains in continuous use" (https://github.com/ott-lang/ott). Neither aims at, nor has
 reached, adoption outside PL-theory research and pedagogy.
 
-**Lipsidea verdict.** Steal Ott's template of one syntax-and-semantics description
+**Lips verdict.** Steal Ott's template of one syntax-and-semantics description
 producing several distinct derived outputs, typeset docs, and multiple proof-assistant
-encodings, as the smallest, most focused precedent in this survey for lipsidea's own
+encodings, as the smallest, most focused precedent in this survey for lips's own
 "checker, completion, errors, formatter, docs, all derived" ambition. Steal Redex's
 random-testing-against-a-model discipline as a cheap, concrete validation technique
-lipsidea's kernel formalism should support from the start. Reject scope: neither tool
+lips's kernel formalism should support from the start. Reject scope: neither tool
 tries to derive end-user editor tooling for the specified language, so neither is a
-template for lipsidea's IDE-tooling half; they answer whether a spec is correct, not
+template for lips's IDE-tooling half; they answer whether a spec is correct, not
 whether users of that spec get an IDE.
 
 ## Also Noted
@@ -381,11 +381,11 @@ These systems informed the survey but did not warrant full sections, either beca
 they lack a semantics formalism (tree-sitter, BNFC), stayed a research prototype
 (Melange), or belong primarily to a sibling survey's angle (ASF+SDF history, OMeta).
 
-| System | What it is | Relevance to lipsidea | Source |
+| System | What it is | Relevance to lips | Source |
 |---|---|---|---|
-| Melange | A meta-language for composing DSLs from reusable "chunks" of syntax, semantics, and editor bindings, aimed at the problem that each new DSL reinvents most of a previous one | Conceptually close to lipsidea's "vocabularies layered over one substrate"; stayed a research prototype with no evidence of wide adoption | Degueule, Combemale, Blouin, Barais, Jézéquel, "Melange: a meta-language for modular and reusable development of DSLs," SLE 2015, https://doi.org/10.1145/2814251.2814252 |
+| Melange | A meta-language for composing DSLs from reusable "chunks" of syntax, semantics, and editor bindings, aimed at the problem that each new DSL reinvents most of a previous one | Conceptually close to lips's "vocabularies layered over one substrate"; stayed a research prototype with no evidence of wide adoption | Degueule, Combemale, Blouin, Barais, Jézéquel, "Melange: a meta-language for modular and reusable development of DSLs," SLE 2015, https://doi.org/10.1145/2814251.2814252 |
 | Langium | TypeScript-hosted, grammar-first workbench, explicit successor to Eclipse Xtext, generates a typed AST plus a full Language Server Protocol server from one grammar | The inverse trade-off from K and Ott: no formal semantics story at all, hand-written validators and interpreters, but ships real generated LSP tooling as the central deliverable rather than an afterthought | https://langium.org/ |
-| tree-sitter | Pure incremental-parsing library and grammar DSL; explicitly not a semantics system | No notion of static or dynamic semantics exists here at all; noted because so much mainstream editor tooling (GitHub, Neovim, Helix, Zed) leans on tree-sitter grammars for syntax highlighting, so a lipsidea tool wanting cheap syntax-level support in existing editors will likely need a tree-sitter grammar as a leaf artifact regardless of the semantics formalism chosen | https://tree-sitter.github.io/tree-sitter/ |
+| tree-sitter | Pure incremental-parsing library and grammar DSL; explicitly not a semantics system | No notion of static or dynamic semantics exists here at all; noted because so much mainstream editor tooling (GitHub, Neovim, Helix, Zed) leans on tree-sitter grammars for syntax highlighting, so a lips tool wanting cheap syntax-level support in existing editors will likely need a tree-sitter grammar as a leaf artifact regardless of the semantics formalism chosen | https://tree-sitter.github.io/tree-sitter/ |
 | BNFC | Labelled-BNF-to-many-backends compiler-frontend generator (Chalmers/Gothenburg): one grammar yields a lexer, parser, AST, pretty-printer, and LaTeX spec for Haskell, Agda, C, C++, Java, and OCaml | The most batteries-included, no-semantics baseline surveyed; shows how much grammar alone buys (types, parser, pretty-printer, typeset docs) and how little it says about meaning | https://bnfc.digitalgrammars.com/ |
 | ASF+SDF Meta-Environment | CWI's 1990s-2000s modular grammar and rewrite-based transformation system, direct ancestor of Stratego/Spoofax and an influence on Rascal | Historical interest only today; no dedicated Wikipedia page exists even for its immediate successor Stratego/XT, and strategoxt.org itself now redirects to a bibliography site | https://strategoxt.org (redirects to researchr.org) |
 | OMeta | A PEG-based formalism unifying lexer, parser, and tree transformation into one mechanism, used in Ian Piumarta's work adjacent to Alan Kay's STEPS project | Another "one formalism for grammar and transform" data point alongside Rascal's similar unification choice; the STEPS/OMeta project-history angle belongs to the sibling survey b-graveyard.md | (project-history sources in b-graveyard.md) |
@@ -393,7 +393,7 @@ they lack a semantics formalism (tree-sitter, BNFC), stayed a research prototype
 ## Cross-Cutting Observations
 
 Three patterns recur across every system surveyed, and each bears directly on
-lipsidea's design.
+lips's design.
 
 **Semantics-completeness and IDE-completeness are separate achievements, and most
 systems solve only one.** K and Ott derive rigorous, checkable semantics and prove it
@@ -402,14 +402,14 @@ nine-out-of-nine bug find), but neither derives end-user editor tooling. Langium
 tree-sitter invert this: strong generated editor tooling, no semantics formalism at
 all. Only MPS, and to a real but lesser extent Spoofax, derive both from one
 meta-structure. Any claim that a rigorous semantics formalism automatically yields good
-tooling, or vice versa, is unsupported by the evidence gathered here; lipsidea has to
+tooling, or vice versa, is unsupported by the evidence gathered here; lips has to
 architect for both explicitly.
 
 **Determinism at the semantics layer is achievable and has been proven in practice, at
 real scale.** K's LLVM and Haskell backends, Statix's proven scheduling-stability
 guarantee, and Redex's direct executability all show that a rewriting- or
 constraint-based semantics formalism can be made fully deterministic without giving up
-expressiveness. This de-risks lipsidea's requirement that compile and run stay 100%
+expressiveness. This de-risks lips's requirement that compile and run stay 100%
 deterministic with no model in the loop; the prior art for how to get there already
 exists.
 
@@ -418,7 +418,7 @@ system picks a side.** MPS gets the most complete derived tooling by abandoning 
 the stored representation, at a real and repeatedly documented cost to plain-git
 diffing and copy-paste ergonomics. Every text-based system surveyed (K, Racket, Spoofax,
 Rascal, Redex, Ott) accepts a tooling ceiling in exchange for keeping specs as ordinary,
-diffable, greppable text. Given lipsidea's stated need for AI-authored, human-legible,
+diffable, greppable text. Given lips's stated need for AI-authored, human-legible,
 git-diffable specs, this survey's evidence points toward the text-based side of that
 tension, accepting MPS's tooling ceiling as the price, rather than toward projectional
 editing.
@@ -430,26 +430,26 @@ This is the surveyor's own ranked judgment, not a settled decision.
 1. **Closest structural precedent: Racket's `#lang`.** Treating the meta-language and
    the object language as the same substrate, so that defining a vocabulary is writing
    code in the substrate rather than filling out a separate schema, is the mechanism
-   most directly analogous to lipsidea's "one substrate, many layered vocabularies."
-   Lipsidea should study `#lang`'s reader/expander split as a starting shape for how a
+   most directly analogous to lips's "one substrate, many layered vocabularies."
+   Lips should study `#lang`'s reader/expander split as a starting shape for how a
    vocabulary declares itself over the kernel.
 
 2. **Closest semantics-rigor precedent: K Framework's matching logic plus multi-backend
    derivation.** The discipline of picking one base logic that everything else reduces
    to, and deriving an interpreter and a symbolic/proof engine from the same
-   definition, is the best-evidenced precedent for lipsidea's "derived, not hand-built"
-   claim at the semantics layer. Lipsidea should not copy K's toolchain weight, but
+   definition, is the best-evidenced precedent for lips's "derived, not hand-built"
+   claim at the semantics layer. Lips should not copy K's toolchain weight, but
    should copy its one-definition-many-backends discipline.
 
 3. **Closest tooling-completeness precedent: JetBrains MPS.** MPS is the only system
    surveyed with fifteen-plus years of production evidence that editor, completion,
    live-checking, and doc tooling can all be genuinely derived from a uniform
-   meta-structure. Lipsidea should study MPS's aspect separation (structure,
+   meta-structure. Lips should study MPS's aspect separation (structure,
    constraints, type-system, editor bindings, generator) as a checklist of what a
    uniform meta-structure needs to specify to make tooling derivable, while rejecting
    projectional editing itself.
 
-4. **Closest derived-static-checker precedent: Spoofax's Statix.** If lipsidea's kernel
+4. **Closest derived-static-checker precedent: Spoofax's Statix.** If lips's kernel
    needs a statically checkable name/type layer with a provable determinism guarantee,
    Statix's scope-graph constraint formalism and its stability theorem are the most
    directly reusable piece of prior art in this survey, more so than inventing a
