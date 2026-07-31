@@ -8,3 +8,8 @@ home.file.*, home.sessionVariables, and xdg.*. <self> keys an
 attrsOf-submodule instance name wherever this world's schema offers one --
 systemd.user.services.<self>. query_options searches exactly this world's
 pinned schema: the home-manager option tree, nothing else.
+
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world (a module is imported into a home configuration, not run),
+so an observable is a command over ${artifact.<name>} and literal text, run
+in the build sandbox. A claim reaching anything else is refused.

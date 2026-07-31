@@ -2978,6 +2978,30 @@ main = hspec $ do
 
   -- The obligation: where an engine bakes source, the author's words are held to
   -- something observable, or nothing holds them at all.
+  describe "the mint prompt states the claim grammar" $ do
+    it "names the head and its closed section set" $ do
+      let p = systemPromptFor Nixos
+      p `shouldSatisfy` T.isInfixOf "claim.<id>.run"
+      p `shouldSatisfy` T.isInfixOf "claim.<id>.stdin"
+      p `shouldSatisfy` T.isInfixOf "claim.<id>.stdout"
+      p `shouldSatisfy` T.isInfixOf "claim.<id>.exit"
+
+    it "forbids inventing a witness and requires one where source is baked" $ do
+      let p = systemPromptFor Nixos
+      p `shouldSatisfy` T.isInfixOf "NEVER INVENT A WITNESS"
+      p `shouldSatisfy` T.isInfixOf "YOU MUST STATE AT LEAST ONE CLAIM"
+
+    it "states the exact-comparison rule" $
+      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
+
+    it "states the world limit where there is no machine to boot" $ do
+      systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor Terranix `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+
+    it "offers the booted machine only in the world that has one" $
+      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
+
   describe "the mint owes an observable where it bakes source" $ do
     let src = SourceFile { sfArtifact = "tool", sfPath = "main.go", sfContent = "package main" }
         vstr t = case parseValue t of

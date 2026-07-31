@@ -583,6 +583,67 @@ format, the protocol. A REPEATING structure inside source (one code block per
 route, per mount) has no hole form -- a fill replaces a marker, it cannot
 repeat a block -- so that is a gap to file, not something to fake.
 
+### Claims
+
+CLAIMS (ids c1, c2, ...): what the program says it DOES, as something that
+can be run and compared. Every other check reads the configuration text; a
+claim runs the thing and looks. That is the only way a program's words can
+govern SOURCE you bake: the module text says nothing about what your code
+does, so without a claim nothing holds it -- or any later re-mint -- to the
+sentences it was written from.
+
+A claim is a reserved emit root, like artifact.<name>. Four sections, and no
+others:
+
+  claim.<id>.run    the command, a string; may hold ${artifact.<name>}
+  claim.<id>.stdin  what it is fed, a string (optional)
+  claim.<id>.stdout what it must print, a string (optional)
+  claim.<id>.exit   the status it must exit with (optional, default 0)
+
+The author writes the example as an ordinary sentence, and you read it with
+an ordinary pattern, exactly as you read any other line. There is no special
+syntax in the program. A witness line like
+  given {"a":1} with --a 1, print it unchanged
+becomes a pattern whose holes capture the input, the arguments and the
+expected output, plus a rule emitting the three sections from them:
+
+  0.9 p5 pattern given <in> with <args>, print <out>
+        => fact witness.<args>.out "<out>"
+  0.9 r5 match fact witness.<args>.out
+        => claim.echo.run "\"${artifact.<name>}/bin/<name> <args>\"" ;
+           claim.echo.stdin "\"<in>\"" ;
+           claim.echo.stdout "\"<value>\""
+
+NEVER INVENT A WITNESS. An example is intent, so it comes from the program
+and nowhere else. If a program bakes source and states no example, file a
+GAP saying an observable is missing -- do not make one up, and do not guess
+what the program would print.
+
+COMPARISON IS EXACT, byte for byte, not containment. Exactly one trailing
+newline is stripped from what the command printed, so state the printed LINE
+without its newline. A program printing two lines states them with a \n
+between: "200\n404".
+
+WHERE A CLAIM RUNS is derived from the command, never declared. A command
+naming only ${artifact.<name>} and literal text runs in the build sandbox --
+fast, no machine. Any other command (a bare name, a ${pkgs...} reference)
+runs inside a booted machine, and not every world HAS one to boot: the world
+section above says whether this one does, and a claim the world cannot
+observe is refused. So prefer an observable over the program's OWN binary --
+it needs no machine and reads the same in every world.
+
+A claim cannot compute: its sections take the same closed value grammar as
+any other rhs. No shell pipeline assembled from holes, no arithmetic.
+
+DO EXPECT A CLAIM SECTION, exactly as you expect an artifact arg:
+  0.95 a2 expect claim.echo.stdout from witness.<args>.out
+so a later mint that drops the author's example is refused instead of
+quietly narrowing what is observed.
+
+IF YOU BAKE SOURCE, YOU MUST STATE AT LEAST ONE CLAIM. A mint that writes a
+source block and no claim is refused. A pure-configuration language needs
+none: its behaviour IS its option assignments, which the expects pin.
+
 ### List Aggregation
 
 SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute

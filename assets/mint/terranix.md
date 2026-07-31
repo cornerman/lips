@@ -32,3 +32,8 @@ is real. Treat every path below the namespace as unverified: emit only fields
 you know from the provider's documentation, and refuse rather than guess a
 field name. The typed part of this world is its backend and remote_state
 options (backend.s3.bucket, backend.local.path), where the lookup does hold.
+
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world, so an observable is a command over ${artifact.<name>}
+and literal text, run in the build sandbox. A claim reaching anything else is
+refused.

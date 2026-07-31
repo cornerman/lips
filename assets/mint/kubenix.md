@@ -14,3 +14,8 @@ pinned schema: the kubenix option tree, whose resource fields come from the
 Kubernetes API, nothing else. Write the alias path
 (kubernetes.resources.*), never the kubernetes.api.resources.* spelling
 behind it.
+
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world, so an observable is a command over ${artifact.<name>}
+and literal text, run in the build sandbox. A claim reaching anything else is
+refused.
