@@ -44,6 +44,7 @@ module Lips.Kernel.Lang.Pattern
   , renderPatternId
   , normalizeToken
   , stripTrailingPunct
+  , stripTerminator
   , lexTokens
   , unquote
   , tokenizeLine
@@ -229,10 +230,16 @@ holesOf p = [h | tok <- pTemplate p, h <- tokHoles tok]
 fusedHoles :: [FusedSeg] -> [Text]
 fusedHoles segs = [h | FHole h <- segs]
 
--- | Normalize a token for literal comparison: lowercase after stripping
--- trailing punctuation. Total and deterministic (no morphology yet).
+-- | Normalize a token for literal comparison: lowercase, nothing else. Total
+-- and deterministic (no morphology yet).
+--
+-- Punctuation is NOT stripped here. A symbol is part of the token, so a
+-- language may make it mean something (@content:@ opens a block, @x:@ types a
+-- parameter) and a template that writes it requires it. Stripping it per token
+-- made every symbol unsayable and dropped it silently, from the program AND
+-- from the rendered @.lang@. The one exception is 'stripTerminator'.
 normalizeToken :: Text -> Text
-normalizeToken = T.toLower . stripTrailingPunct
+normalizeToken = T.toLower
 
 -- | Whitespace-split a line, but keep a double-quoted @"..."@ span as ONE
 -- token (quotes included), so a quoted value may contain spaces. Shared by the
@@ -266,24 +273,31 @@ unquote w
   | T.length w >= 2, T.head w == '"', T.last w == '"' = Just (T.init (T.drop 1 w))
   | otherwise = Nothing
 
+-- | Shed the sentence TERMINATOR: the trailing punctuation of the LAST token
+-- of a lexed line or template, and nowhere else. A sentence may end with a
+-- period without the engine having to say so, while a symbol inside the
+-- sentence stays a symbol only the engine may claim. Applied on both sides, so
+-- a template's own final period is noise too (a live mint glues the line's
+-- period onto the last hole) and the token counts a match depends on stay
+-- balanced.
+stripTerminator :: [Text] -> [Text]
+stripTerminator []  = []
+stripTerminator ws  = init ws ++ [stripTrailingPunct (last ws)]
+
 -- | Tokenize a loose line into (surface, normalized) pairs. A quoted span is
 -- one token whose surface is its inner text (quotes stripped, verbatim, so a
--- captured value keeps its case and spaces); a bare word strips trailing
--- sentence punctuation, and its normalized form is what a literal template
--- token is compared against.
+-- captured value keeps its case and spaces); a bare word keeps every symbol it
+-- carries (only the line's terminator is shed), and its normalized form is what
+-- a literal template token is compared against.
 tokenizeLine :: Text -> [(Text, Text)]
-tokenizeLine = filter (not . T.null . snd) . map tok . lexTokens
+tokenizeLine = filter (not . T.null . snd) . map tok . stripTerminator . lexTokens
   where
-    -- Trailing sentence punctuation goes first, so a quoted value closing a
-    -- sentence (@"hello".@) is still recognized as quoted and hands over its
-    -- inner text.
-    tok w = case unquote (stripTrailingPunct w) of
+    tok w = case unquote w of
       Just inner -> (inner, T.toLower inner)
-      Nothing    -> (stripTrailingPunct w, normalizeToken w)
-    -- A token that normalizes to empty is pure sentence punctuation (a lone
-    -- "." left when a period is fused to a quoted value). It carries no
-    -- meaning and is dropped, symmetric with the template side, so trailing
-    -- punctuation never changes the token count a match depends on.
+      Nothing    -> (w, normalizeToken w)
+    -- A token that normalizes to empty is a lone terminator (a "." written
+    -- apart from the word before it). It carries no meaning and is dropped,
+    -- symmetric with the template side.
 
 -- | Match a template against a tokenized line. A literal must equal the
 -- normalized token; a hole binds one surface token; a @TMulti@ binds one or

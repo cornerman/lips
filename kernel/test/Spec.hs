@@ -1163,8 +1163,10 @@ main = hspec $ do
       uncheckableExpects [ruleArt] [onArg] `shouldBe` []
 
   describe "pattern matching (crystallization plan: normalization, holes)" $ do
-    it "normalizes case and strips trailing sentence punctuation" $ do
-      normalizeToken "Files." `shouldBe` "files"
+    it "normalizes case only: a symbol survives normalization" $ do
+      -- Punctuation is part of the token; only a line's final terminator is
+      -- shed, and that happens once per line, not once per token.
+      normalizeToken "Files." `shouldBe` "files."
       stripTrailingPunct "inbox/." `shouldBe` "inbox/"
       stripTrailingPunct "inbox/" `shouldBe` "inbox/"
 
@@ -1200,6 +1202,35 @@ main = hspec $ do
       matchTemplate [TLit "-", THole "path"] (tokenizeLine "- /hello")
         `shouldBe` Just (Map.fromList [("path", "/hello")])
 
+  describe "punctuation is a symbol the engine claims, not kernel noise" $ do
+    let patP body = case parsePatternBody "p" body of
+          Right ok -> ok
+          Left e   -> error (T.unpack e)
+    it "a mid-line symbol stays on its token" $
+      tokenizeLine "content: shows a painting" `shouldBe`
+        [("content:", "content:"), ("shows", "shows"), ("a", "a"), ("painting", "painting")]
+    it "only the LAST token sheds its terminator" $
+      tokenizeLine "host shop.example.com:" `shouldBe`
+        [("host", "host"), ("shop.example.com", "shop.example.com")]
+    it "a template that writes a symbol requires it" $ do
+      let p = patP "content: <what.words> => fact c \"<what>\""
+      matchTemplate (pTemplate p) (tokenizeLine "content: shows a painting")
+        `shouldBe` Just (Map.fromList [("what", "shows a painting")])
+      matchTemplate (pTemplate p) (tokenizeLine "content shows a painting")
+        `shouldBe` Nothing
+    it "a template that omits the symbol does not match a line that writes it" $
+      -- Two patterns differing only by a colon read disjoint lines, which is
+      -- what makes a block heading sayable.
+      matchTemplate (pTemplate (patP "content <what.words> => fact c \"<what>\""))
+                    (tokenizeLine "content: shows a painting")
+        `shouldBe` Nothing
+    it "a hole binds its token verbatim, symbol included" $
+      -- The value carries what the author wrote; a rule building a list splits
+      -- and strips it ('Engine.Value' fillV), so nothing is dropped unseen.
+      matchTemplate [TLit "install", THole "p", TLit "and", THole "q"]
+                    (tokenizeLine "install htop, and ripgrep")
+        `shouldBe` Just (Map.fromList [("p", "htop,"), ("q", "ripgrep")])
+
   describe "template multi-token hole (C: many words in one hole)" $ do
     -- A @<name.words>@ hole binds SEVERAL tokens (>= 1) of a line, so a value
     -- of several words needs no quotes and one line may carry many items. The
@@ -1209,7 +1240,9 @@ main = hspec $ do
     it "a trailing <name.words> binds the rest of the tokens, joined by space" $ do
       let p   = patOne "p" [TLit "install", TMulti "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
           toks = tokenizeLine "install htop, ripgrep, tmux."
-      matchTemplate (pTemplate p) toks `shouldBe` Just (Map.fromList [("pkgs", "htop ripgrep tmux")])
+      -- The separators the author wrote stay in the captured value (the final
+      -- terminator does not); the list-building rule strips them per token.
+      matchTemplate (pTemplate p) toks `shouldBe` Just (Map.fromList [("pkgs", "htop, ripgrep, tmux")])
     it "a multi-token hole matching zero tokens fails (deduce-or-fail, never guess)" $ do
       let p = patOne "p" [TLit "install", TMulti "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
       matchTemplate (pTemplate p) (tokenizeLine "install") `shouldBe` Nothing
@@ -1295,8 +1328,8 @@ main = hspec $ do
         `shouldBe` Just (Map.fromList [("n", "8080")])
     it "reads two holes glued by literal text inside one token" $ do
       -- A declaration's parameter list, `<fname>(<param>: <ptype>)`: the token
-      -- `<fname>(<param>:` starts with '<' and (once the ':' is stripped) ends
-      -- with '>', so a naive whole-token reading would bind one hole named
+      -- `<fname>(<param>:` starts with '<' and its ':' is a literal piece the
+      -- program line must carry, so a naive whole-token reading would bind one hole named
       -- "fname>(<param" and leave the emit's <fname> and <param> unbound -- a
       -- refusal for a template that is plainly inside the grammar.
       let p = pat "function <fname>(<param>: <ptype>) => fact function.<fname>.signature \"<fname> <param> <ptype>\""

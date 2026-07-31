@@ -225,10 +225,11 @@ parseBody idTok body = do
   (pid, parents) <- parsePatternId idTok
   (tplStr, rest0) <- maybe (Left ("pattern " <> pid <> ": missing =>")) Right
                        (splitOnSeparator body)
-  -- Drop empty-literal tokens (pure punctuation), symmetric with 'tokenizeLine',
-  -- so a period fused to a quoted value never survives as a phantom token that
-  -- would unbalance the match after a render/read round-trip.
-  let template = filter (not . emptyLit) (map parseTplTok (lexTokens tplStr))
+  -- Drop empty-literal tokens (a lone terminator), symmetric with
+  -- 'tokenizeLine', so a period written apart from its word never survives as a
+  -- phantom token that would unbalance the match after a render/read
+  -- round-trip.
+  let template = filter (not . emptyLit) (map parseTplTok (stripTerminator (lexTokens tplStr)))
       emptyLit (TLit t) = T.null t
       emptyLit _        = False
   -- A multi-token hole spans whitespace, which one token cannot contain: say so
@@ -286,13 +287,13 @@ parseTplTok w
   -- inner text, spaces and all); a fixed "literal" matches a quoted token.
   -- Symmetric with 'tokenizeLine', which lexes a quoted line value as one
   -- token, so the two line up.
-  | Just inner <- unquote (stripTrailingPunct w) =
+  | Just inner <- unquote w =
       maybe (TLit (T.toLower inner)) THole (holeName inner)
-  -- Symmetric with 'tokenizeLine': trailing sentence punctuation is noise on
-  -- the template side too, so a minted "<when>." is the hole <when> (live
-  -- mints glue the line's final period onto the hole; kernel physics, not a
-  -- prompt plea).
-  | Just h0 <- holeName (stripTrailingPunct w) =
+  -- A symbol inside the template is a literal the program line must carry, so
+  -- nothing is stripped here; 'stripTerminator' already shed the template's own
+  -- final terminator, which is why a minted "<when>." ending a template is the
+  -- hole <when> (live mints glue the line's final period onto the hole).
+  | Just h0 <- holeName w =
       let h = dropHoleType h0
        in case T.stripSuffix ".words" h of
             Just name -> TMulti name
@@ -300,7 +301,7 @@ parseTplTok w
   -- A hole FUSED to literal text inside one token: a call argument, a flag
   -- value, a key=value. Recognized last, so the whole-token forms above keep
   -- their meaning.
-  | segs <- fusedSegs (stripTrailingPunct w), any isHole segs = TFused segs
+  | segs <- fusedSegs w, any isHole segs = TFused segs
   | otherwise = TLit (normalizeToken w)
   where
     isHole (FHole _) = True
