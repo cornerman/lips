@@ -159,15 +159,6 @@ tracks only what is still open.
       to minutes. Until then, run `nix build
       .#checks.x86_64-linux.lipsArtifacts-build` by hand after every mint.
 
-   d. **A red fixture is parked untracked**: `examples/website*` in the main
-      worktree (a minted canvas/button program) is the program that exposed both
-      2026-07-31 defects. It now fails LOUD (`lips check` names lines 4 and 5:
-      the engine keys a subject by a two-word label), which is the correct
-      outcome, so it cannot be committed as an example — the corpus must stay
-      green. Either re-mint it against the current grammar (the mint must key
-      the button by `<n:index>`, not by its label) and commit it, or delete it.
-      Owner: whoever re-mints; the physics side is done.
-
 4. **The 18 committed engines predate the recorded schema pin, so their stamps
    no longer re-hash.** The generation record gained a `schema:` line (the locked
    flakeref, or `options-json:<hash>`, that grounded the mint -- DESIGN §13

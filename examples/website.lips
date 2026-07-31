@@ -1,0 +1,5 @@
+website running on port 8081
+canvas "main":
+  content: shows a nice random svg painting
+button "drück mich":
+  on click: new random painting in canvas "main"

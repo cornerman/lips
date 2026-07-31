@@ -457,6 +457,19 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A subject segment holds no spaces, and the prompt says so (`examples/website`
+  committed).** The round-trip gate refuses a subject keyed by a multi-word
+  capture, and three mints in a row walked into it: the grammar alone gives the
+  mint no way to deduce the rule, so the mint doctrine now states it and names
+  the remedy (key by `<n:index>`, carry the words in the assertion where quoting
+  protects them), pinned by the prompt-invariant guard. The re-minted `website`
+  language keys nothing by a label, checks green (5 of 5 lines, all contracts),
+  builds its Go artifact under `lipsArtifacts-build`, and files an honest gap
+  (`repeating-canvas-button`: source fills substitute text once, so no fill can
+  repeat a block of markup per canvas). Same run closed a smaller lie: an
+  accepted mint now deletes the `.gap` an earlier refused attempt left in the
+  language folder, which otherwise advertises a refusal that no longer exists.
+
 - **Blocks (pattern nesting): the last piece of template completeness.** A
   program line can now state a block, and a line inside it sees the block it sits
   in. Three invented languages drove it, each failing differently under the old

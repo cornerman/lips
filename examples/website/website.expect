@@ -1,0 +1,5 @@
+a1 expect systemd.services.<self>.environment.PORT from website.port
+a2 expect networking.firewall.allowedTCPPorts from website.port
+a3 expect artifact.<self>.fill.canvas_name from canvas.name
+a4 expect artifact.<self>.fill.button_label from button.label
+a5 expect artifact.<self>.fill.button_target from button.target
