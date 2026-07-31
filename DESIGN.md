@@ -112,6 +112,28 @@ each. Nix's own worst override pain, the `<unknown-file>` message (Survey D),
 is exactly the case where its provenance is absent, which is the same claim
 from the other side. Priorities are affordable when provenance is total.
 
+**The snippet-engine objection, and the answer.** The critique: a minted
+engine is patterns with holes mapping matched lines to `path = value`
+assignments, so lips is a glorified snippet engine. The resemblance is real
+and conceded: a rule's right-hand side is a closed value grammar,
+template-shaped by construction, and a one-program, never-edited language
+would earn the label. The analogy breaks on everything that happens around
+the templates. A snippet has no notion of being wrong: paste one with a bad
+value and the output is silently bad, while the kernel has four outcomes and
+three are refusals (parse rejection, open question, conflict with both
+provenances). Ownership is inverted: with snippets you own and hand-edit the
+output forever; here the output is disposable and the program re-realizes
+bit-identically without a model. Snippets do not compose; decision bases
+merge by strength with collision detection and total provenance. Snippets
+have no contract; an engine is admitted only if it compiles every program
+and its tests hold, and regeneration is gated on the accumulated corpus.
+And closure under reasonable edits is a checked property (Section 5), not
+whatever happens to have been typed. The compact form: by this argument a
+compiler is a glorified macro processor, since both turn short text into
+long text; the claim ignores everything between the two texts. The
+templates are the least interesting part; the point is the kernel that
+decides when they may not fire.
+
 Every refinement stage is again a decision base: inspectable, diffable,
 provenance-linked. The owner reviews the top; an auditor can walk any
 derivation chain to the metal, mechanically. This staged reviewability is
