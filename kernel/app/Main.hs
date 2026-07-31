@@ -75,6 +75,7 @@ import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnansw
 import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOverlap, renderRuleOverlap, ruleOverlaps)
 import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
+import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (flakeText, runCommands)
 import           Lips.Nix.Schema               (schemaFor)
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
@@ -157,10 +158,15 @@ compileLoose mout mLangDir noContract file = do
   artNames <- case rlArtifact rl of
     Nothing            -> pure []
     Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
-  TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)))
+  -- The experiments the program states, beside the artifacts they observe. A
+  -- claim-free program writes no file and its output stays byte-identical.
+  hasClaims <- case claimsFile (not (null artNames)) (rlClaims rl) of
+    Nothing   -> pure False
+    Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
+  TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)) hasClaims)
   TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack outDirPath)
   TIO.hPutStrLn stderr "run it with nix over the compiled dir:"
-  mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames outDirPath)
+  mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames hasClaims outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the

@@ -53,8 +53,8 @@ import Lips.Nix.Target (Target (..))
 -- | The @flake.nix@ text for a compiled directory. @hasArtifacts@ toggles the
 -- artifact package output; the target toggles the system rung (nixos gets
 -- @apps.vm@ + @packages.vm@; home-manager gets neither, only the module).
-flakeText :: Target -> Bool -> Text
-flakeText target hasArtifacts = T.unlines $
+flakeText :: Target -> Bool -> Bool -> Text
+flakeText target hasArtifacts hasClaims = T.unlines $
   [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
   , "{"
   , "  description = \"lips-compiled program (nixpkgs resolved ambiently)\";"
@@ -73,7 +73,7 @@ flakeText target hasArtifacts = T.unlines $
   ++ terranixBuildsLet target
   ++ [ "    in {" ]
   ++ moduleOutput target
-  ++ packagesOutput target hasArtifacts
+  ++ packagesOutput target hasArtifacts hasClaims
   ++ appsOutput target
   ++ devShellsOutput target
   ++ [ "    };"
@@ -207,15 +207,23 @@ nixosBuildsLet Nixos hasArtifacts =
 -- domain artifact named @vm@ never clashes with the @vm@ rung); the system
 -- rung exposes @vm@ (the boot-script derivation -- building it needs no KVM, so
 -- @nix build \<x\>#vm@ is the cheap \"does the whole system build\" check).
-packagesOutput :: Target -> Bool -> [Text]
-packagesOutput target hasArtifacts
+packagesOutput :: Target -> Bool -> Bool -> [Text]
+packagesOutput target hasArtifacts hasClaims
   | null body = []
   | otherwise = [ "      packages = forSystems (system: {" ] ++ body ++ [ "      });" ]
   where
-    body = artLine ++ sysLines
+    body = artLine ++ claimLine ++ sysLines
     artLine
       | hasArtifacts = [ "        artifact = import ./artifact.nix { pkgs = pkgsFor system; };" ]
       | otherwise    = []
+    -- ONE aggregate, so `nix build <dir>#claims` runs EVERY experiment: a claim
+    -- that is not built is a claim that did not run, and "not verified" must
+    -- never render as verified. World-neutral, because a sandbox claim needs no
+    -- machine (only a machine claim does, and those exist in the NixOS world).
+    claimLine
+      | hasClaims = [ "        claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
+                    , "          (builtins.attrValues (import ./claims.nix { pkgs = pkgsFor system; }));" ]
+      | otherwise = []
     sysLines = case target of
       -- vm is buildable (no KVM) as the cheap "does the whole system build"
       -- check; booting it (the app) needs KVM.
@@ -290,10 +298,16 @@ devShellsOutput Nixos =
 -- command is ever shown). @dir@ is the output directory; commands use
 -- @path:\<dir\>@ because the compiled dir is derived and gitignored, and
 -- @path:@ copies it verbatim, bypassing flake's git rules.
-runCommands :: Target -> [Text] -> FilePath -> [Text]
-runCommands target artNames dir =
-  concatMap artifactLines artNames ++ systemLines target
+runCommands :: Target -> [Text] -> Bool -> FilePath -> [Text]
+runCommands target artNames hasClaims dir =
+  concatMap artifactLines artNames ++ systemLines target ++ claimLines
   where
+    -- Printed last, and only when the program states observables: it is the rung
+    -- that answers "does it do what I said", which is worth reaching for after
+    -- the ones that merely build.
+    claimLines
+      | hasClaims = [ cmd "check what it does" "build" (ref "claims") "   (runs every claim the program states)" ]
+      | otherwise = []
     ref suffix = "path:" <> T.pack dir <> "#" <> suffix
     -- One column for the label, one for the verb, so the flake refs line up
     -- however long a verb or an artifact name is.
