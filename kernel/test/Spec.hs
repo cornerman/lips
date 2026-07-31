@@ -3751,6 +3751,19 @@ main = hspec $ do
   -- Knob 3 of a target: what the compiled flake exposes, and the stock nix
   -- commands compile prints. A world with no machine must show no machine rung.
   describe "compiled flake per target (Lips.Nix.Flake)" $ do
+    -- The bare artifact rungs run a binary with no init, so no service env.
+    -- The shell rung closes that: one shell per unit the program ADDS to the
+    -- config, carrying that unit's environment. Derived inside nix from the
+    -- same evaluation, so lips knows no unit name.
+    it "nixos exposes a shell per unit the program adds, holding its env" $ do
+      let t = flakeText Nixos False
+      mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
+        [ "baseServices", "systemd.services", "genAttrs", "subtractLists"
+        , "// b.serviceShells", "service-${u}", "env = cfg.systemd.services" ]
+    it "nixos prints the per-unit shell, naming the unit as a placeholder" $ do
+      let ls = T.unlines (runCommands Nixos [] "/tmp/out")
+      mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
+        [ "nix develop path:/tmp/out#service-<unit>", "nix flake show" ]
     it "kubenix exposes the module and kubenix's own rendered outputs" $ do
       let t = flakeText Kubenix False
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)

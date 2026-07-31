@@ -17,7 +17,11 @@
 --   * system rungs (@vm@, @shell@): evaluate @.\/default.nix@ through the NixOS
 --     module system and take two things off that one evaluation -- boot the
 --     result in QEMU (@vm@: real systemd, all services), or enter a dev shell
---     holding what the config puts on the system PATH (@shell@). Both are
+--     holding what the config puts on the system PATH (@shell@) -- plus one
+--     such shell per unit the program adds (@service-\<unit\>@), carrying that
+--     unit's @environment@, which is exactly what the bare artifact rungs
+--     cannot have. A shell, never a run rung: lips does not emulate systemd,
+--     so everything else a unit asks for stays @vm@'s business. Both are
 --     DERIVED from the config, never declared by the program, which is why
 --     they are always present. nixos only -- home-manager has no machine to
 --     boot and @compile@ never evaluates a home config. There is deliberately no
@@ -168,11 +172,30 @@ nixosBuildsLet Nixos hasArtifacts =
     -- environment.systemPackages, so subtract an empty config's list: what
     -- remains is exactly what THIS program adds to the system PATH.
   , "          basePackages = (evalNixos [ shellStub ] []).config.environment.systemPackages;"
-  , "          shell = (pkgsFor system).mkShell {"
-  , "            packages = nixpkgs.lib.subtractLists basePackages"
-  , "              (evalConfig [ shellStub ]).config.environment.systemPackages" <> shellArtifacts <> ";"
-  , "          };"
-  , "        in { inherit vm shell; };"
+  , "          cfg = (evalConfig [ shellStub ]).config;"
+  , "          shellPackages = nixpkgs.lib.subtractLists basePackages"
+  , "            cfg.environment.systemPackages" <> shellArtifacts <> ";"
+  , "          shell = (pkgsFor system).mkShell { packages = shellPackages; };"
+    -- The same subtraction, one option over: the units a BARE eval already
+    -- carries are NixOS's own, so what remains is what this program adds. Each
+    -- gets the tools shell plus that unit's environment, which is the env the
+    -- artifact rungs cannot have (they run with no init). Derived here, so no
+    -- unit name is ever known to lips. The name is `service-<unit>`, flat: a
+    -- nested set is not a flake leaf, so `nix flake show` would refuse to list
+    -- the units it holds (the flat fallback this spec already names for
+    -- artifacts). Prefixing is injective and never produces `default`, so a
+    -- minted unit name cannot collide with the tools shell.
+    -- `env` is mkDerivation's dedicated channel for environment variables, so a
+    -- unit variable named `packages` cannot shadow a derivation argument.
+  , "          baseServices = builtins.attrNames (evalNixos [ shellStub ] []).config.systemd.services;"
+  , "          serviceShells = nixpkgs.lib.listToAttrs (map (u: {"
+  , "            name = \"service-${u}\";"
+  , "            value = (pkgsFor system).mkShell {"
+  , "              packages = shellPackages;"
+  , "              env = cfg.systemd.services.${u}.environment;"
+  , "            };"
+  , "          }) (nixpkgs.lib.subtractLists baseServices (builtins.attrNames cfg.systemd.services)));"
+  , "        in { inherit vm shell serviceShells; };"
   ]
   where
     shellArtifacts
@@ -256,9 +279,10 @@ devShellsOutput Kubenix =
   , "        });"
   ]
 devShellsOutput Nixos =
-  [ "      devShells = forSystems (system: {"
-  , "        default = (nixosBuilds system).shell;"
-  , "      });"
+  [ "      devShells = forSystems (system:"
+  , "        let b = nixosBuilds system; in {"
+  , "          default = b.shell;"
+  , "        } // b.serviceShells);"
   ]
 
 -- | The exact commands to print after a successful compile, so the human sees
@@ -286,6 +310,10 @@ runCommands target artNames dir =
       , cmd "build the system" "build"   (ref "vm") "   (checks it builds; no KVM)"
       -- The shell rung needs no attribute: it is devShells.default.
       , cmd "a shell of its tools" "develop" ("path:" <> T.pack dir) "   (what the config puts on PATH)"
+      -- The unit name is minted, so lips cannot name it here; the placeholder
+      -- plus the stock command that lists the units keeps the hint honest.
+      , cmd "...with a unit's env" "develop" (ref "service-<unit>")
+          "   (nix flake show " <> "path:" <> T.pack dir <> " lists them)"
       ]
     -- home-manager has no machine to boot: a module is imported into a home
     -- config, not run standalone. Name that instead of a build that can't work.

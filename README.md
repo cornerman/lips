@@ -117,8 +117,10 @@ pick one. A program that builds an
 artifact prints `nix run …#artifact.<name>` (run the binary bare) and
 `nix shell …#artifact.<name>`; a system module prints `nix run …#vm`
 (a throwaway QEMU boot of the whole system), `nix build …#vm` (build it
-without booting, no KVM -- the "does it build" check), and `nix develop …`
-(a shell holding the tools the program adds to the system PATH). A kubenix
+without booting, no KVM -- the "does it build" check), `nix develop …`
+(a shell holding the tools the program adds to the system PATH) and
+`nix develop …#service-<unit>` (that shell plus one unit's environment, so
+running a service by hand needs no manual `export`). A kubenix
 module prints `nix run …#manifest > manifests.yaml` (kubenix's own
 multi-document YAML, ready to pipe into `kubectl`), `nix build …#manifest`
 (the "does it render and validate" check, since kubenix refuses an unknown or

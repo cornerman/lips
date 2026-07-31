@@ -75,6 +75,12 @@ bypassing flake's git rules.
 
 `exec`/`shell` run the artifact bare: there is no init in those modes, so no
 services and no service env (`PORT`/`RESPONSE`); the printed hint states this.
+(Amended 2026-07-31: the shell rung closes the env half. `nix develop
+…#service-<unit>` gives the tools shell plus that unit's `environment`,
+derived by subtracting a bare eval's `systemd.services` names, so the vars the
+module states need no manual `export`. It remains a shell: lips does not
+emulate systemd, so `User`/`StateDirectory`/`EnvironmentFile` stay `vm`'s
+business.)
 `container` boots a full NixOS userspace (all services, users, activation)
 sharing the host kernel — no KVM, seconds to start, complete for every current
 example. `vm` adds the kernel/boot/hardware layer and is the specialist for

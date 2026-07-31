@@ -2244,7 +2244,18 @@ gate on an artifact-only engine, and the concept escape.
   subtracting a bare NixOS eval's `environment.systemPackages` (which already
   carries the whole base system: systemd, grub, coreutils) from the program's
   own list; both evals carry the same `stateVersion` stub so the subtraction
-  stays symmetric. Proven live: `ledger.backup` yields `restic-ledger` (the
+  stays symmetric. The same subtraction one option over (`systemd.services`
+  attribute names) yields the units the program ADDS, and each gets its own
+  shell, `nix develop …#service-<unit>`: the tools plus that unit's
+  `environment`, so testing a service by hand needs no manual `export` of what
+  the module already states. This is the one thing the bare artifact rungs
+  cannot give (no init, so no service env); it stays a SHELL, not a run rung --
+  lips never emulates systemd, so `User`, `StateDirectory`, `EnvironmentFile`
+  and the rest remain `vm`'s business, and the human runs the command. The name
+  is flat (`service-<unit>`, not nested `service.<unit>`) because a nested set
+  is not a flake leaf and `nix flake show` then refuses to list the units;
+  prefixing is injective and never yields `default`, so a minted unit name
+  cannot collide with the tools shell. Proven live: `ledger.backup` yields `restic-ledger` (the
   service's own wrapper, repo and credentials baked in) and `hello.http` yields
   `helloserver`, so the shell is a useful witness for a plain system module
   too, with no machine booted. home-manager gets no shell rung for the same
