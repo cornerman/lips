@@ -124,6 +124,51 @@ and editors are derived projections of the base. This takes the text side of
 the MPS tension (Survey A) while keeping projectional-style tooling as
 read-mostly views.
 
+**Correctness, by theory.** Each kernel mechanism instantiates a body of
+theory that formalized it independently, decades before lips (Survey F):
+merge by strength is belief merging (Konieczny and Pino Pérez's IC
+postulates name the exact properties `resolve` must have), refinement to a
+fixpoint is term rewriting (critical pairs decide overlap, and
+`Engine.Overlap` computes them at the `generate` gate, so an admitted
+engine's orthogonality is a checked theorem rather than a reviewer's
+impression), conflict reporting is model-based diagnosis (Reiter 1987), and
+oblige/forbid/allow is deontic logic. The sharpest published attack on the
+combination, that rewriting plus priorities has no automatically
+well-defined semantics (Baeten/Bergstra/Klop 1987), is answered by the
+phase-separation invariant above. The correctness claim is therefore not
+"we tested it": every mechanism either coincides with a result the
+literature proved, or the deviation is recorded in §11 with the reason.
+The remaining formal debts are recorded the same way: termination of
+refinement is enforced by a step budget (fail fast), not proved, and the
+IC-postulate audit is open (`TODO.md`, survey-F section). A
+critique-resistant calculus is one whose gaps are named, not one that
+claims none.
+
+**Completeness, by definition.** For any decision base the kernel produces
+exactly one of three outcomes: a settled base (every subject has one
+winner), a conflict (equal strength, incompatible assertions, both
+provenances named), or an open question (an unmet demand). Deduce-or-fail
+removes the fourth, silent outcome by construction. Completeness does not
+mean the kernel can say everything; it means every gap falls in exactly
+one of two places. A sentence the closed grammar cannot hold is a kernel
+bug, and the grammar grows as physics to admit it; a fact about the world
+the kernel does not know is the engine's job, held as minted, disposable
+data. The dividing test is stated in AGENTS.md and repeated here because
+it is the completeness criterion: a program, or a language, that nobody
+foresaw works without a kernel change.
+
+**Correctness, in practice.** NixOS is the existence proof that prioritized
+merge carries a production system for twenty years at distribution scale.
+What decayed in every shipped strength calculus (CSS specificity plus
+`!important`, Drools `salience`, XACML combining algorithms) was an
+authored priority number: any author could raise the integer at any site
+until their value won, so the number stopped encoding authority and became
+a debugging tool. lips makes that decay unrepresentable rather than
+discouraged: strength is structural (system default < engine default <
+program) and no surface exists for a program or an engine to write a
+number. Total provenance (item 3) closes the other practical hole the
+override critics price in, as argued above.
+
 ## 3. Decision Kinds
 
 A small closed set of kernel-level kinds; languages refine them:

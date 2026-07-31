@@ -78,13 +78,13 @@ tracks only what is still open.
       what an artifact-only claim's "place" reuses: a plain derivation in the nix
       sandbox, no boot, no KVM.
 
-2. **CLI-tool physics — the record behind item 1** (context: `board`, `habit`,
+2. **CLI-tool physics -- the record behind item 1** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
    were re-minted honest. See DESIGN §13 for what landed getting there.)
 
-   a. **Silent concept demotion — three cases still open** (`diagInert` and
+   a. **Silent concept demotion -- three cases still open** (`diagInert` and
       `droppedValues` cover the rest; DESIGN §13):
-      (i) a PARTIAL drop — a rule reading `<value.1>` of a value built from two
+      (i) a PARTIAL drop -- a rule reading `<value.1>` of a value built from two
       holes silently drops the second. The static map this needed is now cheap:
       a several-part value stores ONE quoted part per hole (see DESIGN §13, "A
       several-part value"), so part N of an assertion is hole N by construction.
@@ -94,8 +94,8 @@ tracks only what is still open.
       `<value.N>` (today a loud runtime Left, but only if a program reaches it),
       and a `<value.tail>` over a several-part value, which splits the parts'
       WORDS again (`Engine/Value.fillV` sees the joined text `pick` returns, not
-      the parts) — no committed engine does it, and nothing refuses it.
-      (ii) a per-hole DECORATIVE report — a hole demoted to a `Concept` on a
+      the parts) -- no committed engine does it, and nothing refuses it.
+      (ii) a per-hole DECORATIVE report -- a hole demoted to a `Concept` on a
       line that otherwise realizes is invisible, since `diagInert` works per
       line, not per hole. Call sites exist: `board`, `habit`, `logscan` each
       emit several `Concept`s.
@@ -315,7 +315,7 @@ tracks only what is still open.
   per-provider granularity -- one pin per provider and version, recorded beside
   the world's own pin, rather than the single pin per event there is today.
 
-- **Mint round loop** — deferred, analysis kept so it is not redone. The idea:
+- **Mint round loop** -- deferred, analysis kept so it is not redone. The idea:
   when the gate rejects an engine, re-prompt the model with the findings
   instead of dying, bounded by `--max-rounds`. Why it waits: a fresh `pi -p`
   process has no memory, so every round re-emits the whole engine (expensive
@@ -327,58 +327,85 @@ tracks only what is still open.
   model-callable tool (a rehearsal verb is a second call site for the gate
   and can drift from the gate that commits).
 
-- **Mint internet access** — a second `registerTool` beside `query_options`,
+- **Mint internet access** -- a second `registerTool` beside `query_options`,
   routing a question to a web search. Argument for: a recorded lookup is
   auditable evidence, the same move deduce-or-fail already makes for values.
   Argument for waiting: no mint has yet failed for want of a world fact. Add
   when a real mint fails for lack of a fact, not before.
 
-- **Glue** — the one deliberate incompleteness (computation inside the
+- **Glue** -- the one deliberate incompleteness (computation inside the
   decision layer). `Glue` is a `Kind` with no rigor-downgrade mechanism.
   Blocks a *computed value*, not building a program (that is artifacts,
   done).
 
-- **Dependency-fetching builders** (cargo/vendor hashes) — untried. The
+- **Dependency-fetching builders** (cargo/vendor hashes) -- untried. The
   proven path is no-dependency source (Go stdlib with `vendorHash = null`);
   fetching a real dependency graph at generate time is unexplored.
 
-- **Language migration** — no diff/migration path when a `.lang` regenerates
+- **Language migration** -- no diff/migration path when a `.lang` regenerates
   to a different shape.
 
-- **Multi-language composition** — the prototype runs one engine; composing
+- **Multi-language composition** -- the prototype runs one engine; composing
   several languages in one Solution is unbuilt (dual of instance reuse).
 
-- **Kernel modules** — loadable, test-gated units extending the closed
+- **Kernel modules** -- loadable, test-gated units extending the closed
   grammars at declared extension points (successor of the vocabulary
   milestone).
 
-- **Guarantee lifecycle** — the assumption `OPEN -> GUARANTEED` flow has no
+- **Guarantee lifecycle** -- the assumption `OPEN -> GUARANTEED` flow has no
   code.
 
-- **Heile-Welt coping** — no mechanism yet; reality mismatches (GPU present,
+- **Heile-Welt coping** -- no mechanism yet; reality mismatches (GPU present,
   driver loads) surface at runtime, outside the kernel's determinism
   boundary.
 
 ### From survey F (theory under the calculus)
 
-Trace to `docs/superpowers/survey/f-decision-calculus-theory.md`.
+Trace to `docs/superpowers/survey/f-decision-calculus-theory.md`. The
+correctness/completeness argument these items back is now written out in
+DESIGN.md §2 ("Correctness, by theory" and following). Ranked by payoff over
+cost. Sequencing note: items 3 and 4 in "Next up" (the stale `@gen` stamps
+and the unverified invariant 6) outrank everything here -- a critic who
+re-hashes a committed `.generation` today falsifies invariant 6 for every
+example, which is a sharper critique than any missing audit below.
 
-- **Minimal conflict explanation (QuickXplain).** A conflict names two
-  competing decisions today. When the contradiction is derived several
-  refinement steps down, the author needs the smallest set of *program
-  lines* that cannot hold together. Junker (AAAI 2004) computes it in a
-  logarithmic number of consistency checks, and strength already supplies
-  the preference order the algorithm needs. Deterministic, domain-blind,
-  offline.
+- **IC postulate audit** (~1 day; prose plus property tests). Record which
+  of Konieczny & Pino Pérez's merging postulates (IC0–IC8) `Base.resolve`
+  satisfies, which it violates and why (arbitration over majority, with
+  `Append` as the stated exception; strength structural, never authored).
+  Pin the order-independence claim with property tests in
+  `kernel/test/Spec.hs`: commutativity, associativity and idempotence of
+  `resolve` (today only two tests touch these properties). Done when the
+  audit lives in DESIGN.md and the properties run in the suite. Until then
+  "merge is a set operation" is a promise, not a theorem.
 
-- **Merge against the IC postulates.** Record which of Konieczny & Pino
-  Pérez's merging postulates lips's merge satisfies, which it violates and
-  why (arbitration over majority, with `Append` as the stated exception). A
-  written audit, not code.
+- **Lex specialis: decide or refuse** (one paragraph in DESIGN.md §11).
+  Strength is *lex superior* only (higher authority wins). Defeasible
+  deontic logic also has *lex specialis* (the more specific subject wins),
+  which is what an author may expect when a per-instance decision meets a
+  language-wide default. Adopt it as physics or record the refusal with the
+  reason; refusal is a valid answer, an undecided question is not. Done
+  when §11 no longer lists it as open.
 
-- **Two decisions to make before they surprise someone**: whether an
-  obligation survives an override (Nickel propagates contracts onto the
-  winner; lips drops them — deferred deliberately, no engine emits
-  obligations yet), and whether specificity beats generality (*lex
-  specialis*; strength is *lex superior* only). Both recorded in
-  `DESIGN.md` §11.
+- **Minimal conflict explanation (QuickXplain)** (~1 week; code,
+  deterministic, domain-blind, offline). A conflict names two competing
+  decisions today. When the contradiction is derived several refinement
+  steps down, the author needs the smallest set of *program lines* that
+  cannot hold together. Junker (AAAI 2004) computes it in a logarithmic
+  number of consistency checks; provenance chains and the strength order
+  already supply the inputs. Honest caveat on urgency: while every
+  committed engine emits only `Fact`, derived multi-step contradictions
+  barely occur, so this is milestone hygiene, not observed pain -- build it
+  as a self-contained milestone, not as a fire.
+
+- **The deontic seam stays closed until an engine opens it** (blocked on
+  usage, not on theory -- not buildable now by the repo's own YAGNI rule).
+  Three items share one trigger: obligation survival under override
+  (Nickel propagates contracts onto the winner; lips drops them wholesale,
+  `Base.resolve` groups by subject and `Kind` never drives merge),
+  contrary-to-duty coping (Heile-Welt, Chisholm 1963), and the guarantee
+  lifecycle (`OPEN -> GUARANTEED`, no code). The trigger: the first minted
+  engine that emits `Oblige`/`Forbid`/`Invariant` -- every rule in every
+  committed `.lang` emits `Fact` today. When it fires, read input/output
+  logic (Makinson & van der Torre 2000) before fixing obligation semantics
+  in the kernel. Recorded in DESIGN.md §11 so the moment is recognized.
