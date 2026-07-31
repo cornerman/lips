@@ -238,6 +238,57 @@ tracks only what is still open.
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
 
+7. **Punctuation is erased by the kernel, so a language cannot make a symbol
+   mean anything** (raised 2026-08-01; ranked last of the "next up" items
+   because no committed engine is wrong today, but it is kernel physics and a
+   domain assumption, so it belongs above the backlog).
+
+   THE MECHANISM. `Surface.stripTrailingPunct` drops every trailing character
+   in `.,;:!?` from a token, and `Pattern.normalizeToken` is
+   `toLower . stripTrailingPunct`. It runs on both sides: on each program token
+   in `Pattern.tokenizeLine` and on each template token in
+   `Store.parseTplTok`, with tokens that normalize to empty dropped on both
+   sides so the counts stay balanced. Only TRAILING punctuation dies, so inner
+   punctuation survives (`http://localhost:3000`, `nginx:1.27`, `02:30`).
+
+   THE EVIDENCE. `examples/website.lips:3` states `content: shows a nice random
+   svg painting`; `examples/website/website.lang:3` mints the template `content
+   shows a nice random svg painting`. The colon is gone from the engine, and no
+   pattern could have kept it: a template `content:` parses to the literal
+   `content`.
+
+   WHY IT IS A DEFECT AND NOT A STYLE. The set `.,;:!?` says "these are English
+   sentence punctuation, hence noise", which is a fact about one natural
+   language sitting in a domain-blind kernel. For a language whose colon is the
+   key/value marker, the symbol is meaning, the engine has no way to say so,
+   and the loss is silent rather than loud (deduce-or-fail is not honored). The
+   mint prompt already states the doctrine outright (`assets/mint/body.md:270`:
+   "lips has no idea that `-` or `:` marks anything"), which is where the
+   asymmetry shows: a leading `-` is NOT erased, it is a literal token that must
+   match, as `examples/vhost/vhost.lang:3` (`- <path> proxies to <url>`) proves.
+   So one symbol is required and another is unsayable, and the prompt describes
+   neither correctly.
+
+   WHAT THE STRIPPING BUYS, so a fix does not throw it away: tolerance. A
+   program's final period never unbalances a match, and a live mint that glues
+   a line's period onto a hole (`<when>.`) still yields the hole `<when>`. Any
+   replacement must keep a sentence-final period harmless.
+
+   SKETCH (not decided). Lex punctuation as its own token and let the template
+   decide whether it matters: a template that writes `content: <rest>` requires
+   the colon, one that writes `content <rest>` matches with or without it. That
+   keeps the closed grammar closed (a punctuation token is just a literal), puts
+   significance in the engine where domain knowledge belongs, and leaves the
+   tolerant case tolerant. Open questions to settle first: whether an OPTIONAL
+   trailing period stays special-cased or becomes an engine concern too; whether
+   a required symbol may sit inside a fused token; and what a re-mint sweep costs
+   (every committed template that ends a hole in a period would re-parse the same
+   way, so the blast radius looks small, but item 4's sweep should confirm it).
+
+   VERIFICATION. `kernel/test/Spec.hs:1119` and `:2338` pin the current
+   behavior, so both change with the physics; add a case where two patterns
+   differ only by a colon and must not collide.
+
 ## Backlog (larger / deferred by design)
 
 - **Cross-program composition (one program naming another).** Nix composes;
