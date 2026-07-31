@@ -34,6 +34,7 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Schema (schemaFor)
+import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (flakeText, runCommands)
 import Lips.Nix.Target
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter)
@@ -2946,6 +2947,51 @@ main = hspec $ do
       let rule = MapRule "r1" Fact ["w"]
             [ Emit ["claim","echo","run"] (VStr [PLit "x"]) ]
       checkEmits (Map.fromList [(["services","x","enable"], OTBool)]) [rule] `shouldBe` []
+
+  describe "claims.nix (the experiments, as nix)" $ do
+    let vstr t = case parseValue t of
+          Right v -> v
+          Left e  -> error (T.unpack e)
+        derivClaim = Claim { clId = "echo"
+                           , clRun = vstr "\"${artifact.tool}/bin/tool --a 1\""
+                           , clStdin = Just "{\"a\":1}", clStdout = Just "{\"a\":1}"
+                           , clExit = 0, clPlace = PlaceDerivation }
+        machineClaim = Claim { clId = "alive", clRun = vstr "\"systemctl is-active api\""
+                             , clStdin = Nothing, clStdout = Just "active"
+                             , clExit = 0, clPlace = PlaceMachine }
+
+    it "writes nothing for a program that states no claims" $
+      claimsFile True [] `shouldBe` Nothing
+
+    it "renders a sandbox claim as a derivation that runs the command" $ do
+      let txt = maybe "" id (claimsFile True [derivClaim])
+      txt `shouldSatisfy` T.isInfixOf "artifact = import ./artifact.nix { inherit pkgs; };"
+      txt `shouldSatisfy` T.isInfixOf "echo = pkgs.runCommand \"claim-echo\""
+      -- the artifact reference stays a LIVE nix interpolation
+      txt `shouldSatisfy` T.isInfixOf "command = \"${artifact.tool}/bin/tool --a 1\";"
+      txt `shouldSatisfy` T.isInfixOf "out = out[:-1]"
+      -- the python escape is itself nix-escaped, so nix hands python a
+      -- backslash-n rather than a real newline inside the literal
+      txt `shouldSatisfy` T.isInfixOf "endswith('\\\\n')"
+      txt `shouldNotSatisfy` T.isInfixOf "nixosTest"
+
+    it "renders a machine claim as a nixosTest importing the module" $ do
+      let txt = maybe "" id (claimsFile False [machineClaim])
+      txt `shouldSatisfy` T.isInfixOf "pkgs.nixosTest"
+      txt `shouldSatisfy` T.isInfixOf "imports = [ ./default.nix ];"
+      txt `shouldSatisfy` T.isInfixOf "machine.execute(cmd)"
+      -- an artifact-free program must not import an artifact.nix nobody wrote
+      txt `shouldNotSatisfy` T.isInfixOf "artifact.nix"
+
+    -- A stated byte must never be read as nix: the one live interpolation in a
+    -- rendered claim is the command's own artifact reference.
+    it "escapes an interpolation a program states" $ do
+      let sneaky = derivClaim { clStdout = Just "${pkgs.hello}" }
+          txt    = maybe "" id (claimsFile True [sneaky])
+      txt `shouldSatisfy` T.isInfixOf "\\${pkgs.hello}"
+
+    it "is deterministic in claim order" $
+      claimsFile True [machineClaim, derivClaim] `shouldBe` claimsFile True [derivClaim, machineClaim]
 
   describe "lsp uri decoding (file:// scheme, percent-escapes)" $ do
     it "strips the file:// scheme" $
