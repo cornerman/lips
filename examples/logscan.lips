@@ -2,3 +2,4 @@ filter JSON lines read from standard input.
 keep a line only when every field named on the command line equals the value given with it.
 print each kept line unchanged.
 install the tool as the command logscan.
+given the lines {"a":"1"} and {"a":"2"} with a=1, print only {"a":"1"}.

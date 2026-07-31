@@ -1236,6 +1236,28 @@ main = hspec $ do
       checkArtifactValues ground [(dropped, "hi")]
         `shouldSatisfy` any (T.isInfixOf "nothing realizes this slot")
 
+    -- A slot holds a VALUE; the program states a value. They must be compared as
+    -- values, never as transport encodings: the canonical form escapes a quote,
+    -- so a stated value carrying one (a JSON witness) would never appear in it as
+    -- text. Found by a real mint, whose author example was {"a":"1"}.
+    it "compares a slot to the program value as values, not as encodings" $ do
+      let ground = fromList
+            [ (mk "c1" "x" "\"{\\\"a\\\":\\\"1\\\"}\"" Stated)
+                { dSubject = Subject ["claim","echo","stdout"] }
+            ]
+          onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing
+      checkArtifactValues ground [(onOut, "{\"a\":\"1\"}")] `shouldBe` []
+      -- and a value that genuinely is not there still fails
+      length (checkArtifactValues ground [(onOut, "{\"a\":\"2\"}")]) `shouldBe` 1
+
+    it "still judges a slot whose value has no text form" $ do
+      let ground = fromList
+            [ (mk "c2" "x" "[ ${artifact.tool} ]" Stated)
+                { dSubject = Subject ["artifact","w","args","runtimeInputs"] }
+            ]
+          onArg = Expect "e2" ["artifact","w","args","runtimeInputs"] (Subject ["x"]) Nothing
+      checkArtifactValues ground [(onArg, "artifact.tool")] `shouldBe` []
+
     it "keeps a claim expect out of the nix eval set" $ do
       -- A claim command references an artifact, so without the exemption the
       -- derivation-reference guard would call the author's own example

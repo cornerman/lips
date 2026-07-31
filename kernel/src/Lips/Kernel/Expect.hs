@@ -46,6 +46,7 @@ import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Capture  (captureName, fillCaptures, fillName, matchSubject, selfName)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Data (renderAttrPath, splitAttrPath)
+import Lips.Kernel.Engine.Value (parseValue, sourceText)
 import Lips.Kernel.Reader   (ParseError (..))
 import Lips.Kernel.Surface  (valueText, valueTokens)
 
@@ -231,9 +232,23 @@ checkArtifactValues ground pairs = concatMap judge pairs
                              , let Assertion a = dAssertion d ] of
       []      -> [ dotted (exPath e) <> ": nothing realizes this slot, so the "
                     <> "program value " <> pv <> " lands nowhere" ]
-      (a : _) | pv `T.isInfixOf` a -> []
+      (a : _) | pv `T.isInfixOf` slotText a -> []
               | otherwise -> [ dotted (exPath e) <> ": should contain " <> pv
-                                <> ", but is " <> a ]
+                                <> ", but is " <> slotText a ]
+    -- A slot holds a VALUE and the program states a value, so they are compared
+    -- as VALUES, never as transport encodings. The canonical form escapes a
+    -- quote (and a newline), while the program side is already decoded by
+    -- 'expectedValue' through 'valueText' -- so without this a stated value
+    -- carrying a quote could never be pinned: a JSON witness {"a":"1"} is stored
+    -- as "{\"a\":\"1\"}" and does not contain itself as text. Found by a mint
+    -- whose author example was exactly that.
+    --
+    -- A value with no text form (a list, an attrset, a bare reference) keeps its
+    -- canonical text: that IS its only reading, and containment over it is what
+    -- an artifact arg holding a derivation reference already relies on.
+    slotText a = case parseValue a of
+      Right v | Just t <- sourceText v -> t
+      _                                -> a
 
 -- | Judge the eval results against the program values. Containment: each
 -- program value must appear in its option's evaluated JSON. Returns one message
