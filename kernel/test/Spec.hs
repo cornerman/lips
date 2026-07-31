@@ -46,6 +46,7 @@ import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
+import Lips.Kernel.Claim
 import Lips.Kernel.Expect
 import Lips.Generate.Record (corpusText, genId, record, recordedProgram, recordedPrograms)
 import Lips.Kernel.Lang.Pattern
@@ -2819,6 +2820,93 @@ main = hspec $ do
                         [b [concept "io.filter" "keep every field"]]
                         (b [concept "io.sort" "sort the output"])
         `shouldBe` SpecUnrecorded [concept "io.sort" "sort the output"]
+
+  -- Claims: the one gate that observes a running thing. The grammar is closed
+  -- (an engine fills it, never extends it) and the PLACE is derived from the
+  -- command, so a CLI program never pays for a boot and no new syntax carries
+  -- the distinction.
+  describe "claims (an observable the author stated)" $ do
+    let dec subj asrt = Decision
+          { dId = DecisionId "x", dSubject = Subject subj, dKind = Meta
+          , dAssertion = Assertion asrt, dStrength = Stated
+          , dProv = FromSource (SourceLoc "p.x.lips" 1), dRationale = Nothing }
+        pair subj asrt = (Subject subj, dec subj asrt)
+        vstr t = case parseValue t of
+          Right v -> v
+          Left e  -> error (T.unpack e)
+
+    it "reads the closed section set, defaulting exit to 0" $
+      claimsFromDecisions
+        [ pair ["claim","echo","run"]    "\"${artifact.logscan}/bin/logscan --a 1\""
+        , pair ["claim","echo","stdin"]  "\"{\\\"a\\\":1}\""
+        , pair ["claim","echo","stdout"] "\"{\\\"a\\\":1}\""
+        ]
+        `shouldBe` Right
+          [ Claim { clId = "echo"
+                  , clRun = vstr "\"${artifact.logscan}/bin/logscan --a 1\""
+                  , clStdin = Just "{\"a\":1}"
+                  , clStdout = Just "{\"a\":1}"
+                  , clExit = 0
+                  , clPlace = PlaceDerivation } ]
+
+    it "reads a stated exit code" $
+      fmap (map clExit) (claimsFromDecisions
+        [ pair ["claim","bad","run"]  "\"${artifact.logscan}/bin/logscan --nope\""
+        , pair ["claim","bad","exit"] "2" ])
+        `shouldBe` Right [2]
+
+    -- A mint's typo must not be dropped in silence: the claim would then pass by
+    -- observing less than the author stated.
+    it "refuses a section the grammar does not have" $
+      claimsFromDecisions [ pair ["claim","echo","stderr"] "\"boom\"" ]
+        `shouldBe` Left "claim echo: unknown section(s) stderr; a claim has run, stdin, stdout, exit"
+
+    it "refuses a claim with no command" $
+      claimsFromDecisions [ pair ["claim","echo","stdout"] "\"hi\"" ]
+        `shouldBe` Left "claim echo: no run, so there is nothing to observe"
+
+    it "refuses a subject that is not claim.<id>.<section>" $
+      claimsFromDecisions [ pair ["claim","echo"] "\"hi\"" ]
+        `shouldSatisfy` either (T.isInfixOf "a claim is claim.<id>.<section>") (const False)
+
+    it "refuses a stdout no program could print" $
+      claimsFromDecisions
+        [ pair ["claim","echo","run"]    "\"${artifact.t}/bin/t\""
+        , pair ["claim","echo","stdout"] "[ 1 2 ]" ]
+        `shouldSatisfy` either (T.isInfixOf "stdout must be plain text") (const False)
+
+    it "places an artifact-only command in the nix sandbox" $
+      claimPlace (vstr "\"${artifact.logscan}/bin/logscan --a 1\"") `shouldBe` PlaceDerivation
+
+    it "places anything else in a booted machine" $ do
+      claimPlace (vstr "\"systemctl is-active api\"") `shouldBe` PlaceMachine
+      claimPlace (vstr "\"${pkgs.curl}/bin/curl -s localhost\"") `shouldBe` PlaceMachine
+
+    it "compares exactly, stripping one trailing newline from the observed bytes" $
+      comparisonPy Claim { clId = "echo", clRun = vstr "\"x\"", clStdin = Nothing
+                         , clStdout = Just "hi", clExit = 0, clPlace = PlaceDerivation }
+        `shouldBe`
+          [ "expected_exit = 0"
+          , "if out.endswith('\\n'): out = out[:-1]"
+          , "if code != expected_exit:"
+          , "    raise SystemExit('claim echo: exit was %d, expected %d' % (code, expected_exit))"
+          , "expected_out = 'hi'"
+          , "if out != expected_out:"
+          , "    raise SystemExit('claim echo: stdout was %r, expected %r' % (out, expected_out))"
+          ]
+
+    it "checks only the exit status when the author stated no output" $
+      comparisonPy Claim { clId = "q", clRun = vstr "\"x\"", clStdin = Nothing
+                         , clStdout = Nothing, clExit = 2, clPlace = PlaceDerivation }
+        `shouldSatisfy` all (not . T.isInfixOf "expected_out")
+
+    -- A value the author states cannot end the python literal it is rendered
+    -- into: the escaping is the kernel's, not something a reader must trust.
+    it "escapes a quote in a stated value" $
+      comparisonPy Claim { clId = "q", clRun = vstr "\"x\"", clStdin = Nothing
+                         , clStdout = Just "it's {\"a\":1}", clExit = 0
+                         , clPlace = PlaceDerivation }
+        `shouldSatisfy` elem "expected_out = 'it\\'s {\"a\":1}'"
 
   describe "lsp uri decoding (file:// scheme, percent-escapes)" $ do
     it "strips the file:// scheme" $

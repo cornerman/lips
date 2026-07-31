@@ -1,0 +1,181 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | Claims: the one gate that observes a running thing instead of reading the
+-- module text.
+--
+-- Every other gate lips has judges the MAP (an option assignment, a staged
+-- path, a stamp). So a program whose behaviour lives in baked source could
+-- state a sentence, have it minted into code, and then have that code drift
+-- from the sentence with every gate green -- the module text says nothing about
+-- what minted code DOES. A claim closes that by naming an observable the AUTHOR
+-- stated: a command, what it is fed, what it must print, how it must exit.
+--
+-- Nothing here is domain knowledge. @claim.\<id\>@ is a reserved emit head
+-- beside @artifact.\<name\>@ -- kernel vocabulary, not a target option -- with a
+-- CLOSED section set, so an engine fills it and cannot extend it. The rhs stays
+-- in the closed value grammar, so a claim cannot compute.
+--
+-- The PLACE is derived, never declared: a command naming only artifacts runs as
+-- a plain derivation in the nix sandbox (fast, no KVM, no network), anything
+-- else runs inside a booted machine. So a CLI program never pays for a boot, and
+-- no new syntax carries the distinction.
+module Lips.Kernel.Claim
+  ( Claim (..)
+  , ClaimPlace (..)
+  , claimsFromDecisions
+  , claimPlace
+  , comparisonPy
+  , claimRooted
+  ) where
+
+import qualified Data.Map.Strict as Map
+import           Data.List       (nub)
+import           Data.Text       (Text)
+import qualified Data.Text       as T
+
+import Lips.Kernel.Decision
+import Lips.Kernel.Engine.Value (Piece (..), Value (..), parseValue, sourceText,
+                                 valueArtifactNames)
+
+-- | Where a claim is observed. Derived from the command, not declared.
+data ClaimPlace
+  = -- | A plain derivation in the nix sandbox: the command names only the
+    --   program's own artifacts, so nothing needs to boot.
+    PlaceDerivation
+  | -- | A booted machine (@nixosTest@): the command reaches beyond those
+    --   artifacts, so the module itself must run.
+    PlaceMachine
+  deriving (Eq, Show)
+
+-- | One observable the author stated.
+data Claim = Claim
+  { clId     :: Text
+  , clRun    :: Value        -- ^ the command; may hold @${artifact.\<name\>}@
+  , clStdin  :: Maybe Text
+  , clStdout :: Maybe Text
+  , clExit   :: Int
+  , clPlace  :: ClaimPlace
+  }
+  deriving (Eq, Show)
+
+-- | Is this path the claim vocabulary? Twin of
+-- 'Lips.Kernel.OptionType.reservedRoot': neither head becomes a target option.
+claimRooted :: [Text] -> Bool
+claimRooted ("claim" : _) = True
+claimRooted _             = False
+
+-- | The closed section set. A section outside it is an engine defect: a mint's
+-- typo (@stdOut@) would otherwise be dropped in silence, and the claim would
+-- pass by observing less than the author stated.
+sections :: [Text]
+sections = ["run", "stdin", "stdout", "exit"]
+
+-- | Gather the claims out of a ground base's @claim.\<id\>.\<section\>@
+-- decisions. Deterministic (ordered by id). Every defect is a loud 'Left' in
+-- plain words -- a malformed subject, an unknown section, a claim with no
+-- command, a non-text stdin\/stdout, a non-integer exit -- because a claim lips
+-- cannot read is a claim lips cannot run, and an unrun claim must never pass as
+-- a held one.
+claimsFromDecisions :: [(Subject, Decision)] -> Either Text [Claim]
+claimsFromDecisions winners
+  | (bad : _) <- malformed =
+      Left ("claim " <> T.intercalate "." bad <> ": a claim is claim.<id>.<section>,"
+             <> " with section one of " <> T.intercalate ", " sections)
+  | otherwise = traverse one (Map.toList grouped)
+  where
+    malformed = [ segs | (Subject segs@("claim" : _), _) <- winners, length segs /= 3 ]
+    grouped = Map.fromListWith (flip (++))
+      [ (cid, [(sec, d)]) | (Subject ["claim", cid, sec], d) <- winners ]
+
+    one (cid, parts) = do
+      case nub [ s | (s, _) <- parts, s `notElem` sections ] of
+        []   -> Right ()
+        bads -> Left (pre <> "unknown section(s) " <> T.intercalate ", " bads
+                       <> "; a claim has " <> T.intercalate ", " sections)
+      vals <- traverse (\(s, d) -> (,) s <$> valueOf s d) parts
+      runV <- case lookup "run" vals of
+        Just v  -> Right v
+        Nothing -> Left (pre <> "no run, so there is nothing to observe")
+      inT  <- traverse (text "stdin") (lookup "stdin" vals)
+      outT <- traverse (text "stdout") (lookup "stdout" vals)
+      code <- case lookup "exit" vals of
+        Nothing       -> Right 0
+        Just (VInt n) -> Right (fromIntegral n)
+        Just v        -> Left (pre <> "exit must be an integer, got " <> renderish v)
+      Right Claim { clId = cid, clRun = runV, clStdin = inT, clStdout = outT
+                  , clExit = code, clPlace = claimPlace runV }
+      where
+        pre = "claim " <> cid <> ": "
+        valueOf sec d = case dAssertion d of
+          Assertion a -> case parseValue a of
+            Right v -> Right v
+            Left e  -> Left (pre <> sec <> " is not a value: " <> e)
+        -- stdin and stdout are BYTES a program reads and writes, so only a value
+        -- with a text form can be one: a reference resolves to a store path only
+        -- nix knows, and a list or attrset has no textual form at all.
+        text sec v = case sourceText v of
+          Just t  -> Right t
+          Nothing -> Left (pre <> sec <> " must be plain text, got " <> renderish v)
+
+-- | A value in a complaint: its constructor shape is what a mint needs to see,
+-- and the kernel has no renderer that is safe for every case here.
+renderish :: Value -> Text
+renderish = T.pack . show
+
+-- | The place, derived: only artifact references (and literal text) keep a claim
+-- in the sandbox. A package reference or a bare command needs the booted system,
+-- since what it observes is the running module, not a build.
+claimPlace :: Value -> ClaimPlace
+claimPlace v@(VStr ps)
+  | all litOrArt ps && not (null (valueArtifactNames v)) = PlaceDerivation
+  where
+    litOrArt (PLit _) = True
+    litOrArt (PArt _) = True
+    litOrArt _        = False
+claimPlace _ = PlaceMachine
+
+-- | The comparison, as python lines over @out@ (the observed stdout, a str) and
+-- @code@ (the observed exit status, an int).
+--
+-- ONE implementation for both places: a @nixosTest@ script is python already, so
+-- rendering the comparison once is what keeps a sandbox claim and a machine
+-- claim from judging by different rules.
+--
+-- EXACT, with exactly one trailing newline stripped: a program that prints a
+-- line ends it in a newline, while the author states the line. Containment is
+-- deliberately absent -- it is what let a minted @\"200\\n404\"@ pass as
+-- @\"200n404\"@ unseen.
+comparisonPy :: Claim -> [Text]
+comparisonPy c =
+  [ "expected_exit = " <> T.pack (show (clExit c))
+  , "if out.endswith('\\n'): out = out[:-1]"
+  , "if code != expected_exit:"
+  , "    raise SystemExit('claim " <> pyBody (clId c)
+      <> ": exit was %d, expected %d' % (code, expected_exit))"
+  ] ++ outLines
+  where
+    outLines = case clStdout c of
+      Nothing -> []
+      Just s  ->
+        [ "expected_out = " <> pyStr s
+        , "if out != expected_out:"
+        , "    raise SystemExit('claim " <> pyBody (clId c)
+            <> ": stdout was %r, expected %r' % (out, expected_out))"
+        ]
+
+-- | A python single-quoted literal.
+pyStr :: Text -> Text
+pyStr t = "'" <> pyBody t <> "'"
+
+-- | The inside of a python single-quoted literal: only @\\@ and @'@ need
+-- escaping, and a newline is written as an escape so a rendered line stays one
+-- line. Applied to the claim id too, so an id can never end the literal it sits
+-- in (the id grammar is identifier text, and this keeps that from being a thing
+-- the reader must know to trust the output).
+pyBody :: Text -> Text
+pyBody = T.concatMap esc
+  where
+    esc '\\' = "\\\\"
+    esc '\'' = "\\'"
+    esc '\n' = "\\n"
+    esc ch   = T.singleton ch
