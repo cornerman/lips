@@ -289,6 +289,10 @@
               mkdir -p backup
               cp ${./examples/ledger.backup.lips} ledger.backup.lips
               cp ${./examples/backup/backup.lang} backup/backup.lang
+              # Staged for the same reason as the artifact check below, so both
+              # look like a real language folder even though this one bakes no
+              # source and so never consults it.
+              cp ${./examples/backup/backup.generation} backup/backup.generation
               # --no-contract: the gate needs nix to evaluate the module, which
               # a compile inside a nix build has not got; `lips check` gates in
               # the repo (see just check-expect).
@@ -346,6 +350,12 @@
               cp ${./examples/hello.http.lips} hello.http.lips
               cp ${./examples/http/http.lang} http/http.lang
               cp -r ${./examples/http/artifacts} http/artifacts
+              # The generation record travels with the language, exactly as it
+              # does in a real language folder: where a language BAKES source,
+              # compile reads it to check the program still states the
+              # specification that source was written from, and refuses rather
+              # than skip when it cannot.
+              cp ${./examples/http/http.generation} http/http.generation
               # --no-contract: the gate needs nix to evaluate the module, which
               # a compile inside a nix build has not got; `lips check` gates in
               # the repo (see just check-expect).
