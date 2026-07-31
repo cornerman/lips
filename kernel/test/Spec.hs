@@ -2826,7 +2826,11 @@ main = hspec $ do
   -- command, so a CLI program never pays for a boot and no new syntax carries
   -- the distinction.
   describe "claims (an observable the author stated)" $ do
-    let dec subj asrt = Decision
+    let groundDec subj asrt = Decision
+          { dId = DecisionId (T.intercalate "." subj), dSubject = Subject subj
+          , dKind = Meta, dAssertion = Assertion asrt, dStrength = Stated
+          , dProv = FromSource (SourceLoc "t.x.lips" 1), dRationale = Nothing }
+        dec subj asrt = Decision
           { dId = DecisionId "x", dSubject = Subject subj, dKind = Meta
           , dAssertion = Assertion asrt, dStrength = Stated
           , dProv = FromSource (SourceLoc "p.x.lips" 1), dRationale = Nothing }
@@ -2907,6 +2911,41 @@ main = hspec $ do
                          , clStdout = Just "it's {\"a\":1}", clExit = 0
                          , clPlace = PlaceDerivation }
         `shouldSatisfy` elem "expected_out = 'it\\'s {\"a\":1}'"
+
+    -- A claim is observed, not assigned: it must reach the realization and NOT
+    -- the module, or the module would carry a path no target world declares.
+    it "excludes claim decisions from the rendered module" $ do
+      let ground = fromList
+            [ groundDec ["claim","echo","run"] "\"${artifact.tool}/bin/tool\""
+            , groundDec ["artifact","tool","builder"] "\"buildGoModule\""
+            , groundDec ["environment","systemPackages"] "[ ${artifact.tool} ]"
+            ]
+      case realize (const Replace) assembleSubject ground of
+        Left e    -> expectationFailure (show e)
+        Right txt -> do
+          txt `shouldNotSatisfy` T.isInfixOf "claim"
+          txt `shouldSatisfy` T.isInfixOf "environment.systemPackages"
+
+    it "projects the claim out of the same ground base" $ do
+      let ground = fromList
+            [ groundDec ["claim","echo","run"] "\"${artifact.tool}/bin/tool\""
+            , groundDec ["claim","echo","stdout"] "\"hi\""
+            , groundDec ["artifact","tool","builder"] "\"buildGoModule\""
+            ]
+      fmap (map clId) (realizeClaims (const Replace) assembleSubject ground)
+        `shouldBe` Right ["echo"]
+
+    it "reports a malformed claim as an engine defect, not as an option" $ do
+      let ground = fromList [ groundDec ["claim","echo","stdout"] "\"hi\"" ]
+      realizeClaims (const Replace) assembleSubject ground
+        `shouldBe` Left (RBadClaim "claim echo: no run, so there is nothing to observe")
+
+    -- The option schema never sees kernel vocabulary: no world declares these
+    -- paths, so grounding them would refuse every engine that builds or observes.
+    it "keeps a claim emit out of option admissibility" $ do
+      let rule = MapRule "r1" Fact ["w"]
+            [ Emit ["claim","echo","run"] (VStr [PLit "x"]) ]
+      checkEmits (Map.fromList [(["services","x","enable"], OTBool)]) [rule] `shouldBe` []
 
   describe "lsp uri decoding (file:// scheme, percent-escapes)" $ do
     it "strips the file:// scheme" $

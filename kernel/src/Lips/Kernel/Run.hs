@@ -25,9 +25,10 @@ import Lips.Kernel.Base
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
+import Lips.Kernel.Claim    (Claim)
 import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile,
                              realizeArtifactFills, realizeArtifactPaths,
-                             realizeStagedPaths)
+                             realizeClaims, realizeStagedPaths)
 import Lips.Kernel.Refine
 
 -- | The four run outcomes other than success (spec section 5).
@@ -86,6 +87,10 @@ data Realization = Realization
   , rlFills    :: [(Text, Text, Text)]
     -- ^ @(artifact, marker, text)@: what the caller substitutes into the source
     -- tree it stages, so a program word reaches inside the compiled program.
+  , rlClaims   :: [Claim]
+    -- ^ The observables the program states, empty for a program that states
+    -- none. Projected from the same ground base as the module beside them, so
+    -- what @check@ runs and what the module contains cannot disagree.
   }
 
 -- | The pipeline from a decision base onward (resolve, demands, refine,
@@ -102,6 +107,7 @@ runBase modeOf assemble budget rules demands base0 = do
     <*> realizeStagedPaths modeOf assemble ground
     <*> realizeArtifactPaths modeOf assemble ground
     <*> realizeArtifactFills modeOf assemble ground
+    <*> realizeClaims modeOf assemble ground
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA
 -- guard). Takes the resolve result
@@ -145,6 +151,7 @@ fromRealizeError (RConflicts cs)     = Conflicted cs
 fromRealizeError (RDangling ns)      = Unrealizable
   ["references artifact(s) nothing builds: " <> T.intercalate ", " ns]
 fromRealizeError (RBadArtifact n why) = Unrealizable ["artifact " <> n <> ": " <> why]
+fromRealizeError (RBadClaim why)     = Unrealizable [why]
 fromRealizeError (RMalformed s e)    = Unrealizable ["option " <> subjText s <> ": " <> e]
 
 -- | Render a subject as a dotted path for a plain-language error.

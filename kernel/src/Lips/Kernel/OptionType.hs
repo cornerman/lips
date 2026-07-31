@@ -86,7 +86,7 @@ checkEmits :: OptionSchema -> [MapRule] -> [OptionError]
 checkEmits schema rules =
   [ err
   | r <- rules, e <- mrEmits r
-  , not (artifactRooted (emPath e))   -- build-group vocabulary, not target options
+  , not (reservedRoot (emPath e))   -- kernel vocabulary, not target options
   , err <- checkEmit (mrId r) (emPath e) (emRhs e)
   ]
   where
@@ -165,13 +165,17 @@ isPrefixPath key path = length key < length path && and (zipWith segEq key path)
 segEq :: Text -> Text -> Bool
 segEq k c = k == "*" || k == c
 
--- | An emit rooted at @artifact@ is the kernel's build-group vocabulary: it
--- becomes a @let@-bound derivation in the realized module (see
--- 'Lips.Kernel.Realize'), not a target option assignment, so the option schema
--- does not constrain it.
-artifactRooted :: [Text] -> Bool
-artifactRooted ("artifact" : _) = True
-artifactRooted _               = False
+-- | An emit rooted at @artifact@ or @claim@ is the kernel's OWN vocabulary, not
+-- a target option assignment, so the option schema does not constrain it: the
+-- first becomes a @let@-bound derivation in the realized module (see
+-- 'Lips.Kernel.Realize'), the second an experiment @check@ runs (see
+-- 'Lips.Kernel.Claim'). Grounding either against the world's schema would
+-- refuse every engine that builds or observes anything, since no world declares
+-- these paths.
+reservedRoot :: [Text] -> Bool
+reservedRoot ("artifact" : _) = True
+reservedRoot ("claim" : _)    = True
+reservedRoot _                = False
 
 -- | The human wording of an option type (the nixpkgs 'type' string, not the
 -- Haskell 'show' form), so a mismatch message reads "boolean" / "list of

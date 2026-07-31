@@ -21,6 +21,7 @@ module Lips.Kernel.Realize
   , realizeStagedPaths
   , realizeArtifactPaths
   , realizeArtifactFills
+  , realizeClaims
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
@@ -31,6 +32,7 @@ import qualified Data.Text       as T
 
 import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve)
 import Lips.Kernel.Capture      (nameTokens)
+import Lips.Kernel.Claim        (Claim, claimRooted, claimsFromDecisions)
 import Lips.Kernel.Decision
 import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
@@ -48,6 +50,9 @@ data RealizeError
     RDangling [Text]
   | -- | A malformed artifact group: the artifact name and the reason.
     RBadArtifact Text Text
+  | -- | A malformed claim group, in plain words (an unknown section, a claim
+    --   with no command, a stdin\/stdout with no text form).
+    RBadClaim Text
   | -- | An option assertion that is not a canonical 'Value' (an engine defect;
     --    after the R1 canonical-storage refactor every assertion must re-parse).
     RMalformed Subject Text
@@ -145,6 +150,17 @@ realizeArtifactFile modeOf assemble base =
                    ] ++ letBlock entries ++ ["artifact"])
              Right (Just (body, names))
 
+-- | The claims a ground base states: the observables the author supplied,
+-- projected exactly like the artifacts beside them (same resolve, same base), so
+-- what @check@ runs and what the module contains can never disagree.
+realizeClaims :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+              -> Base -> Either RealizeError [Claim]
+realizeClaims modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs     -> Left (resolveErr errs)
+    Right winners -> either (Left . RBadClaim) Right
+                            (claimsFromDecisions (Map.toList winners))
+
 -- | Every RELATIVE path the realized base names, paired with the decision that
 -- named it. Nix resolves such a path against the module directory, i.e. against
 -- the tree lips stages beside the module (an artifact's minted source), so it
@@ -221,7 +237,12 @@ realizeArtifactFills modeOf assemble base =
 -- derivation the module can reference as @${artifact.<name>}@.
 renderModule :: [(Subject, Decision)] -> Either RealizeError Text
 renderModule winners = do
-  let (arts, opts) = partition (rootedAtArtifact . fst) winners
+  let (arts, rest) = partition (rootedAtArtifact . fst) winners
+      -- A claim is kernel vocabulary like an artifact: it is OBSERVED, not
+      -- assigned, so it must not become an option. Without this it would render
+      -- as `claim.echo.run = "...";`, a path no target world declares, and the
+      -- module would fail to evaluate wherever it was imported.
+      opts = [ sd | sd@(Subject segs, _) <- rest, not (claimRooted segs) ]
       defined  = [ n | (Subject ("artifact" : n : _), _) <- arts ]
   -- Each option assertion is canonical 'Value' text (stored by 'fillValue'),
   -- so parse it once: the Value drives both artifact-reference detection
