@@ -103,6 +103,7 @@ cliParserInfo defConf = info (cliParser defConf <**> helper) $
   fullDesc <> progDesc
     "lips turns an <instance>.<language> program, written in your own plain lines, into a module for the Nix world you chose."
 
+-- | The three verbs a user works with day to day, in the loop's own order.
 cliParser :: Double -> Parser Command
 cliParser defConf = hsubparser
   (  command "generate"
@@ -114,12 +115,16 @@ cliParser defConf = hsubparser
   <> command "check"
        (info (Check <$> checkOpts)
              (progDesc "Verify the program still produces what it promised."))
-  <> command "options"
+  )
+  <|> hsubparser
+  (  command "options"
        (info (Options <$> optionsOpts)
              (progDesc "Look up option paths and types in the pinned schema. Read-only, no AI."))
   <> command "lsp"
        (info (pure Lsp)
              (progDesc "Run the lips language server (stdio)."))
+  <> commandGroup "tooling commands (editor/schema support, not part of the generate/compile/check loop):"
+  <> hidden
   )
 
 programArg :: Parser FilePath
