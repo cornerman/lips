@@ -1,4 +1,4 @@
-model: claude-sonnet-5
+model: claude-opus-5
 target: nixos
 schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
 thinking: high
@@ -284,9 +284,18 @@ saying which queue is meant, would realize nothing. Reach for a block whenever
 an item needs a word from the line above it, or whenever a program could state
 the same group twice.
 
-Blocks are recognized by your PATTERNS, never by punctuation or indentation:
-lips has no idea that `-` or `:` marks anything. Any wording works, as long as
+Blocks are recognized by your PATTERNS, never by indentation: lips gives `-`,
+`:` and every other symbol no meaning of its own. Any wording works, as long as
 the heading has its own pattern.
+
+A SYMBOL IS A TOKEN'S OWN TEXT, so a template must WRITE every symbol its line
+carries: `content: <what.words>` reads `content: shows a painting`, while
+`content <what.words>` does not read that line at all. Copy the program's
+symbols into the template exactly (`host <domain>:`, `<fname>(<param>: <ptype>)`),
+or a hole swallows them into its value. The one exception is the sentence
+TERMINATOR: trailing `.,;:!?` on the LAST token of a line is noise on both
+sides, so a final period needs no template token and `<when>.` ending a
+template is just the hole `<when>`.
 
 TWO STRUCTURE HOLES, for items that cannot key themselves. Both are filled
 from the program's SHAPE, so they are declared in an emit and need no template
@@ -404,8 +413,9 @@ FROM THE PROGRAM must go through a typed pkg hole instead (<value:pkg> or
 <value.tail:pkg>, below), never through ${pkgs.<...>}; writing
 ${pkgs.<value>} or ${pkgs.<name>} is ALWAYS rejected, no matter how the
 hole got its name. Do not quote a package into a string when the option
-wants a derivation. Template holes bind single tokens; punctuation like a
-trailing period stays outside the hole.
+wants a derivation. Template holes bind single tokens verbatim, symbols
+included, so a symbol you want kept out of the value must appear in the
+template beside the hole.
 
 ### Typed Holes
 
@@ -805,22 +815,29 @@ button "drück mich":
   on click: new random painting in canvas "main"
 
 --- tool transcript ---
--> query_options "systemd.services.<name>"
+-> query_options "systemd.services.&lt;name&gt;.environment"
 -> query_options "networking.firewall.allowedTCPPorts"
 <- query_options
-systemd.services.<name> is below systemd.services : attribute set of (submodule)
+systemd.services.&lt;name&gt;.environment is below systemd.services : attribute set of (submodule)
 That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.<name>.
+them is checked -- this schema cannot confirm the name systemd.services.&lt;name&gt;.environment.
 Emit it only from documentation you actually have; otherwise refuse.
 
 <- query_options
 networking.firewall.allowedTCPPorts : list of integer
 
 -> query_options "systemd.services"
+-> query_options "systemd.services.&lt;name&gt;.serviceConfig"
 <- query_options
 systemd.services.* (47 options)
 systemd.services (1 option)
 Ask again with one of these paths to see its options.
+
+<- query_options
+systemd.services.&lt;name&gt;.serviceConfig is below systemd.services : attribute set of (submodule)
+That option is free-form: every path under it is accepted, and none of
+them is checked -- this schema cannot confirm the name systemd.services.&lt;name&gt;.serviceConfig.
+Emit it only from documentation you actually have; otherwise refuse.
 
 -> query_options "systemd.services.*"
 <- query_options
@@ -867,54 +884,49 @@ systemd.services.*.upheldBy (1 option)
 … and 3 more namespaces.
 Ask again with one of these paths to see its options.
 
--> query_options "systemd.services.*.wantedBy"
--> query_options "systemd.services.*.serviceConfig"
-<- query_options
-systemd.services.*.wantedBy : list of string
-
-<- query_options
-systemd.services.*.serviceConfig : attribute set of (systemd option)
-
--> query_options "systemd.services.*.serviceConfig.ExecStart"
 -> query_options "systemd.services.*.environment"
-<- query_options
-systemd.services.*.serviceConfig.ExecStart is below systemd.services.*.serviceConfig : attribute set of (systemd option)
-That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.*.serviceConfig.ExecStart.
-Emit it only from documentation you actually have; otherwise refuse.
-
+-> query_options "systemd.services.*.wantedBy"
 <- query_options
 systemd.services.*.environment : attribute set of (null or string or absolute path or package)
 
--> query_options "systemd.services.*.serviceConfig.Restart"
 <- query_options
-systemd.services.*.serviceConfig.Restart is below systemd.services.*.serviceConfig : attribute set of (systemd option)
-That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.*.serviceConfig.Restart.
-Emit it only from documentation you actually have; otherwise refuse.
+systemd.services.*.wantedBy : list of string
+
+-> query_options "systemd.services.*.serviceConfig"
+-> query_options "systemd.services.*.description"
+<- query_options
+systemd.services.*.serviceConfig : attribute set of (systemd option)
+
+<- query_options
+systemd.services.*.description : (optionally newline-terminated) single-line string
 
 
 --- raw reply ---
-0.95 p1 pattern website running on port <port> => fact website.port "<port>"
-0.95 p2 pattern canvas "<name>": => fact canvas.name "<name>"
-0.95 p3.under.p2 pattern content: shows a nice random svg painting => concept canvas.<name>.content "the canvas shows a randomly generated svg painting"
-0.95 p4 pattern button "<label>": => fact button.label "<label>"
-0.95 p5.under.p4 pattern on click: new random painting in canvas "<target>" => fact button.target "<target>"
-0.92 r1 match fact website.port => systemd.services.<self>.environment.PORT "\"<value>\"" ; networking.firewall.allowedTCPPorts "[ <value:int> ]" ; systemd.services.<self>.description "\"<self> website\"" ; systemd.services.<self>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<self>.serviceConfig.ExecStart "\"${artifact.<self>}/bin/<self>\"" ; systemd.services.<self>.serviceConfig.Restart "\"on-failure\"" ; artifact.<self>.builder "\"buildGoModule\"" ; artifact.<self>.args.pname "\"<self>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.vendorHash "null" ; artifact.<self>.fill.module_name "\"<self>\""
-0.9 r2 match fact canvas.name => artifact.<self>.fill.canvas_name "\"<value>\""
-0.9 r3 match fact button.label => artifact.<self>.fill.button_label "\"<value>\""
-0.9 r4 match fact button.target => artifact.<self>.fill.button_target "\"<value>\""
-0.85 q1 demand website.port "which port should the website listen on?"
-0.85 q2 demand canvas.name "what should the canvas that shows the random painting be called?"
-0.85 q3 demand button.label "what text should the regenerate button show?"
-0.85 q4 demand button.target "which canvas (by name) should the button refresh when clicked?"
-0.9 a1 expect systemd.services.<self>.environment.PORT from website.port
-0.85 a2 expect networking.firewall.allowedTCPPorts from website.port
-0.9 a3 expect artifact.<self>.fill.canvas_name from canvas.name
-0.9 a4 expect artifact.<self>.fill.button_label from button.label
-0.9 a5 expect artifact.<self>.fill.button_target from button.target
+0.95 p1 pattern website running on port <port> => fact site.port "<port>"
+0.9 p2 pattern canvas "<name>": => fact canvas.name "<name>"
+0.9 p3.under.p2 pattern content: <what.words> => fact canvas.content "<what>"
+0.9 p4 pattern button "<label>": => fact button.label "<label>"
+0.85 p5.under.p4 pattern on click: <action.words> in canvas "<target>" => fact button.action "<action>" ; fact button.target "<target>"
+0.9 r1 match fact site.port => artifact.<self>.builder "\"buildGoModule\"" ; artifact.<self>.args.pname "\"<self>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.vendorHash "null" ; systemd.services.<self>.description "\"lips website\"" ; systemd.services.<self>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<self>.after "[ \"network.target\" ]" ; systemd.services.<self>.serviceConfig.ExecStart "\"${artifact.<self>}/bin/site\"" ; systemd.services.<self>.serviceConfig.DynamicUser "true" ; systemd.services.<self>.serviceConfig.Restart "\"on-failure\"" ; systemd.services.<self>.environment.PORT "\"<value>\"" ; networking.firewall.allowedTCPPorts "[ <value:int> ]"
+0.9 r2 match fact canvas.name => systemd.services.<self>.environment.CANVAS_ID "\"<value>\""
+0.9 r3 match fact canvas.content => systemd.services.<self>.environment.CANVAS_CAPTION "\"<value>\""
+0.9 r4 match fact button.label => systemd.services.<self>.environment.BUTTON_LABEL "\"<value>\""
+0.9 r5 match fact button.action => systemd.services.<self>.environment.BUTTON_ACTION "\"<value>\""
+0.9 r6 match fact button.target => systemd.services.<self>.environment.BUTTON_TARGET "\"<value>\""
+0.9 q1 demand site.port "which TCP port should the website listen on?"
+0.85 q2 demand canvas.name "what is the canvas called (its element id)?"
+0.85 q3 demand canvas.content "what does the canvas show?"
+0.85 q4 demand button.label "what text does the button carry?"
+0.8 q5 demand button.action "what does clicking the button do?"
+0.8 q6 demand button.target "which canvas does the click repaint?"
+0.9 a1 expect systemd.services.<self>.environment.PORT from site.port
+0.9 a2 expect systemd.services.<self>.environment.CANVAS_ID from canvas.name
+0.9 a3 expect systemd.services.<self>.environment.CANVAS_CAPTION from canvas.content
+0.9 a4 expect systemd.services.<self>.environment.BUTTON_LABEL from button.label
+0.9 a5 expect systemd.services.<self>.environment.BUTTON_ACTION from button.action
+0.9 a6 expect systemd.services.<self>.environment.BUTTON_TARGET from button.target
 0.9 s1 source website go.mod <<<lips
-module @module_name@
+module site
 
 go 1.21
 lips>>>
@@ -922,141 +934,188 @@ lips>>>
 package main
 
 import (
-	"fmt"
-	"math/rand"
+	"html/template"
+	"log"
 	"net/http"
 	"os"
 )
 
-func randomSVG() string {
-	w, h := 300, 300
-	svg := fmt.Sprintf("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\">", w, h)
-	for i := 0; i < 8; i++ {
-		cx := rand.Intn(w)
-		cy := rand.Intn(h)
-		r := rand.Intn(40) + 10
-		color := fmt.Sprintf("#%06x", rand.Intn(0xffffff))
-		svg += fmt.Sprintf("<circle cx=\"%d\" cy=\"%d\" r=\"%d\" fill=\"%s\" />", cx, cy, r, color)
-	}
-	svg += "</svg>"
-	return svg
+type page struct {
+	CanvasID     string
+	CanvasText   string
+	ButtonLabel  string
+	ButtonAction string
+	ButtonTarget string
 }
 
-const page = `<!DOCTYPE html>
-<html>
-<head><title>@module_name@</title></head>
-<body>
-<div id="@canvas_name@">%s</div>
-<button onclick="refresh()">@button_label@</button>
-<script>
-function refresh() {
-  fetch('/random').then(function(r) { return r.text(); }).then(function(svg) {
-    document.getElementById('@button_target@').innerHTML = svg;
-  });
+func env(name, fallback string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return fallback
 }
+
+var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{.CanvasID}}</title>
+<style>
+body { font-family: sans-serif; margin: 2rem; }
+svg { border: 1px solid #ccc; background: #fff; }
+figcaption { color: #555; margin-top: 0.5rem; }
+button { margin-top: 1rem; padding: 0.6rem 1.2rem; font-size: 1rem; }
+</style>
+</head>
+<body>
+<figure>
+<svg id="{{.CanvasID}}" width="640" height="400" role="img" aria-label="{{.CanvasText}}"></svg>
+<figcaption>{{.CanvasText}}</figcaption>
+</figure>
+<button id="repaint" title="{{.ButtonAction}}">{{.ButtonLabel}}</button>
+<script>
+var target = "{{.ButtonTarget}}";
+function rnd(n) { return Math.floor(Math.random() * n); }
+function colour(alpha) {
+  return "rgba(" + rnd(256) + "," + rnd(256) + "," + rnd(256) + "," + alpha + ")";
+}
+function paint() {
+  var svg = document.getElementById(target);
+  if (!svg) { return; }
+  while (svg.firstChild) { svg.removeChild(svg.firstChild); }
+  var ns = "http://www.w3.org/2000/svg";
+  var count = 6 + rnd(12);
+  for (var i = 0; i < count; i++) {
+    var kind = rnd(3);
+    var el;
+    if (kind === 0) {
+      el = document.createElementNS(ns, "circle");
+      el.setAttribute("cx", rnd(640));
+      el.setAttribute("cy", rnd(400));
+      el.setAttribute("r", 10 + rnd(90));
+    } else if (kind === 1) {
+      el = document.createElementNS(ns, "rect");
+      el.setAttribute("x", rnd(600));
+      el.setAttribute("y", rnd(360));
+      el.setAttribute("width", 20 + rnd(200));
+      el.setAttribute("height", 20 + rnd(160));
+    } else {
+      el = document.createElementNS(ns, "line");
+      el.setAttribute("x1", rnd(640));
+      el.setAttribute("y1", rnd(400));
+      el.setAttribute("x2", rnd(640));
+      el.setAttribute("y2", rnd(400));
+      el.setAttribute("stroke-width", 1 + rnd(8));
+      el.setAttribute("stroke", colour("1"));
+    }
+    el.setAttribute("fill", colour("0.6"));
+    svg.appendChild(el);
+  }
+}
+document.getElementById("repaint").addEventListener("click", paint);
+paint();
 </script>
 </body>
-</html>`
+</html>
+`))
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	p := page{
+		CanvasID:     env("CANVAS_ID", "canvas"),
+		CanvasText:   env("CANVAS_CAPTION", ""),
+		ButtonLabel:  env("BUTTON_LABEL", "again"),
+		ButtonAction: env("BUTTON_ACTION", ""),
+		ButtonTarget: env("BUTTON_TARGET", env("CANVAS_ID", "canvas")),
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, page, randomSVG())
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := pageTemplate.Execute(w, p); err != nil {
+			log.Print(err)
+		}
 	})
-	http.HandleFunc("/random", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/svg+xml")
-		fmt.Fprint(w, randomSVG())
-	})
-	http.ListenAndServe(":"+port, nil)
+	addr := ":" + env("PORT", "8080")
+	log.Printf("serving on %s", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
 lips>>>
-0.3 g1 gap repeating-canvas-button <<<lips
-blocked shape: a program with MORE THAN ONE `canvas "X":` or `button "Y":`
-block, e.g.
-
-  canvas "main":
-    content: shows a nice random svg painting
-  canvas "preview":
-    content: shows a nice random svg painting
-  button "drück mich":
-    on click: new random painting in canvas "main"
-
-Two canvas headings with DIFFERENT names would try to write two different
-values into the single subject `canvas.name` (there is no capture keying
-it per-name), which lips refuses as a conflict. Keying the subject by name
-instead (canvas.<name>...) would let both crystallize, but the built page
-has exactly one <div> and one <script> block in source -- there is no fill
-that repeats a block of HTML/JS per canvas or per button, only markers that
-substitute text once. Rendering N canvases and M buttons needs a loop or
-repeated markup in main.go, which is a gap in the value grammar (no
-constructor for repetition), not something a rule can express. This engine
-therefore only supports exactly one canvas and one button per website
-program, matching the example shown.
-lips>>>
 0.95 d1 report <<<lips
-## What this language describes
+## What this language says
 
-A `.lips` program in this language describes one small generated-art
-website: the port it listens on, one **canvas** that shows a randomly
-generated SVG painting, and one **button** that asks for a new painting.
+A program describes one small website with one drawing surface and one
+button, in four kinds of line:
 
-Recognized lines:
+```
+website running on port 8081
+canvas "main":
+  content: shows a nice random svg painting
+button "drück mich":
+  on click: new random painting in canvas "main"
+```
 
-- `website running on port <port>` -- the TCP port the site listens on.
-- `canvas "<name>":` -- opens the (single) canvas block; `<name>` is used
-  as the DOM id of the element the painting is drawn into.
-- `content: shows a nice random svg painting` (nested under the canvas
-  line) -- decorative: it states *what* the canvas shows, but since the
-  wording never varies across an example, there is no value here to carry
-  through; it is realized as a `concept`, not a fact.
-- `button "<label>":` -- opens the (single) button block; `<label>` is the
-  text printed on the button.
-- `on click: new random painting in canvas "<target>"` (nested under the
-  button line) -- `<target>` names which canvas this button refreshes.
+* `website running on port <port>` — the TCP port the site listens on.
+* `canvas "<name>":` — opens a canvas block; the quoted name becomes the
+  element id of the drawing surface in the page.
+* `content: <words...>` — a line inside a canvas block; the words become the
+  caption shown under the surface and its accessible label.
+* `button "<label>":` — opens a button block; the quoted label is the text
+  printed on the button (spaces and umlauts are fine, it is quoted).
+* `on click: <action words...> in canvas "<name>"` — a line inside a button
+  block. The action phrase becomes the button's tooltip; the quoted canvas
+  name is the surface the click actually repaints, so it must be stated.
 
-## Mechanism
+Every quoted or numeric word above is a hole: edit the sentence, recompile,
+and the machine follows. Nothing in the engine hard-codes 8081, "main" or
+"drück mich".
 
-The whole site is one program built from source (there is no existing
-package that generates and serves random SVGs the way this program wants),
-so it becomes a Go artifact (`buildGoModule`, no external dependencies, so
-`vendorHash` is `null`) wired to a `systemd.services.<self>` unit whose
-`ExecStart` runs the built binary; the port is opened in
-`networking.firewall.allowedTCPPorts` and handed to the binary as the
-`PORT` environment variable (read at start-up, not baked in, so editing
-the port needs no rebuild of the source, only a re-realized module).
+## What it builds
 
-The canvas id, the button's label, and the canvas name the button
-refreshes are program *values*, so they reach the Go source through fills
-(`@canvas_name@`, `@button_label@`, `@button_target@` in `main.go`); the
-module name (`@module_name@` in `go.mod`, also used as the page title) is
-filled from `<self>`, the program's own instance name, since the program
-never names the website itself -- only its canvas and its button.
+The mechanism is one systemd service per program, keyed by the program's own
+file name (`website.lips` → `systemd.services.website`), running a tiny Go
+HTTP server built from source as an artifact (`buildGoModule`, no external
+dependencies, binary `bin/site`). The service runs under `DynamicUser`, wants
+`multi-user.target`, restarts on failure, and the stated port is opened in
+`networking.firewall.allowedTCPPorts`.
 
-The server itself: `/` renders a page with the canvas div (pre-filled with
-one random SVG so it has content on first load) and the button; `/random`
-returns a freshly generated SVG (a handful of random colored circles) that
-the button's script fetches and drops into the target element.
+All five program values reach the server through the unit's environment —
+`PORT`, `CANVAS_ID`, `CANVAS_CAPTION`, `BUTTON_LABEL`, `BUTTON_ACTION`,
+`BUTTON_TARGET` — and the server renders the page from them at request time.
+That is deliberate: environment values are plain strings in the NixOS option
+tree, so each one is pinned by an expect in `website.expect`, and no value is
+baked into the compiled binary (there are no source fills at all). The Go
+source holds only *structure*: the HTML skeleton and the JavaScript that
+generates a random SVG painting (circles, rectangles, lines in random
+colours) into the element named by `CANVAS_ID` and regenerates it whenever
+the button is clicked.
 
-## Choices made without a stated value
+## What I had to decide, and the limits
 
-- The build is Go with no third-party packages, so no package-manager
-  choice was left underspecified.
-- `version = "0.1.0"` and `Restart = "on-failure"` are fixed constants; no
-  line states a version or a restart policy, and none seems worth asking
-  for.
-- The default port fallback (`8080`) inside the binary only matters if
-  `PORT` is unset, which the module never lets happen (the rule always
-  sets it from the program's stated port).
+* "shows a nice random svg painting" and "new random painting" are prose. A
+  lips engine cannot synthesise behaviour from prose, so the *behaviour* is
+  the fixed mechanism I wrote (random SVG shapes, redrawn on click) and the
+  prose itself is carried into the page as the caption and the button
+  tooltip, where a human can see the sentence they wrote. If you want a
+  different kind of painting, that is a regeneration, not an edit.
+* The click line must end with `in canvas "<name>"`. Without a named target
+  the engine would have to guess which surface to repaint, and guessing is
+  what I am forbidden to do; a missing on-click line is asked for instead
+  (see the demands below).
+* Exactly **one** canvas and **one** button per program. Their facts live at
+  fixed subjects (`canvas.name`, `button.label`, ...), so a second `canvas
+  "…":` block would be refused at compile time as a conflict. Supporting
+  several would mean repeating a block of page structure per widget, which
+  the source-fill mechanism cannot do; that is a regeneration with a
+  different design, not something to fake here.
+* Version `0.1.0` for the build and the page geometry (640x400) are free
+  constants I chose; nothing in the program pins them.
 
-## Limitation
+## What a program must state
 
-Only one canvas and one button are supported (see the filed gap): the
-subject `canvas.name`/`button.label`/`button.target` has no per-item key,
-and the generated page has no repeating block a second canvas or button
-could reuse. A program stating two differently-named canvases or buttons
-will fail to crystallize with a conflict, which is the intended, loud
-failure rather than silently building only one.
+A program is asked (at compile time, by name) for anything it leaves silent:
+the port, the canvas name and its content line, the button label, and the
+click action with its target canvas. All six are things a human can simply
+write in one line, so none of them has an invented default.
 lips>>>

@@ -1,3 +1,3 @@
-module @module_name@
+module site
 
 go 1.21
