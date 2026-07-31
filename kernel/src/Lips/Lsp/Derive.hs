@@ -225,4 +225,10 @@ diagsOf d = concatMap lineDiag (diagLines d) ++ map openDiag (diagOpen d)
       [Diag (n - 1) 0 (T.length t) 1
         ("This line is an item of a block, and no line above it opens one ("
           <> T.intercalate " or " qs <> ").")]
+    -- The remedy is the engine's, not the program's: a subject keyed by a
+    -- multi-word capture must be keyed by <n:index> instead.
+    lineDiag (Illegible n t why) =
+      [Diag (n - 1) 0 (T.length t) 1
+        ("A decision this line states cannot be read back (" <> why
+          <> "). Re-mint the language: key such an item by <n:index>.")]
     openDiag q = Diag 0 0 0 2 ("Open question: " <> q)

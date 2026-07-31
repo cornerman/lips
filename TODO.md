@@ -168,14 +168,6 @@ tracks only what is still open.
       the button by `<n:index>`, not by its label) and commit it, or delete it.
       Owner: whoever re-mints; the physics side is done.
 
-   e. **The per-line report contradicts itself on an unreadable decision.**
-      `lips check` prints `line 4  ok  p4  button.drück mich` from
-      `classifyLines` and then fails the whole file on that same line, because
-      the round-trip gate lives in `crystallize`, not in the per-line outcome.
-      The failure is loud and names the line, so this is cosmetic, but a reader
-      sees "ok" next to the line that broke. Candidate: carry the round-trip
-      verdict in `LineOutcome` so `Diagnose` marks the line.
-
 4. **The 18 committed engines predate the recorded schema pin, so their stamps
    no longer re-hash.** The generation record gained a `schema:` line (the locked
    flakeref, or `options-json:<hash>`, that grounded the mint -- DESIGN §13

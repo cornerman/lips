@@ -71,6 +71,11 @@ data LineOutcome
     Ambiguous Int Text [Text]
   | -- | The line is an item of a block that no preceding line heads.
     Orphan Int Text [Text]
+  | -- | The line matched and produced decisions, and one of them cannot be
+    -- written down and read back: line no, source text, and the reader's
+    -- complaint. Kept apart from 'Matched' so the per-line report marks the
+    -- line instead of printing @ok@ next to the line the file then fails on.
+    Illegible Int Text Text
   deriving (Eq, Show)
 
 -- | Classify every non-skipped loose line against the language. The single
@@ -100,8 +105,14 @@ classifyLines file patterns src =
                     key = case decs of
                       (d : _) -> joinSubject (segsOf (dSubject d))
                       []      -> ""
-                 in ( recordLine frames p n indent par env key
-                    , Matched n t (pId p) par decs : acc )
+                    -- Frames are recorded either way: an illegible head is one
+                    -- defect, and dropping its block would report every child
+                    -- as an orphan on top of it.
+                    frames' = recordLine frames p n indent par env key
+                    outcome = case [why | d <- decs, Left why <- [rereads d]] of
+                      (why : _) -> Illegible n t why
+                      []        -> Matched n t (pId p) par decs
+                 in (frames', outcome : acc)
             many         -> (frames, Ambiguous n t [pId p | (p, _) <- many] : acc)
     segsOf (Subject ss) = ss
 
@@ -110,7 +121,7 @@ classifyLines file patterns src =
 crystallize :: FilePath -> [Pattern] -> Text -> Either [CrystError] Base
 crystallize file patterns src =
   let outcomes = classifyLines file patterns src
-      errs     = [toErr o | o <- outcomes, isErr o] ++ unreadable outcomes
+      errs     = [toErr o | o <- outcomes, isErr o]
       ds       = [d | Matched _ _ _ _ dsn <- outcomes, d <- dsn]
    in if null errs then Right (fromList ds) else Left errs
   where
@@ -119,19 +130,8 @@ crystallize file patterns src =
     toErr (Unmatched n t)     = NoPattern n t
     toErr (Ambiguous n _ ids) = Overlapping n ids
     toErr (Orphan n t qs)     = NoParentBlock n t qs
+    toErr (Illegible n t why) = Unreadable n t why
     toErr Matched{}           = error "crystallize: Matched is not an error"
-    -- A decision base IS its canonical text: the regeneration gate compares
-    -- against a committed .decisions document, so a decision that renders to a
-    -- line the reader cannot take back is not a decision at all. The check is
-    -- the round trip itself -- no list of forbidden characters, so it closes
-    -- over the whole grammar and over every future field.
-    unreadable outcomes =
-      [ Unreadable n t why
-      | Matched n t _ _ dsn <- outcomes, d <- dsn, Left why <- [rereads d] ]
-    rereads d = case readDecision (render d) of
-      Left e                -> Left (peMessage e <> ", reading back: " <> render d)
-      Right d' | d' /= d    -> Left ("reads back as a different decision: " <> render d')
-               | otherwise  -> Right ()
 
 -- | The lines that state what an earlier line already stated: same subject, same
 -- assertion. A base is keyed by subject, so such a line merges into the earlier
@@ -162,6 +162,18 @@ restatements outcomes = sortOn (\(n, _, _) -> n) (concatMap report (Map.toList b
       []               -> []
     dedup = Map.keys . Map.fromList . map (\n -> (n, ()))
     segsOf (Subject ss) = ss
+
+-- | Whether a decision survives being written down and read back. A decision
+-- base IS its canonical text: the regeneration gate compares against a
+-- committed .decisions document, so a decision that renders to a line the
+-- reader cannot take back is not a decision at all. The check is the round trip
+-- itself -- no list of forbidden characters, so it closes over the whole
+-- grammar and over every future field.
+rereads :: Decision -> Either Text ()
+rereads d = case readDecision (render d) of
+  Left e               -> Left (peMessage e <> ", reading back: " <> render d)
+  Right d' | d' /= d   -> Left ("reads back as a different decision: " <> render d')
+           | otherwise -> Right ()
 
 -- | Build the decision(s) a matched pattern produces at a given line. A line
 -- may state several facts, so the pattern emits several decisions; the base is

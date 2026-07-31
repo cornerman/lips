@@ -1937,8 +1937,13 @@ but the loop around it is incomplete; "missing" means specced, not built.
   offline, domain-blind, and every deterministic verb inherits it through
   `crystallize`. The remedy it names is the engine's, not the program's: key such
   an item by `<n:index>`, which the grammar already has. Three suite fixtures had
-  the same defect and were corrected with it. Not covered: the per-line table
-  still prints `ok` for the offending line before the file fails (TODO 3e).
+  the same defect and were corrected with it. The verdict is a line outcome, not
+  a second pass: `classifyLines` emits `Illegible` where it would have emitted
+  `Matched`, so the per-line table, the LSP diagnostic and `crystallize`'s error
+  all read one classification and cannot disagree (the report used to print `ok`
+  for the very line the file then failed on). The line's block frame is recorded
+  anyway, so an illegible block head stays one defect instead of orphaning every
+  child under it.
 
 - **A several-part value quotes its parts, so `<value.N>` reads a part.** When
   several program words must land in ONE option (a route's status and its body, a

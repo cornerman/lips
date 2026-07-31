@@ -2082,6 +2082,15 @@ main = hspec $ do
           t `shouldBe` "button \"drück mich\":"
           why `shouldSatisfy` T.isInfixOf "unknown strength: mich"
         other -> expectationFailure ("expected one Unreadable, got " ++ show other)
+    it "marks the offending line in the per-line report, never 'ok'" $
+      -- The report and the verdict must agree: a reader saw "line 1  ok" from
+      -- classifyLines and then the whole file failing on line 1, because the
+      -- round trip lived in crystallize alone.
+      case classifyLines "w" [button] "button \"dr\252ck mich\":\n" of
+        [Illegible 1 t why] -> do
+          t `shouldBe` "button \"dr\252ck mich\":"
+          why `shouldSatisfy` T.isInfixOf "unknown strength: mich"
+        other -> expectationFailure ("expected one Illegible, got " ++ show other)
     it "accepts a single-word capture in the same position" $
       fmap (map (\d -> case dSubject d of Subject ss -> ss) . toList)
            (crystallize "w" [button] "button \"go\":\n")

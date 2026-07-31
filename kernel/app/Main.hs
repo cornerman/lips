@@ -297,6 +297,8 @@ renderDiagnosis file d =
     row (Orphan n _ qs) =
       "  line " <> tshow n <> "  no block  needs a line above it matching "
         <> T.intercalate " or " qs
+    row (Illegible n _ why) =
+      "  line " <> tshow n <> "  unreadable  " <> why
     -- A line the language reads and then drops realizes nothing, so editing it
     -- changes nothing. Naming it is the point: a heading is legitimately
     -- decorative, but so is a line the mint quietly declined to honor, and only
