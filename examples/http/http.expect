@@ -1,3 +1,4 @@
-a1 expect systemd.services.<self>.environment.PORT from server.port
-a2 expect systemd.services.<self>.environment.RESPONSE_TEXT from server.text
-a3 expect systemd.services.<self>.description from server.name
+a1 expect artifact.<self>.fill.port from server.port
+a2 expect artifact.<self>.fill.body from server.response
+a3 expect systemd.services.<name>.serviceConfig.SyslogIdentifier from service.<name>
+a4 expect claim.serve.stdout from witness.<path>.body

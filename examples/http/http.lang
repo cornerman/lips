@@ -1,9 +1,12 @@
-p1 meta lang.pattern.p1 stated "serve http on port <port> => fact server.port \"<port>\"" @gen:56ed0d67184da94e
-p2 meta lang.pattern.p2 stated "respond to every request with the text <text> => fact server.text \"<text>\"" @gen:56ed0d67184da94e
-p3 meta lang.pattern.p3 stated "run it as a systemd service named <name> => fact server.name \"<name>\"" @gen:56ed0d67184da94e
-q1 meta engine.demand.q1 stated "demand server.port \"what port should the server listen on?\"" @gen:56ed0d67184da94e
-q2 meta engine.demand.q2 stated "demand server.text \"what text should every request receive?\"" @gen:56ed0d67184da94e
-q3 meta engine.demand.q3 stated "demand server.name \"what should the systemd service be named?\"" @gen:56ed0d67184da94e
-r1 meta engine.rule.r1 stated "match fact server.port => systemd.services.<self>.environment.PORT \"\\\"<value>\\\"\"" @gen:56ed0d67184da94e
-r2 meta engine.rule.r2 stated "match fact server.text => systemd.services.<self>.environment.RESPONSE_TEXT \"\\\"<value>\\\"\"" @gen:56ed0d67184da94e
-r3 meta engine.rule.r3 stated "match fact server.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.wantedBy \"[ \\\"multi-user.target\\\" ]\" ; systemd.services.<self>.after \"[ \\\"network.target\\\" ]\" ; systemd.services.<self>.serviceConfig.ExecStart \"\\\"${artifact.http-echo}/bin/http-echo\\\"\" ; artifact.http-echo.builder \"\\\"buildGoModule\\\"\" ; artifact.http-echo.args.pname \"\\\"http-echo\\\"\" ; artifact.http-echo.args.version \"\\\"0.1.0\\\"\" ; artifact.http-echo.args.src \"./artifacts/http-echo\" ; artifact.http-echo.args.vendorHash \"null\"" @gen:56ed0d67184da94e
+p1 meta lang.pattern.p1 stated "serve http on port <port> => fact server.port \"<port>\"" @gen:e15df3fc754da1eb
+p2 meta lang.pattern.p2 stated "respond to every request with the text <body> => fact server.response \"<body>\"" @gen:e15df3fc754da1eb
+p3 meta lang.pattern.p3 stated "run it as a systemd service named <name> => fact service.<name> \"<name>\"" @gen:e15df3fc754da1eb
+p4 meta lang.pattern.p4 stated "a request to <path> answers with the text <body> => fact witness.<path>.body \"<body>\"" @gen:e15df3fc754da1eb
+q1 meta engine.demand.q1 stated "demand server.port \"which TCP port should the http server listen on?\"" @gen:e15df3fc754da1eb
+q2 meta engine.demand.q2 stated "demand server.response \"what text should every request be answered with?\"" @gen:e15df3fc754da1eb
+q3 meta engine.demand.q3 stated "demand service.<name> \"what should the systemd service be named?\"" @gen:e15df3fc754da1eb
+q4 meta engine.demand.q4 stated "demand witness.<path>.body \"give one example request: which path answers with what text?\"" @gen:e15df3fc754da1eb
+r1 meta engine.rule.r1 stated "match fact server.port => artifact.<self>.builder \"\\\"buildGoModule\\\"\" ; artifact.<self>.args.pname \"\\\"httpserve\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.vendorHash \"null\" ; artifact.<self>.fill.port \"\\\"<value>\\\"\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\"" @gen:e15df3fc754da1eb
+r2 meta engine.rule.r2 stated "match fact server.response => artifact.<self>.fill.body \"\\\"<value>\\\"\"" @gen:e15df3fc754da1eb
+r3 meta engine.rule.r3 stated "match fact service.<name> => systemd.services.<name>.description \"\\\"http responder <value>\\\"\" ; systemd.services.<name>.after \"[ \\\"network.target\\\" ]\" ; systemd.services.<name>.wantedBy \"[ \\\"multi-user.target\\\" ]\" ; systemd.services.<name>.serviceConfig.ExecStart \"\\\"${artifact.<self>}/bin/httpserve\\\"\" ; systemd.services.<name>.serviceConfig.Restart \"\\\"always\\\"\" ; systemd.services.<name>.serviceConfig.DynamicUser \"true\" ; systemd.services.<name>.serviceConfig.AmbientCapabilities \"\\\"CAP_NET_BIND_SERVICE\\\"\" ; systemd.services.<name>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"" @gen:e15df3fc754da1eb
+r4 meta engine.rule.r4 stated "match fact witness.<path>.body => claim.serve.run \"\\\"${artifact.<self>}/bin/httpserve -check <path>\\\"\" ; claim.serve.stdout \"\\\"<value>\\\"\" ; claim.serve.exit \"0\"" @gen:e15df3fc754da1eb

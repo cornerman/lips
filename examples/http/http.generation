@@ -1,5 +1,6 @@
-model: claude-sonnet-5
+model: claude-opus-5
 target: nixos
+schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
 thinking: high
 confidence-threshold: 0.7
 --- system prompt ---
@@ -14,18 +15,24 @@ table (an option shaped like services.<name>.<instances>.<self>).
 query_options searches exactly this world's pinned schema: the NixOS
 option tree, nothing narrower and nothing wider.
 
+A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
+command that reaches beyond the program's own artifacts (a systemctl call, a
+curl against a running service) is run inside the booted module. It costs a
+boot, so prefer an observable over the program's own binary where the
+behaviour lives in a binary.
+
 ## Where You Are
 
 lips exists to shrink the artifact a human must keep reviewing down to a
 few plain sentences: a `.lips` program. Everything else -- the mechanism,
-the option paths, the NixOS wiring -- is derived, and you are the one who
+the option paths, the wiring of the target world -- is derived, and you are the one who
 derives it. The human owns only the program; you own the translation, once.
 
 You act exactly once. You read the program (or several programs of one
 kind) and mint an ENGINE: patterns that read a line like this one, rules
 that turn what a pattern reads into option assignments, and demands that
 ask for what a program leaves silent. Once you answer, lips crystallizes
-the program with your engine, realizes a NixOS module, and validates it --
+the program with your engine, realizes a module, and validates it --
 and then you are gone. From then on the human edits the program and
 `compile` re-reads it with your patterns, deterministically, offline, with
 no model anywhere in the loop.
@@ -79,7 +86,7 @@ exactly:
    `<capture>` segment binds per item and fans one rule out across an
    attrsOf option; a rule that emits into a list-typed option makes its
    subject AGGREGATE across every line that produces one.
-7. REALIZATION renders a NixOS module. lips parses it with
+7. REALIZATION renders a module for the target world. lips parses it with
    `nix-instantiate --parse`, checks every option path and type it names
    against the pinned schema, and evaluates the module to run your expects.
 
@@ -147,7 +154,7 @@ Example output lines:
 ```
 One input line became a pattern (the language: a template with a hole,
 producing a fact under a subject you named), a rule (the mechanism: that
-subject realized into a NixOS option), a demand (what a program lacking such
+subject realized into an option of the target world), a demand (what a program lacking such
 a line must be asked), and an expect (the behavioral check that the value
 really lands in the option the rule named). The construct reference below
 defines this vocabulary precisely and covers the special cases (typed
@@ -216,7 +223,12 @@ tokens joined by single spaces, may sit anywhere in the template, and ends
 where the template's next literal matches -- 'back up <src.words> to
 <target>' reads 'back up my home folder to nas' as src='my home folder'. As
 the LAST template token it binds the rest of the line, which is how one line
-carries several items ('install <pkgs.words>'). A BULLETED list item begins
+carries several items ('install <pkgs.words>'). A hole may also sit INSIDE a
+token, fused to punctuation, which is how a call or a flag is read:
+'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
+reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
+cannot be a multi-token hole; a value with spaces must be quoted (a quoted
+span is one token wherever it starts). A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -247,6 +259,78 @@ structure), its pattern template is a single hole and its subject is keyed
 by that hole alone (<item> => fact group.<item>), so each bare line becomes
 its own distinct subject and the items never collide; one rule then emits
 each to a list option, which aggregates the items from all such lines.
+That keying works only when the item carries a value that IDENTIFIES it (a
+package name, a route path). When it does not, or when the program repeats a
+group, nest the item pattern in the heading's BLOCK -- next subsection.
+
+### Blocks
+
+A heading line and the lines under it form a BLOCK. Declare it on the item
+pattern's id: `p5.under.p4` means "a line matching p5 is an item of the block
+opened by the nearest preceding p4 line". The item's emits may then use any
+hole THAT heading bound, so the heading's word keys what the items realize:
+
+```lips-engine
+0.95 p1 pattern queue <name>: => concept queue.<name> "a work queue"
+0.95 p2.under.p1 pattern - workers <count> => fact queue.<name>.workers "<count>"
+0.95 p3.under.p1 pattern - retry after <secs> seconds => fact queue.<name>.retry "<secs>"
+```
+
+reads two blocks without collision:
+
+  queue emails:
+  - workers 4
+  - retry after 30 seconds
+  queue reports:
+  - workers 1
+
+Without the block, both `- workers N` lines emit the SAME subject and lips
+refuses the program -- while the two `queue <name>:` lines, the only ones
+saying which queue is meant, would realize nothing. Reach for a block whenever
+an item needs a word from the line above it, or whenever a program could state
+the same group twice.
+
+Blocks are recognized by your PATTERNS, never by indentation: lips gives `-`,
+`:` and every other symbol no meaning of its own. Any wording works, as long as
+the heading has its own pattern.
+
+A SYMBOL IS A TOKEN'S OWN TEXT, so a template must WRITE every symbol its line
+carries: `content: <what.words>` reads `content: shows a painting`, while
+`content <what.words>` does not read that line at all. Copy the program's
+symbols into the template exactly (`host <domain>:`, `<fname>(<param>: <ptype>)`),
+or a hole swallows them into its value. The one exception is the sentence
+TERMINATOR: trailing `.,;:!?` on the LAST token of a line is noise on both
+sides, so a final period needs no template token and `<when>.` ending a
+template is just the hole `<when>`.
+
+TWO STRUCTURE HOLES, for items that cannot key themselves. Both are filled
+from the program's SHAPE, so they are declared in an emit and need no template
+token:
+
+  <n:index>  this line's position among the items of its block, from 1.
+             Use it when nothing in the item identifies it -- an ordered step,
+             an anonymous record. Refer to it later as plain <n>.
+  <k:key>    the subject of the line that opens this line's block. Only in a
+             nested pattern.
+
+```lips-engine
+0.95 p4 pattern steps: => concept steps "the ordered steps"
+0.95 p5.under.p4 pattern - <cmd.words> => fact step.<n:index>.command "<cmd>"
+```
+
+keeps four steps four, in order, even when two of them read the same.
+
+A pattern may name SEVERAL parents, tried in the order written. The use for
+this is unbounded depth: `p6.under.p6.under.p4` reads an item that sits inside
+another item of its own shape when it is more indented, and roots in the p4
+heading otherwise. Combined with `<k:key>` the keys compose
+(tree.File.New.Item), so two branches may hold the same node name. This is the
+ONLY construct for which leading whitespace means anything; every other
+pattern ignores it.
+
+lips refuses, at the gate: a parent id no pattern defines; a nesting cycle
+through two or more patterns; an emit hole bound by neither the pattern nor
+every block it can sit in; `<k:key>` in a pattern that nests under nothing.
 
 ### Kinds
 
@@ -260,9 +344,19 @@ so it alone needs no rule.
 ### Subjects and Orthogonality
 
 subject: invent a dotted vocabulary for this problem
-(e.g. backup.source). Every hole used in the subject or assertion MUST
-appear in the template. Patterns must be orthogonal: no input line may
+(e.g. backup.source). Every hole used in the subject or assertion MUST be
+bound: by this pattern's template, by a structure hole it declares
+(<n:index>, <k:key>), or by the block it nests in (see BLOCKS). Patterns must be orthogonal: no input line may
 match two of them.
+
+A SUBJECT SEGMENT HOLDS NO SPACES. A decision is stored as one line whose
+subject is separated from the rest by whitespace, so a segment built from a
+hole whose value may be several words (a quoted label, a title, a sentence)
+cannot be read back, and lips refuses the whole language. Key such an item by
+<n:index> and carry the words in the ASSERTION, where quoting protects them:
+write `fact button.<n:index>.label "<label>"`, never `fact button.<label>`.
+A hole you know to be a single word (a name, a port, an identifier) keys a
+segment fine.
 
 ### Generalizing Across Several Programs
 
@@ -310,9 +404,13 @@ writeShellApplication's runtimeInputs) holds bare references, not strings:
 and curl/weather here are literal names you wrote, not values captured
 from the program.
 Inside Nix strings only two things beyond literal text parse: the holes
-<value> (the matched decision's assertion) / <value.N> (its Nth
-whitespace-separated token, 1-based; use it when a pattern's assertion
-joins several holes) and a literal ${pkgs.LITERALNAME} package reference.
+<value> (the matched decision's assertion) / <value.N> (its Nth PART,
+1-based; use it when a pattern's assertion joins several holes) and a
+literal ${pkgs.LITERALNAME} package reference. A part is one hole of that
+assertion, whatever it captured: an assertion joining several holes stores
+each part quoted, so <value.2> of "<status> <body>" is the whole body even
+when the program wrote several words. An assertion of ONE hole has no parts
+and splits into words, which is what <value.tail> reads.
 Outside a string, a bare ${pkgs.LITERALNAME} or ${artifact.LITERALNAME} is
 itself a value (a list element). No functions, no splitString, no other
 ${...}. CRITICAL: ${...} NEVER wraps a hole -- not <value>, not a
@@ -321,18 +419,26 @@ FROM THE PROGRAM must go through a typed pkg hole instead (<value:pkg> or
 <value.tail:pkg>, below), never through ${pkgs.<...>}; writing
 ${pkgs.<value>} or ${pkgs.<name>} is ALWAYS rejected, no matter how the
 hole got its name. Do not quote a package into a string when the option
-wants a derivation. Template holes bind single tokens; punctuation like a
-trailing period stays outside the hole.
+wants a derivation. Template holes bind single tokens verbatim, symbols
+included, so a symbol you want kept out of the value must appear in the
+template beside the hole.
 
 ### Typed Holes
 
-TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
-count, a size, a toggle, a path) do NOT quote the hole; use a typed hole
-naming the type: <value:int>, <value:bool>, <value:float>, <value:path>
+TYPED HOLES: an option is typed. For a NON-string option (a port, a
+count, a size, a toggle) do NOT quote the hole; use a typed hole
+naming the type: <value:int>, <value:bool>, <value:float>
 (or <value.N:int> for the Nth token). It emits a value of that type and
 fails if the program token is not of that type. Quote a hole
 ("\"<value>\"") only for genuinely string-typed options. So a port rule
-looks like services.jobwatch.port "<value:int>". Realize work as services
+looks like services.jobwatch.port "<value:int>".
+NEVER <value:path>, even for an option whose type is path. A bare Nix path
+means "copy this location into the store": an absolute one is refused outright
+by pure evaluation, and a directory the program names (a document root, a data
+dir) exists on the RUNNING MACHINE, not in the store. A path-typed option
+accepts a string, so write "\"<value>\"". lips refuses an engine that does
+otherwise. Keep an unquoted path for a literal YOU write, like
+./artifacts/<name>. Realize work as services
 and timers or other options in the target world.
 
 ### Package Holes
@@ -436,7 +542,10 @@ BOTH pname and version, where the version is yours to choose (see MECHANISM
 above: a constant, never a demand). A pname with no version cannot build:
 nixpkgs derives the name from pname and version together, and nix fails with
 'attribute name missing'. Give every other argument the builder requires
-too (a Go module needs vendorHash, a Rust one cargoHash).
+too (a Go module needs vendorHash, a Rust one cargoHash). An argument whose
+value is a Nix null is written bare -- vendorHash "null", never
+vendorHash "\"null\"": the quoted form is the STRING "null", and nix refuses it
+with 'hash null does not include a type'.
 A name may COMPOSE literal text with <self> or a <capture>, in the path, in
 args.src and in a reference: artifact.<self>-core is a SECOND build beside
 artifact.<self>, so a program needing a wrapper around a compiled core puts
@@ -497,6 +606,67 @@ format, the protocol. A REPEATING structure inside source (one code block per
 route, per mount) has no hole form -- a fill replaces a marker, it cannot
 repeat a block -- so that is a gap to file, not something to fake.
 
+### Claims
+
+CLAIMS (ids c1, c2, ...): what the program says it DOES, as something that
+can be run and compared. Every other check reads the configuration text; a
+claim runs the thing and looks. That is the only way a program's words can
+govern SOURCE you bake: the module text says nothing about what your code
+does, so without a claim nothing holds it -- or any later re-mint -- to the
+sentences it was written from.
+
+A claim is a reserved emit root, like artifact.<name>. Four sections, and no
+others:
+
+  claim.<id>.run    the command, a string; may hold ${artifact.<name>}
+  claim.<id>.stdin  what it is fed, a string (optional)
+  claim.<id>.stdout what it must print, a string (optional)
+  claim.<id>.exit   the status it must exit with (optional, default 0)
+
+The author writes the example as an ordinary sentence, and you read it with
+an ordinary pattern, exactly as you read any other line. There is no special
+syntax in the program. A witness line like
+  given {"a":1} with --a 1, print it unchanged
+becomes a pattern whose holes capture the input, the arguments and the
+expected output, plus a rule emitting the three sections from them:
+
+  0.9 p5 pattern given <in> with <args>, print <out>
+        => fact witness.<args>.out "<out>"
+  0.9 r5 match fact witness.<args>.out
+        => claim.echo.run "\"${artifact.<name>}/bin/<name> <args>\"" ;
+           claim.echo.stdin "\"<in>\"" ;
+           claim.echo.stdout "\"<value>\""
+
+NEVER INVENT A WITNESS. An example is intent, so it comes from the program
+and nowhere else. If a program bakes source and states no example, file a
+GAP saying an observable is missing -- do not make one up, and do not guess
+what the program would print.
+
+COMPARISON IS EXACT, byte for byte, not containment. Exactly one trailing
+newline is stripped from what the command printed, so state the printed LINE
+without its newline. A program printing two lines states them with a \n
+between: "200\n404".
+
+WHERE A CLAIM RUNS is derived from the command, never declared. A command
+naming only ${artifact.<name>} and literal text runs in the build sandbox --
+fast, no machine. Any other command (a bare name, a ${pkgs...} reference)
+runs inside a booted machine, and not every world HAS one to boot: the world
+section above says whether this one does, and a claim the world cannot
+observe is refused. So prefer an observable over the program's OWN binary --
+it needs no machine and reads the same in every world.
+
+A claim cannot compute: its sections take the same closed value grammar as
+any other rhs. No shell pipeline assembled from holes, no arithmetic.
+
+DO EXPECT A CLAIM SECTION, exactly as you expect an artifact arg:
+  0.95 a2 expect claim.echo.stdout from witness.<args>.out
+so a later mint that drops the author's example is refused instead of
+quietly narrowing what is observed.
+
+IF YOU BAKE SOURCE, YOU MUST STATE AT LEAST ONE CLAIM. A mint that writes a
+source block and no claim is refused. A pure-configuration language needs
+none: its behaviour IS its option assignments, which the expects pin.
+
 ### List Aggregation
 
 SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute
@@ -523,7 +693,7 @@ EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
 It asserts the value your patterns capture into <subject> (or its nth
-whitespace token, #n, 1-based) appears at NixOS option <option.path> in
+whitespace token, #n, 1-based) appears at option <option.path> in
 the realized module. Name the SAME option paths your rules assign. Emit
 one expect for every distinct program value a rule carries into an option,
 so realization and configurability are pinned. A VALUE-KEYED expect uses the
@@ -573,7 +743,7 @@ A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
 
 The kernel verifies: every line crystallizes, every decision is mapped,
-every demand is met, the result parses as a NixOS module, and every
+every demand is met, the result parses as a module, and every
 expect holds against the evaluated module.
 
 ## Designing a Good Language
@@ -597,8 +767,8 @@ default, a build input with no natural question to ask), lower confidence
 rather than invent, and pair it with a because-note that says in one plain
 sentence what would pin it.
 
-Name subjects the way the domain talks, not the way NixOS names its
-options: the vocabulary is what the human's next program is written
+Name subjects the way the domain talks, not the way the target world names
+its options: the vocabulary is what the human's next program is written
 against, so `backup.source` reads naturally beside a sentence about where
 files come from, while `systemd.services.<name>.environment.SRC` does not.
 
@@ -664,7 +834,7 @@ say "hello, friend" when someone runs greet.
 The full engine:
 ```lips-engine
 0.95 p1 pattern say "<msg>" when someone runs greet. => fact cmd.greet.msg "<msg>"
-0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "\"null\"" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
+0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "null" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
 0.9 a1 expect artifact.greet.fill.msg from cmd.greet.msg
 0.9 s1 source greet go.mod <<<lips
 module greet
@@ -697,6 +867,8 @@ into the source, and no expect wasted on the build reference itself.
 Before you answer, run this list against your own engine:
 
 1. Does every line of every program you were shown crystallize under exactly one pattern?
+1b. Does every item line that needs a word from its heading nest under that heading's pattern (`pN.under.pM`), and does every item with no value of its own key itself by `<n:index>`?
+1c. Does every subject segment hold a single word -- no hole whose value could be a quoted label or a phrase?
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
@@ -709,185 +881,204 @@ Before you answer, run this list against your own engine:
 serve http on port 8080.
 respond to every request with the text "hello from lips".
 run it as a systemd service named hello.
+a request to / answers with the text "hello from lips".
 
 --- tool transcript ---
--> query_options "systemd.services.<name>"
 -> query_options "systemd.services.<name>.serviceConfig"
+-> query_options "networking.firewall.allowedTCPPorts"
 <- query_options
-no option matches systemd.services.<name>
-Try a shorter query, or a different word for the same thing.
+systemd.services.<name>.serviceConfig is below systemd.services : attribute set of (submodule)
+That option is free-form: every path under it is accepted, and none of
+them is checked -- this schema cannot confirm the name systemd.services.<name>.serviceConfig.
+Emit it only from documentation you actually have; otherwise refuse.
 
 <- query_options
-no option matches systemd.services.<name>.serviceConfig
-Try a shorter query, or a different word for the same thing.
+networking.firewall.allowedTCPPorts : list of integer
 
--> query_options "systemd.services."
+-> query_options "systemd.services.<name>."
+-> query_options "systemd.services.<name>.wantedBy"
 <- query_options
-systemd.services.*.confinement (5 options)
-systemd.services.*.after (1 option)
-systemd.services.*.aliases (1 option)
-systemd.services.*.before (1 option)
-systemd.services.*.bindsTo (1 option)
-systemd.services.*.conflicts (1 option)
-systemd.services.*.description (1 option)
-systemd.services.*.documentation (1 option)
-systemd.services.*.enable (1 option)
-systemd.services.*.enableDefaultPath (1 option)
-systemd.services.*.enableStrictShellChecks (1 option)
-systemd.services.*.environment (1 option)
-systemd.services.*.name (1 option)
-systemd.services.*.notSocketActivated (1 option)
-systemd.services.*.onFailure (1 option)
-systemd.services.*.onSuccess (1 option)
-systemd.services.*.overrideStrategy (1 option)
-systemd.services.*.partOf (1 option)
-systemd.services.*.path (1 option)
-systemd.services.*.postStart (1 option)
-systemd.services.*.postStop (1 option)
-systemd.services.*.preStart (1 option)
-systemd.services.*.preStop (1 option)
-systemd.services.*.reload (1 option)
-systemd.services.*.reloadIfChanged (1 option)
-systemd.services.*.reloadTriggers (1 option)
-systemd.services.*.requiredBy (1 option)
-systemd.services.*.requires (1 option)
-systemd.services.*.requisite (1 option)
-systemd.services.*.restartIfChanged (1 option)
-systemd.services.*.restartTriggers (1 option)
-systemd.services.*.script (1 option)
-systemd.services.*.scriptArgs (1 option)
-systemd.services.*.serviceConfig (1 option)
-systemd.services.*.startAt (1 option)
-systemd.services.*.startLimitBurst (1 option)
-systemd.services.*.startLimitIntervalSec (1 option)
-systemd.services.*.stopIfChanged (1 option)
-systemd.services.*.unitConfig (1 option)
-systemd.services.*.upheldBy (1 option)
-… and 3 more namespaces.
-Ask again with one of these paths to see its options.
-
--> query_options "systemd.services.*.environment"
--> query_options "systemd.services.*.description"
--> query_options "systemd.services.*.wantedBy"
--> query_options "systemd.services.*.after"
--> query_options "systemd.services.*.serviceConfig.ExecStart"
-<- query_options
-systemd.services.*.environment : attribute set of (null or string or absolute path or package)
+systemd.services.<name>. is below systemd.services : attribute set of (submodule)
+That option is free-form: every path under it is accepted, and none of
+them is checked -- this schema cannot confirm the name systemd.services.<name>..
+Emit it only from documentation you actually have; otherwise refuse.
 
 <- query_options
-systemd.services.*.description : (optionally newline-terminated) single-line string
-
-<- query_options
-systemd.services.*.wantedBy : list of string
-
-<- query_options
-systemd.services.*.after : list of string
-
-<- query_options
-no option matches systemd.services.*.serviceConfig.ExecStart
-Try a shorter query, or a different word for the same thing.
-
--> query_options "systemd.services.*.serviceConfig"
-<- query_options
-systemd.services.*.serviceConfig : attribute set of (systemd option)
+systemd.services.<name>.wantedBy is below systemd.services : attribute set of (submodule)
+That option is free-form: every path under it is accepted, and none of
+them is checked -- this schema cannot confirm the name systemd.services.<name>.wantedBy.
+Emit it only from documentation you actually have; otherwise refuse.
 
 
 --- raw reply ---
-0.95 p1 pattern serve http on port <port>. => fact server.port "<port>"
-0.95 p2 pattern respond to every request with the text "<text>". => fact server.text "<text>"
-0.95 p3 pattern run it as a systemd service named <name>. => fact server.name "<name>"
-0.9 r1 match fact server.port => systemd.services.<self>.environment.PORT "\"<value>\""
-0.9 r2 match fact server.text => systemd.services.<self>.environment.RESPONSE_TEXT "\"<value>\""
-0.92 r3 match fact server.name => systemd.services.<self>.description "\"<value>\"" ; systemd.services.<self>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<self>.after "[ \"network.target\" ]" ; systemd.services.<self>.serviceConfig.ExecStart "\"${artifact.http-echo}/bin/http-echo\"" ; artifact.http-echo.builder "\"buildGoModule\"" ; artifact.http-echo.args.pname "\"http-echo\"" ; artifact.http-echo.args.version "\"0.1.0\"" ; artifact.http-echo.args.src "./artifacts/http-echo" ; artifact.http-echo.args.vendorHash "null"
-0.9 q1 demand server.port "what port should the server listen on?"
-0.9 q2 demand server.text "what text should every request receive?"
-0.9 q3 demand server.name "what should the systemd service be named?"
-0.9 a1 expect systemd.services.<self>.environment.PORT from server.port
-0.9 a2 expect systemd.services.<self>.environment.RESPONSE_TEXT from server.text
-0.9 a3 expect systemd.services.<self>.description from server.name
-0.9 s1 source http-echo go.mod <<<lips
-module http-echo
+0.96 p1 pattern serve http on port <port> => fact server.port "<port>"
+0.96 p2 pattern respond to every request with the text "<body>" => fact server.response "<body>"
+0.95 p3 pattern run it as a systemd service named <name> => fact service.<name> "<name>"
+0.93 p4 pattern a request to <path> answers with the text "<body>" => fact witness.<path>.body "<body>"
+0.9 r1 match fact server.port => artifact.<self>.builder "\"buildGoModule\"" ; artifact.<self>.args.pname "\"httpserve\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.vendorHash "null" ; artifact.<self>.fill.port "\"<value>\"" ; networking.firewall.allowedTCPPorts "[ <value:int> ]"
+0.92 r2 match fact server.response => artifact.<self>.fill.body "\"<value>\""
+0.9 r3 match fact service.<name> => systemd.services.<name>.description "\"http responder <value>\"" ; systemd.services.<name>.after "[ \"network.target\" ]" ; systemd.services.<name>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<name>.serviceConfig.ExecStart "\"${artifact.<self>}/bin/httpserve\"" ; systemd.services.<name>.serviceConfig.Restart "\"always\"" ; systemd.services.<name>.serviceConfig.DynamicUser "true" ; systemd.services.<name>.serviceConfig.AmbientCapabilities "\"CAP_NET_BIND_SERVICE\"" ; systemd.services.<name>.serviceConfig.SyslogIdentifier "\"<value>\""
+0.87 r4 match fact witness.<path>.body => claim.serve.run "\"${artifact.<self>}/bin/httpserve -check <path>\"" ; claim.serve.stdout "\"<value>\"" ; claim.serve.exit "0"
+0.9 q1 demand server.port "which TCP port should the http server listen on?"
+0.9 q2 demand server.response "what text should every request be answered with?"
+0.9 q3 demand service.<name> "what should the systemd service be named?"
+0.85 q4 demand witness.<path>.body "give one example request: which path answers with what text?"
+0.9 a1 expect artifact.<self>.fill.port from server.port
+0.92 a2 expect artifact.<self>.fill.body from server.response
+0.88 a3 expect systemd.services.<name>.serviceConfig.SyslogIdentifier from service.<name>
+0.87 a4 expect claim.serve.stdout from witness.<path>.body
+0.9 s1 source hello go.mod <<<lips
+module httpserve
 
 go 1.21
 lips>>>
-0.9 s2 source http-echo main.go <<<lips
+0.88 s2 source hello main.go <<<lips
 package main
 
+// A one-response http server. Both values below are written in by lips at
+// compile time from the .lips program: the port it listens on and the text
+// every request is answered with.
+
 import (
+	"flag"
 	"fmt"
+	"io"
+	"log"
+	"net"
 	"net/http"
-	"os"
+	"strings"
 )
 
-func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+const listenPort = "@port@"
+const responseBody = "@body@"
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	io.WriteString(w, responseBody)
+}
+
+// selfCheck serves one request to itself on a loopback port picked by the
+// kernel and prints the response body. It needs no configured port and no
+// running service, so the program's own example line can be observed.
+func selfCheck(path string) {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
 	}
-	text := os.Getenv("RESPONSE_TEXT")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		log.Fatalf("self-check listen: %v", err)
+	}
+	defer ln.Close()
+	srv := &http.Server{Handler: http.HandlerFunc(handler)}
+	go srv.Serve(ln)
+	resp, err := http.Get("http://" + ln.Addr().String() + path)
+	if err != nil {
+		log.Fatalf("self-check request: %v", err)
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("self-check read: %v", err)
+	}
+	fmt.Println(string(out))
+}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, text)
-	})
-
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		panic(err)
+func main() {
+	check := flag.String("check", "", "answer one request for the given path on stdout, then exit")
+	flag.Parse()
+	if *check != "" {
+		selfCheck(*check)
+		return
+	}
+	addr := ":" + listenPort
+	log.Printf("answering every request with %q on %s", responseBody, addr)
+	if err := http.ListenAndServe(addr, http.HandlerFunc(handler)); err != nil {
+		log.Fatalf("listen: %v", err)
 	}
 }
 lips>>>
+0.8 g1 gap cross-line-instance-key <<<lips
+blocked lines (three lines that together configure ONE unit):
+  serve http on port 8080.
+  respond to every request with the text "hello from lips".
+  run it as a systemd service named hello.
+A rule sees only its own decision, so the port rule cannot write into
+systemd.services.<name>.environment.PORT -- <name> is bound by the service-name
+line, a different decision. The only shared key available to every rule is
+<self> (the file name), which the program's own word "hello" would then not
+govern. Repro: two facts (server.port, service.<name>) whose values must land
+in one attrsOf slot keyed by the second fact's value. Missing capability: a way
+for one line's captured key to key another line's emit (a program-wide key, or
+a block that can open on a non-heading line).
+lips>>>
+0.75 g2 gap per-item-claim-key <<<lips
+blocked line (a hypothetical second example in the same program):
+  a request to /health answers with the text "ok".
+Both example lines emit claim.serve.*, and two rules writing one option slot is
+a conflict, so a program may state exactly one example. A claim id cannot be
+keyed by <n:index> (the example lines sit under no heading) and keying it by
+the path would put "/" in an identifier segment. Missing capability: an
+index-like key for claims outside a block.
+lips>>>
 0.95 d1 report <<<lips
-## What this language describes
+This language describes one tiny http responder per program: a port, the text
+it answers with, the name of the systemd service that runs it, and one worked
+example of a request.
 
-A program in this language is a tiny, always-on HTTP server, one systemd
-service per program file. It reads exactly three sentences:
+## The four line shapes
 
-- `serve http on port <port>.` -- which port the server listens on.
-- `respond to every request with the text "<text>".` -- the fixed text sent
-  back to every request, on every path.
-- `run it as a systemd service named <name>.` -- a human-readable name for
-  the resulting systemd unit.
+- `serve http on port 8080.` -- the TCP port. Any number; the port is also
+  opened in the firewall (`networking.firewall.allowedTCPPorts`), which is what
+  type-checks it as an integer.
+- `respond to every request with the text "hello from lips".` -- the body
+  returned for every path. Must be quoted; the quotes are dropped.
+- `run it as a systemd service named hello.` -- the unit name. This word keys
+  the unit itself (`systemd.services.hello`), and is repeated as the unit's
+  `SyslogIdentifier` so it is visible in the journal (and pinnable by a test).
+- `a request to / answers with the text "hello from lips".` -- an EXAMPLE, not
+  configuration. It becomes a claim: the built binary is run in the build
+  sandbox with `-check /` and its printed body must equal the stated text,
+  byte for byte. This is the only thing that holds the baked source to the
+  program's sentences, so a program is required to state one such line.
 
-All three are required (each has a demand), since a server with no port, no
-response text, or no stated name is not a fully specified program.
+All four lines are required; a program missing one is refused with the question
+printed beside it (see the demands).
 
-## Mechanism
+## Mechanism, and why
 
-Each program is realized as one systemd service, keyed by the program's own
-instance name (its filename) via `<self>` -- this is what lets several
-`*.http.lips` programs coexist in one machine configuration without their
-units colliding.
+No prebuilt server fit. nginx and caddy come with unit names of their own, and
+the program insists on naming the service, so I write the server: a ~50-line Go
+program (`buildGoModule`, no dependencies, `vendorHash = null`) that answers
+every path with one fixed text.
 
-The actual server is a small Go program (`buildGoModule`), built once as a
-shared artifact named literally `http-echo` (not per-instance): its logic
-never depends on which program is using it, only on the port and text each
-program supplies, and those reach it at *runtime* through two environment
-variables on the systemd unit, `PORT` and `RESPONSE_TEXT` -- not baked into
-the binary at build time. This means the same compiled binary serves every
-program written in this language; only the unit's environment differs.
-`vendorHash` is `null` because the server uses only the Go standard library,
-with no external modules to vendor.
+The port and the text reach that binary as compile-time FILLS (`@port@`,
+`@body@` in `main.go`), not as environment variables on the unit. That is
+forced, not preferred: a rule can only key an option by its own captured words,
+and the unit's name comes from a different line than the port does, so no rule
+can write `systemd.services.<the-name>.environment.PORT`. Filed as gap
+`cross-line-instance-key`. The practical consequence for you: editing the port
+or the text rebuilds the little binary, and the values are pinned by expects on
+the fills rather than on a module option.
 
-The stated service name doesn't rename the systemd unit itself (that key is
-always `<self>`, matching the file), but it does become the unit's
-`description`, so it still governs something real and editing it changes
-the realized module.
+The unit runs with `DynamicUser = true` plus `CAP_NET_BIND_SERVICE` (so ports
+below 1024 work too), `Restart = always`, after `network.target`, wanted by
+`multi-user.target`.
 
-## What I had to invent
+## The example, and where it runs
 
-- The port and response text travel to the binary via environment
-  variables rather than being compiled in, since that is the natural way
-  for a value to reach a long-running server without rebuilding it, and it
-  keeps the build itself independent of any one program's content.
-- The artifact's package name (`http-echo`), version (`0.1.0`), and the
-  choice of `buildGoModule` are fixed mechanism decisions -- the programs
-  never name the underlying binary, so nothing here should be a hole.
-- `wantedBy = [ "multi-user.target" ]` and `after = [ "network.target" ]`
-  are the ordinary defaults for an always-on network service; the programs
-  never discuss startup ordering, so these are mechanism constants, not
-  holes.
+The claim runs the built binary itself with `-check <path>`: the binary starts a
+listener on a kernel-chosen loopback port inside the sandbox, requests the given
+path from itself, and prints the response body. That needs no booted machine and
+no knowledge of the configured port -- which the claim rule could not see anyway,
+for the same reason as above. It does mean the claim observes the handler and
+the baked text, not the TCP port; the port is checked by type and by the two
+options it lands in.
 
-No expects were written for the build/derivation options (`ExecStart`,
-`artifact.http-echo.*`), since those hold package/build references, not
-checkable program values; the three real values (port, text, name) each
-have their own expect against the option they land in.
+## Limits worth knowing
+
+- Exactly one example line per program (gap `per-item-claim-key`).
+- The response text is baked into a Go string literal, so a text containing a
+  double quote or a backslash will not build. Plain prose is fine.
+- Two programs of this language may run side by side: each gets its own unit
+  name and its own build.
 lips>>>
