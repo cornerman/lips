@@ -759,6 +759,53 @@ main = hspec $ do
       realizeStagedPaths (const Replace) (\_ -> Left "unused") (fromList ground)
         `shouldBe` Right []
 
+    -- A path INSIDE a build (${artifact.<name>}/bin/hello) is decided by the
+    -- SOURCE, not by the derivation, so no static gate can know it is there: an
+    -- http mint that left `module server` in go.mod named /bin/hello and shipped
+    -- a unit that cannot start. realize reports every such (artifact, path) pair
+    -- with the decision that named it, so the caller -- which may build -- can
+    -- look inside the result. Structural, from the parsed Value: the flake check
+    -- that predates this regexed the module text instead.
+    it "reports the paths the realized base names INSIDE an artifact" $ do
+      let ps =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","hello","builder"] }
+            , (mk "p" "x" "\"hello\"" Stated) { dSubject = Subject ["artifact","hello","args","pname"] }
+            , (mk "e" "x" "\"${artifact.hello}/bin/hello\"" Stated) { dSubject = Subject ["systemd","services","hello","serviceConfig","ExecStart"] }
+            -- a bare reference names the whole build, so there is no path to look for
+            , (mk "l" "x" "[ ${artifact.hello} ]" Stated) { dSubject = Subject ["environment","systemPackages"] }
+            ]
+      fmap (map (\(n, p, _) -> (n, p)))
+           (realizeArtifactPaths (const Replace) (\_ -> Left "unused") (fromList ps))
+        `shouldBe` Right [("hello", "/bin/hello")]
+
+    it "stops an inside-artifact path at the first space (a command carries arguments)" $ do
+      let ps =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","hello","builder"] }
+            , (mk "p" "x" "\"hello\"" Stated) { dSubject = Subject ["artifact","hello","args","pname"] }
+            , (mk "e" "x" "\"${artifact.hello}/bin/hello --port 8080\"" Stated) { dSubject = Subject ["systemd","services","hello","serviceConfig","ExecStart"] }
+            ]
+      fmap (map (\(n, p, _) -> (n, p)))
+           (realizeArtifactPaths (const Replace) (\_ -> Left "unused") (fromList ps))
+        `shouldBe` Right [("hello", "/bin/hello")]
+
+    it "reports a path inside an artifact referenced from another artifact's arg" $ do
+      -- The core-plus-wrapper shape: writeShellApplication whose text execs the
+      -- compiled core. The wrapper's own script is where the binary name is
+      -- spelled, so this is exactly where the naming defect hides.
+      let ps =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","tool-core","builder"] }
+            , (mk "p" "x" "\"tool-core\"" Stated) { dSubject = Subject ["artifact","tool-core","args","pname"] }
+            , (mk "w" "x" "\"writeShellApplication\"" Stated) { dSubject = Subject ["artifact","tool","builder"] }
+            , (mk "t" "x" "\"exec ${artifact.tool-core}/bin/tool-core\"" Stated) { dSubject = Subject ["artifact","tool","args","text"] }
+            ]
+      fmap (map (\(n, p, _) -> (n, p)))
+           (realizeArtifactPaths (const Replace) (\_ -> Left "unused") (fromList ps))
+        `shouldBe` Right [("tool-core", "/bin/tool-core")]
+
+    it "reports no inside-artifact path for a base that names none" $
+      realizeArtifactPaths (const Replace) (\_ -> Left "unused") (fromList ground)
+        `shouldBe` Right []
+
     it "fails loud (typed, not a crash) on a ${artifact.<name>} reference to an undefined artifact" $
       let dangling = [ (mk "e" "x" "\"${artifact.ghost}/bin/x\"" Stated) { dSubject = Subject ["systemd","services","x","serviceConfig","ExecStart"] } ]
        in realizeReplace (fromList dangling) `shouldBe` Left (RDangling ["ghost"])

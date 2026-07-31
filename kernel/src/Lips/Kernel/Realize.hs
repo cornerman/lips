@@ -19,6 +19,7 @@ module Lips.Kernel.Realize
   , realize
   , realizeArtifactFile
   , realizeStagedPaths
+  , realizeArtifactPaths
   , realizeArtifactFills
   ) where
 
@@ -33,7 +34,8 @@ import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Decision
 import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
-                                  sourceText, valueArtifactNames, valuePaths)
+                                  sourceText, valueArtifactNames, valueArtifactPaths,
+                                  valuePaths)
 
 -- | Why a ground base could not be projected to a module. Every case is an
 -- engine defect (a minted rule that emitted an ill-formed artifact group or a
@@ -130,6 +132,26 @@ realizeStagedPaths modeOf assemble base =
       Left e  -> Left (RMalformed s e)
       Right v -> Right [ (p, d) | p <- valuePaths v, isRelative p ]
     isRelative p = T.isPrefixOf "./" p || T.isPrefixOf "../" p
+
+-- | Every path the realized base names INSIDE an artifact:
+-- @(artifact, \/rel\/path, the decision that named it)@. Twin of
+-- 'realizeStagedPaths' one level in: a staged path must exist BESIDE the module,
+-- an artifact path must exist INSIDE the build. Neither is knowable from the
+-- module text -- what a build contains is decided by its source, and a binary's
+-- name is spelled in a go.mod or a Cargo.toml, not in the derivation -- so the
+-- kernel reports the pairs and the caller that owns nix builds the artifact and
+-- looks. Both artifact groups' own args and option values are scanned, since a
+-- wrapper's script names its core's binary exactly as a unit's ExecStart does.
+realizeArtifactPaths :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+                     -> Base -> Either RealizeError [(Text, Text, Decision)]
+realizeArtifactPaths modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs     -> Left (resolveErr errs)
+    Right winners -> concat <$> traverse paths (Map.toList winners)
+  where
+    paths (s, d) = case parseValue (unAssertion (dAssertion d)) of
+      Left e  -> Left (RMalformed s e)
+      Right v -> Right [ (n, p, d) | (n, p) <- valueArtifactPaths v ]
 
 -- | Every source fill the engine declares: @(artifact, marker, text)@ from
 -- @artifact.\<name\>.fill.\<marker\>@. The kernel owns no filesystem, so it

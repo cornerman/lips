@@ -56,6 +56,7 @@ module Lips.Kernel.Engine.Value
   , valueRefsDerivation
   , sourceText
   , valueArtifactNames
+  , valueArtifactPaths
   , valuePaths
   , parseHoleType
   ) where
@@ -177,6 +178,30 @@ valueArtifactNames (VList vs)        = concatMap valueArtifactNames vs
 valueArtifactNames (VAttr fs)        = concatMap (valueArtifactNames . snd) fs
 valueArtifactNames (VRef (RArt n))   = [n]
 valueArtifactNames _                 = []
+
+-- | Every path a value names INSIDE an artifact: each @${artifact.<name>}@
+-- interpolation paired with the @\/rel\/path@ that follows it in the same
+-- string. What that path holds is decided by the artifact's SOURCE (a go.mod
+-- module line, a Cargo name), not by the derivation, so it is the one thing no
+-- static gate can know: 'Lips.Kernel.Realize.realizeArtifactPaths' reports the
+-- pairs and a caller that may BUILD looks inside the result. A bare reference
+-- (a list element) names the whole build and yields nothing -- building it is
+-- the whole check there.
+--
+-- The path ends at the first space, so a command carrying arguments
+-- (@"${artifact.x}\/bin\/x --port 8080"@) still names one file. A reference
+-- followed by anything but @\/@ names the store path itself, so it too yields
+-- nothing.
+valueArtifactPaths :: Value -> [(Text, Text)]
+valueArtifactPaths (VStr ps)  = go ps
+  where
+    go (PArt n : rest@(PLit t : _))
+      | "/" `T.isPrefixOf` t = (n, T.takeWhile (not . isSpace) t) : go rest
+    go (_ : rest) = go rest
+    go []         = []
+valueArtifactPaths (VList vs) = concatMap valueArtifactPaths vs
+valueArtifactPaths (VAttr fs) = concatMap (valueArtifactPaths . snd) fs
+valueArtifactPaths _          = []
 
 -- | Every path literal a value names, anywhere inside it. A path is the only
 -- value that points OUTSIDE the module text at a file that must be there, so
