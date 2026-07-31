@@ -280,6 +280,50 @@ tracks only what is still open.
    behavior, so both change with the physics; add a case where two patterns
    differ only by a colon and must not collide.
 
+8. **Baked source cannot repeat, so a program's list reaches the module but not
+   the code** (filed by the `website` mint itself as gap
+   `repeating-canvas-button`, 2026-08-01; ranked after item 7 because the
+   failure is LOUD and no committed engine is wrong -- it is a missing
+   capability, not a silent defect).
+
+   WHAT ALREADY WORKS, so the gap is not "lips cannot repeat". Repetition is
+   unbounded wherever it lands in an OPTION: a subject keyed by the item's own
+   word (`host.<domain>.location.<path>.proxy`) feeds an option path carrying the
+   same captures, and `examples/gateway.vhost.lips` realizes three virtual hosts
+   and four locations from a four-pattern engine. The `website` conflict (`canvas
+   name: line 2 and line 6`) is the mint's singleton subject `canvas.name`, not a
+   grammar limit: `canvas.<name>.…` would crystallize both.
+
+   WHERE THE WALL IS. `Kernel/Source.fillTree` substitutes ONE text per marker in
+   ONE pass, and the markers sit in the committed, PER-LANGUAGE source tree. A
+   rule may compose the marker name (`artifact.<self>.fill.canvas_<value>` is a
+   legal emit), but then `main.go` would have to spell `@canvas_main@` -- a
+   per-PROGRAM marker inside per-LANGUAGE source -- and `fillTree` refuses a
+   declared fill no file names. So the NUMBER of substitution sites is frozen at
+   mint time, and repeated markup (one `<div>` per canvas, one handler per
+   button) is unsayable. `examples/website` therefore supports exactly one canvas
+   and one button, and says so in its README.
+
+   THE CHEAP REMEDY, which needs no kernel change: keep the source shape fixed
+   and let the list cross into the artifact as DATA through an option path that
+   carries the item's key -- one env var per canvas
+   (`systemd.services.<self>.environment.CANVAS_<value>`), or a file per canvas
+   under `environment.etc."<self>/canvases/<value>"` -- with the binary looping
+   over that data at start-up. Expressible today; the mint simply is not told
+   that a repeating structure belongs in data, not in source. Doctrine question
+   to settle first: is "repetition crosses as data, never as repeated source" a
+   sentence for `assets/mint/body.md` (like the subject-segment rule), and does
+   anything refuse an engine that hard-codes a singleton where the program shape
+   is plainly a list?
+
+   THE EXPENSIVE REMEDY, if the cheap one proves too weak: a joined fill -- a
+   marker whose value accumulates one element per matching decision (declared
+   like a list-merged option, joined by a separator the engine states). Keeps the
+   grammar closed (no computation; the join is the kernel's, the separator is
+   data), but it makes a fill emit code shaped by a program, so the syntax of the
+   generated language becomes lips's problem. Decide only against a program that
+   the cheap remedy cannot express.
+
 ## Backlog (larger / deferred by design)
 
 - **Cross-program composition (one program naming another).** Nix composes;
