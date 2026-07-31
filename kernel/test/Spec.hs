@@ -1250,6 +1250,22 @@ main = hspec $ do
       -- and a value that genuinely is not there still fails
       length (checkArtifactValues ground [(onOut, "{\"a\":\"2\"}")]) `shouldBe` 1
 
+    -- A whole-value assertion on a SEVERAL-PART value can be unsatisfiable by
+    -- construction (the rule joins the parts its own way), which reads exactly
+    -- like a value that failed to arrive. Say which it is, and name the remedy.
+    it "names the remedy when a several-part value is pinned as a whole" $ do
+      let ground = fromList
+            [ (mk "c3" "x" "\"{\\\"a\\\":\\\"1\\\"}\\n{\\\"a\\\":\\\"2\\\"}\"" Stated)
+                { dSubject = Subject ["claim","echo","stdin"] }
+            ]
+          onIn = Expect "e3" ["claim","echo","stdin"] (Subject ["witness","in"]) Nothing
+          -- the program side renders a two-part value space-joined
+          fails = checkArtifactValues ground [(onIn, "{\"a\":\"1\"} {\"a\":\"2\"}")]
+      fails `shouldSatisfy` any (T.isInfixOf "pin one part per assertion")
+      -- a genuinely absent value gets no such hint, since it is a different fault
+      checkArtifactValues ground [(onIn, "nowhere")]
+        `shouldSatisfy` all (not . T.isInfixOf "pin one part per assertion")
+
     it "still judges a slot whose value has no text form" $ do
       let ground = fromList
             [ (mk "c2" "x" "[ ${artifact.tool} ]" Stated)

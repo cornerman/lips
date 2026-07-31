@@ -234,7 +234,7 @@ checkArtifactValues ground pairs = concatMap judge pairs
                     <> "program value " <> pv <> " lands nowhere" ]
       (a : _) | pv `T.isInfixOf` slotText a -> []
               | otherwise -> [ dotted (exPath e) <> ": should contain " <> pv
-                                <> ", but is " <> slotText a ]
+                                <> ", but is " <> slotText a <> jointHint pv (slotText a) ]
     -- A slot holds a VALUE and the program states a value, so they are compared
     -- as VALUES, never as transport encodings. The canonical form escapes a
     -- quote (and a newline), while the program side is already decoded by
@@ -249,6 +249,25 @@ checkArtifactValues ground pairs = concatMap judge pairs
     slotText a = case parseValue a of
       Right v | Just t <- sourceText v -> t
       _                                -> a
+    -- A SEVERAL-PART value pinned as a whole can be unsatisfiable by
+    -- construction: the parts reach the slot, but the rule joins them its own way
+    -- (a newline between two stdin lines), while the program side renders them
+    -- space-joined -- so the whole text appears nowhere. That is not a value that
+    -- failed to arrive, it is a contract that cannot hold, and the two read
+    -- identically without saying so. Name the remedy instead: one assertion per
+    -- part.
+    jointHint pv slot
+      | length parts > 1, inOrder parts slot =
+          " (every part reaches this slot, but the rule joins them its own way, so"
+            <> " this whole-value assertion can never hold: pin one part per"
+            <> " assertion, `from <subject>#1`, `#2`, ...)"
+      | otherwise = ""
+      where parts = valueTokens pv
+    -- Each part present, in the order stated.
+    inOrder [] _ = True
+    inOrder (p : ps) t = case T.breakOn p t of
+      (_, rest) | T.null rest -> False
+                | otherwise   -> inOrder ps (T.drop (T.length p) rest)
 
 -- | Judge the eval results against the program values. Containment: each
 -- program value must appear in its option's evaluated JSON. Returns one message
