@@ -3069,6 +3069,39 @@ main = hspec $ do
     it "is deterministic in claim order" $
       claimsFile True [machineClaim, derivClaim] `shouldBe` claimsFile True [derivClaim, machineClaim]
 
+  -- The advisory half of the obligation: where behaviour lives in minted source
+  -- and the program states no observable, say so in the editor. A warning, never
+  -- an error: the remedy is an author writing an example.
+  describe "the lsp says when a sentence is observed by nothing" $ do
+    let engC = EngineData
+          { edPatterns =
+              [ patOne "p1" [TLit "keep", TLit "every", TLit "field"]
+                  Concept [SLit "io.filter"] [SLit "keep every field"]
+              , patOne "p2" [TLit "install", TLit "it", TLit "as", THole "name"]
+                  Fact [SLit "cmd", SHole "name"] [SHole "name"]
+              ]
+          , edRules = []
+          , edDemands = []
+          , edMerges = []
+          }
+        prog = "keep every field\ninstall it as tool"
+        d = diagnose "f" engC prog
+
+    it "warns on a concept-only line where the language bakes source and states no claim" $ do
+      let ds = unobservedDiags True False d
+      map dgLine ds `shouldBe` [0]
+      map dgSeverity ds `shouldBe` [2]
+      map dgMessage ds `shouldSatisfy` all (T.isInfixOf "Nothing observes this sentence")
+
+    it "stays silent once the program states a claim" $
+      unobservedDiags True True d `shouldBe` []
+
+    it "stays silent for a language that bakes no source" $
+      unobservedDiags False False d `shouldBe` []
+
+    it "never warns about a line that realizes something" $
+      map dgLine (unobservedDiags True False d) `shouldNotContain` [1]
+
   describe "lsp uri decoding (file:// scheme, percent-escapes)" $ do
     it "strips the file:// scheme" $
       uriToPath "file:///home/u/my.loose" `shouldBe` "/home/u/my.loose"
