@@ -3124,6 +3124,11 @@ main = hspec $ do
         , "reach INSIDE the source, through a FILL"
         -- The capture forms are dead capability unless the prompt offers them.
         , "multi-token hole <name.words>"
+        -- A decision line separates its subject by whitespace, so a subject
+        -- segment built from a capture that may hold several words cannot be
+        -- read back (crystallize refuses it). The mint cannot deduce that from
+        -- the grammar, so the prompt names the remedy: key by <n:index>.
+        , "A SUBJECT SEGMENT HOLDS NO SPACES"
         -- rephrased from "A MECHANISM is not a gap at all" (How You Work)
         , "None of this applies to a MECHANISM"
         , "or a <capture> the rule's subject binds"

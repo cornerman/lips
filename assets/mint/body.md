@@ -317,6 +317,15 @@ bound: by this pattern's template, by a structure hole it declares
 (<n:index>, <k:key>), or by the block it nests in (see BLOCKS). Patterns must be orthogonal: no input line may
 match two of them.
 
+A SUBJECT SEGMENT HOLDS NO SPACES. A decision is stored as one line whose
+subject is separated from the rest by whitespace, so a segment built from a
+hole whose value may be several words (a quoted label, a title, a sentence)
+cannot be read back, and lips refuses the whole language. Key such an item by
+<n:index> and carry the words in the ASSERTION, where quoting protects them:
+write `fact button.<n:index>.label "<label>"`, never `fact button.<label>`.
+A hole you know to be a single word (a name, a port, an identifier) keys a
+segment fine.
+
 ### Generalizing Across Several Programs
 
 SEVERAL PROGRAMS: you may be given more than one example program (each in a
@@ -762,6 +771,7 @@ Before you answer, run this list against your own engine:
 
 1. Does every line of every program you were shown crystallize under exactly one pattern?
 1b. Does every item line that needs a word from its heading nest under that heading's pattern (`pN.under.pM`), and does every item with no value of its own key itself by `<n:index>`?
+1c. Does every subject segment hold a single word -- no hole whose value could be a quoted label or a phrase?
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
