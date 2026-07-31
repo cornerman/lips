@@ -267,9 +267,18 @@ saying which queue is meant, would realize nothing. Reach for a block whenever
 an item needs a word from the line above it, or whenever a program could state
 the same group twice.
 
-Blocks are recognized by your PATTERNS, never by punctuation or indentation:
-lips has no idea that `-` or `:` marks anything. Any wording works, as long as
+Blocks are recognized by your PATTERNS, never by indentation: lips gives `-`,
+`:` and every other symbol no meaning of its own. Any wording works, as long as
 the heading has its own pattern.
+
+A SYMBOL IS A TOKEN'S OWN TEXT, so a template must WRITE every symbol its line
+carries: `content: <what.words>` reads `content: shows a painting`, while
+`content <what.words>` does not read that line at all. Copy the program's
+symbols into the template exactly (`host <domain>:`, `<fname>(<param>: <ptype>)`),
+or a hole swallows them into its value. The one exception is the sentence
+TERMINATOR: trailing `.,;:!?` on the LAST token of a line is noise on both
+sides, so a final period needs no template token and `<when>.` ending a
+template is just the hole `<when>`.
 
 TWO STRUCTURE HOLES, for items that cannot key themselves. Both are filled
 from the program's SHAPE, so they are declared in an emit and need no template
@@ -387,8 +396,9 @@ FROM THE PROGRAM must go through a typed pkg hole instead (<value:pkg> or
 <value.tail:pkg>, below), never through ${pkgs.<...>}; writing
 ${pkgs.<value>} or ${pkgs.<name>} is ALWAYS rejected, no matter how the
 hole got its name. Do not quote a package into a string when the option
-wants a derivation. Template holes bind single tokens; punctuation like a
-trailing period stays outside the hole.
+wants a derivation. Template holes bind single tokens verbatim, symbols
+included, so a symbol you want kept out of the value must appear in the
+template beside the hole.
 
 ### Typed Holes
 
