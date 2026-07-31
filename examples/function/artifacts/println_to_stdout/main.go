@@ -6,23 +6,17 @@ import (
 	"strconv"
 )
 
-// println_to_stdout is the function the program declares: it takes one
-// string parameter and writes it, followed by a newline, to stdout.
-func println_to_stdout(@param@ string) {
-	fmt.Println(@param@)
+// @fname@ takes one string and writes it to stdout, as the program declares.
+func @fname@(x string) {
+	fmt.Println(x)
 }
 
-// main replays the program's calls in order. Each call is handed to the
-// binary through the environment as CALL_1, CALL_2, ... -- one variable per
-// call, holding that call's string argument. The loop stops at the first
-// missing index, so the number of calls is decided entirely by the
-// environment the systemd unit carries.
+// The program's calls are handed to this binary in order, as the environment
+// variables CALL_1, CALL_2, ... set on the systemd unit that runs it.
 func main() {
-	for i := 1; ; i++ {
-		arg, ok := os.LookupEnv("CALL_" + strconv.Itoa(i))
-		if !ok {
-			return
+	for i := 1; i <= 1024; i++ {
+		if v, ok := os.LookupEnv("CALL_" + strconv.Itoa(i)); ok {
+			@fname@(v)
 		}
-		println_to_stdout(arg)
 	}
 }

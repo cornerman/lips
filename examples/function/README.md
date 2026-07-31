@@ -2,70 +2,71 @@
 
 # The `function` language
 
-This language reads a tiny imperative program: one function declaration
-followed by calls to it.
+## What a program in this language says
 
-**The two line shapes**
+Two line shapes, and the second only ever appears under the first:
 
-- `function println_to_stdout(x: String)` -- declares the program's one
-  primitive: a function that writes its argument, followed by a newline, to
-  stdout. The parameter *name* is a hole (`x` here), so renaming it flows
-  through; the function name `println_to_stdout` and the type `String` are
-  fixed words of the language, because they select the mechanism (what the
-  function does, and that the argument is a string) rather than carrying a
-  value. Everything below this line belongs to its block.
-- `println_to_stdout("hallo")` -- one call, with the string argument in a
-  hole. Calls carry no identifier of their own (two calls may pass the same
-  text), so each is keyed by its position in the block: `call.1.text`,
-  `call.2.text`, `call.3.text`. Order is therefore preserved and repeats stay
-  repeats.
+```
+function println_to_stdout(x: String)
 
-**The mechanism I chose**
+println_to_stdout("hallo")
+println_to_stdout("du")
+println_to_stdout("!")
+```
 
-The declaration is realized as a real program built from source
-(`buildGoModule`, sources staged under `artifacts/println_to_stdout`): a Go
-file defining `println_to_stdout(<param> string)` -- the parameter name
-reaches the source through a fill -- and a `main` that replays the calls.
+1. **A declaration** — `function <name>(<param>: <type>)`. It names the function
+   and opens a block; the call lines that follow belong to it. The function's
+   *name* is a real value: it names the binary that gets built and the systemd
+   unit that runs it, so renaming the function renames both. The parameter's
+   name and type are read but govern nothing on the machine — the printer takes
+   one string — so this line is recorded as a decorative heading (`concept
+   func.<name>`) and nothing is realized from `x` or `String`. If you later want
+   the type to *mean* something (an integer argument, a different printer), that
+   is a new mint, not an edit.
+2. **A call** — `<name>("<text>")`. The quoted text is the value; each call line
+   becomes one item of the block, numbered by its position (1, 2, 3, ...), so
+   two identical calls stay two calls and the order of the file is the order of
+   the output. The subject vocabulary is `call.<name>.<n>.text`.
 
-The calls are *not* baked into the source: a fill replaces a marker and
-cannot repeat a block, so per-call source is not expressible. Instead each
-call becomes one environment variable on the unit that runs the program,
-`CALL_1`, `CALL_2`, ..., and the source loops from index 1 until a variable
-is missing. This keeps the source purely structural (the algorithm and the
-function body) and puts every word the program states into a plain, readable
-NixOS option value.
+Anything else — an unquoted argument, a call before any declaration, a second
+statement kind — will not crystallize, and `compile` says so loudly.
 
-The program is run by a `oneshot` systemd service named after the program
-file (its instance name), wanted by `multi-user.target`, so the machine runs
-the program once at boot and the printed lines land in that unit's journal.
-The built binary is also installed into `environment.systemPackages`, so a
-human can run `println_to_stdout` by hand.
+## What is built, and why
 
-**What the contract pins**
+"Print to stdout" on a whole machine means: a program that runs and whose output
+lands in the journal. So each declared function becomes:
 
-Every call's text is asserted to appear at
-`systemd.services.<self>.environment.CALL_<n>`, and the parameter name at the
-artifact's fill. The `ExecStart` line holds a build reference, so nothing is
-asserted about it -- the rule that emits it is the contract there.
+* **A Go binary**, built with `buildGoModule` from the source staged beside the
+  engine (`artifacts/println_to_stdout/`). The source holds only the *structure*:
+  a function that prints one string, and a loop that walks its arguments in
+  order. The function's name reaches the source through a fill (`@fname@` in
+  `main.go` and `go.mod`), which is also why the module name, the produced
+  `/bin/<name>` and the unit's `ExecStart` all agree.
+* **A oneshot systemd service of the same name**, wanted by
+  `multi-user.target`, so the program runs once as the machine comes up and its
+  stdout is the journal (`journalctl -u println_to_stdout`).
+* **One environment variable per call** on that unit: `CALL_1`, `CALL_2`, ... The
+  call texts deliberately do *not* go into the Go source: a fill replaces a
+  marker, it cannot repeat a statement per call, so the calls travel as unit
+  environment and the binary reads them at start. That is what keeps adding a
+  fourth call a one-line edit instead of a regeneration. (Practical limit: 1024
+  calls per function.)
 
-**What I had to invent, and what a program must state**
+I chose the arguments the builder needs myself, as mechanism, not from the
+program: `version = "0.1.0"` and `vendorHash = null` (the source fetches
+nothing). The function name must be a legal Go identifier and a legal unit name,
+which `println_to_stdout` is.
 
-The package version `0.1.0` and `vendorHash = null` are mechanism constants;
-`null` is correct because the source I wrote has no external dependencies. A
-program must state both a declaration line and at least one call: a program
-missing either is asked for it rather than given a default. Only the
-`String` parameter type is readable -- see the filed gap
-`declared-type-mapping`.
+## The contract
 
-## Known Gaps
+`function.expect` pins the one thing the program actually states: every call's
+text appears as `CALL_<n>` on the unit named after the function. The build
+reference in `ExecStart` holds no checkable value, so nothing is asserted about
+it — the rule is its own contract there.
 
-### declared-type-mapping
+## If a program is silent
 
-blocked line: function println_to_stdout(x: Int)
-The declaration's type token is fixed as `String` in the pattern. Turning a
-declared type word into the corresponding type of the generated source
-(String -> Go `string`, Int -> `int`) needs a lookup from one token to
-another, and the value grammar has no mapping or conditional: a fill
-substitutes a marker verbatim, so filling `@type@` with `String` would emit
-invalid Go. Only String-typed declarations are readable today.
-
+A declaration with no calls is refused with a question: which strings should the
+function be called with? A function that prints nothing is almost certainly a
+half-written program, so it fails at compile time rather than shipping a silent
+service.

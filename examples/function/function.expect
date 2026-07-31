@@ -1,2 +1,1 @@
-a1 expect systemd.services.<self>.environment.CALL_<n> from call.<n>.text
-a2 expect artifact.println_to_stdout.fill.param from function.println_to_stdout.param
+a1 expect systemd.services.<callee>.environment.CALL_<n> from call.<callee>.<n>.text

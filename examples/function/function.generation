@@ -1,5 +1,6 @@
 model: claude-opus-5
 target: nixos
+schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
 thinking: high
 confidence-threshold: 0.7
 --- system prompt ---
@@ -18,14 +19,14 @@ option tree, nothing narrower and nothing wider.
 
 lips exists to shrink the artifact a human must keep reviewing down to a
 few plain sentences: a `.lips` program. Everything else -- the mechanism,
-the option paths, the NixOS wiring -- is derived, and you are the one who
+the option paths, the wiring of the target world -- is derived, and you are the one who
 derives it. The human owns only the program; you own the translation, once.
 
 You act exactly once. You read the program (or several programs of one
 kind) and mint an ENGINE: patterns that read a line like this one, rules
 that turn what a pattern reads into option assignments, and demands that
 ask for what a program leaves silent. Once you answer, lips crystallizes
-the program with your engine, realizes a NixOS module, and validates it --
+the program with your engine, realizes a module, and validates it --
 and then you are gone. From then on the human edits the program and
 `compile` re-reads it with your patterns, deterministically, offline, with
 no model anywhere in the loop.
@@ -79,7 +80,7 @@ exactly:
    `<capture>` segment binds per item and fans one rule out across an
    attrsOf option; a rule that emits into a list-typed option makes its
    subject AGGREGATE across every line that produces one.
-7. REALIZATION renders a NixOS module. lips parses it with
+7. REALIZATION renders a module for the target world. lips parses it with
    `nix-instantiate --parse`, checks every option path and type it names
    against the pinned schema, and evaluates the module to run your expects.
 
@@ -147,7 +148,7 @@ Example output lines:
 ```
 One input line became a pattern (the language: a template with a hole,
 producing a fact under a subject you named), a rule (the mechanism: that
-subject realized into a NixOS option), a demand (what a program lacking such
+subject realized into an option of the target world), a demand (what a program lacking such
 a line must be asked), and an expect (the behavioral check that the value
 really lands in the option the rule named). The construct reference below
 defines this vocabulary precisely and covers the special cases (typed
@@ -283,9 +284,18 @@ saying which queue is meant, would realize nothing. Reach for a block whenever
 an item needs a word from the line above it, or whenever a program could state
 the same group twice.
 
-Blocks are recognized by your PATTERNS, never by punctuation or indentation:
-lips has no idea that `-` or `:` marks anything. Any wording works, as long as
+Blocks are recognized by your PATTERNS, never by indentation: lips gives `-`,
+`:` and every other symbol no meaning of its own. Any wording works, as long as
 the heading has its own pattern.
+
+A SYMBOL IS A TOKEN'S OWN TEXT, so a template must WRITE every symbol its line
+carries: `content: <what.words>` reads `content: shows a painting`, while
+`content <what.words>` does not read that line at all. Copy the program's
+symbols into the template exactly (`host <domain>:`, `<fname>(<param>: <ptype>)`),
+or a hole swallows them into its value. The one exception is the sentence
+TERMINATOR: trailing `.,;:!?` on the LAST token of a line is noise on both
+sides, so a final period needs no template token and `<when>.` ending a
+template is just the hole `<when>`.
 
 TWO STRUCTURE HOLES, for items that cannot key themselves. Both are filled
 from the program's SHAPE, so they are declared in an emit and need no template
@@ -333,6 +343,15 @@ bound: by this pattern's template, by a structure hole it declares
 (<n:index>, <k:key>), or by the block it nests in (see BLOCKS). Patterns must be orthogonal: no input line may
 match two of them.
 
+A SUBJECT SEGMENT HOLDS NO SPACES. A decision is stored as one line whose
+subject is separated from the rest by whitespace, so a segment built from a
+hole whose value may be several words (a quoted label, a title, a sentence)
+cannot be read back, and lips refuses the whole language. Key such an item by
+<n:index> and carry the words in the ASSERTION, where quoting protects them:
+write `fact button.<n:index>.label "<label>"`, never `fact button.<label>`.
+A hole you know to be a single word (a name, a port, an identifier) keys a
+segment fine.
+
 ### Generalizing Across Several Programs
 
 SEVERAL PROGRAMS: you may be given more than one example program (each in a
@@ -379,9 +398,13 @@ writeShellApplication's runtimeInputs) holds bare references, not strings:
 and curl/weather here are literal names you wrote, not values captured
 from the program.
 Inside Nix strings only two things beyond literal text parse: the holes
-<value> (the matched decision's assertion) / <value.N> (its Nth
-whitespace-separated token, 1-based; use it when a pattern's assertion
-joins several holes) and a literal ${pkgs.LITERALNAME} package reference.
+<value> (the matched decision's assertion) / <value.N> (its Nth PART,
+1-based; use it when a pattern's assertion joins several holes) and a
+literal ${pkgs.LITERALNAME} package reference. A part is one hole of that
+assertion, whatever it captured: an assertion joining several holes stores
+each part quoted, so <value.2> of "<status> <body>" is the whole body even
+when the program wrote several words. An assertion of ONE hole has no parts
+and splits into words, which is what <value.tail> reads.
 Outside a string, a bare ${pkgs.LITERALNAME} or ${artifact.LITERALNAME} is
 itself a value (a list element). No functions, no splitString, no other
 ${...}. CRITICAL: ${...} NEVER wraps a hole -- not <value>, not a
@@ -390,12 +413,13 @@ FROM THE PROGRAM must go through a typed pkg hole instead (<value:pkg> or
 <value.tail:pkg>, below), never through ${pkgs.<...>}; writing
 ${pkgs.<value>} or ${pkgs.<name>} is ALWAYS rejected, no matter how the
 hole got its name. Do not quote a package into a string when the option
-wants a derivation. Template holes bind single tokens; punctuation like a
-trailing period stays outside the hole.
+wants a derivation. Template holes bind single tokens verbatim, symbols
+included, so a symbol you want kept out of the value must appear in the
+template beside the hole.
 
 ### Typed Holes
 
-TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
+TYPED HOLES: an option is typed. For a NON-string option (a port, a
 count, a size, a toggle) do NOT quote the hole; use a typed hole
 naming the type: <value:int>, <value:bool>, <value:float>
 (or <value.N:int> for the Nth token). It emits a value of that type and
@@ -599,7 +623,7 @@ EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
 It asserts the value your patterns capture into <subject> (or its nth
-whitespace token, #n, 1-based) appears at NixOS option <option.path> in
+whitespace token, #n, 1-based) appears at option <option.path> in
 the realized module. Name the SAME option paths your rules assign. Emit
 one expect for every distinct program value a rule carries into an option,
 so realization and configurability are pinned. A VALUE-KEYED expect uses the
@@ -649,7 +673,7 @@ A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
 
 The kernel verifies: every line crystallizes, every decision is mapped,
-every demand is met, the result parses as a NixOS module, and every
+every demand is met, the result parses as a module, and every
 expect holds against the evaluated module.
 
 ## Designing a Good Language
@@ -673,8 +697,8 @@ default, a build input with no natural question to ask), lower confidence
 rather than invent, and pair it with a because-note that says in one plain
 sentence what would pin it.
 
-Name subjects the way the domain talks, not the way NixOS names its
-options: the vocabulary is what the human's next program is written
+Name subjects the way the domain talks, not the way the target world names
+its options: the vocabulary is what the human's next program is written
 against, so `backup.source` reads naturally beside a sentence about where
 files come from, while `systemd.services.<name>.environment.SRC` does not.
 
@@ -774,6 +798,7 @@ Before you answer, run this list against your own engine:
 
 1. Does every line of every program you were shown crystallize under exactly one pattern?
 1b. Does every item line that needs a word from its heading nest under that heading's pattern (`pN.under.pM`), and does every item with no value of its own key itself by `<n:index>`?
+1c. Does every subject segment hold a single word -- no hole whose value could be a quoted label or a phrase?
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
@@ -793,18 +818,35 @@ println_to_stdout("!")
 -> query_options "systemd.services.&lt;name&gt;.serviceConfig"
 -> query_options "systemd.services.&lt;name&gt;.environment"
 <- query_options
-no option matches systemd.services.&lt;name&gt;.serviceConfig
-Try a shorter query, or a different word for the same thing.
+systemd.services.&lt;name&gt;.serviceConfig is below systemd.services : attribute set of (submodule)
+That option is free-form: every path under it is accepted, and none of
+them is checked -- this schema cannot confirm the name systemd.services.&lt;name&gt;.serviceConfig.
+Emit it only from documentation you actually have; otherwise refuse.
 
 <- query_options
-no option matches systemd.services.&lt;name&gt;.environment
-Try a shorter query, or a different word for the same thing.
+systemd.services.&lt;name&gt;.environment is below systemd.services : attribute set of (submodule)
+That option is free-form: every path under it is accepted, and none of
+them is checked -- this schema cannot confirm the name systemd.services.&lt;name&gt;.environment.
+Emit it only from documentation you actually have; otherwise refuse.
 
 -> query_options "systemd.services"
+-> query_options "environment.etc"
 <- query_options
 systemd.services.* (47 options)
 systemd.services (1 option)
 Ask again with one of these paths to see its options.
+
+<- query_options
+environment.etc : attribute set of (submodule)
+environment.etc.*.enable : boolean
+environment.etc.*.gid : integer
+environment.etc.*.group : string
+environment.etc.*.mode : string
+environment.etc.*.source : path
+environment.etc.*.target : string
+environment.etc.*.text : null or strings concatenated with "\n"
+environment.etc.*.uid : integer
+environment.etc.*.user : string
 
 -> query_options "systemd.services.*"
 <- query_options
@@ -851,38 +893,23 @@ systemd.services.*.upheldBy (1 option)
 … and 3 more namespaces.
 Ask again with one of these paths to see its options.
 
--> query_options "systemd.services.*.serviceConfig"
--> query_options "systemd.services.*.environment"
-<- query_options
-systemd.services.*.serviceConfig : attribute set of (systemd option)
-
-<- query_options
-systemd.services.*.environment : attribute set of (null or string or absolute path or package)
-
--> query_options "systemd.services.*.description"
--> query_options "environment.systemPackages"
-<- query_options
-systemd.services.*.description : (optionally newline-terminated) single-line string
-
-<- query_options
-environment.systemPackages : list of package
-
 -> query_options "systemd.services.*.wantedBy"
+-> query_options "systemd.services.*.description"
 <- query_options
 systemd.services.*.wantedBy : list of string
 
+<- query_options
+systemd.services.*.description : (optionally newline-terminated) single-line string
+
 
 --- raw reply ---
-0.95 p1 pattern function println_to_stdout(<param>: String) => fact function.println_to_stdout.param "<param>"
-0.95 p2.under.p1 pattern println_to_stdout("<text>") => fact call.<n:index>.text "<text>"
-0.92 r1 match fact function.println_to_stdout.param => artifact.println_to_stdout.builder "\"buildGoModule\"" ; artifact.println_to_stdout.args.pname "\"println_to_stdout\"" ; artifact.println_to_stdout.args.version "\"0.1.0\"" ; artifact.println_to_stdout.args.src "./artifacts/println_to_stdout" ; artifact.println_to_stdout.args.vendorHash "null" ; artifact.println_to_stdout.fill.param "\"<value>\"" ; systemd.services.<self>.description "\"runs the println_to_stdout program\"" ; systemd.services.<self>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<self>.serviceConfig.Type "\"oneshot\"" ; systemd.services.<self>.serviceConfig.ExecStart "\"${artifact.println_to_stdout}/bin/println_to_stdout\"" ; environment.systemPackages "[ ${artifact.println_to_stdout} ]"
-0.95 r2 match fact call.<n>.text => systemd.services.<self>.environment.CALL_<n> "\"<value>\""
-0.9 q1 demand function.println_to_stdout.param "what is the parameter named in 'function println_to_stdout(<param>: String)'?"
-0.85 q2 demand call.<n>.text "which lines should the program print, written as println_to_stdout(\"...\") calls?"
-0.95 a1 expect systemd.services.<self>.environment.CALL_<n> from call.<n>.text
-0.92 a2 expect artifact.println_to_stdout.fill.param from function.println_to_stdout.param
+0.9 p1 pattern function <fname>(<param>: <ptype>) => concept func.<fname> "<param> <ptype>"
+0.9 p2.under.p1 pattern <callee>("<text>") => fact call.<callee>.<n:index>.text "<text>"
+0.9 r1 match fact call.<callee>.<n>.text => artifact.<callee>.builder "\"buildGoModule\"" ; artifact.<callee>.args.pname "\"<callee>\"" ; artifact.<callee>.args.version "\"0.1.0\"" ; artifact.<callee>.args.src "./artifacts/<callee>" ; artifact.<callee>.args.vendorHash "null" ; artifact.<callee>.fill.fname "\"<callee>\"" ; systemd.services.<callee>.description "\"<callee> writes its program calls to stdout\"" ; systemd.services.<callee>.serviceConfig.Type "\"oneshot\"" ; systemd.services.<callee>.serviceConfig.ExecStart "\"${artifact.<callee>}/bin/<callee>\"" ; systemd.services.<callee>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<callee>.environment.CALL_<n> "\"<value>\""
+0.9 q1 demand call.<callee>.<n>.text "which strings should the function be called with, one call per line?"
+0.9 a1 expect systemd.services.<callee>.environment.CALL_<n> from call.<callee>.<n>.text
 0.9 s1 source println_to_stdout go.mod <<<lips
-module println_to_stdout
+module @fname@
 
 go 1.21
 lips>>>
@@ -895,89 +922,88 @@ import (
 	"strconv"
 )
 
-// println_to_stdout is the function the program declares: it takes one
-// string parameter and writes it, followed by a newline, to stdout.
-func println_to_stdout(@param@ string) {
-	fmt.Println(@param@)
+// @fname@ takes one string and writes it to stdout, as the program declares.
+func @fname@(x string) {
+	fmt.Println(x)
 }
 
-// main replays the program's calls in order. Each call is handed to the
-// binary through the environment as CALL_1, CALL_2, ... -- one variable per
-// call, holding that call's string argument. The loop stops at the first
-// missing index, so the number of calls is decided entirely by the
-// environment the systemd unit carries.
+// The program's calls are handed to this binary in order, as the environment
+// variables CALL_1, CALL_2, ... set on the systemd unit that runs it.
 func main() {
-	for i := 1; ; i++ {
-		arg, ok := os.LookupEnv("CALL_" + strconv.Itoa(i))
-		if !ok {
-			return
+	for i := 1; i <= 1024; i++ {
+		if v, ok := os.LookupEnv("CALL_" + strconv.Itoa(i)); ok {
+			@fname@(v)
 		}
-		println_to_stdout(arg)
 	}
 }
 lips>>>
-0.75 g1 gap declared-type-mapping <<<lips
-blocked line: function println_to_stdout(x: Int)
-The declaration's type token is fixed as `String` in the pattern. Turning a
-declared type word into the corresponding type of the generated source
-(String -> Go `string`, Int -> `int`) needs a lookup from one token to
-another, and the value grammar has no mapping or conditional: a fill
-substitutes a marker verbatim, so filling `@type@` with `String` would emit
-invalid Go. Only String-typed declarations are readable today.
-lips>>>
 0.95 d1 report <<<lips
-This language reads a tiny imperative program: one function declaration
-followed by calls to it.
+## What a program in this language says
 
-**The two line shapes**
+Two line shapes, and the second only ever appears under the first:
 
-- `function println_to_stdout(x: String)` -- declares the program's one
-  primitive: a function that writes its argument, followed by a newline, to
-  stdout. The parameter *name* is a hole (`x` here), so renaming it flows
-  through; the function name `println_to_stdout` and the type `String` are
-  fixed words of the language, because they select the mechanism (what the
-  function does, and that the argument is a string) rather than carrying a
-  value. Everything below this line belongs to its block.
-- `println_to_stdout("hallo")` -- one call, with the string argument in a
-  hole. Calls carry no identifier of their own (two calls may pass the same
-  text), so each is keyed by its position in the block: `call.1.text`,
-  `call.2.text`, `call.3.text`. Order is therefore preserved and repeats stay
-  repeats.
+```
+function println_to_stdout(x: String)
 
-**The mechanism I chose**
+println_to_stdout("hallo")
+println_to_stdout("du")
+println_to_stdout("!")
+```
 
-The declaration is realized as a real program built from source
-(`buildGoModule`, sources staged under `artifacts/println_to_stdout`): a Go
-file defining `println_to_stdout(<param> string)` -- the parameter name
-reaches the source through a fill -- and a `main` that replays the calls.
+1. **A declaration** — `function <name>(<param>: <type>)`. It names the function
+   and opens a block; the call lines that follow belong to it. The function's
+   *name* is a real value: it names the binary that gets built and the systemd
+   unit that runs it, so renaming the function renames both. The parameter's
+   name and type are read but govern nothing on the machine — the printer takes
+   one string — so this line is recorded as a decorative heading (`concept
+   func.<name>`) and nothing is realized from `x` or `String`. If you later want
+   the type to *mean* something (an integer argument, a different printer), that
+   is a new mint, not an edit.
+2. **A call** — `<name>("<text>")`. The quoted text is the value; each call line
+   becomes one item of the block, numbered by its position (1, 2, 3, ...), so
+   two identical calls stay two calls and the order of the file is the order of
+   the output. The subject vocabulary is `call.<name>.<n>.text`.
 
-The calls are *not* baked into the source: a fill replaces a marker and
-cannot repeat a block, so per-call source is not expressible. Instead each
-call becomes one environment variable on the unit that runs the program,
-`CALL_1`, `CALL_2`, ..., and the source loops from index 1 until a variable
-is missing. This keeps the source purely structural (the algorithm and the
-function body) and puts every word the program states into a plain, readable
-NixOS option value.
+Anything else — an unquoted argument, a call before any declaration, a second
+statement kind — will not crystallize, and `compile` says so loudly.
 
-The program is run by a `oneshot` systemd service named after the program
-file (its instance name), wanted by `multi-user.target`, so the machine runs
-the program once at boot and the printed lines land in that unit's journal.
-The built binary is also installed into `environment.systemPackages`, so a
-human can run `println_to_stdout` by hand.
+## What is built, and why
 
-**What the contract pins**
+"Print to stdout" on a whole machine means: a program that runs and whose output
+lands in the journal. So each declared function becomes:
 
-Every call's text is asserted to appear at
-`systemd.services.<self>.environment.CALL_<n>`, and the parameter name at the
-artifact's fill. The `ExecStart` line holds a build reference, so nothing is
-asserted about it -- the rule that emits it is the contract there.
+* **A Go binary**, built with `buildGoModule` from the source staged beside the
+  engine (`artifacts/println_to_stdout/`). The source holds only the *structure*:
+  a function that prints one string, and a loop that walks its arguments in
+  order. The function's name reaches the source through a fill (`@fname@` in
+  `main.go` and `go.mod`), which is also why the module name, the produced
+  `/bin/<name>` and the unit's `ExecStart` all agree.
+* **A oneshot systemd service of the same name**, wanted by
+  `multi-user.target`, so the program runs once as the machine comes up and its
+  stdout is the journal (`journalctl -u println_to_stdout`).
+* **One environment variable per call** on that unit: `CALL_1`, `CALL_2`, ... The
+  call texts deliberately do *not* go into the Go source: a fill replaces a
+  marker, it cannot repeat a statement per call, so the calls travel as unit
+  environment and the binary reads them at start. That is what keeps adding a
+  fourth call a one-line edit instead of a regeneration. (Practical limit: 1024
+  calls per function.)
 
-**What I had to invent, and what a program must state**
+I chose the arguments the builder needs myself, as mechanism, not from the
+program: `version = "0.1.0"` and `vendorHash = null` (the source fetches
+nothing). The function name must be a legal Go identifier and a legal unit name,
+which `println_to_stdout` is.
 
-The package version `0.1.0` and `vendorHash = null` are mechanism constants;
-`null` is correct because the source I wrote has no external dependencies. A
-program must state both a declaration line and at least one call: a program
-missing either is asked for it rather than given a default. Only the
-`String` parameter type is readable -- see the filed gap
-`declared-type-mapping`.
+## The contract
+
+`function.expect` pins the one thing the program actually states: every call's
+text appears as `CALL_<n>` on the unit named after the function. The build
+reference in `ExecStart` holds no checkable value, so nothing is asserted about
+it — the rule is its own contract there.
+
+## If a program is silent
+
+A declaration with no calls is refused with a question: which strings should the
+function be called with? A function that prints nothing is almost certainly a
+half-written program, so it fails at compile time rather than shipping a silent
+service.
 lips>>>

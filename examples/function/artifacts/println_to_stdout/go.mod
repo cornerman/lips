@@ -1,3 +1,3 @@
-module println_to_stdout
+module @fname@
 
 go 1.21
