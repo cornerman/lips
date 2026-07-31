@@ -66,6 +66,38 @@ realize modeOf assemble base =
     Left errs -> Left (resolveErr errs)
     Right winners -> renderModule (Map.toList winners)
 
+-- | For every artifact, the one @bin/<x>@ name the ground base itself names
+-- inside it (anywhere a value holds @${artifact.\<name\>}/bin/\<x\>@ -- an
+-- ExecStart, a wrapper's own arg naming its core). @nix run@/@nix develop@'s
+-- implicit program lookup assumes @bin/\<pname\>@; a builder is free to name
+-- its output differently (a go.mod's @module@, a Cargo @[[bin]] name@), so
+-- that assumption silently breaks whenever the two diverge -- exactly the
+-- "knowing the answer requires looking inside the result" case 'artifactGate'
+-- (the online build gate) already documents. Nothing here builds anything or
+-- knows a language: it only repeats a name the base's OWN decisions already
+-- spell out, the same way a @${pkgs.\<path\>}@ reference is forwarded without
+-- understanding it. Deduce-or-fail: an artifact named by zero or by more than
+-- one distinct @bin/\<x\>@ is left out, so nix's unchanged default applies
+-- exactly as it does today -- never a guess between two candidates.
+mainPrograms :: [(Subject, Decision)] -> Either RealizeError (Map.Map Text Text)
+mainPrograms winners = do
+  vals <- traverse parseOne winners
+  let bins = [ (n, b) | (_, v) <- vals, (n, p) <- valueArtifactPaths v, Just b <- [binName p] ]
+  Right (Map.mapMaybe onlyOne (Map.fromListWith (++) [ (n, [b]) | (n, b) <- bins ]))
+  where
+    parseOne (s, d) = case parseValue (unAssertion (dAssertion d)) of
+      Right v -> Right (s, v)
+      Left e  -> Left (RMalformed s e)
+    -- A path exactly one segment under bin/, nothing more (a flag-bearing
+    -- ExecStart like "/bin/hello --port 8080" already stops at the space via
+    -- 'valueArtifactPaths', so this only guards a deeper path like /bin/x/y).
+    binName p = case T.splitOn "/" p of
+      ["", "bin", b] | not (T.null b) -> Just b
+      _                                -> Nothing
+    onlyOne bs = case nub bs of
+      [b] -> Just b
+      _   -> Nothing
+
 -- | A subject is either Replace or Append, so its failure is exactly one kind;
 -- across subjects the kinds can mix. Report every conflict (the author's to
 -- edit); if there are none, the first assembly defect (an engine bug). Never
@@ -100,7 +132,8 @@ realizeArtifactFile modeOf assemble base =
            then Right Nothing
            else do
              requireDefined names =<< artifactArgRefs arts
-             entries <- artifactEntries arts
+             mp <- mainPrograms (Map.toList winners)
+             entries <- artifactEntries mp arts
              -- The same @let artifact = { ... }@ shape the module uses, for the
              -- same reason: an arg may hold @${artifact.<other>}@, which
              -- 'renderRealized' emits bare as @artifact.<other>@, so the name
@@ -201,7 +234,8 @@ renderModule winners = do
   -- naming neither lips, the program, nor a remedy.
   argRefs <- artifactArgRefs arts
   requireDefined defined (concatMap (valueArtifactNames . valOf) optVals ++ argRefs)
-  entries <- artifactEntries arts
+  mp <- mainPrograms winners
+  entries <- artifactEntries mp arts
   Right $ T.unlines $
     [ "# lips-realized module. Generated from a ground decision base; do not edit."
     , "{ config, lib, pkgs, ... }:"
@@ -263,8 +297,8 @@ letBlock entries =
 -- so output is deterministic. A group whose subject carries no @<name>@
 -- segment, or a malformed builder, is an engine defect returned as
 -- 'RBadArtifact', never a crash.
-artifactEntries :: [(Subject, Decision)] -> Either RealizeError [Text]
-artifactEntries arts = do
+artifactEntries :: Map.Map Text Text -> [(Subject, Decision)] -> Either RealizeError [Text]
+artifactEntries mainProgs arts = do
   named <- traverse withName arts
   let groups = Map.toList (Map.fromListWith (++) [(n, [sd]) | (n, sd) <- named])
   concat <$> traverse entry groups
@@ -298,7 +332,12 @@ artifactEntries arts = do
       Right $
         [ n <> " = pkgs." <> b <> " {" ]
           ++ argLines
+          ++ mainProgramLine n
           ++ [ "};" ]
+    mainProgramLine n = case Map.lookup n mainProgs of
+      Nothing -> []
+      Just b  -> [ "  meta.mainProgram = " <> quoteBin b <> ";" ]
+    quoteBin b = "\"" <> T.replace "\"" "\\\"" (T.replace "\\" "\\\\" b) <> "\""
     -- One artifact arg: its path and the realized Nix of its (canonical)
     -- Value assertion. A non-Value arg is an engine defect, loud.
     argLine (k, d) = case parseValue (unAssertion (dAssertion d)) of

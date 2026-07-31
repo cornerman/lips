@@ -626,6 +626,7 @@ main = hspec $ do
             , "    myserver = pkgs.rustPlatform.buildRustPackage {"
             , "      pname = \"myserver\";"
             , "      src = ./ledger.artifacts/myserver;"
+            , "      meta.mainProgram = \"myserver\";"
             , "    };"
             , "  };"
             , "in"
@@ -651,6 +652,7 @@ main = hspec $ do
             , "    myserver = pkgs.buildGoModule {"
             , "      pname = \"myserver\";"
             , "      src = ./artifacts/myserver;"
+            , "      meta.mainProgram = \"myserver\";"
             , "    };"
             , "  };"
             , "in"
@@ -658,6 +660,65 @@ main = hspec $ do
             ]
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
         `shouldBe` Right (Just (expected, ["myserver"]))
+
+    -- nix's default `nix run`/`nix develop` program lookup assumes
+    -- bin/<pname>; a builder is free to name its output differently (a Go
+    -- module's own name, a Cargo bin name), so the compiled binary can be
+    -- called anything. realize already knows the true name wherever a
+    -- program's own decisions spell it out, in a path like
+    -- ${artifact.<name>}/bin/<x> (e.g. an ExecStart) -- so it stamps that name
+    -- as meta.mainProgram, never a guessed or hardcoded convention, and only
+    -- when the base names exactly one candidate (never when it names none, or
+    -- more than one -- deduce-or-fail: an ambiguous base leaves nix's
+    -- unchanged default in place, exactly as it does today).
+    it "names meta.mainProgram from a bin/<x> path even when <x> differs from the artifact's own name" $ do
+      let arts =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","website","builder"] }
+            , (mk "p" "x" "\"website\"" Stated) { dSubject = Subject ["artifact","website","args","pname"] }
+            , (mk "s" "x" "./artifacts/website" Stated) { dSubject = Subject ["artifact","website","args","src"] }
+            , (mk "e" "x" "\"${artifact.website}/bin/site\"" Stated) { dSubject = Subject ["systemd","services","website","serviceConfig","ExecStart"], dProv = FromSource (SourceLoc "app" 1) }
+            ]
+          expected = T.unlines
+            [ "# lips-realized artifact derivations. Generated; do not edit."
+            , "{ pkgs }:"
+            , "let"
+            , "  artifact = {"
+            , "    website = pkgs.buildGoModule {"
+            , "      pname = \"website\";"
+            , "      src = ./artifacts/website;"
+            , "      meta.mainProgram = \"site\";"
+            , "    };"
+            , "  };"
+            , "in"
+            , "artifact"
+            ]
+      realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
+        `shouldBe` Right (Just (expected, ["website"]))
+
+    -- Ambiguous evidence never becomes a guess: two ExecStarts inside one
+    -- artifact naming two different bin/<x> paths leave meta.mainProgram unset
+    -- rather than picking either arbitrarily.
+    it "leaves meta.mainProgram unset when a base names more than one bin/<x> candidate" $ do
+      let arts =
+            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","website","builder"] }
+            , (mk "p" "x" "\"website\"" Stated) { dSubject = Subject ["artifact","website","args","pname"] }
+            , (mk "e1" "x" "\"${artifact.website}/bin/site\"" Stated) { dSubject = Subject ["systemd","services","website","serviceConfig","ExecStart"], dProv = FromSource (SourceLoc "app" 1) }
+            , (mk "e2" "x" "\"${artifact.website}/bin/other\"" Stated) { dSubject = Subject ["systemd","services","other","serviceConfig","ExecStart"], dProv = FromSource (SourceLoc "app" 2) }
+            ]
+          expected = T.unlines
+            [ "# lips-realized artifact derivations. Generated; do not edit."
+            , "{ pkgs }:"
+            , "let"
+            , "  artifact = {"
+            , "    website = pkgs.buildGoModule {"
+            , "      pname = \"website\";"
+            , "    };"
+            , "  };"
+            , "in"
+            , "artifact"
+            ]
+      realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
+        `shouldBe` Right (Just (expected, ["website"]))
 
     -- An artifact arg may name another artifact (the core-plus-wrapper shape:
     -- a wrapper's runtimeInputs holds ${artifact.core}). In the module the
