@@ -1877,8 +1877,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   and the `web` mint filed a real gap on the way (`<value.N>` cannot carry a
   multi-word tail, closed by the several-part value entry below). The `http` mint churned twice: the first pass named
   `bin/hello` in `ExecStart` while `go.mod` said `module server`, which only
-  `lipsArtifacts-build` caught (TODO 3c/item 1 -- `generate` should run that
-  build itself); the accepted pass builds an artifact called `http-echo` and carries the
+  `lipsArtifacts-build` caught (closed since: `generate` now runs that build
+  itself, see "The artifact build gate" below); the accepted pass builds an artifact called `http-echo` and carries the
   port and the response text in `systemd.services.hello.environment` instead of
   source fills, so editing either no longer rebuilds the binary.
 
@@ -1895,6 +1895,48 @@ but the loop around it is incomplete; "missing" means specced, not built.
   engine's `ExecStart` is pointed at a binary the build has not got. It lives in
   the flake, not in `check`, for the same reason as the eval check: `check` stays
   offline and nixpkgs-free, and only a flake already has nixpkgs.
+
+- **The artifact build gate: `generate` builds what it minted and looks inside
+  it.** The flake check above catches this defect one commit too late -- it runs
+  over the COMMITTED corpus, so the bad engine is already in the tree, and
+  catching it depends on somebody remembering to run `nix flake check`. A gate
+  that depends on remembering is not a gate, so `generate` now performs it
+  itself, as its last and only *observing* gate: it stages `artifact.nix` beside
+  the filled source tree exactly as `compile` writes them, builds each
+  `artifact.<name>` against the pinned nixpkgs, and requires every path the
+  output names inside one to be there. A mint that fails is refused whole:
+  nothing is written, so no bad engine reaches the tree.
+
+  Why observation and not analysis: what a build CONTAINS is decided by its
+  source (a `go.mod` module line, a Cargo `name`), never by the derivation, so
+  the only way to know is to look. Teaching lips what each builder names its
+  output would be an open list the kernel enumerates, which the doctrine forbids.
+  This is why the gate lives in `generate` alone: it is already online and
+  already builds a pinned nixpkgs for grounding, while `compile` and `check`
+  stay offline and nixpkgs-free. Kernel-side the pairs come from
+  `realizeArtifactPaths`, structurally from each parsed `Value` (the flake check
+  regexes module text instead), so `Realization` carries `rlArtPaths` beside
+  `rlStaged`: the twin one level in -- a staged path must exist BESIDE the
+  module, an artifact path INSIDE the build.
+
+  The nixpkgs it builds against is lips's own baked pin, one authority for every
+  world, because builders live in nixpkgs while a world's schema pin may name
+  home-manager, kubenix or terranix -- or no flake at all (`LIPS_OPTIONS_JSON`
+  pins by content). Resolved only when a mint declares an artifact, so a
+  configuration-only mint pays nothing and needs no pin.
+
+  Verified in both directions with a stub model gateway (a canned engine handed
+  to `generate` through a `pi` on `PATH`, so the plumbing is exercised offline
+  and for free): green writes the engine, and an engine whose `ExecStart` names
+  `/bin/greetd` beside a source building `greet` is refused, naming the artifact,
+  the path, the option that named it, the store path and the remedy. The same
+  run found a defect in the mint prompt's own worked example, which wrote
+  `vendorHash "\"null\""` -- the STRING "null", which nix refuses with *hash
+  'null' does not include a type*. Every committed engine happens to write the
+  bare `null`, so the corpus was green while the example taught an unbuildable
+  artifact; the prompt now says so outright. The flake check stays, since it
+  guards a different thing: corpus rot with no re-mint involved (a kernel change,
+  a re-blessed `.expect`).
 
 - **Set or list: how a list option aggregates repeats.** Two program lines can
   contribute the same element to one list option (`ensureDatabases` got

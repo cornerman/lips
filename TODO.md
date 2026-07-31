@@ -6,22 +6,7 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-1. **Honesty gates, structural half** (decided 2026-07-30; needs no new
-   representation, so it ships before the meaning spec). The quote-preserving
-   half landed with the decision round-trip work (DESIGN §13): it closed 3d and
-   gave 3a(i) its sound hole-to-part map. What remains is the artifact gate.
-
-   **`generate` must build the artifact and stat what the module names**
-   (closes 3c). Build each `artifact.<name>`, then collect every
-   `${artifact.<name>}/rel/path` in realized output (the kernel's artifact-ref
-   extraction in `Engine/Value.hs` already finds them) and assert each exists
-   and is executable in the build result. Building alone is not enough: the
-   defect that shipped twice was a unit naming `/bin/hello` while `go.mod`
-   said `module server`, which compiles fine. `check` stays offline and
-   nixpkgs-free; `generate` is already online and already builds a pinned
-   nixpkgs for grounding, so it pays this cost.
-
-2. **The meaning dimension: observable claims + source-line provenance**
+1. **The meaning dimension: observable claims + source-line provenance**
    (design decided 2026-07-30, spec not yet written; supersedes the "no remedy"
    verdicts in 3a(iii), 3a(iv) and 3b, and is the honesty half that needs new
    physics).
@@ -85,12 +70,15 @@ tracks only what is still open.
       for every committed engine.
 
    d. **Verification of the work itself**: conformance cases in
-      `kernel/test/Spec.hs` for quote-preserving fill, the artifact path check,
-      claim parsing, place derivation, the 2b refusal and the stale-source
-      failure. Re-mint afterwards: `logscan`, `board`, `habit` (artifact-bearing,
-      so newly obliged) and `hello.http.lips`.
+      `kernel/test/Spec.hs` for quote-preserving fill, claim parsing, place
+      derivation, the (b) refusal and the stale-source failure. Re-mint
+      afterwards: `logscan`, `board`, `habit` (artifact-bearing, so newly
+      obliged) and `hello.http.lips`. The artifact path check landed already
+      (`realizeArtifactPaths` + the build gate, DESIGN §13), and its runner is
+      what an artifact-only claim's "place" reuses: a plain derivation in the nix
+      sandbox, no boot, no KVM.
 
-3. **CLI-tool physics — the record behind items 1 and 2** (context: `board`, `habit`,
+2. **CLI-tool physics — the record behind item 1** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
    were re-minted honest. See DESIGN §13 for what landed getting there.)
 
@@ -113,7 +101,7 @@ tracks only what is still open.
       emit several `Concept`s.
       (iii) a compiled artifact records no dependency on the program lines its
       baked source came from, so an edit to one of them compiles to an
-      unchanged binary. DECIDED (item 2a): record the source's line dependencies
+      unchanged binary. DECIDED (item 1a): record the source's line dependencies
       at mint and fail loud when one changes.
       (iv) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
       source") puts the algorithm, the format and the protocol in baked source,
@@ -122,7 +110,7 @@ tracks only what is still open.
       the value given with it" and reaches output through hand-written source
       only. Reword `equals` to `differs` without re-minting and every gate stays
       green (the V6 source-specification gate catches DELETION only). No trace
-      can fix this: the words never appear in the code. DECIDED (item 2): the
+      can fix this: the words never appear in the code. DECIDED (item 1): the
       reword is caught by source-line provenance (2a); claims cannot catch it,
       since an example written for `equals` still passes. The behavioral
       assertion (2b) is built anyway, for the other reason: it holds the
@@ -134,7 +122,7 @@ tracks only what is still open.
       name, so a program naming a user and a database differently would
       realize a silently wrong config. The words are spent (the dropped-value
       guard is satisfied), so lips sees nothing wrong, and the kernel cannot
-      know option semantics either. DECIDED (item 2b, OBLIGATION): a system
+      know option semantics either. DECIDED (item 1b, OBLIGATION): a system
       claim falsifies both shapes when the author states one (`systemctl
       is-active api` fails, since nginx runs under the unit `nginx`), so the
       remedy exists but stays advisory, plus an LSP diagnostic. No static
@@ -147,47 +135,44 @@ tracks only what is still open.
       an option that means something else. Every gate is green. Same shape as
       postgres, same absent remedy.
 
-   c. **`generate` accepts an engine whose binary does not exist.** DECIDED,
-      see item 1. The http re-mint of 2026-07-30 emitted `ExecStart = "${artifact.hello}/bin/hello"`
-      with `module server` in `go.mod`, so the unit named a binary called
-      `server`: past the mint gate, past `check`, caught only by the flake check
-      `lipsArtifacts-build` (which is why that check exists -- the same defect
-      shipped once before with `module app`). The gate lives in the flake because
-      `check` must stay offline and nixpkgs-free, but `generate` is already
-      online and already builds a pinned nixpkgs for the option schema, so it
-      could run this build itself and refuse. Cost: one build per mint, seconds
-      to minutes. Until then, run `nix build
-      .#checks.x86_64-linux.lipsArtifacts-build` by hand after every mint.
+   c. **`generate` accepts an engine whose binary does not exist.** CLOSED
+      2026-08-01 (DESIGN §13, "The artifact build gate"): `generate` builds each
+      `artifact.<name>` against the pinned nixpkgs and requires every path the
+      output names inside one to be there, so the defect that shipped twice (a
+      unit naming `/bin/hello` beside `module server` in `go.mod`) is refused
+      before anything is written. What is deliberately NOT checked: whether such
+      a path is executable. A file under `bin/` that exists but cannot run has
+      not been observed; add the check when it is, not before.
 
-4. **The 18 committed engines predate the recorded schema pin, so their stamps
+3. **The 18 committed engines predate the recorded schema pin, so their stamps
    no longer re-hash.** The generation record gained a `schema:` line (the locked
    flakeref, or `options-json:<hash>`, that grounded the mint -- DESIGN §13
    "Option-schema grounding"), which changes every record's `genId`. Every
    committed `.lang` is stamped `@gen:<id>` from a record written before that
    line existed, so re-hashing a committed `.generation` today yields a different
    id than its engine carries: invariant 6 is broken for every language in
-   `examples/`, and item 5 is why nothing says so. The remedy is a re-mint sweep
+   `examples/`, and item 4 is why nothing says so. The remedy is a re-mint sweep
    of all 18 languages, so each record and its stamps agree again. Open question
    to settle first: mint the sweep with sonnet-5 rather than opus (cheaper, and
    the gates rather than the model's taste decide what is admitted); the risk is
    a weaker engine on the harder languages, so compare `.expect` survival per
    language and keep opus for any that regress. Order matters: sweep first, then
-   land item 5 -- a verifier landed first would turn the whole repo red.
+   land item 4 -- a verifier landed first would turn the whole repo red.
 
-5. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
+4. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
    minted line is stamped `@gen:<id>` and the id must re-hash from the
    committed `.generation` record, but no code re-hashes anything: `check`
    reads the stamps as text. So a change to what the record contains silently
    invalidates every committed engine's stamps while all gates stay green.
    This is not hypothetical -- the schema pin added a `schema:` line to the
-   record, which changed every generation hash, and no gate noticed (item 4).
+   record, which changed every generation hash, and no gate noticed (item 3).
    Remedy: `check` recomputes `genId` from the `.generation` beside the engine
    and refuses when a `@gen:` stamp disagrees, which makes a re-mint sweep
    verifiable instead of a matter of remembering. Deterministic, offline,
-   domain-blind. Do it after item 4's sweep, or every committed engine fails
+   domain-blind. Do it after item 3's sweep, or every committed engine fails
    the new gate at once.
 
-6. **The schema pin is recorded, but nothing relates it to the nixpkgs the
+5. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
    "Option-schema grounding"; the mechanism landed cbd3f1f). Four separate
    questions, in the order they hurt:
@@ -229,7 +214,7 @@ tracks only what is still open.
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
 
-7. **Punctuation is erased by the kernel, so a language cannot make a symbol
+6. **Punctuation is erased by the kernel, so a language cannot make a symbol
    mean anything** (raised 2026-08-01; ranked last of the "next up" items
    because no committed engine is wrong today, but it is kernel physics and a
    domain assumption, so it belongs above the backlog).
@@ -274,15 +259,15 @@ tracks only what is still open.
    trailing period stays special-cased or becomes an engine concern too; whether
    a required symbol may sit inside a fused token; and what a re-mint sweep costs
    (every committed template that ends a hole in a period would re-parse the same
-   way, so the blast radius looks small, but item 4's sweep should confirm it).
+   way, so the blast radius looks small, but item 3's sweep should confirm it).
 
    VERIFICATION. `kernel/test/Spec.hs:1119` and `:2338` pin the current
    behavior, so both change with the physics; add a case where two patterns
    differ only by a colon and must not collide.
 
-8. **Baked source cannot repeat, so a program's list reaches the module but not
+7. **Baked source cannot repeat, so a program's list reaches the module but not
    the code** (filed by the `website` mint itself as gap
-   `repeating-canvas-button`, 2026-08-01; ranked after item 7 because the
+   `repeating-canvas-button`, 2026-08-01; ranked after item 6 because the
    failure is LOUD and no committed engine is wrong -- it is a missing
    capability, not a silent defect).
 

@@ -1142,8 +1142,9 @@ writeSources root = mapM_ one
 -- exist in the tree lips stages beside it (an artifact's minted source).
 -- Without it such a path reaches nix, which fails with @path '...' does not
 -- exist@ over a store path, naming neither lips, the program, the artifact nor
--- a remedy -- and only at the user's @nix run@, since nothing lips evaluates
--- forces an artifact (TODO 1e). Checked against a real staging into a temp dir,
+-- a remedy -- and only at the user's @nix run@ for a program lips does not build
+-- (the artifact gate below builds every artifact a mint declares, but this gate
+-- runs on the cheap path too). Checked against a real staging into a temp dir,
 -- not against a guess at how a path maps to the language folder, so the gate
 -- sees exactly what nix will see.
 --

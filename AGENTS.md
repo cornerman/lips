@@ -75,7 +75,9 @@ kernel bug; a missing domain fact is the engine's job.
   commits), then update ledger section 13.
 - Test fast: `just test` (or in `kernel/`:
   `ghc -Wall -isrc -itest test/Spec.hs -outputdir /tmp/b -o /tmp/spec && /tmp/spec`).
-  Full: `just check` (needs KVM), `just check-expect`.
+  Full: `just ci` (nix flake check: module eval, artifact eval + build, VM boot;
+  needs KVM), and `just check-expect` (every example's contract, host-side).
+  `just test` runs the Haskell suite ONLY: no nix check, no artifact build.
 - The suite and app must stay `-Wall` clean.
 - Nix flakes see only git-tracked files: `git add` before `nix build`/`nix run`.
 - Layout: one rule -- a directory listing shows what a human owns and nothing
