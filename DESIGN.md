@@ -524,6 +524,91 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **The meaning dimension: observable claims, and a specification that stays
+  causal.** Every gate lips had read the MAP (the module text); none observed the
+  TERRITORY. So a program whose behaviour lives in baked source could state a
+  sentence, have it minted into code, and have that code drift with every gate
+  green. Two mechanisms, landed together (spec:
+  `docs/superpowers/specs/2026-07-31-meaning-dimension-design.md`).
+
+  CLAIMS are a reserved emit head beside `artifact.<name>`, with a closed section
+  set the engine fills and cannot extend: `claim.<id>.run` (may hold
+  `${artifact.<name>}`), `.stdin`, `.stdout`, `.exit` (default 0). The rhs stays
+  in the closed value grammar, so a claim cannot compute. The WITNESS comes from
+  the author, as an ordinary sentence read by an ordinary pattern -- nothing is
+  invented, and the mint is told to file a gap rather than guess one. Comparison
+  is EXACT, byte for byte, with exactly one trailing newline stripped from the
+  observed output (containment is what let a minted `"200\n404"` pass as
+  `"200n404"`). The PLACE is derived, never declared: a command naming only
+  artifacts becomes a plain derivation in the nix sandbox, anything else a
+  `testers.nixosTest` that boots the realized module. `compile` writes
+  `claims.nix` beside `artifact.nix` and prints a `#claims` rung; `check` builds
+  it, so what CI runs and what an author runs cannot drift. A claim that cannot
+  run (a machine claim without KVM) FAILS naming the remedy, never skips.
+  `.expect` pins claim slots through the artifact-slot mechanism it already had,
+  so a re-mint that drops the author's example trips the existing gate with no
+  new gate. `generate` refuses an engine that bakes source and states no claim,
+  and refuses a machine claim in a world with no machine to boot; it RUNS every
+  claim before writing anything, against the pinned nixpkgs. The LSP warns,
+  advisory, on a concept-only line where the language bakes source and the
+  program states no observable.
+
+  SOURCE-LINE PROVENANCE closes the other half. The diagnosis in TODO was out of
+  date and is corrected here: rewording a concept line was ALREADY loud (its
+  pattern is all-literal, so the line goes unmatched), and `retiredConcepts`
+  already compared subject AND text, so a reword swallowed by a hole was caught
+  too. What was genuinely open was the recorded-section escape -- a program the
+  `.generation` record holds no section for (added or renamed after the mint) was
+  silently SKIPPED. Now a baked-source language whose record cannot be read fails
+  loud, and an unrecorded program must state only concepts the mint saw in some
+  program of the language, so sibling reuse stays free while a sentence the
+  source was never written from is refused. The judgment is pure
+  (`Diagnose.sourceSpecVerdict`, `Record.recordedPrograms`), so the conformance
+  suite reaches it instead of only the CLI.
+
+  What the first two real mints taught, each a kernel fix rather than a prompt
+  plea (invariant 4): (i) `.expect` compared a program value against the RAW
+  canonical assertion while the program side was already decoded, so a stated
+  value carrying a quote -- a JSON witness `{"a":"1"}`, stored as
+  `"{\"a\":\"1\"}"` -- could never be pinned; both sides now compare as VALUES.
+  (ii) A several-part value pinned as one text can be unsatisfiable by
+  construction (the rule joins the parts its own way, a newline between two stdin
+  lines, while the program side renders them space-joined); that read exactly
+  like a value that failed to arrive, so the refusal now names the remedy (one
+  assertion per part, `#1`, `#2`). (iii) `pkgs.nixosTest` is an alias nixpkgs now
+  refuses outright, so a machine claim rendered that way died at evaluation
+  before it ever booted -- found only by actually booting one, which is the same
+  lesson the artifact build gate taught.
+
+  Evidence, not assertion: `examples/logscan.lips` and `examples/hello.http.lips`
+  each state a worked example and were re-minted against it; breaking a witness
+  produces `claim filter: stdout was '{"a":"1"}', expected '{"a":"2"}'` from a
+  real build, and a synthetic machine claim boots a VM, observes
+  `systemctl is-active`, and fails the same way when the observation is wrong.
+
+  Known and deliberate, recorded rather than papered over. A tool whose behaviour
+  depends on HOST STATE cannot be observed in a sandbox: `board` reads an
+  absolute board file its module never creates, so only its failure is
+  observable, and `habit` guards a missing log so only its usage error is. Both
+  are left without witnesses; the honest remedy is a program that can be FED
+  (a path argument, stdin), which is a design change belonging with the plurality
+  work (TODO 7), not a thin error-path claim dressed as verification. And the
+  preamble's "prefer an observable over the program's own binary" nudge has a
+  cost the `http` re-mint made visible: the mint added a `-check` mode to its own
+  Go source and observed the handler in the sandbox rather than the booted
+  service, so the port and the unit wiring stay unobserved while the response
+  body is genuinely checked. Cheap and honest as far as it goes, and narrower
+  than a reader might assume.
+
+  One consequence to know: for a claim-bearing program `check` needs an ambient
+  nixpkgs (the compiled flake resolves `flake:nixpkgs`, as every other rung
+  does), and a machine claim makes `check` boot a VM. A claim-free program is
+  untouched and `check` stays nixpkgs-free for it. Also: the six committed
+  baked-source engines that state no claim (`board`, `habit`, `function`,
+  `website`, and any other) can no longer be re-minted without first gaining a
+  witness -- the obligation is a gate on `generate`, so TODO item 3's re-mint
+  sweep now depends on this.
+
 - **`meta.mainProgram` is stamped from the base's own `bin/<x>` reference, never
   guessed.** `nix run`/`nix develop`'s default program lookup assumes
   `bin/<pname>`; a builder is free to name its output differently (a `go.mod`'s

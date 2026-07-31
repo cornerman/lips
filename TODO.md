@@ -6,77 +6,39 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-1. **The meaning dimension: observable claims + source-line provenance**
-   (design decided 2026-07-30, spec not yet written; supersedes the "no remedy"
-   verdicts in 3a(iii), 3a(iv) and 3b, and is the honesty half that needs new
-   physics).
+1. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
+   by the meaning-dimension work, DESIGN §13; the closed half of what used to be
+   item 1).
 
-   The diagnosis: every gate lips has reads the MAP (the module text) and none
-   observes the TERRITORY (a running thing). So a program can only say what
-   becomes a `path = value` assignment. Behavior gets frozen into baked source,
-   cut off causally from the lines it came from, and cross-program relations are
-   unsayable. Two mechanisms close this, and neither closes it alone.
+   Claims landed and two programs carry one (`logscan`, `hello.http`). Three
+   baked-source programs still state no observable, so nothing holds their minted
+   source to their sentences, and -- since the obligation is a gate on `generate`
+   -- none of them can be re-minted until this is settled. That makes this a
+   PREREQUISITE for item 3's sweep.
 
-   a. **Source-line provenance** makes a specification sentence causal again:
-      stamp baked source with the program lines it was minted from, and let a
-      stamped line that changes make `compile` fail loud, naming the remedy
-      (re-mint). This, not the claims below, is what kills the reword hole
-      (3a(iv)): an author's example written for `equals` still passes after the
-      sentence is reworded to `differs`.
-
-   b. **Observable claims** hold the implementation, and every future re-mint,
-      accountable to behavior the author stated.
-      - WITNESS: the author supplies it, in the program ("given `{"a":1}` with
-        `--a 1`, print it unchanged"). Examples are intent, so they belong in
-        the only file the author owns; nothing is invented and deduce-or-fail
-        holds. Rejected: mint-invented witnesses, since a reworded sentence
-        leaves them untouched.
-      - REPRESENTATION: no new file and no new machinery. A minted pattern
-        crystallizes the example line, and a minted rule emits into a reserved
-        emit-path head, exactly as `artifact.*` already does: `claim.<id>.run`
-        (the command, may hold `${artifact.<name>}` refs), `.stdin`, `.stdout`,
-        `.exit` (default 0). Comparison is EXACT, not containment: containment
-        is what let a minted `"200\n404"` become `"200n404"` unseen. No
-        `stderr` field until a program needs one. The closed value grammar is
-        unchanged, so a claim cannot compute. `.expect` pins claim slots through
-        the artifact-slot mechanism it already has, so a re-mint that drops an
-        example trips the existing gate.
-      - PLACE, derived and never declared: a `run` naming only `${artifact.*}`
-        becomes a plain derivation in the nix sandbox (fast, no KVM, no
-        network); anything else becomes a `nixosTest` that boots the module and
-        runs the command inside the machine. The kernel already tracks artifact
-        refs, so the place needs no new syntax and a CLI program never pays for
-        a boot.
-      - ENTRY POINT: `compile` emits the experiments as a `#claims` rung and
-        prints it, and `lips check` builds that rung, so one implementation
-        serves author and CI. An experiment that cannot run (a machine claim
-        without KVM) is a LOUD failure naming the remedy, never a skip: "not
-        verified" must never render as verified.
-      - OBLIGATION: `generate` refuses an engine that bakes source unless at
-        least one experiment pins it. Pure-config programs are unaffected. For
-        the 3b shape (a word spent into an option that means something else)
-        claims stay ADVISORY, with an LSP diagnostic beside `diagInert` when a
-        behavior sentence reaches no claim. Stated plainly rather than sold as a
-        universal gate.
-
-   c. **Names reserved for composition** (no implementation here; the backlog's
-      cross-program item owns that): the emit head `export.*` for a program's
-      public surface, and a third value ref beside `${pkgs...}` and
-      `${artifact...}`, namely `${program.<instance>.<path>}`, resolved at
-      compile from the sibling's committed engine BY NAME. Composition is then
-      an existing demand answered by an exported decision, one namespace up,
-      with claims marking which part of that surface is verified. Reserved now
-      because renaming a claim or artifact subject later is a re-blessing event
-      for every committed engine.
-
-   d. **Verification of the work itself**: conformance cases in
-      `kernel/test/Spec.hs` for quote-preserving fill, claim parsing, place
-      derivation, the (b) refusal and the stale-source failure. Re-mint
-      afterwards: `logscan`, `board`, `habit` (artifact-bearing, so newly
-      obliged) and `hello.http.lips`. The artifact path check landed already
-      (`realizeArtifactPaths` + the build gate, DESIGN §13), and its runner is
-      what an artifact-only claim's "place" reuses: a plain derivation in the nix
-      sandbox, no boot, no KVM.
+   a. `board` and `habit` read an absolute HOST path their module never creates,
+      so in the nix sandbox only a failure is observable (`board` dies in `awk`;
+      `habit` guards the missing log and only its usage error is checkable, and
+      that goes to stderr, which claims deliberately do not have). A thin
+      error-path claim would satisfy the gate while verifying nothing, which is
+      worse than none. The honest remedy is a program that can be FED -- a path
+      argument or stdin -- which is a design change, and it is the same enrichment
+      item 7 argues for on other grounds. Do it there, then mint a real witness.
+   b. `function` and `website` bake source and state no witness either; both are
+      plain enough that an example should be cheap. Check when item 7 touches
+      them.
+   c. Not decided: whether a machine claim should RETRY its observation until it
+      holds, bounded. A booted system converges (a unit may not be listening the
+      instant `multi-user.target` is reached), so a single shot can be flaky, and
+      flaky verification is worse than none. Retry-until-deadline is domain-blind
+      and would be uniform for every claim. Deferred until a real claim actually
+      flakes -- the one machine claim exercised so far did not.
+   d. Watch the narrowing the `http` re-mint showed: told to prefer an observable
+      over the program's own binary, the mint added a `-check` mode to its source
+      and observed the handler in the sandbox instead of the booted service, so
+      the port and unit wiring stay unobserved. Honest but narrower than it
+      reads. If this recurs, the preamble should say when the booted machine is
+      the only faithful place.
 
 2. **CLI-tool physics -- the record behind item 1** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
@@ -100,9 +62,13 @@ tracks only what is still open.
       line, not per hole. Call sites exist: `board`, `habit`, `logscan` each
       emit several `Concept`s.
       (iii) a compiled artifact records no dependency on the program lines its
-      baked source came from, so an edit to one of them compiles to an
-      unchanged binary. DECIDED (item 1a): record the source's line dependencies
-      at mint and fail loud when one changes.
+      baked source came from. PARTLY CLOSED: a claim now holds the built source
+      to the author's stated observable, so an edit that changes what the program
+      DOES is caught by running it. An edit that changes a specification sentence
+      without changing any observable is caught only where that sentence is a
+      concept (the source-spec gate); a value edit that the source hard-codes
+      independently of its fill remains invisible to both, and no static gate can
+      see it.
       (iv) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
       source") puts the algorithm, the format and the protocol in baked source,
       so a behavior sentence is a specification for the mint and correctly not a
@@ -164,9 +130,20 @@ tracks only what is still open.
    punctuation re-mint of `examples/function` (DESIGN §13): sonnet-5 regressed it
    twice, dropping the built artifact for `echo` ExecStart lines and demoting the
    declaration to a concept, while opus-5 kept the Go build and generalized
-   further -- so budget opus for the artifact-bearing languages at least.
+   further -- so budget opus for the artifact-bearing languages at least. Second
+   datapoint (2026-07-31, the claims re-mints): opus-4-5 twice prefixed its reply
+   with reasoning prose, which the strict item parser refuses; opus-5 minted both
+   `logscan` and `http` cleanly, including a block-nested witness pattern. Budget
+   opus-5.
    Order matters: sweep first, then
    land item 4 -- a verifier landed first would turn the whole repo red.
+   NEW PRECONDITION (2026-07-31): `generate` now refuses an engine that bakes
+   source and states no observable, so every baked-source language in the sweep
+   needs a witness in its program FIRST (item 1). `logscan` and `http` already
+   have one; `board`, `habit`, `function`, `website` do not, and cannot be
+   re-minted until they do.
+   Two of the eighteen are already re-minted under the current binary
+   (`logscan`, `http`), so their stamps re-hash and the sweep is sixteen.
 
 4. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
    minted line is stamped `@gen:<id>` and the id must re-hash from the
@@ -278,7 +255,13 @@ tracks only what is still open.
 ## Backlog (larger / deferred by design)
 
 - **Cross-program composition (one program naming another).** Nix composes;
-  lips does not yet. Two shapes, both wanted. SAME WORLD: a kubenix program
+  lips does not yet. Names RESERVED for it, so nothing squats on them and a
+  later rename is not a re-blessing event for every committed engine: the emit
+  head `export.*` (a program's public surface) and a third value ref beside
+  `${pkgs...}` and `${artifact...}`, namely `${program.<instance>.<path>}`,
+  resolved at compile from the sibling's committed engine BY NAME. The kernel's
+  reserved heads are now `artifact.*` and `claim.*`; claims are what would mark
+  which part of an exported surface is actually verified. Two shapes, both wanted. SAME WORLD: a kubenix program
   importing what a sibling program realized (a shared namespace, a config map
   another program owns). ACROSS WORLDS: a program whose whole point is built
   SOURCE -- an artifact today -- becoming an OCI image that a kubenix
