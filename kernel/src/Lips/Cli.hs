@@ -123,7 +123,7 @@ cliParser defConf = hsubparser
   <> command "lsp"
        (info (pure Lsp)
              (progDesc "Run the lips language server (stdio)."))
-  <> commandGroup "tooling commands (editor/schema support, not part of the generate/compile/check loop):"
+  <> commandGroup "tooling commands (editor/schema support, not part of the loop):"
   <> hidden
   )
 
