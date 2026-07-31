@@ -551,6 +551,10 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
       TIO.writeFile (generationPath rep) rec
       TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
+      -- A refusal artifact describes a run that produced no engine, so it is a
+      -- lie once one exists: the accepted mint deletes the .gap an earlier
+      -- refused attempt left behind.
+      removePathForcibly (gapPath rep)
       -- The artifacts tree is machine-owned and minted whole, so REPLACE it: a
       -- previous mint's tree under another artifact name would otherwise stay
       -- committed forever, dead source nothing builds (the http re-mint left a
