@@ -92,7 +92,9 @@ export default function (pi: ExtensionAPI) {
       "reports the first one that rejects the draft, in the same words the " +
       "refusal would use. It does not run the claim gate or the artifact build, " +
       "and it says so. A clean answer does not guarantee acceptance; a dirty one " +
-      "guarantees refusal, so fix what it names and check again.",
+      "guarantees refusal, so fix what it names and check again. Never narrate " +
+      "what this tool told you in your answer: the answer is engine lines only, " +
+      "and a sentence about the check is a line lips refuses.",
     parameters: Type.Object({
       draft: Type.String({
         description: "The complete draft engine, in the answer format.",
@@ -124,7 +126,14 @@ export default function (pi: ExtensionAPI) {
         content: [
           {
             type: "text",
-            text: "the draft passes every gate lips can run before you answer.",
+            // The reminder rides on the machine's own last words, where the
+            // temptation is created: told it is clean, a model wants to say so,
+            // and one narrating sentence in the reply fails the whole mint
+            // (observed, sonnet-5, the first live run of this tool).
+            text:
+              "the draft passes every gate lips can run before you answer. " +
+              "Answer with those lines ALONE -- no sentence about this check, " +
+              "which lips would read as a malformed item and refuse.",
           },
         ],
         details: {},
