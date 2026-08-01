@@ -524,6 +524,33 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **One voice, and a mint you can watch.** Every byte lips prints is decided in
+  `Lips.Cli.Output`, not at forty call sites: four glyphs (`·` a phase running,
+  `✓` one that held, `✗` one that failed, `→` the remedy), dim and bold, no
+  hues, and all styling dropped when stderr is not a terminal or `NO_COLOR` is
+  set -- with the words identical either way, so a piped run reads as the log of
+  an interactive one. Each verb is now the same sequence of named phases
+  (crystallize, contract, claims, write; plus schema, mint, artifacts for
+  `generate`), each with its own duration, and the clock on the live line is the
+  motion, so lips needs no spinner alphabet.
+
+  The mint stopped being a silent wall. `callPi` streams pi's `--mode json`
+  events instead of reading the whole reply at the end, so a tool call shows as
+  it is made and the live line reports what the model is doing; a working model
+  and a hung one no longer look identical for minutes. One pure function
+  (`Lips.Generate.PiJson.progressEvent`) turns an event into what to show, so
+  the display is unit-tested and no tool is named in the code -- a mint tool
+  added later is displayed without touching it. `--verbose` shows everything
+  sent (system prompt, direction, corpus) and everything received (prose as it
+  streams, untruncated arguments and answers). The full stream still feeds
+  `parsePiReply`, so the record and `genId` are unchanged.
+
+  stdout now carries only what a machine asked for (an `options` answer, a
+  diagnosis table); progress, verdicts and remedies go to stderr. `generate` no
+  longer dumps the realized module to stdout: `compile` writes the directory,
+  and the dump was pages of duplicate noise. Both streams are line-buffered, so
+  a progress line can no longer land in the middle of an answer.
+
 - **Draft validation: the mint can check itself before it answers.** `generate`
   called the model once and judged the result afterwards, so everything except
   option NAMES had to be right blind, in one forward pass over an 854-line
