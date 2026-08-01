@@ -170,14 +170,23 @@ main = hspec $ do
   describe "check argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info checkOpts idm)
     it "defaults --lang to Nothing" $
-      parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts Nothing "a.backup.lips")
+      parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts Nothing False "a.backup.lips")
     it "reads --lang in any position" $ do
       parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CheckOpts (Just "services/a/backup") "a.backup.lips")
+        `shouldBe` Just (CheckOpts (Just "services/a/backup") False "a.backup.lips")
       parseArgs ["a.backup.lips", "--lang", "services/a/backup"]
-        `shouldBe` Just (CheckOpts (Just "services/a/backup") "a.backup.lips")
+        `shouldBe` Just (CheckOpts (Just "services/a/backup") False "a.backup.lips")
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
+    it "defaults to reading the committed engine, not a draft" $
+      fmap ceDraft (parseArgs ["prog.backup.lips"]) `shouldBe` Just False
+    it "reads a draft engine from stdin when --draft is given" $
+      fmap ceDraft (parseArgs ["--draft", "prog.backup.lips"]) `shouldBe` Just True
+    -- Two different engines are named, so the invocation is ambiguous and lips
+    -- refuses it rather than silently preferring one (invariant 2).
+    it "refuses --draft together with --lang, in either order" $ do
+      parseArgs ["--draft", "--lang", "backup", "prog.backup.lips"] `shouldBe` Nothing
+      parseArgs ["--lang", "backup", "--draft", "prog.backup.lips"] `shouldBe` Nothing
 
   describe "options argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info optionsOpts idm)

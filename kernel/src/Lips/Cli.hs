@@ -72,6 +72,11 @@ data CompileOpts = CompileOpts
 -- output).
 data CheckOpts = CheckOpts
   { ceLangDir :: Maybe FilePath
+  -- | Read the engine to check from stdin, in the mint's reply format, instead
+  -- of loading the committed one. The mint's own validation door: a model
+  -- checks a draft before answering, and the authoritative gate still runs
+  -- afterwards in generate.
+  , ceDraft   :: Bool
   , ceFile    :: FilePath
   } deriving (Eq, Show)
 
@@ -240,10 +245,28 @@ compileOpts = CompileOpts
           <> help "Skip the behavioral contract (for a compile inside a nix build, which has no nix to evaluate with). The program must still crystallize.")
   <*> programArg
 
+-- | Which engine @check@ judges. The two ways are mutually exclusive by
+-- CONSTRUCTION rather than by a validating wrapper: optparse-applicative's
+-- 'Parser' is applicative only, so it cannot inspect one field to reject
+-- another. 'flag'' fails when @--draft@ is absent, so the alternative picks a
+-- side, and whichever flag is left over then has no parser and the invocation
+-- is refused -- in either argument order.
+data EngineSource
+  = FromLang (Maybe FilePath)
+  | FromDraft
+
+engineSource :: Parser EngineSource
+engineSource =
+  (FromDraft <$ flag' ()
+     (long "draft"
+       <> help "Check a draft engine read from stdin (the mint's reply format) instead of the committed one."))
+  <|> (FromLang <$> langDirOpt)
+
 checkOpts :: Parser CheckOpts
-checkOpts = CheckOpts
-  <$> langDirOpt
-  <*> programArg
+checkOpts = mk <$> engineSource <*> programArg
+  where
+    mk FromDraft      f = CheckOpts Nothing  True  f
+    mk (FromLang dir) f = CheckOpts dir      False f
 
 -- | @--limit@'s reader: a positive entry cap. Zero or negative would make
 -- every answer empty, which is a malformed invocation, not a narrow search.
