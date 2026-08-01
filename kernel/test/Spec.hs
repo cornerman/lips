@@ -48,7 +48,7 @@ import Data.List (sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
-import Lips.Generate.PiJson (PiReply (..), parsePiReply)
+import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
@@ -3842,6 +3842,34 @@ main = hspec $ do
       prReply (parsePiReply stream) `shouldBe` "pattern p 1.0"
     it "a stream with no tool call has an empty transcript" $
       prTranscript (parsePiReply "") `shouldBe` ""
+
+  describe "live mint progress (Lips.Generate.PiJson.progressEvent)" $ do
+    it "a tool call shows the tool and what it was asked" $
+      progressEvent "{\"type\":\"tool_execution_start\",\"toolName\":\"query_options\",\"args\":{\"query\":\"services.nginx\"}}"
+        `shouldBe` Just (PiTool "query_options" "services.nginx")
+    it "a tool answer carries its text and whether it failed" $
+      progressEvent "{\"type\":\"tool_execution_end\",\"toolName\":\"check_draft\",\"isError\":true,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"nope\"}]}}"
+        `shouldBe` Just (PiToolEnd "check_draft" True "nope")
+    it "a turn beginning means lips is waiting on the model" $
+      progressEvent "{\"type\":\"turn_start\"}" `shouldBe` Just (PiState "waiting for the model")
+    it "the model's words come through as prose" $
+      progressEvent "{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_delta\",\"delta\":\"pattern p\"}}"
+        `shouldBe` Just (PiProse "pattern p")
+    it "reasoning shows as state, not as text" $
+      progressEvent "{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"thinking_delta\",\"delta\":\"hm\"}}"
+        `shouldBe` Just (PiState "thinking")
+    it "an event with no progress in it shows nothing" $ do
+      progressEvent "{\"type\":\"agent_start\"}" `shouldBe` Nothing
+      progressEvent "not json" `shouldBe` Nothing
+    it "a long argument is cut to one line, and says so" $ do
+      abbreviate 8 "one\ntwo" `shouldBe` "one\8230"
+      abbreviate 3 "abcdef" `shouldBe` "abc\8230"
+      abbreviate 8 "short" `shouldBe` "short"
+    it "an answer is summarized by size, a refusal by its first words" $ do
+      resultSummary False "a\nb\nc" `shouldBe` "ok, 3 lines"
+      resultSummary False "just this" `shouldBe` "just this"
+      resultSummary False "" `shouldBe` "ok"
+      resultSummary True "it broke\nbecause" `shouldBe` "failed: it broke\8230"
 
   describe "cli output vocabulary (Lips.Cli.Output)" $ do
     it "a running phase carries its label and the clock" $

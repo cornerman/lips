@@ -16,6 +16,11 @@
 module Lips.Generate.PiJson
   ( PiReply (..)
   , parsePiReply
+    -- * Live progress
+  , PiEvent (..)
+  , progressEvent
+  , abbreviate
+  , resultSummary
   ) where
 
 import           Data.Aeson            (Value (..), decode, encode)
@@ -36,6 +41,89 @@ data PiReply = PiReply
   , prTranscript :: Text
   }
   deriving (Eq, Show)
+
+-- | What one event of the stream is worth showing a human while the mint runs.
+-- The mint is the only phase that takes minutes, and before this the terminal
+-- said nothing at all for its whole duration, so a working model and a hung one
+-- looked the same.
+--
+-- Rendered in full here and abbreviated at the point of display, so the same
+-- events serve the ordinary view (one short line per tool call) and
+-- @--verbose@ (everything, untruncated).
+data PiEvent
+  = PiTool Text Text        -- ^ a call: tool name, its arguments
+  | PiToolEnd Text Bool Text -- ^ its answer: tool name, whether it failed, the text
+  | PiState Text            -- ^ what the model is doing now
+  | PiProse Text            -- ^ a chunk of the model's own words
+  deriving (Eq, Show)
+
+-- | Read one JSONL line as progress, or nothing when the event carries none.
+--
+-- No tool is named here: a tool call shows the name pi reports and the
+-- arguments as given, so a mint tool added later is displayed without touching
+-- this code.
+progressEvent :: Text -> Maybe PiEvent
+progressEvent line = decodeLine line >>= eventOf
+  where
+    decodeLine l = decode (BL.fromStrict (TE.encodeUtf8 l)) :: Maybe Value
+
+eventOf :: Value -> Maybe PiEvent
+eventOf (Object o) = case KM.lookup "type" o of
+  Just (String "tool_execution_start") ->
+    Just (PiTool (toolName o) (renderArgsOf (KM.lookup "args" o)))
+  Just (String "tool_execution_end") ->
+    Just (PiToolEnd (toolName o) (KM.lookup "isError" o == Just (Bool True))
+                    (T.concat (textBlocks (resultContent (KM.lookup "result" o)))))
+  Just (String "turn_start") -> Just (PiState "waiting for the model")
+  Just (String "message_update") -> case KM.lookup "assistantMessageEvent" o of
+    Just (Object e) -> case (KM.lookup "type" e, KM.lookup "delta" e) of
+      (Just (String "text_delta"), Just (String d))     -> Just (PiProse d)
+      (Just (String "thinking_delta"), _)               -> Just (PiState "thinking")
+      _                                                -> Nothing
+    _ -> Nothing
+  _ -> Nothing
+eventOf _ = Nothing
+
+toolName :: KM.KeyMap Value -> Text
+toolName o = case KM.lookup "toolName" o of
+  Just (String n) -> n
+  _               -> "?"
+
+-- | A tool answer's content blocks, which pi nests under @result@.
+resultContent :: Maybe Value -> Maybe Value
+resultContent (Just (Object r)) = KM.lookup "content" r
+resultContent _                 = Nothing
+
+-- | Arguments as the model passed them, values only: a tool's parameter names
+-- add no information a reader of one line needs (the tool name already says
+-- what the value is), and the raw json quoting is what makes the exact question
+-- visible.
+renderArgsOf :: Maybe Value -> Text
+renderArgsOf (Just (Object as)) = T.intercalate " " (map render (KM.elems as))
+  where
+    render (String s) = s
+    render v          = TE.decodeUtf8 (BL.toStrict (encode v))
+renderArgsOf _ = ""
+
+-- | One line out of any text: its first line, cut to @n@ characters, with what
+-- was left out stated. Used for the ordinary view; @--verbose@ shows the text
+-- itself.
+abbreviate :: Int -> Text -> Text
+abbreviate n t
+  | T.null rest, T.length first <= n = first
+  | otherwise = T.take n first <> "\8230"
+  where
+    (first, rest) = T.breakOn "\n" (T.strip t)
+
+-- | A tool answer in one phrase: how much came back, or -- when the tool
+-- refused -- the first thing it said, which is the part that matters.
+resultSummary :: Bool -> Text -> Text
+resultSummary True  t = "failed: " <> abbreviate 60 t
+resultSummary False t
+  | T.null (T.strip t) = "ok"
+  | n == 1             = abbreviate 60 t
+  | otherwise          = "ok, " <> T.pack (show n) <> " lines"
+  where n = length (T.lines (T.strip t))
 
 -- | Parse the whole JSONL stream. The reply is the assistant text carried by
 -- the terminal @agent_end@ event (authoritative and complete); the model is
