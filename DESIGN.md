@@ -524,6 +524,63 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Draft validation: the mint can check itself before it answers.** `generate`
+  called the model once and judged the result afterwards, so everything except
+  option NAMES had to be right blind, in one forward pass over an 854-line
+  prompt. Now a second tool, `check_draft`, runs lips' own gates over the lines
+  the model is about to answer with and reports the first gate that rejects
+  them, in the exact words the human refusal uses (spec:
+  `docs/superpowers/specs/2026-08-01-draft-validation-design.md`).
+
+  The backing command is `lips check --draft`, a flag rather than a new verb:
+  `check` already means "verify an engine against a contract, offline, no AI",
+  and a draft is the same act on a different INPUT. It reads the reply format on
+  stdin -- not `.lang`, so the thing checked is the thing shipped -- and
+  materializes a throwaway language folder (`Lips.Generate.Draft`, pure: it
+  decides the folder's contents, the shell writes them). `--draft` and `--lang`
+  are mutually exclusive by construction, since they name two different engines.
+
+  The five schema-free engine gates moved into one pure function
+  (`Lips.Kernel.Engine.Gate.engineViolations`) with three callers: `generate`
+  before accepting a mint, `check` over a committed engine, and the draft path.
+  That closes a real hole beside serving the tool -- a committed `.lang` was
+  never re-verified for orthogonality, so an unsound engine reported its
+  ambiguity as the AUTHOR's unreadable line. The schema gate stays out of
+  `check` (it needs an option document, and `check` stays nixpkgs-free); the
+  draft path runs it itself, on the mint side where `generate` already built
+  one and hands over its path.
+
+  Two things are deliberately NOT run, and the output says so: the claim gate
+  and the artifact build. A machine claim boots a VM, so a per-call cost of
+  minutes and a hard failure without KVM would be a false RED blocking the model
+  from validating at all. "Not verified" is stated, never rendered as verified.
+  The governing contract is generate's rule, not the tool's: the committed
+  `.expect` on a regeneration, the draft's own expects on a first mint or under
+  `--renew`, exported so the two cannot drift into a false green. Nothing
+  enforces that the tool is used: the deciding gate is unchanged, so the feature
+  is strictly non-worse than before.
+
+  MEASURED, on the goal itself rather than the mechanism. One artifact- and
+  claim-bearing language (the `hello.http` program, minted fresh as `.tinyweb`),
+  sonnet-5, three runs. With the tool: SUCCEEDED, after 10 `check_draft` calls
+  beside 9 `query_options` calls; the tool caught a dropped value (a `<text>`
+  hole reaching no decision -- the silent-demotion class), a malformed rule, and
+  a program that stopped crystallizing, each fixed in-turn. Without the tool,
+  twice: both FAILED, once on an `${artifact.x}/bin/x` path the build does not
+  contain (a gate the tool does not run, so no claim is made for it) and once on
+  the expect gate, which the tool DOES run and would have shown in-turn. One
+  sample per arm, so this is evidence, not proof.
+
+  Two kernel fixes the live runs forced, both in the spirit of invariant 4.
+  (i) A claim id was rendered as a bare nix attribute name, so an engine keying
+  its claims by `<n:index>` produced `1 = pkgs.testers.nixosTest ...`, a syntax
+  error three layers down a nix trace; ids are now always quoted, which is legal
+  for every id and needs no rule about which are "safe". (ii) Told its draft was
+  clean, sonnet-5 wanted to SAY so, and one narrating sentence in the reply
+  fails the strict item parser (the same shape TODO 3 records for opus-4-5). The
+  reminder now rides on the tool's own last words, where the temptation is
+  created, rather than on another plea in the prompt.
+
 - **The meaning dimension: observable claims, and a specification that stays
   causal.** Every gate lips had read the MAP (the module text); none observed the
   TERRITORY. So a program whose behaviour lives in baked source could state a

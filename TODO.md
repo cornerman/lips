@@ -59,7 +59,13 @@ tracks only what is still open.
       the parts) -- no committed engine does it, and nothing refuses it.
       (ii) a per-hole DECORATIVE report -- a hole demoted to a `Concept` on a
       line that otherwise realizes is invisible, since `diagInert` works per
-      line, not per hole. Call sites exist: `board`, `habit`, `logscan` each
+      line, not per hole. Draft validation (DESIGN §13) does NOT close this and
+      never claimed to: a demotion passes every gate, so nothing reports it. One
+      datapoint sideways, from the live A/B mint: the draft tool caught the
+      neighbouring defect (a hole reaching no decision at all) and the model
+      promoted its `concept` back to a `fact` in-turn, so making demotion loud
+      would now be actionable inside the mint's own turn rather than only after
+      it. Call sites exist: `board`, `habit`, `logscan` each
       emit several `Concept`s.
       (iii) a compiled artifact records no dependency on the program lines its
       baked source came from. PARTLY CLOSED: a claim now holds the built source
@@ -137,6 +143,11 @@ tracks only what is still open.
    opus-5.
    Order matters: sweep first, then
    land item 4 -- a verifier landed first would turn the whole repo red.
+   NEW LEVER (2026-08-02): the mint can now check a draft against lips' own
+   gates before answering (`check_draft`, DESIGN §13), which is what makes a
+   sonnet-5 sweep worth attempting: in the one measured A/B it turned a failing
+   artifact-bearing mint into a passing one. Re-measure per language rather than
+   assuming it: the arm sizes were one run each.
    NEW PRECONDITION (2026-07-31): `generate` now refuses an engine that bakes
    source and states no observable, so every baked-source language in the sweep
    needs a witness in its program FIRST (item 1). `logscan` and `http` already
