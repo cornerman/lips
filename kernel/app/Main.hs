@@ -978,9 +978,12 @@ lockedUrl bytes = do
 -- the document inside it.
 buildOptionSchema :: Target -> Text -> Text -> IO FilePath
 buildOptionSchema target locked remedy = step (targetSlug target <> " option schema") $ do
-  note ("building it from the pinned flake " <> locked)
-  -- Said before the wait, not after it: the first build evaluates a whole manual.
-  note "the first build takes a few minutes; nix caches it afterwards"
+  -- The pin without nix's hash query, which is half a line of noise a reader
+  -- never types back in.
+  note ("pinned flake " <> T.takeWhile (/= '?') locked)
+  -- On the live line, not as a note: a cache hit takes a second, and a warning
+  -- about minutes that stays on screen afterwards is a line that misinforms.
+  setState "a cache miss evaluates the whole manual, which takes minutes"
   built <- try (readProcessWithExitCode "nix"
     [ "build", "--impure", "--no-link", "--print-out-paths"
     , "--expr", T.unpack (schemaExpr target (T.unpack locked)) ] "")

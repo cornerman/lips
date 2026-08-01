@@ -148,14 +148,25 @@ step label act = do
   -- without it a piped log would go silent for the whole phase.
   when (st == Plain) (emit ("· " <> label))
   outcome <- bracket (startTicker st) (stopTicker st) (const (try act))
-  t1 <- getPOSIXTime
-  modifyMVar_ liveRef (const (pure Nothing))
-  let secs = realToFrac (t1 - t0)
   case outcome of
-    Right a -> emit (verdictText st label (Held secs)) >> pure a
-    Left e  -> do
-      emit (verdictText st label (Failed secs))
-      throwIO (e :: SomeException)
+    Right a -> finish st True >> pure a
+    Left e  -> finish st False >> throwIO (e :: SomeException)
+
+-- | Close the running phase with its verdict -- unless 'die' already closed it,
+-- which is how a failure reads in the order it happened: the @✗@ line first,
+-- then the report explaining it. Whoever gets there first prints the verdict,
+-- and taking the live line is what says it has been printed.
+finish :: Style -> Bool -> IO ()
+finish st ok = do
+  live <- readMVar liveRef
+  case live of
+    Nothing -> pure ()
+    Just l  -> do
+      clear
+      modifyMVar_ liveRef (const (pure Nothing))
+      now <- getPOSIXTime
+      let secs = realToFrac (now - lvStart l)
+      emit (verdictText st (lvLabel l) (if ok then Held secs else Failed secs))
 
 -- | Report what the running phase is doing right now (the mint's state: waiting
 -- on the model, looking an option up, writing the engine). Ignored in 'Plain',
@@ -185,9 +196,15 @@ sayAnswer t = do
   hFlush stdout
   redraw
 
--- | Print a report and stop with a failing exit code.
+-- | Print a report and stop with a failing exit code. The phase this happened
+-- in (if any) is closed FIRST, so the @✗@ line stands above the report that
+-- explains it rather than below it.
 die :: Text -> IO a
-die msg = say msg >> exitFailure
+die msg = do
+  st <- styleOf
+  finish st False
+  say msg
+  exitFailure
 
 -- | The standard message skeleton: a plain headline, optional indented detail
 -- lines, and a final "→" action. Every error lips prints is built from it, so
