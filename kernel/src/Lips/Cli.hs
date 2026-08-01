@@ -106,28 +106,28 @@ data Command
 cliParserInfo :: Double -> ParserInfo Command
 cliParserInfo defConf = info (cliParser defConf <**> helper) $
   fullDesc <> progDesc
-    "lips turns an <instance>.<language> program, written in your own plain lines, into a module for the Nix world you chose."
+    "lips builds a Nix configuration from a program you wrote in your own plain sentences."
 
 -- | The three verbs a user works with day to day, in the loop's own order.
 cliParser :: Double -> Parser Command
 cliParser defConf = hsubparser
   (  command "generate"
        (info (Generate <$> generateOpts defConf)
-             (progDesc "Mint the language from one or more example programs and verify each. The one step that uses AI."))
+             (progDesc "Learn the language of your programs and verify each one. The only step that uses AI."))
   <> command "compile"
        (info (Compile <$> compileOpts)
-             (progDesc "Realize into a directory (flake.nix + default.nix + artifacts/) and print the nix commands that run it."))
+             (progDesc "Build the configuration into a directory, and print the nix commands that run it."))
   <> command "check"
        (info (Check <$> checkOpts)
-             (progDesc "Verify the program still produces what it promised."))
+             (progDesc "Confirm the program still produces what it promised. Offline, no AI."))
   )
   <|> hsubparser
   (  command "options"
        (info (Options <$> optionsOpts)
-             (progDesc "Look up option paths and types in the pinned schema. Read-only, no AI."))
+             (progDesc "Search the pinned option schema of a Nix world. Reads only, changes nothing."))
   <> command "lsp"
        (info (pure Lsp)
-             (progDesc "Run the lips language server (stdio)."))
+             (progDesc "Serve your editor: diagnostics for a program as you write it (stdio)."))
   <> commandGroup "tooling commands (editor/schema support):"
   <> hidden
   )
@@ -196,26 +196,26 @@ confidenceReader = eitherReader $ \s -> case readMaybe s of
 schemaOpt :: Parser (Maybe String)
 schemaOpt = optional (strOption
   (long "schema" <> metavar "FLAKEREF"
-    <> help "Flake to build this world's option schema from (default: the pin baked into this lips). Recorded, locked, in .generation."))
+    <> help "Build this world's option schema from FLAKEREF instead of the pin baked into lips. Recorded, locked, in .generation."))
 
 generateOpts :: Double -> Parser GenerateOpts
 generateOpts defConf = GenerateOpts
   <$> option targetReader
         (long "target" <> short 't' <> value defaultTarget
-          <> metavar targetMetavar <> help "The Nix world to realize into (default: nixos).")
+          <> metavar targetMetavar <> help "Which Nix world the configuration is for (default: nixos).")
   <*> schemaOpt
   <*> option confidenceReader
         (long "confidence" <> value defConf
-          <> metavar "0..1" <> help "Minimum pattern confidence to accept (default: 0.7).")
-  <*> switch (long "renew" <> help "Re-bless the committed .expect contract from this mint.")
-  <*> switch (long "verbose" <> short 'v' <> help "Echo the raw model reply.")
+          <> metavar "0..1" <> help "How sure the model must be of every line it writes (default: 0.7). Anything less is refused.")
+  <*> switch (long "renew" <> help "Accept this run's behaviour as the new contract, replacing the committed .expect.")
+  <*> switch (long "verbose" <> short 'v' <> help "Show everything sent to the model and everything it says, as it happens.")
   <*> optional (strOption
         (long "model" <> short 'm' <> metavar "ID"
-          <> help "Model id to use (default: pi's own configured default)."))
+          <> help "Which model to ask (default: whichever pi is configured for)."))
   <*> strOption
         (long "thinking" <> value defaultThinking
           <> metavar "off|minimal|low|medium|high|xhigh|max"
-          <> help "Reasoning level to ask the model for (default: high). Recorded in .generation.")
+          <> help "How hard the model should think (default: high). Recorded in .generation.")
   <*> some (strArgument (metavar "PROGRAM..." <> completer programCompleter))
 
 -- | @--lang@: read the committed language files (.lang/.expect/
@@ -228,13 +228,13 @@ generateOpts defConf = GenerateOpts
 langDirOpt :: Parser (Maybe FilePath)
 langDirOpt = optional (strOption
   (long "lang" <> metavar "DIR"
-    <> help "Read the language's committed files from DIR instead of the program's sibling folder (must be named after the program's language)."))
+    <> help "Read the language from DIR instead of the folder beside the program (DIR must be named after the program's language)."))
 
 compileOpts :: Parser CompileOpts
 compileOpts = CompileOpts
   <$> optional (strOption
         (long "out" <> short 'o' <> metavar "DIR"
-          <> help "Output directory (default: <language>/out/<instance>)."))
+          <> help "Where to write the configuration (default: <language>/out/<instance>)."))
   <*> langDirOpt
   -- For the one caller that CANNOT run the gate: a compile inside a nix
   -- derivation (lib.modulesFromDir, the VM checks) has no nix to evaluate the
@@ -242,7 +242,7 @@ compileOpts = CompileOpts
   -- site instead of an unstated consequence of not staging the .expect file.
   <*> switch
         (long "no-contract"
-          <> help "Skip the behavioral contract (for a compile inside a nix build, which has no nix to evaluate with). The program must still crystallize.")
+          <> help "Do not check the contract, for a compile inside a nix build (which has no nix to evaluate with). The program must still crystallize.")
   <*> programArg
 
 -- | Which engine @check@ judges. The two ways are mutually exclusive by
@@ -259,7 +259,7 @@ engineSource :: Parser EngineSource
 engineSource =
   (FromDraft <$ flag' ()
      (long "draft"
-       <> help "Check a draft engine read from stdin (the mint's reply format) instead of the committed one."))
+       <> help "Judge a draft language read from stdin instead of the committed one (this is the door the mint checks itself through)."))
   <|> (FromLang <$> langDirOpt)
 
 checkOpts :: Parser CheckOpts
@@ -279,10 +279,10 @@ optionsOpts :: Parser OptionsOpts
 optionsOpts = OptionsOpts
   <$> option targetReader
         (long "target" <> short 't' <> value defaultTarget
-          <> metavar targetMetavar <> help "Which world's schema to search (default: nixos).")
+          <> metavar targetMetavar <> help "Which Nix world's options to search (default: nixos).")
   <*> schemaOpt
   <*> option limitReader
         (long "limit" <> value 40
-          <> metavar "N" <> help "Maximum entries to print (default: 40).")
+          <> metavar "N" <> help "How many entries an answer may print (default: 40).")
   <*> strArgument
-        (metavar "QUERY" <> help "A dotted option prefix, or any substring of a path.")
+        (metavar "QUERY" <> help "A dotted option prefix to browse, or any substring of a path to find one.")

@@ -24,8 +24,11 @@
 --     over the compiled directory, and the user picks one.
 module Main (main) where
 
+import           Control.Concurrent (forkIO)
+import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (filterM, forM, forM_, unless, when)
+import           Data.IORef         (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import           Data.Bifunctor     (first)
 import           Data.List          (intercalate, partition)
 import           Data.Maybe         (fromMaybe, isJust)
@@ -38,27 +41,31 @@ import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getEnvironment, lookupEnv)
-import           System.Exit        (ExitCode (..), exitFailure)
+import           System.Exit        (ExitCode (..))
 import           GHC.IO.Encoding     (setLocaleEncoding)
-import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
+import           System.IO          (BufferMode (..), hClose, hGetContents,
+                                     hIsEOF, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
                                      doesPathExist, getTemporaryDirectory, listDirectory,
                                      removeDirectoryRecursive, removePathForcibly,
                                      getPermissions, setPermissions, setOwnerWritable)
 import           System.FilePath    (takeDirectory, takeFileName, (</>))
 import           System.Posix.Temp  (mkdtemp)
-import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
+import           System.Process     (CreateProcess (..), StdStream (..), createProcess, proc,
+                                     readProcessWithExitCode, waitForProcess)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
+import           Lips.Cli.Output        (die, note, report, reportHead, say, sayAnswer, setState, step)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft)
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
-import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
+import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
+                                         progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
@@ -100,6 +107,11 @@ main = do
   -- into a crash. Pin UTF-8 so what lips prints does not depend on the
   -- environment it is run from. (@lsp@ sets its own binary mode afterwards.)
   mapM_ (`hSetEncoding` utf8) [stdout, stderr]
+  -- Both streams line-buffered, so what lips says arrives in the order it said
+  -- it. Redirected to a file or a pipe, GHC would buffer stdout in blocks and
+  -- a progress line on stderr would land in the middle of an answer on stdout
+  -- (observed: a diagnosis table cut a verdict line in half).
+  mapM_ (`hSetBuffering` LineBuffering) [stdout, stderr]
   -- Every FILE lips reads is UTF-8 too, and a committed record legitimately
   -- carries non-ASCII (a .generation embeds the mint prompt, em dashes and all).
   -- Without this the encoding of a READ follows the ambient locale, so the same
@@ -150,25 +162,26 @@ compileLoose mout mLangDir noContract file = do
   rl  <- checkLoose (not noContract) (not noContract) mLangDir file
   target  <- readRecordedTarget dir file
   let outDirPath = maybe (compiledPath file) id mout
-  ensureDerived file
-  createDirectoryIfMissing True outDirPath
-  TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
-  stageFromDisk dir file (outDirPath </> "artifacts")
-  -- The committed source keeps its markers (it is the template); the COMPILED
-  -- source is filled, like every other derived output.
-  fillStagedTree file (outDirPath </> "artifacts") (rlFills rl)
-  artNames <- case rlArtifact rl of
-    Nothing            -> pure []
-    Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
-  -- The experiments the program states, beside the artifacts they observe. A
-  -- claim-free program writes no file and its output stays byte-identical.
-  hasClaims <- case claimsFile (not (null artNames)) (rlClaims rl) of
-    Nothing   -> pure False
-    Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
-  TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)) hasClaims)
-  TIO.hPutStrLn stderr ("compiled " <> T.pack file <> " -> " <> T.pack outDirPath)
-  TIO.hPutStrLn stderr "run it with nix over the compiled dir:"
-  mapM_ (TIO.hPutStrLn stderr) (runCommands target artNames hasClaims outDirPath)
+  (artNames, hasClaims) <- step ("write " <> T.pack outDirPath) $ do
+    ensureDerived file
+    createDirectoryIfMissing True outDirPath
+    TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
+    stageFromDisk dir file (outDirPath </> "artifacts")
+    -- The committed source keeps its markers (it is the template); the COMPILED
+    -- source is filled, like every other derived output.
+    fillStagedTree file (outDirPath </> "artifacts") (rlFills rl)
+    artNames <- case rlArtifact rl of
+      Nothing            -> pure []
+      Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
+    -- The experiments the program states, beside the artifacts they observe. A
+    -- claim-free program writes no file and its output stays byte-identical.
+    hasClaims <- case claimsFile (not (null artNames)) (rlClaims rl) of
+      Nothing   -> pure False
+      Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
+    TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)) hasClaims)
+    pure (artNames, hasClaims)
+  say ("→ run it with nix over " <> T.pack outDirPath <> ":")
+  mapM_ note (runCommands target artNames hasClaims outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the
@@ -224,36 +237,37 @@ checkLoose contract claims mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
   eng     <- loadLangOrDie dir file
-  -- An engine unsound on its own terms makes every later verdict meaningless
-  -- (an ambiguous line reads as the author's problem when it is the engine's),
-  -- so it fails before the diagnosis. Same gate generate runs before accepting
-  -- a mint, so a committed engine cannot drift below what minting required.
-  case engineViolations eng of
-    []      -> pure ()
-    (v : _) -> die (validationReport file v)
-  -- First phase, pure and offline: how the program sits in its language.
-  -- Always shown, so authoring is never blind; the behavioral gate runs only
-  -- once the program crystallizes cleanly and completely.
-  let d = diagnose file eng program
-  TIO.putStrLn (renderDiagnosis file d)
-  hFlush stdout  -- so the report lands before any stderr failure below
-  if any escapes (diagLines d)
-    then die (report
-           (T.pack file <> " has lines its language cannot read yet.")
-           []
-           ("→ grow the language: lips generate " <> T.pack file))
-    else if not (null (diagOpen d))
-      -- An open question is the author's to answer -- unless no program could:
-      -- a demand outside every emitted subject family is an engine defect, and
-      -- telling the author to state a fact they already stated sends them in
-      -- circles. So blame the side that can fix it.
-      then case unanswerableDemands (edPatterns eng) (edDemands eng) of
-        []  -> die (report
-                 (T.pack file <> " is incomplete while these questions stay open.")
-                 []
-                 "→ answer them by stating the detail in the program.")
-        uds -> die (unanswerableReport file uds)
-      else expectGate contract claims dir file eng program
+  step ("crystallize " <> T.pack file) $ do
+    -- An engine unsound on its own terms makes every later verdict meaningless
+    -- (an ambiguous line reads as the author's problem when it is the engine's),
+    -- so it fails before the diagnosis. Same gate generate runs before accepting
+    -- a mint, so a committed engine cannot drift below what minting required.
+    case engineViolations eng of
+      []      -> pure ()
+      (v : _) -> die (validationReport file v)
+    -- First phase, pure and offline: how the program sits in its language.
+    -- Always shown, so authoring is never blind; the behavioral gate runs only
+    -- once the program crystallizes cleanly and completely.
+    let d = diagnose file eng program
+    sayAnswer (renderDiagnosis file d <> "\n")
+    if any escapes (diagLines d)
+      then die (report
+             (T.pack file <> " has lines its language cannot read yet.")
+             []
+             ("→ grow the language: lips generate " <> T.pack file))
+      else if not (null (diagOpen d))
+        -- An open question is the author's to answer -- unless no program could:
+        -- a demand outside every emitted subject family is an engine defect, and
+        -- telling the author to state a fact they already stated sends them in
+        -- circles. So blame the side that can fix it.
+        then case unanswerableDemands (edPatterns eng) (edDemands eng) of
+          []  -> die (report
+                   (T.pack file <> " is incomplete while these questions stay open.")
+                   []
+                   "→ answer them by stating the detail in the program.")
+          uds -> die (unanswerableReport file uds)
+        else pure ()
+  expectGate contract claims dir file eng program
   where
     escapes Matched{} = False
     escapes _         = True
@@ -305,7 +319,7 @@ checkDraft file = do
           assertOptionsAdmissible target p file eng
         _ -> pure ()
       _ <- checkLoose True False (Just (dtLangDir t)) file
-      TIO.putStrLn (T.pack file <> ": the claim gate and the artifact build were NOT run.")
+      note "the claim gate and the artifact build were NOT run"
 
 -- | Which world a draft is grounded against. Read from the environment generate
 -- controls, never defaulted: a silent default would ground a mint against the
@@ -333,32 +347,29 @@ expectGate contract claims dir file eng program = do
   sourceSpecGate dir file eng program
   expSrc <- if contract then tryRead (expectPathIn dir file) else pure Nothing
   case expSrc of
-    Nothing | not contract -> TIO.putStrLn
-      (T.pack file <> ": crystallizes cleanly; behavioral contract SKIPPED (--no-contract).")
-    Nothing  -> TIO.putStrLn
-      (T.pack file <> ": crystallizes cleanly; no behavioral contract yet ("
-        <> T.pack (expectPathIn dir file) <> " is missing, written by generate).")
+    -- A skipped or absent contract is stated, never rendered as a pass: the
+    -- step's own ✓ would otherwise claim a gate that did not run.
+    Nothing | not contract ->
+      note "contract skipped (--no-contract): nix is needed to evaluate it"
+    Nothing  -> note ("no contract yet: " <> T.pack (expectPathIn dir file)
+                        <> " is written by generate")
     Just src -> case readExpect src of
       Left es       -> die (unreadable file ".expect" es)
       Right expects
         | bad@(_ : _) <- uncheckableExpects (edRules eng) expects ->
             die (uncheckableReport file bad)
-        | otherwise -> do
+        | otherwise -> step ("contract: " <> plural (length expects) "check") $ do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
           res <- runExpects (stageFromDisk dir file) (map (bindSelfExpect (instanceName file)) expects) rl
           case res of
-            Right () -> TIO.putStrLn (T.pack file <> ": all "
-                          <> tshow (length expects) <> " checks pass.")
+            Right () -> pure ()
             Left (ToolMissing e) -> die (nixMissing file "check the program" "check" e)
             Left (EvalFailed e)  -> die (nixEvalFailed file "check" e)
             Left (Violations fs) -> die (report
               (T.pack file <> " no longer produces what it promised:")
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
-  -- so the contract's own verdict lands before the claim gate's failure, which
-  -- goes to stderr (the same reason the diagnosis flushes above)
-  hFlush stdout
   when claims (claimGate dir file rl)
   pure rl
 
@@ -391,7 +402,7 @@ claimGate dir file rl
         ("\8594 run it where KVM exists, or state the observable over the program's"
           <> " own binary, which needs no machine."))
       target <- readRecordedTarget dir file
-      withTempDir $ \tmp -> do
+      step ("claims: " <> plural (length (rlClaims rl)) "claim") $ withTempDir $ \tmp -> do
         TIO.writeFile (tmp </> "default.nix") (rlModule rl)
         stageFromDisk dir file (tmp </> "artifacts")
         fillStagedTree file (tmp </> "artifacts") (rlFills rl)
@@ -411,8 +422,7 @@ claimGate dir file rl
             (T.lines (T.pack err))
             ("\8594 the behaviour lives in minted source, so rebuild it from the"
               <> " program as it stands: lips generate " <> T.pack file))
-          Right (ExitSuccess, _, _) -> TIO.putStrLn (T.pack file <> ": all "
-            <> tshow (length (rlClaims rl)) <> " claims hold.")
+          Right (ExitSuccess, _, _) -> pure ()
 
 -- | Render the authoring diagnosis: a coverage headline, one line per program
 -- line (matched to which pattern and subject, or unread, or ambiguous), then
@@ -561,15 +571,14 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       there <- doesFileExist (expectPath rep)
       pure (if there then Just (expectPath rep) else Nothing)
   (reply, model, transcript) <-
-    callPi mmodel thinking prompt corpus target files committedExpectPath schemaPath
+    step ("mint ." <> T.pack lang <> " from " <> plural (length files) "program") $
+      callPi verbose mmodel thinking prompt corpus target files committedExpectPath schemaPath
+  note ("minted by " <> model <> ", thinking " <> T.pack thinking)
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
-  -- refusal already shows the offending lines). To stderr, leaving stdout the
-  -- pipeable module.
-  if verbose
-    then TIO.hPutStr stderr (T.unlines
-           [ "--- raw model reply (" <> model <> ") ---", reply, "--- end reply ---" ])
-    else pure ()
+  -- refusal already shows the offending lines).
+  when verbose $ say (T.unlines
+    [ "--- raw model reply (" <> model <> ") ---", reply, "--- end reply ---" ])
   let (errs, candidates) = parseEngineCandidates reply
       -- A because-note explains a low-confidence item; keyed by shared id, it
       -- never gates the build and never enters the engine.
@@ -697,7 +706,7 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       forM_ validated $ \(f, rl) ->
         stagedGate (\dst -> writeSources dst minted) f rl
       -- The shared contract gates every program, each bound to its own <self>.
-      forM_ validated $ \(f, rl) -> do
+      step ("contract: " <> plural (length expects) "check") $ forM_ validated $ \(f, rl) -> do
         gate <- runExpects (\dst -> writeSources dst minted)
                            (map (bindSelfExpect (instanceName f)) expects) rl
         case gate of
@@ -728,45 +737,54 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
       let rec = record model target schemaPin (T.pack thinking) confidence prompt corpus transcript reply
-      -- The language folder holds every minted and derived file; create it (and
-      -- its derived out/ subtree) before writing, so a first mint beside a bare
-      -- program just works.
-      createDirectoryIfMissing True (langDir rep)
-      TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
-      TIO.writeFile (generationPath rep) rec
-      TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
-      -- A refusal artifact describes a run that produced no engine, so it is a
-      -- lie once one exists: the accepted mint deletes the .gap an earlier
-      -- refused attempt left behind.
-      removePathForcibly (gapPath rep)
-      -- The artifacts tree is machine-owned and minted whole, so REPLACE it: a
-      -- previous mint's tree under another artifact name would otherwise stay
-      -- committed forever, dead source nothing builds (the http re-mint left a
-      -- helloserver/ tree beside its new hello/ one).
-      removePathForcibly (artifactsPath rep)
-      writeSources (artifactsPath rep) minted
-      forM_ validated $ \(f, rl) -> do
-        ensureDerived f
-        TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
-      -- Bootstrap the contract on first generation only; keep the committed
-      -- spec stable across regenerations.
-      maybe (TIO.writeFile (expectPath rep) (renderExpect mintedExpects))
-            (const (pure ())) committed
-      -- Prose to stderr so stdout stays a pipeable module (the first program's).
-      TIO.hPutStr stderr $ T.unlines $
-        [ "lips set up ." <> T.pack lang <> " from " <> tshow (length files)
-            <> " program(s) and verified each produces a valid " <> targetSlug target <> " configuration."
-        , "" ]
-        ++ take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ]
-        ++ [ "\8594 read the whole account: " <> T.pack (readmePath rep) ]
-        ++ (if null gaps then [] else
-             [ "", "lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":" ]
-             ++ [ "  - " <> gapSlug g | g <- gaps ])
-        ++ [ "" ]
-        ++ [ "→ preview:  lips compile " <> T.pack f | (f, _) <- validated ]
-      case [ rlModule rl | (f, rl) <- validated, f == rep ] of
-        (m : _) -> TIO.putStr m
-        []      -> pure ()
+      step ("write " <> T.pack (langDir rep)) $ do
+        -- The language folder holds every minted and derived file; create it (and
+        -- its derived out/ subtree) before writing, so a first mint beside a bare
+        -- program just works.
+        createDirectoryIfMissing True (langDir rep)
+        TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
+        TIO.writeFile (generationPath rep) rec
+        TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
+        -- A refusal artifact describes a run that produced no engine, so it is a
+        -- lie once one exists: the accepted mint deletes the .gap an earlier
+        -- refused attempt left behind.
+        removePathForcibly (gapPath rep)
+        -- The artifacts tree is machine-owned and minted whole, so REPLACE it: a
+        -- previous mint's tree under another artifact name would otherwise stay
+        -- committed forever, dead source nothing builds (the http re-mint left a
+        -- helloserver/ tree beside its new hello/ one).
+        removePathForcibly (artifactsPath rep)
+        writeSources (artifactsPath rep) minted
+        forM_ validated $ \(f, rl) -> do
+          ensureDerived f
+          TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
+        -- Bootstrap the contract on first generation only; keep the committed
+        -- spec stable across regenerations.
+        maybe (TIO.writeFile (expectPath rep) (renderExpect mintedExpects))
+              (const (pure ())) committed
+        mapM_ note $
+          [ T.pack (langPath rep) <> "  the language, " <> plural (length (edPatterns eng)) "pattern"
+              <> ", " <> plural (length (edRules eng)) "rule"
+          , T.pack (expectPath rep) <> "  the contract, " <> plural (length expects) "check"
+          , T.pack (readmePath rep) <> "  what the language means, in plain words"
+          , T.pack (generationPath rep) <> "  how it was made" ]
+          ++ [ T.pack (artifactsPath rep) <> "  " <> plural (length minted) "source file"
+             | not (null minted) ]
+      -- The account of the mint, in the mint's own words: the first lines of the
+      -- report, then where to read the rest. Not the engine and not the module --
+      -- both are files now, and a human reads them there.
+      say ""
+      say ("✓ ." <> T.pack lang <> " holds for " <> plural (length files) "program"
+             <> " as a " <> targetSlug target <> " configuration.")
+      say ""
+      mapM_ say (take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ])
+      unless (null gaps) $ do
+        say ""
+        say ("lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":")
+        mapM_ (\g -> note ("- " <> gapSlug g)) gaps
+      say ""
+      say ("→ read the whole account: " <> T.pack (readmePath rep))
+      mapM_ (\(f, _) -> say ("→ build it:              lips compile " <> T.pack f)) validated
 
 -- | @options@: look a query up in the target world's pinned option schema and
 -- print the answer. This verb is both a human's lookup and the target of the
@@ -794,7 +812,7 @@ optionsQuery target mschema limit query = do
       "→ run it again.")
     -- Exit 0 even for Nowhere: "no option matches that" is a valid answer to a
     -- question, not a failure of the command.
-    Right schema -> TIO.putStr (renderAnswer query (answerQuery limit query schema))
+    Right schema -> sayAnswer (renderAnswer query (answerQuery limit query schema))
 
 -- | Render a lookup for a reader who must decide what to ask NEXT, which is why
 -- a namespace answer says how to drill in and a miss suggests how to re-word.
@@ -959,12 +977,10 @@ lockedUrl bytes = do
 -- | Build one world's optionsJSON from a locked flakeref and return the path of
 -- the document inside it.
 buildOptionSchema :: Target -> Text -> Text -> IO FilePath
-buildOptionSchema target locked remedy = do
-  TIO.hPutStrLn stderr
-    ("checking options against the " <> targetSlug target
-      <> " schema: building it from pinned flake (" <> locked <> ").")
-  TIO.hPutStrLn stderr
-    "  the first build evaluates the manual and can take a few minutes; nix caches it afterwards."
+buildOptionSchema target locked remedy = step (targetSlug target <> " option schema") $ do
+  note ("building it from the pinned flake " <> locked)
+  -- Said before the wait, not after it: the first build evaluates a whole manual.
+  note "the first build takes a few minutes; nix caches it afterwards"
   built <- try (readProcessWithExitCode "nix"
     [ "build", "--impure", "--no-link", "--print-out-paths"
     , "--expr", T.unpack (schemaExpr target (T.unpack locked)) ] "")
@@ -1083,8 +1099,8 @@ nixParses nixModule = do
 -- omitted and pi's own configured default applies. Either way the json stream
 -- reports the model actually used, which the caller records, so provenance
 -- stays concrete without a model baked into the deliverable.
-callPi :: Maybe String -> String -> Text -> Text -> Target -> [FilePath] -> Maybe FilePath -> FilePath -> IO (Text, Text, Text)
-callPi mmodel thinking system userPrompt target files mExpect schemaPath = do
+callPi :: Bool -> Maybe String -> String -> Text -> Text -> Target -> [FilePath] -> Maybe FilePath -> FilePath -> IO (Text, Text, Text)
+callPi verbose mmodel thinking system userPrompt target files mExpect schemaPath = do
   -- The mint's tools ship with the binary; without them a mint would have to
   -- recall option names instead of looking them up, and could not check a draft
   -- before answering -- the guessing this whole path exists to prevent. So a
@@ -1131,9 +1147,16 @@ callPi mmodel thinking system userPrompt target files mExpect schemaPath = do
              -- steer the mint without entering the record (invariant 6).
              , "--thinking", thinking ]
                ++ extArgs ++ maybe [] (\m -> ["--model", m]) mmodel
-  (code, out, err) <-
-    readCreateProcessWithExitCode (proc "pi" args) { env = Just childEnv }
-      (T.unpack userPrompt)
+  -- Everything that goes out, before anything comes back: under --verbose the
+  -- prompt is shown as SENT (system prompt, direction and corpus), so a mint is
+  -- reproducible from what the terminal showed.
+  when verbose $ do
+    say "--- system prompt (as sent) ---"
+    say system
+    say "--- programs (as sent) ---"
+    say userPrompt
+    say "--- waiting for the model ---"
+  (code, out, err) <- streamPi verbose ((proc "pi" args) { env = Just childEnv }) userPrompt
   case code of
     ExitSuccess   -> do
       let PiReply { prReply = reply, prModel = model, prTranscript = transcript } =
@@ -1150,6 +1173,74 @@ callPi mmodel thinking system userPrompt target files mExpect schemaPath = do
       ("lips couldn't run the AI model (pi exited " <> tshow c <> "):")
       (T.lines (T.pack err))
       "→ check that pi is installed and authenticated, then run generate again.")
+
+-- | Run pi and show what it does WHILE it does it. The mint is the one phase
+-- that takes minutes, and reading its whole output at the end (which is what
+-- @readCreateProcessWithExitCode@ does) made a working model and a hung one look
+-- identical for that whole time.
+--
+-- Three streams, three jobs: the prompt is written by its own thread (a prompt
+-- larger than a pipe buffer would deadlock if written inline, as soon as pi's
+-- output filled ours), stderr is drained by another (it is only read on
+-- failure, but an undrained pipe blocks the child), and the main loop reads
+-- stdout line by line, showing each event and keeping every line -- so
+-- 'parsePiReply' still sees the complete stream and the record is unchanged.
+streamPi :: Bool -> CreateProcess -> Text -> IO (ExitCode, String, String)
+streamPi verbose cp promptText = do
+  (mIn, mOut, mErr, ph) <- createProcess cp
+    { std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe }
+  (hin, hout, herr) <- case (mIn, mOut, mErr) of
+    (Just a, Just b, Just c) -> pure (a, b, c)
+    -- Unreachable: all three are CreatePipe above. Loud rather than a pattern
+    -- match failure with no explanation.
+    _ -> die (report "lips couldn't open a pipe to the AI model." []
+                     "→ report this as a lips bug.")
+  mapM_ (`hSetEncoding` utf8) [hin, hout, herr]
+  hSetBuffering hout LineBuffering
+  _ <- forkIO (TIO.hPutStr hin promptText `finally` hClose hin)
+  errVar <- newEmptyMVar
+  _ <- forkIO (hGetContents herr >>= \e -> length e `seq` putMVar errVar e)
+  prose <- newIORef T.empty   -- partial line of the model's own words (verbose)
+  seen  <- newIORef []        -- every stdout line, newest first
+  let loop = do
+        eof <- hIsEOF hout
+        unless eof $ do
+          l <- TIO.hGetLine hout
+          modifyIORef' seen (l :)
+          showEvent verbose prose (progressEvent l)
+          loop
+  loop
+  leftover <- readIORef prose
+  when (verbose && not (T.null leftover)) (say leftover)
+  code <- waitForProcess ph
+  errText <- takeMVar errVar
+  ls <- reverse <$> readIORef seen
+  pure (code, T.unpack (T.unlines ls), errText)
+
+-- | Show one mint event. The ordinary view is one dim line per tool call and
+-- one per answer, with the model's state on the live line; @--verbose@ adds the
+-- model's own words as they arrive and the untruncated arguments and answers.
+showEvent :: Bool -> IORef Text -> Maybe PiEvent -> IO ()
+showEvent _ _ Nothing = pure ()
+showEvent verbose prose (Just ev) = case ev of
+  PiTool name args -> do
+    setState ("running " <> name)
+    note (name <> "  " <> if verbose then args else abbreviate 60 args)
+  PiToolEnd name failed text -> do
+    setState "waiting for the model"
+    if verbose
+      then note ("  → " <> name <> (if failed then " failed:" else " answered:")) >> say text
+      else note ("  → " <> resultSummary failed text)
+  PiState s -> setState s
+  PiProse d -> do
+    setState "writing the engine"
+    -- Deltas arrive mid-word, so verbose prints them a LINE at a time: the
+    -- remainder waits in the buffer until its newline shows up.
+    when verbose $ do
+      buffered <- readIORef prose
+      let (whole, partial) = T.breakOnEnd "\n" (buffered <> d)
+      writeIORef prose partial
+      mapM_ say (T.lines whole)
 
 -- | Evaluate the realized module with @nix@ and judge a contract against it.
 -- One eval reads every asserted option; the pure comparison lives in
@@ -1207,9 +1298,6 @@ evalOptionExpects stage nixModule pairs = withTempDir $ \dir -> do
                        [] -> Right ()
                        fs -> Left (Violations fs)
         Right (ExitFailure _, _, err) -> Left (EvalFailed (T.pack err))
-
-die :: Text -> IO a
-die msg = TIO.hPutStrLn stderr msg >> exitFailure
 
 -- | A fresh temporary directory. lips writes a module and its staged
 -- @artifacts/@ tree here so a relative @src = ./artifacts/<name>@ resolves at
@@ -1284,14 +1372,13 @@ stagedGate stage file rl
 artifactGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 artifactGate nixpkgs stage file rl = case rlArtifact rl of
   Nothing            -> pure ()
-  Just (body, names) -> withTempDir $ \dir -> do
+  Just (body, names) -> step ("build " <> plural (length names) "artifact") $ withTempDir $ \dir -> do
     -- The build reads the tree exactly as compile writes it: artifact.nix beside
     -- a staged, FILLED artifacts/ tree, so `src = ./artifacts/<name>` resolves.
     TIO.writeFile (dir </> "artifact.nix") body
     stage (dir </> "artifacts")
     fillStagedTree file (dir </> "artifacts") (rlFills rl)
-    TIO.hPutStrLn stderr ("building " <> plural (length names) "artifact"
-      <> " to look inside: " <> T.intercalate ", " names <> ".")
+    note ("looking inside " <> T.intercalate ", " names)
     built <- forM names (\n -> (,) n <$> buildArtifact nixpkgs file dir n)
     -- A path whose artifact did not build is unreachable: the build above dies
     -- first, so every name here has an output path.
@@ -1332,7 +1419,7 @@ mintClaimGate nixpkgs stage file rl
         machine
         ("\8594 mint where KVM exists: an engine whose claims lips cannot run is an"
           <> " engine lips cannot vouch for, so it is not written."))
-      withTempDir $ \dir -> do
+      step ("claims: " <> plural (length (rlClaims rl)) "claim") $ withTempDir $ \dir -> do
         TIO.writeFile (dir </> "default.nix") (rlModule rl)
         stage (dir </> "artifacts")
         fillStagedTree file (dir </> "artifacts") (rlFills rl)
@@ -1342,9 +1429,7 @@ mintClaimGate nixpkgs stage file rl
         case claimsFile (not (null artNames)) (rlClaims rl) of
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (dir </> "claims.nix") body
-        let ids = map clId (rlClaims rl)
-        TIO.hPutStrLn stderr ("observing " <> plural (length ids) "claim"
-          <> ": " <> T.intercalate ", " ids <> ".")
+        note ("observing " <> T.intercalate ", " (map clId (rlClaims rl)))
         forM_ (rlClaims rl) (buildClaim nixpkgs file dir)
 
 -- | Run ONE claim out of a staged @claims.nix@. A failure is the claim's own
@@ -1550,20 +1635,6 @@ copyTree src dst = do
                -- the copy is made writable or the fill dies with EACCES.
                perms <- getPermissions (dst </> e)
                setPermissions (dst </> e) (setOwnerWritable True perms)
-
--- | The standard message skeleton: a plain headline, optional indented detail
--- lines, and a final "→" action. Every error the CLI prints is built from it,
--- so the product speaks with one voice.
-report :: Text -> [Text] -> Text -> Text
-report headline details action =
-  T.intercalate "\n" $ [headline] ++ detail ++ ["", action]
-  where detail = if null details then [] else "" : map ("  " <>) details
-
--- | Same skeleton without the action line, for a diagnosis another command
--- wraps with its own action.
-reportHead :: Text -> [Text] -> Text
-reportHead headline details =
-  T.intercalate "\n" $ [headline] ++ (if null details then [] else "" : map ("  " <>) details)
 
 -- | A validation failure kept structured (not pre-rendered) so each command
 -- picks the right next action: on print/run some are the author's to edit,
