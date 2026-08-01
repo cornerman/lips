@@ -50,8 +50,7 @@ import           System.Posix.Temp  (mkdtemp)
 import           System.Process     (CreateProcess (..), proc, readCreateProcessWithExitCode, readProcessWithExitCode)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
-import           Lips.Kernel.Engine.Data       (Emit (..), MapRule (..), renderAttrPath, bindSelf, keepsRepeats, toDemand, toRule)
-import           Lips.Kernel.Engine.Value      (valuePathHoles)
+import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
@@ -72,9 +71,8 @@ import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..))
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), SourceSpecVerdict (..), diagnose,
                                                 sourceSpecVerdict)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
-import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnanswerableDemand, unanswerableDemands)
-import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOverlap, renderRuleOverlap, ruleOverlaps)
-import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
+import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, unanswerableDemands)
+import           Lips.Kernel.Engine.Gate       (engineViolations, unanswerableProblem)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (flakeText, runCommands)
@@ -525,11 +523,13 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       eng <- case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
         Left es -> die (validationReport rep ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
         Right e -> pure e
-      assertPatternsOrthogonal rep eng
-      assertRulesOrthogonal rep eng
-      assertValuesReach rep eng
-      assertNoPathHoles rep eng
-      assertDemandsAnswerable rep eng
+      -- The schema-free gates, the same ones check runs over an engine already
+      -- committed. Only the first is shown: it is what dying on the first gate
+      -- has always done, and a later verdict is rarely meaningful once an
+      -- earlier one rejected the engine.
+      case engineViolations eng of
+        []      -> pure ()
+        (v : _) -> die (validationReport rep v)
       assertOptionsAdmissible target schemaPath rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
@@ -739,105 +739,11 @@ renderAnswer query ans = case ans of
 plural :: Int -> Text -> Text
 plural n word = tshow n <> " " <> word <> (if n == 1 then "" else "s")
 
--- | Orthogonality is checked statically, before an engine is written: two
--- rules whose left-hand sides unify could claim one decision, so refinement
--- would not be a function. The refiner enforces the same property at run time
--- ('Lips.Kernel.Refine.Overlap'), but only for an overlap some concrete
--- decision witnesses -- and an engine may ship an ambiguity no program in the
--- corpus happens to hit, which then fails on the author's machine instead of
--- here. Rejecting at the mint gate is where the defect is still cheap.
-assertRulesOrthogonal :: FilePath -> EngineData -> IO ()
-assertRulesOrthogonal file eng =
-  case ruleOverlaps (edRules eng) of
-    []  -> pure ()
-    ovs -> die (validationReport file
-      ("two of its rules claim the same decision, so it has no single reading:\n"
-        <> T.unlines (map (("  - " <>) . renderRuleOverlap) ovs)))
-
--- | The same argument one layer up: two templates that could read one line leave
--- the language with no single reading of it. 'crystallize' reports
--- 'Lips.Kernel.Lang.Crystallize.Overlapping' for a line that hits both, but only
--- for a line some program actually states, so an ambiguity no example separates
--- ships inside the engine and fails later on the author's own program. The
--- multi-token hole makes this cheap to mint by accident: it reads lines of every
--- length, so it overlaps almost any template with the same prefix.
-assertPatternsOrthogonal :: FilePath -> EngineData -> IO ()
-assertPatternsOrthogonal file eng =
-  case patternOverlaps (edPatterns eng) of
-    []  -> pure ()
-    ovs -> die (validationReport file
-      ("two of its patterns read the same line, so it has no single reading:\n"
-        <> T.unlines (map (("  - " <>) . renderPatternOverlap) ovs)))
-
--- | Deduce-or-fail applied to the engine's own reading: a word the language
--- binds and then discards makes a program line look load-bearing while changing
--- nothing, and no later stage can notice (the module it realizes is perfectly
--- valid Nix). So it is rejected here, where the engine is still rejectable.
--- Three honest ways out, named in the report because a refusal that does not
--- say what to write costs a whole round: carry the word (read it with <value>
--- or the aligned capture), spell it as a template LITERAL when it selects a
--- mechanism no value can carry (a builder, a service), or read the line as a
--- concept when it truly carries nothing -- which `check` then reports as
--- decoration.
-assertValuesReach :: FilePath -> EngineData -> IO ()
-assertValuesReach file eng =
-  case droppedValues (edPatterns eng) (edRules eng) of
-    []  -> pure ()
-    dvs -> die (validationReport file
-      ("it reads words from the program and then discards them:\n"
-        <> T.unlines (map (("  - " <>) . renderDroppedValue) dvs)
-        <> "\nEach one wants one of three fixes: use the word (a <value>/<value.N>\n"
-        <> "hole, or the capture aligned with the subject segment it fills); or, if\n"
-        <> "it SELECTS a mechanism no value can carry (a builder, a service), spell\n"
-        <> "it as a literal token of the template, so editing it stops the line\n"
-        <> "matching and asks for a fresh language instead of governing nothing; or,\n"
-        <> "if the line truly carries no value, read it as a concept."))
-
--- | A program word must never be coerced into a bare Nix path. A Nix path means
--- "copy this location into the store", so an absolute one is refused outright by
--- pure evaluation, and for a runtime directory (a document root, a data dir)
--- copying is never the intent: the option wants the string. A path is therefore
--- something the ENGINE writes as a literal (@.\/artifacts\/x@), never a coercion
--- of the author's word.
---
--- Caught here because nothing downstream can: the realized module is valid Nix
--- and evaluates until something forces the path, so the failure surfaces as an
--- opaque nix error far from the rule that caused it (which is exactly how the
--- first engine to write @\<value:path\>@ was found, in a flake check).
-assertNoPathHoles :: FilePath -> EngineData -> IO ()
-assertNoPathHoles file eng =
-  case [ (mrId r, emPath e, h)
-       | r <- edRules eng, e <- mrEmits r, h <- valuePathHoles (emRhs e) ] of
-    []  -> pure ()
-    bad -> die (validationReport file
-      ("it turns a program word into a Nix path, which copies that location into the store:\n"
-        <> T.unlines [ "  - rule " <> rid <> " fills " <> renderAttrPath pth
-                         <> " with <" <> h <> ":path>"
-                     | (rid, pth, h) <- bad ]
-        <> "\nWrite the value as a quoted STRING instead (\"\\\"<value>\\\"\"): an\n"
-        <> "option of type path accepts a string, and a directory the program names\n"
-        <> "exists on the running machine, not in the store. Keep a Nix path for a\n"
-        <> "literal the engine itself writes, like ./artifacts/<name>."))
-
--- | A demand no pattern can ever answer blocks every program in the language,
--- and reports itself as the author's missing fact (see
--- 'Lips.Kernel.Engine.Answerable'). Rejected at the mint gate, where the engine
--- is still rejectable and the model is still the one to fix it.
-assertDemandsAnswerable :: FilePath -> EngineData -> IO ()
-assertDemandsAnswerable file eng =
-  case unanswerableDemands (edPatterns eng) (edDemands eng) of
-    []  -> pure ()
-    uds -> die (unanswerableReport file uds)
-
 -- | One voice for the defect, whether it is caught at the mint gate or found in
--- an engine already committed.
+-- an engine already committed: the wording lives with the gate
+-- ('Lips.Kernel.Engine.Gate'), this only wraps it in the generate-time action.
 unanswerableReport :: FilePath -> [UnanswerableDemand] -> Text
-unanswerableReport file uds = validationReport file
-  ("it demands facts no program in this language can state:\n"
-    <> T.unlines (map (("  - " <>) . renderUnanswerableDemand) uds)
-    <> "\nA demand is met by a decision a pattern EMITS, matched segment for\n"
-    <> "segment, so the demanded subject must be one of those families -- write\n"
-    <> "the capture too (demand command.<name>, not demand command).")
+unanswerableReport file = validationReport file . unanswerableProblem
 
 -- | Deduce-or-fail: every minted rule must fill a real, correctly typed NixOS
 -- option. The schema document is located ONCE per run by 'ensureOptionSchema'

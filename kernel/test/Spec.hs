@@ -27,6 +27,7 @@ import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Kernel.Engine.Answerable
 import Lips.Kernel.Engine.Data
+import Lips.Kernel.Engine.Gate (engineViolations)
 import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Value
@@ -4304,6 +4305,38 @@ main = hspec $ do
         , "nix build", "nix develop" ]
       mapM_ (\c -> ls `shouldNotSatisfy` T.isInfixOf c) [ "#vm", "#manifest" ]
 
+  describe "engine gates are pure and reusable (Lips.Kernel.Engine.Gate)" $ do
+    it "passes a sound engine" $ do
+      let eng = engineFromLang
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
+            , "0.95 r1 match fact watch.interval => systemd.services.w.environment.S \"<value:int>\""
+            ]
+      engineViolations eng `shouldBe` []
+
+    it "names two patterns that both read one line" $ do
+      let eng = engineFromLang
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.a \"<secs>\""
+            , "0.95 p2 pattern watch <n> seconds => fact watch.b \"<n>\""
+            , "0.95 r1 match fact watch.a => systemd.services.w.environment.A \"<value:int>\""
+            , "0.95 r2 match fact watch.b => systemd.services.w.environment.B \"<value:int>\""
+            ]
+      engineViolations eng `shouldNotBe` []
+
+    -- The caller shows the FIRST entry, as dying on the first gate has always
+    -- done, so the gate order decides which defect a refusal names: a later
+    -- verdict is rarely meaningful once an earlier gate rejected the engine.
+    it "keeps the gate order, so the first entry is the first rejecting gate" $ do
+      let eng = engineFromLang
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.a \"<secs>\""
+            , "0.95 p2 pattern watch <n> seconds => fact watch.b \"<n>\""
+            , "0.95 r1 match fact watch.a => systemd.services.w.environment.A \"<value:int>\""
+            , "0.95 r2 match fact watch.b => systemd.services.w.environment.B \"<value:int>\""
+            , "0.95 q1 demand watch.nobody \"a fact no pattern emits\""
+            ]
+      case engineViolations eng of
+        (v : _ : _) -> v `shouldSatisfy` T.isInfixOf "patterns read the same line"
+        other       -> expectationFailure ("expected both gates to reject, got " ++ show (length other))
+
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).
 subjectsOf :: Base -> [[Text]]
@@ -4435,6 +4468,14 @@ genProv = oneof
     -- generator must not mint it as a file.
     safeFile = suchThat (T.pack <$> listOf (elements (['a' .. 'z'] ++ ['0' .. '9'] ++ "/._"))) (/= "gen")
     hexId = T.pack <$> listOf1 (elements (['a' .. 'f'] ++ ['0' .. '9']))
+
+-- | An engine written the way a mint answers, so a gate test states the case in
+-- the surface syntax instead of assembling records by hand. Reply format, not
+-- .lang format: it is what a draft arrives in, and it is far shorter to read.
+engineFromLang :: [Text] -> EngineData
+engineFromLang ls = case parseEngineCandidates (T.unlines ls) of
+  (errs@(_ : _), _) -> error ("test engine does not parse: " <> show errs)
+  ([], cands)       -> assemble (map icItem cands)
 
 -- | The bodies of ```<tag> … ``` fenced blocks, in order. Used to pull every
 -- teaching example out of the mint prompt so the parser guard above can hold
