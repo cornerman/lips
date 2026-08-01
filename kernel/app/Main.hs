@@ -218,6 +218,13 @@ checkLoose contract mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
   eng     <- loadLangOrDie dir file
+  -- An engine unsound on its own terms makes every later verdict meaningless
+  -- (an ambiguous line reads as the author's problem when it is the engine's),
+  -- so it fails before the diagnosis. Same gate generate runs before accepting
+  -- a mint, so a committed engine cannot drift below what minting required.
+  case engineViolations eng of
+    []      -> pure ()
+    (v : _) -> die (validationReport file v)
   -- First phase, pure and offline: how the program sits in its language.
   -- Always shown, so authoring is never blind; the behavioral gate runs only
   -- once the program crystallizes cleanly and completely.

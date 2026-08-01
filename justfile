@@ -70,6 +70,34 @@ generate program model="":
 options query target="nixos":
     nix run . -- options --target "{{target}}" "{{query}}"
 
+# The engine gates as `lips check` runs them: over a committed engine, and (in
+# a later task) over a draft read from stdin. Shell-level, because the verdict
+# is an exit code plus the wording of a refusal, and check dies rather than
+# returning -- hspec cannot see either. Builds the binary in the dev shell, the
+# way `test` builds the suite, so this needs no `nix run` and no `git add`.
+test-draft:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nix develop -c bash -c 'cd kernel && ghc -Wall -isrc -iapp app/Main.hs \
+      -outputdir /tmp/lips-build-cli -o /tmp/lips-cli'
+    lips=/tmp/lips-cli
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp/watch"
+    printf 'watch 30 seconds\n' > "$tmp/one.watch.lips"
+    cat > "$tmp/watch/watch.lang" <<'EOF'
+    p1 meta lang.pattern.p1 stated "watch <secs> seconds => fact watch.a \"<secs>\"" @gen:0000000000000000
+    p2 meta lang.pattern.p2 stated "watch <n> seconds => fact watch.b \"<n>\"" @gen:0000000000000000
+    r1 meta engine.rule.r1 stated "match fact watch.a => systemd.services.w.environment.A \"<value:int>\"" @gen:0000000000000000
+    r2 meta engine.rule.r2 stated "match fact watch.b => systemd.services.w.environment.B \"<value:int>\"" @gen:0000000000000000
+    EOF
+    sed -i 's/^    //' "$tmp/watch/watch.lang"
+    # A committed engine unsound on its own terms must be refused, not diagnosed.
+    if "$lips" check "$tmp/one.watch.lips" > "$tmp/out" 2>&1; then
+      echo "FAIL: check accepted an engine whose patterns are not orthogonal"; cat "$tmp/out"; exit 1
+    fi
+    grep -q "patterns read the same line" "$tmp/out" || { echo "FAIL: refusal did not name the overlap"; cat "$tmp/out"; exit 1; }
+    echo OK
+
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
 vm-smoke:
     nix build .#checks.x86_64-linux.vm-smoke -L
