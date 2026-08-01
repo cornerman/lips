@@ -49,10 +49,18 @@ claimsFile hasArtifacts cs = Just $ T.unlines $
       -- no separate rendering path.
       | otherwise    = []
 
+-- | A claim id as an attribute NAME. Always quoted: the id comes from the
+-- engine, so it is whatever a subject segment can be -- a bare @1@ from an
+-- index-keyed claim is not a nix identifier, and rendered bare it is a syntax
+-- error the author cannot act on. Quoting is legal for every id, so one form
+-- serves all of them and no rule has to decide which ids are "safe".
+attrName :: Claim -> Text
+attrName c = "\"" <> clId c <> "\""
+
 entry :: Claim -> [Text]
 entry c = case clPlace c of
   PlaceDerivation ->
-    [ "  " <> clId c <> " = pkgs.runCommand \"claim-" <> clId c <> "\""
+    [ "  " <> attrName c <> " = pkgs.runCommand \"claim-" <> clId c <> "\""
     , "    { nativeBuildInputs = [ pkgs.python3 ];"
     -- The command keeps its ${artifact.<name>} interpolation live; everything
     -- else the program stated is escaped by the kernel's own renderer.
@@ -79,7 +87,7 @@ entry c = case clPlace c of
     -- nixpkgs now refuses outright ("renamed to/replaced by testers.nixosTest"),
     -- so a machine claim rendered the old way fails at evaluation, before it ever
     -- boots.
-    [ "  " <> clId c <> " = pkgs.testers.nixosTest {"
+    [ "  " <> attrName c <> " = pkgs.testers.nixosTest {"
     , "    name = \"claim-" <> clId c <> "\";"
     , "    nodes.machine = { imports = [ ./default.nix ]; };"
     , "    testScript = " <> machineScript c <> ";"

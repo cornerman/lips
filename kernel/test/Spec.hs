@@ -3115,7 +3115,7 @@ main = hspec $ do
     it "renders a sandbox claim as a derivation that runs the command" $ do
       let txt = maybe "" id (claimsFile True [derivClaim])
       txt `shouldSatisfy` T.isInfixOf "artifact = import ./artifact.nix { inherit pkgs; };"
-      txt `shouldSatisfy` T.isInfixOf "echo = pkgs.runCommand \"claim-echo\""
+      txt `shouldSatisfy` T.isInfixOf "\"echo\" = pkgs.runCommand \"claim-echo\""
       -- the artifact reference stays a LIVE nix interpolation
       txt `shouldSatisfy` T.isInfixOf "command = \"${artifact.tool}/bin/tool --a 1\";"
       txt `shouldSatisfy` T.isInfixOf "out = out[:-1]"
@@ -3141,6 +3141,18 @@ main = hspec $ do
 
     it "is deterministic in claim order" $
       claimsFile True [machineClaim, derivClaim] `shouldBe` claimsFile True [derivClaim, machineClaim]
+
+    -- A claim id comes from the engine, so it can be anything a subject segment
+    -- can be -- including a number, which is not a nix identifier. Rendered
+    -- bare it is a syntax error the author cannot act on, three layers down in
+    -- a nix trace (observed: a minted engine keyed its claims by <n:index>).
+    it "quotes a claim id, which need not be a nix identifier" $ do
+      let numeric = derivClaim { clId = "1" }
+          txt     = maybe "" id (claimsFile True [numeric])
+      txt `shouldSatisfy` T.isInfixOf "\"1\" = pkgs.runCommand"
+      let machineNumeric = machineClaim { clId = "2" }
+          txt2           = maybe "" id (claimsFile False [machineNumeric])
+      txt2 `shouldSatisfy` T.isInfixOf "\"2\" = pkgs.testers.nixosTest"
 
   -- The advisory half of the obligation: where behaviour lives in minted source
   -- and the program states no observable, say so in the editor. A warning, never
