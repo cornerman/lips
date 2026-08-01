@@ -49,6 +49,7 @@ import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply)
+import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
 import Lips.Generate.Record (corpusText, genId, record, recordedProgram, recordedPrograms)
@@ -3841,6 +3842,35 @@ main = hspec $ do
       prReply (parsePiReply stream) `shouldBe` "pattern p 1.0"
     it "a stream with no tool call has an empty transcript" $
       prTranscript (parsePiReply "") `shouldBe` ""
+
+  describe "cli output vocabulary (Lips.Cli.Output)" $ do
+    it "a running phase carries its label and the clock" $
+      runningText Plain "mint" "" 1.25 `shouldBe` "· mint  1.2s"
+    it "the state a phase reports rides beside the clock" $
+      runningText Plain "mint" "looking up services.nginx" 3.0
+        `shouldBe` "· mint  looking up services.nginx  3.0s"
+    it "a held phase says so with its duration" $
+      verdictText Plain "contract" (Held 0.5) `shouldBe` "✓ contract  (0.5s)"
+    it "a failed phase uses the other glyph" $
+      verdictText Plain "contract" (Failed 12.0) `shouldBe` "✗ contract  (12s)"
+    it "styling is dropped entirely when the stream is not a terminal" $
+      T.any (== '\ESC') (verdictText Plain "x" (Held 1)) `shouldBe` False
+    it "a terminal gets styling, and the same words" $ do
+      T.any (== '\ESC') (verdictText Fancy "x" (Held 1)) `shouldBe` True
+      T.filter (/= '\ESC') (verdictText Fancy "x" (Held 1))
+        `shouldSatisfy` T.isInfixOf "✓ x"
+    it "durations read at a glance: tenths, seconds, then minutes" $ do
+      elapsedText 0.04 `shouldBe` "0.0s"
+      elapsedText 9.96 `shouldBe` "10.0s"
+      elapsedText 12.4 `shouldBe` "12s"
+      elapsedText 125 `shouldBe` "2m 05s"
+    it "the report skeleton is headline, indented detail, then the action" $
+      report "broke" ["a", "b"] "→ fix it"
+        `shouldBe` "broke\n\n  a\n  b\n\n→ fix it"
+    it "a detail-free report has no empty block" $
+      report "broke" [] "→ fix it" `shouldBe` "broke\n\n→ fix it"
+    it "a headline-only diagnosis leaves the action to its caller" $
+      reportHead "broke" [] `shouldBe` "broke"
 
   describe "solution identity (plan 2026-07-22: <instance>.<language>.lips)" $ do
     let prog = "examples/ledger.backup.lips"
