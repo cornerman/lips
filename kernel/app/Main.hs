@@ -27,8 +27,8 @@ module Main (main) where
 import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (filterM, forM, forM_, unless, when)
 import           Data.Bifunctor     (first)
-import           Data.List          (partition)
-import           Data.Maybe         (isJust)
+import           Data.List          (intercalate, partition)
+import           Data.Maybe         (fromMaybe, isJust)
 import           Data.Aeson         (Value (..), decode)
 import qualified Data.Aeson.KeyMap  as KM
 import qualified Data.ByteString    as BS
@@ -41,7 +41,7 @@ import           System.Environment (getEnvironment, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure)
 import           GHC.IO.Encoding     (setLocaleEncoding)
 import           System.IO          (hFlush, hSetEncoding, stderr, stdout, utf8)
-import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist,
+import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
                                      doesPathExist, getTemporaryDirectory, listDirectory,
                                      removeDirectoryRecursive, removePathForcibly,
                                      getPermissions, setPermissions, setOwnerWritable)
@@ -550,7 +550,18 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
   -- generation event (it decides which rules are admissible), it is recorded as
   -- such, and a schema that cannot be built must not cost an AI call first.
   (schemaPath, schemaPin) <- ensureOptionSchema target mschema ("generate " <> T.pack rep)
-  (reply, model, transcript) <- callPi mmodel thinking prompt corpus target
+  -- The mint's validation tool judges a draft against the contract that will
+  -- actually gate it: the committed .expect on a regeneration, the draft's own
+  -- minted expects on a first mint or under --renew. That rule is generate's
+  -- (it is read again below, where the gate itself uses it), so the tool is
+  -- told the answer instead of re-deriving it and drifting into a false green.
+  committedExpectPath <- if renew
+    then pure Nothing
+    else do
+      there <- doesFileExist (expectPath rep)
+      pure (if there then Just (expectPath rep) else Nothing)
+  (reply, model, transcript) <-
+    callPi mmodel thinking prompt corpus target files committedExpectPath schemaPath
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
   -- refusal already shows the offending lines). To stderr, leaving stdout the
@@ -759,7 +770,7 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
 
 -- | @options@: look a query up in the target world's pinned option schema and
 -- print the answer. This verb is both a human's lookup and the target of the
--- mint's one tool (@query_options@), so what a human reads here is exactly what
+-- mint's lookup tool (@query_options@), so what a human reads here is exactly what
 -- the model is told -- there is no second, model-facing renderer to drift.
 --
 -- It never calls a model (invariant 1 holds trivially: no model runs anywhere
@@ -1072,12 +1083,12 @@ nixParses nixModule = do
 -- omitted and pi's own configured default applies. Either way the json stream
 -- reports the model actually used, which the caller records, so provenance
 -- stays concrete without a model baked into the deliverable.
-callPi :: Maybe String -> String -> Text -> Text -> Target -> IO (Text, Text, Text)
-callPi mmodel thinking system userPrompt target = do
-  -- The mint's one tool ships with the binary; without it a mint would have to
-  -- recall option names instead of looking them up, which is the guessing this
-  -- whole path exists to prevent. So a missing extension is fatal, not a
-  -- silent downgrade to a weaker mint.
+callPi :: Maybe String -> String -> Text -> Text -> Target -> [FilePath] -> Maybe FilePath -> FilePath -> IO (Text, Text, Text)
+callPi mmodel thinking system userPrompt target files mExpect schemaPath = do
+  -- The mint's tools ship with the binary; without them a mint would have to
+  -- recall option names instead of looking them up, and could not check a draft
+  -- before answering -- the guessing this whole path exists to prevent. So a
+  -- missing extension is fatal, not a silent downgrade to a weaker mint.
   -- An EMPTY variable counts as unset: lookupEnv reports Just "" for it, which
   -- would hand pi a bare @-e ""@ and fail somewhere less obvious.
   toolsPath <- lookupEnv "LIPS_MINT_TOOLS"
@@ -1090,14 +1101,25 @@ callPi mmodel thinking system userPrompt target = do
   -- The extension reads the world to search from the environment, and refuses
   -- to load without it: a mint for one world must never be answered from
   -- another world's schema.
+  --
+  -- What the draft tool may NOT choose is also set here: the programs it is
+  -- judged against (a model picking its own corpus could validate against one
+  -- that is not being minted), the governing contract, and the schema this run
+  -- was grounded against.
   parentEnv <- getEnvironment
-  let childEnv = ("LIPS_MINT_TARGET", T.unpack (targetSlug target))
-        : filter ((/= "LIPS_MINT_TARGET") . fst) parentEnv
+  let ours = [ ("LIPS_MINT_TARGET",   T.unpack (targetSlug target))
+             , ("LIPS_MINT_PROGRAMS", intercalate "\n" files)
+             -- Empty means "the draft's own minted expects govern", which is a
+             -- first mint or --renew.
+             , ("LIPS_MINT_EXPECT",   fromMaybe "" mExpect)
+             , ("LIPS_MINT_SCHEMA",   schemaPath)
+             ]
+      childEnv = ours ++ filter ((`notElem` map fst ours) . fst) parentEnv
       -- Hermetic by explicit subtraction: -nbt drops pi's built-in tools (read,
       -- bash, edit, write, grep, find, ls -- none of which the mint may touch),
       -- --no-extensions/--no-skills/--no-prompt-templates drop whatever the user
       -- happens to have installed, -nc drops ambient AGENTS.md/CLAUDE.md context
-      -- files (global, and walking up from cwd). What remains is the one tool
+      -- files (global, and walking up from cwd). What remains is the two tools
       -- this run loads on purpose, so the mint's world equals what the record
       -- pins -- no input steers generation without entering genId's hash.
       -- --mode json: so the model pi resolved, and every lookup it made, are

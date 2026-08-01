@@ -80,13 +80,18 @@ and the tests for the language; pass several programs
 across them. lips refuses to write anything unless the engine actually compiles
 every program and the tests hold, so a bad mint costs you nothing.
 
-The mint has a single tool: it can look up an option path and type in the
-pinned schema of the target world (the same lookup `lips options <query>` gives
-you). It confirms a name instead of hallucinating it, and every answer it gets
-goes into `<language>.generation` to enter the generation hash. It grounds
-names, never values; what your program does not state remains uninvented.
-Nothing in lips lets a model run or judge its own engine — that verification
-happens afterwards, offline, by lips itself. The mint's own instructions are a
+The mint has two tools, and neither one judges. The first looks an option path
+and type up in the pinned schema of the target world (the same lookup
+`lips options <query>` gives you), so the mint confirms a name instead of
+hallucinating it. It grounds names, never values; what your program does not
+state remains uninvented. The second runs lips' own gates over the draft engine
+the model is about to answer with (`lips check --draft`, the same verb you run)
+and reports the first gate that rejects it, so a fixable mistake is fixed inside
+the one call instead of costing you a fresh mint. Every answer either tool gives
+goes into `<language>.generation` to enter the generation hash. Nothing in lips
+lets a model run its own engine or decide that it is good — that verification
+happens afterwards, offline, by lips itself, and it is unchanged by what the
+model checked. The mint's own instructions are a
 reviewable artifact, not a secret: they live as plain markdown under
 `assets/mint/` in this repo, embedded into the binary at build time.
 
@@ -200,7 +205,7 @@ itself. `generate` additionally expects the `pi` binary on your PATH,
 authenticated against some provider: lips deliberately keeps it out of its own
 closure, because it is your harness and carries your credentials. lips calls it hermetically, completely stripping away your ambient session,
 tools, skills, and extensions. What remains is the system prompt lips sends and
-the one schema-lookup tool it loads for that run. Everything the model saw (the
+the two tools it loads for that run (the schema lookup and the draft check). Everything the model saw (the
 prompt and every tool answer) is hashed into `.generation`, ensuring the mint
 is fully transparent and leaves a complete audit trail.
 

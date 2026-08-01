@@ -1,13 +1,16 @@
-// The ONLY action a lips mint may take. pi runs the mint with its built-in
+// The ONLY actions a lips mint may take. pi runs the mint with its built-in
 // tools and every ambient extension, skill and context file disabled, so this
 // file is the mint's complete world: look up an option in the pinned schema of
-// the target world. It shells out to the lips binary, so what the model is told
-// is exactly what lips itself would say -- there is no second, model-facing
-// renderer that could drift from the human-facing one.
+// the target world, and check a draft engine before answering with it. Both
+// shell out to the lips binary, so what the model is told is exactly what lips
+// itself would say -- there is no second, model-facing renderer that could
+// drift from the human-facing one.
 //
-// There is deliberately no tool that JUDGES an engine. Informing is safe to
-// expose; deciding is not, and the gate that decides runs once, in Haskell,
-// after the model is done.
+// Two tools, and neither one decides. query_options informs about NAMES;
+// check_draft REPORTS which gate rejects a draft. The gate that decides still
+// runs once, in Haskell, after the model is done -- a model that skips both
+// tools is refused by exactly the same gates as before. What moved is when the
+// mint can learn it is wrong, not who judges it.
 //
 // pi loads this with `-e` for a single run, so the tool exists inside lips'
 // mint and nowhere else: a user's own pi sessions never gain it.
@@ -33,6 +36,10 @@ function required(name: string): string {
 
 const bin = required("LIPS_BIN");
 const target = required("LIPS_MINT_TARGET");
+// Newline-separated, supplied by generate: the model may not choose which
+// programs its draft is judged against, or it could validate against a corpus
+// that is not the one being minted.
+const programs = required("LIPS_MINT_PROGRAMS").split("\n").filter(Boolean);
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -72,6 +79,56 @@ export default function (pi: ExtensionAPI) {
         content: [{ type: "text", text: text || "no output" }],
         details: {},
         isError: failed,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "check_draft",
+    label: "Check draft",
+    description:
+      "Check a DRAFT engine before you answer with it. Pass the complete set of " +
+      "lines you intend to answer with; lips runs its own gates over them and " +
+      "reports the first one that rejects the draft, in the same words the " +
+      "refusal would use. It does not run the claim gate or the artifact build, " +
+      "and it says so. A clean answer does not guarantee acceptance; a dirty one " +
+      "guarantees refusal, so fix what it names and check again.",
+    parameters: Type.Object({
+      draft: Type.String({
+        description: "The complete draft engine, in the answer format.",
+      }),
+    }),
+    async execute(_toolCallId: string, params: { draft: string }) {
+      // One program at a time: check takes exactly one, and the engine-level
+      // gates are program-independent, so the first failure is the answer.
+      for (const program of programs) {
+        const r = spawnSync(bin, ["check", "--draft", program], {
+          input: params.draft,
+          encoding: "utf8",
+        });
+        if (r.status !== 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  [r.stdout, r.stderr].filter(Boolean).join("\n") || "no output",
+              },
+            ],
+            details: {},
+            isError: true,
+          };
+        }
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: "the draft passes every gate lips can run before you answer.",
+          },
+        ],
+        details: {},
+        isError: false,
       };
     },
   });

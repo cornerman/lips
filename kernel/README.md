@@ -30,7 +30,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Engine.Answerable` | ledger 13 | a demand no pattern can ever answer (`unanswerableDemands`) |
 | `Lips.Kernel.Capture` | ledger 13 | the one capture/name grammar shared by rules, expects and demands (`matchSubject`, `nameParse`, `fillName`) |
 | `Lips.Kernel.Lang.Diagnose` | ledger 13 | the authoring report: per-line outcome, open questions, inert lines, discarded words |
-| `Lips.Kernel.OptionType` | ledger 13 | domain-blind option grounding over a typed `OptionSchema`, plus the schema lookup the mint's one tool asks |
+| `Lips.Kernel.OptionType` | ledger 13 | domain-blind option grounding over a typed `OptionSchema`, plus the schema lookup the mint's `query_options` tool asks |
 | `Lips.Nix.Options` / `Lips.Nix.Target` / `Lips.Nix.Flake` | ledger 13 | the NixOS/home-manager specifics: `optionsJSON` shape, the closed `Target`, the emitted `flake.nix` |
 | `Lips.Identity` | ledger 13 | the only place that knows the file layout (`<instance>.<language>.lips` -> language folder, `out/`) |
 | `Lips.Cli` | ledger 13 | the whole CLI grammar as one `optparse-applicative` parser (verbs, flags, completion) |
@@ -120,10 +120,14 @@ text. The boundary is explicit in the code:
   language is then validated by crystallizing the actual program and running it
   end to end; nothing is written unless the whole loop succeeds.
 - The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`), which
-  runs pi hermetically by explicit subtraction and loads exactly one tool: the
-  `query_options` lookup of `assets/mint-tools.ts`, which shells back into the
-  `lips options` verb. The mint can therefore confirm an option name instead of
-  recalling it, but cannot read a file, run a command, or judge its own engine.
+  runs pi hermetically by explicit subtraction and loads exactly two tools,
+  both in `assets/mint-tools.ts`: the `query_options` lookup, which shells back
+  into the `lips options` verb, and `check_draft`, which shells into
+  `lips check --draft` over the engine the model is about to answer with. The
+  mint can therefore confirm an option name instead of recalling it, and learn
+  which gate rejects its draft while it can still fix it, but cannot read a
+  file, run a command, or judge its own engine: the deciding gate runs
+  afterwards, in Haskell.
   Every lookup and its answer land in the `.generation` record, so nothing the
   model saw escapes `genId`.
 

@@ -1092,8 +1092,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   halves of the split, so neither can drift back out silently. See §11,
   "Branching on a captured word".
 
-- **The mint is grounded by one schema lookup tool.** A mint may confirm an
-  option path and type instead of recalling it, through exactly one tool,
+- **The mint is grounded by a schema lookup tool.** A mint may confirm an
+  option path and type instead of recalling it, through the tool
   `query_options`, registered by a pi extension lips ships and loads per run
   (`assets/mint-tools.ts`, loaded with `-e`, so a user's own pi never gains it).
   It shells out to the read-only `lips options <query>` verb, so the model reads
