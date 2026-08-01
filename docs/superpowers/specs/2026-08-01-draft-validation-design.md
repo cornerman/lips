@@ -83,9 +83,19 @@ terminology rule forbids (one word per act). `check` already means "verify an
 engine against a contract, offline, no AI"; a draft engine is the same act on
 a different input, and a difference of INPUT belongs in a flag.
 
-`--draft` and `--lang-dir` are mutually exclusive and passing both fails
-loud: `--lang-dir` points at an engine that exists, `--draft` builds a
-temporary one.
+`--draft` and `--lang` are mutually exclusive and passing both fails loud:
+`--lang` points at an engine that exists, `--draft` builds a temporary one.
+(The existing flag is spelled `--lang DIR`, field `ceLangDir`.)
+
+The throwaway folder must be NAMED after the language, because
+`Identity.resolveLangDir` refuses a folder whose basename is not the
+program's language. So the draft materializes to `<tmp>/<language>/`.
+
+`check` takes exactly one program (`programArg`), and that arity stays. The
+mint tool loops over the language's programs, feeding the same draft on stdin
+each time, and stops at the first failure. The engine-level gates are
+program-independent, so repeating them per program is redundant but harmless,
+and a language has few programs.
 
 The draft is supplied in reply format, not `.lang` format, deliberately.
 Asking the model to write `.lang` for validation while answering in reply
@@ -216,7 +226,7 @@ unused, it costs nothing and adds no failure path.
 ## Verification
 
 - Conformance cases for: reply-format materialization; `--draft` with
-  `--lang-dir` failing loud; governing-contract selection across first
+  `--lang` failing loud; governing-contract selection across first
   generation, regeneration, and `--renew`; the skipped-gate report.
 - The five moved gates run under `check` for every committed engine.
 - One live mint of a claim-bearing language with a small model, comparing
