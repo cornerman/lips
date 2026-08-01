@@ -96,6 +96,27 @@ test-draft:
       echo "FAIL: check accepted an engine whose patterns are not orthogonal"; cat "$tmp/out"; exit 1
     fi
     grep -q "patterns read the same line" "$tmp/out" || { echo "FAIL: refusal did not name the overlap"; cat "$tmp/out"; exit 1; }
+    # The same defect in a DRAFT, read from stdin in the mint's reply format.
+    cat > "$tmp/draft.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.a "<secs>"
+    0.95 p2 pattern watch <n> seconds => fact watch.b "<n>"
+    0.95 r1 match fact watch.a => systemd.services.w.environment.A "<value:int>"
+    0.95 r2 match fact watch.b => systemd.services.w.environment.B "<value:int>"
+    EOF
+    sed -i 's/^    //' "$tmp/draft.txt"
+    if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/draft.txt" > "$tmp/out2" 2>&1; then
+      echo "FAIL: --draft accepted overlapping patterns"; cat "$tmp/out2"; exit 1
+    fi
+    grep -q "patterns read the same line" "$tmp/out2" || { echo "FAIL: --draft refusal did not name the overlap"; cat "$tmp/out2"; exit 1; }
+    # A sound draft is accepted, and says what it did not check.
+    cat > "$tmp/good.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 r1 match fact watch.interval => systemd.services.w.environment.S "<value:int>"
+    EOF
+    sed -i 's/^    //' "$tmp/good.txt"
+    "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/good.txt" > "$tmp/out3" 2>&1 \
+      || { echo "FAIL: a sound draft was refused"; cat "$tmp/out3"; exit 1; }
+    grep -q "NOT run" "$tmp/out3" || { echo "FAIL: the skipped gates were not reported"; cat "$tmp/out3"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

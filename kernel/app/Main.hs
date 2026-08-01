@@ -56,6 +56,7 @@ import           Lips.Identity                 (requireProgram, readmePath, gapP
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
+import           Lips.Generate.Draft    (DraftTree (..), materializeDraft)
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiReply (..), parsePiReply)
 import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
@@ -111,7 +112,9 @@ main = do
   case cmd of
     Generate go -> generate (goTarget go) (goSchema go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
-    Check co    -> () <$ checkLoose True (ceLangDir co) (ceFile co)
+    Check co
+      | ceDraft co -> checkDraft (ceFile co)
+      | otherwise  -> () <$ checkLoose True (ceLangDir co) (ceFile co)
     Options oo  -> optionsQuery (ooTarget oo) (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
     Lsp         -> runLsp
 
@@ -251,6 +254,42 @@ checkLoose contract mLangDir file = do
   where
     escapes Matched{} = False
     escapes _         = True
+
+-- | @check --draft@: judge an engine the mint has not committed yet. The draft
+-- arrives on stdin in reply format; lips materializes it into a throwaway
+-- language folder and runs the ordinary verifier over it, so what the model is
+-- told is what lips itself would say -- there is no second, model-facing
+-- verifier to drift.
+--
+-- The claim gate is deliberately NOT run, and the output says which gates were
+-- skipped: a sandbox claim compiles the artifact and a machine claim boots a
+-- VM, so it costs minutes per call and hard-fails without KVM, which would be a
+-- false RED blocking the model from validating at all. Observational
+-- verification stays where it already is, in generate's final gate. "Not
+-- verified" is stated, never rendered as verified.
+--
+-- The gate that DECIDES is unchanged: generate still runs every one of these
+-- checks afterwards, so a model that skips this door is refused exactly as
+-- before.
+checkDraft :: FilePath -> IO ()
+checkDraft file = do
+  reply <- TIO.getContents
+  -- Which contract governs is generate's rule, not this function's: it exports
+  -- the answer (the committed .expect on a regeneration, empty under --renew or
+  -- on a first mint) so the two cannot drift apart.
+  governing <- lookupEnv "LIPS_MINT_EXPECT" >>= \m -> case m of
+    Just p | not (null p) -> tryRead p
+    _                     -> pure Nothing
+  withTempDir $ \root -> case materializeDraft root file reply governing of
+    Left errs -> die (validationReport file ("the draft cannot be read as an engine:\n"
+                        <> T.unlines [ "  - " <> e | e <- errs ]))
+    Right t   -> do
+      createDirectoryIfMissing True (dtLangDir t)
+      TIO.writeFile (langPathIn (dtLangDir t) file) (dtLang t)
+      TIO.writeFile (expectPathIn (dtLangDir t) file) (dtExpect t)
+      writeSources (artifactsPathIn (dtLangDir t) file) (dtSources t)
+      _ <- checkLoose False (Just (dtLangDir t)) file
+      TIO.putStrLn (T.pack file <> ": the claim gate and the artifact build were NOT run.")
 
 -- | The behavioral gate: the committed @.expect@ contract against the realized
 -- module. Reached only after diagnostics confirm the program crystallizes.

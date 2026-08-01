@@ -28,6 +28,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Answerable
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations)
+import Lips.Generate.Draft (DraftTree (..), materializeDraft)
 import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Value
@@ -4336,6 +4337,42 @@ main = hspec $ do
       case engineViolations eng of
         (v : _ : _) -> v `shouldSatisfy` T.isInfixOf "patterns read the same line"
         other       -> expectationFailure ("expected both gates to reject, got " ++ show (length other))
+
+  describe "draft materialization (Lips.Generate.Draft)" $ do
+    let reply = T.unlines
+          [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
+          , "0.95 r1 match fact watch.interval => systemd.services.w.environment.S \"<value:int>\""
+          , "0.95 a1 expect systemd.services.w.environment.S from watch.interval"
+          ]
+    -- resolveLangDir refuses a folder whose basename is not the language, so a
+    -- draft that landed in the temp root itself could never be checked.
+    it "puts the draft in a folder named after the language" $
+      case materializeDraft "/tmp/x" "one.watch.lips" reply Nothing of
+        Left es -> expectationFailure ("draft did not materialize: " <> show es)
+        Right t -> dtLangDir t `shouldBe` "/tmp/x/watch"
+
+    it "renders the draft as a .lang the ordinary reader accepts" $
+      case materializeDraft "/tmp/x" "one.watch.lips" reply Nothing of
+        Left es -> expectationFailure ("draft did not materialize: " <> show es)
+        Right t -> readLang (dtLang t) `shouldSatisfy` isRight
+
+    -- On a regeneration the committed contract governs (invariant 5). Handing
+    -- the model its own freshly written promises would always pass and the real
+    -- gate would then refuse: a false green is worse than no tool.
+    it "writes the governing contract, not the draft's own, when one is given" $
+      case materializeDraft "/tmp/x" "one.watch.lips" reply (Just "the committed contract") of
+        Left es -> expectationFailure ("draft did not materialize: " <> show es)
+        Right t -> dtExpect t `shouldBe` "the committed contract"
+
+    it "falls back to the draft's own expects, which is a first mint" $
+      case materializeDraft "/tmp/x" "one.watch.lips" reply Nothing of
+        Left es -> expectationFailure ("draft did not materialize: " <> show es)
+        Right t -> dtExpect t `shouldSatisfy` T.isInfixOf "watch.interval"
+
+    it "reports the parse errors of an unreadable draft rather than guessing" $
+      case materializeDraft "/tmp/x" "one.watch.lips" "not an engine line" Nothing of
+        Left es -> es `shouldNotBe` []
+        Right _ -> expectationFailure "an unreadable draft must not materialize"
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).
