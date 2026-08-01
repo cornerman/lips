@@ -117,6 +117,31 @@ test-draft:
     "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/good.txt" > "$tmp/out3" 2>&1 \
       || { echo "FAIL: a sound draft was refused"; cat "$tmp/out3"; exit 1; }
     grep -q "NOT run" "$tmp/out3" || { echo "FAIL: the skipped gates were not reported"; cat "$tmp/out3"; exit 1; }
+    # An option that does not exist is refused, when generate hands the draft
+    # path the schema it grounded the mint against (check itself stays
+    # nixpkgs-free, so the gate can only run on the mint side).
+    cat > "$tmp/badopt.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 r1 match fact watch.interval => services.ngnix.port "<value:int>"
+    EOF
+    sed -i 's/^    //' "$tmp/badopt.txt"
+    export LIPS_MINT_SCHEMA="$PWD/kernel/test/fixtures/options-mini.json"
+    export LIPS_MINT_TARGET=nixos
+    if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/badopt.txt" > "$tmp/out4" 2>&1; then
+      echo "FAIL: --draft accepted an option that does not exist"; cat "$tmp/out4"; exit 1
+    fi
+    grep -q "ngnix" "$tmp/out4" || { echo "FAIL: the refusal did not name the bad option"; cat "$tmp/out4"; exit 1; }
+    # The same draft with the option the fixture does declare passes, and the
+    # contract it was handed is the one it is graded against.
+    cat > "$tmp/goodopt.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 r1 match fact watch.interval => services.x.port "<value:int>"
+    0.95 a1 expect services.x.port from watch.interval
+    EOF
+    sed -i 's/^    //' "$tmp/goodopt.txt"
+    "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/goodopt.txt" > "$tmp/out5" 2>&1 \
+      || { echo "FAIL: a sound, grounded draft was refused"; cat "$tmp/out5"; exit 1; }
+    grep -q "checks pass" "$tmp/out5" || { echo "FAIL: the expect gate did not run on the draft"; cat "$tmp/out5"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

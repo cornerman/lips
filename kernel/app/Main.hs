@@ -114,7 +114,7 @@ main = do
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
-      | otherwise  -> () <$ checkLoose True (ceLangDir co) (ceFile co)
+      | otherwise  -> () <$ checkLoose True True (ceLangDir co) (ceFile co)
     Options oo  -> optionsQuery (ooTarget oo) (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
     Lsp         -> runLsp
 
@@ -147,7 +147,7 @@ compileLoose mout mLangDir noContract file = do
   -- very output the contract judged (and the pipeline runs once, not twice).
   -- @--no-contract@ is the one caller that cannot gate (a compile inside a nix
   -- derivation has no nix to evaluate with); it still crystallizes and realizes.
-  rl  <- checkLoose (not noContract) mLangDir file
+  rl  <- checkLoose (not noContract) (not noContract) mLangDir file
   target  <- readRecordedTarget dir file
   let outDirPath = maybe (compiledPath file) id mout
   ensureDerived file
@@ -212,12 +212,15 @@ readRecordedTarget dir file = do
 -- Returns the realization it validated, so @compile@ -- which gates through
 -- this same verb -- materializes that run's output instead of running the whole
 -- pipeline a second time.
--- The @contract@ flag says whether the behavioral gate runs; only a compile
--- inside a nix build passes 'False' (see @--no-contract@). Everything before the
--- gate -- crystallization, the open questions, the staged-source check -- runs
--- either way, because none of it needs nix.
-checkLoose :: Bool -> Maybe FilePath -> FilePath -> IO Realization
-checkLoose contract mLangDir file = do
+-- Two flags, one per gate, so each skip is named at the call site instead of
+-- riding along with another. @contract@ is the behavioral gate: only a compile
+-- inside a nix build passes 'False' (see @--no-contract@). @claims@ is the
+-- observational gate, which builds and may boot: 'checkDraft' passes 'False'
+-- for it alone, because a per-call VM boot would block a mint on a machine
+-- without KVM. Everything before both -- crystallization, the open questions,
+-- the staged-source check -- runs either way, because none of it needs nix.
+checkLoose :: Bool -> Bool -> Maybe FilePath -> FilePath -> IO Realization
+checkLoose contract claims mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
   eng     <- loadLangOrDie dir file
@@ -250,7 +253,7 @@ checkLoose contract mLangDir file = do
                  []
                  "→ answer them by stating the detail in the program.")
         uds -> die (unanswerableReport file uds)
-      else expectGate contract dir file eng program
+      else expectGate contract claims dir file eng program
   where
     escapes Matched{} = False
     escapes _         = True
@@ -288,16 +291,43 @@ checkDraft file = do
       TIO.writeFile (langPathIn (dtLangDir t) file) (dtLang t)
       TIO.writeFile (expectPathIn (dtLangDir t) file) (dtExpect t)
       writeSources (artifactsPathIn (dtLangDir t) file) (dtSources t)
-      _ <- checkLoose False (Just (dtLangDir t)) file
+      -- The schema gate cannot live in check, which stays nixpkgs-free so a
+      -- committed engine is judged offline. The draft path runs on the mint
+      -- side, where generate has already built a schema and hands over its
+      -- path, so it runs the gate itself: without it a draft naming an option
+      -- that does not exist would read as clean here and be refused by the
+      -- final gate, which is the false-green direction.
+      mschema <- lookupEnv "LIPS_MINT_SCHEMA"
+      case mschema of
+        Just p | not (null p) -> do
+          target <- draftTarget
+          eng <- loadLangOrDie (dtLangDir t) file
+          assertOptionsAdmissible target p file eng
+        _ -> pure ()
+      _ <- checkLoose True False (Just (dtLangDir t)) file
       TIO.putStrLn (T.pack file <> ": the claim gate and the artifact build were NOT run.")
+
+-- | Which world a draft is grounded against. Read from the environment generate
+-- controls, never defaulted: a silent default would ground a mint against the
+-- wrong world's schema and report the wrong names as missing.
+draftTarget :: IO Target
+draftTarget = do
+  mt <- lookupEnv "LIPS_MINT_TARGET"
+  case mt >>= parseTarget of
+    Just t  -> pure t
+    Nothing -> die (report
+      "lips can't check this draft: the world it is minted for is not stated."
+      ["LIPS_MINT_SCHEMA names a schema, but LIPS_MINT_TARGET is missing or not one of "
+        <> T.intercalate ", " (map targetSlug [minBound .. maxBound]) <> "."]
+      "\8594 this is generate's to set; report it as a lips bug.")
 
 -- | The behavioral gate: the committed @.expect@ contract against the realized
 -- module. Reached only after diagnostics confirm the program crystallizes.
 -- Validates once, up front: the module, its artifacts and the paths it names
 -- all come from that one run, so the staged-source gate below and the contract
 -- judge the same realization.
-expectGate :: Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realization
-expectGate contract dir file eng program = do
+expectGate :: Bool -> Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realization
+expectGate contract claims dir file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
   stagedGate (stageFromDisk dir file) file rl
   sourceSpecGate dir file eng program
@@ -329,7 +359,7 @@ expectGate contract dir file eng program = do
   -- so the contract's own verdict lands before the claim gate's failure, which
   -- goes to stderr (the same reason the diagnosis flushes above)
   hFlush stdout
-  when contract (claimGate dir file rl)
+  when claims (claimGate dir file rl)
   pure rl
 
 -- | The claim gate: every observable the program states must actually hold.
