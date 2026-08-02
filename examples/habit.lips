@@ -1,5 +1,9 @@
 track daily habits from the terminal.
-the habit log is stored in /home/cornerman/notes/habits.tsv.
+the first argument names the habit to print.
+read the habit log from the file named as the second argument, or from standard input when no file is named.
 each log line holds an ISO date and a habit name separated by a tab.
-print a heatmap of the last 365 days for the habit named on the command line.
+print one character per day from the log's earliest date to its latest date.
+mark a day the named habit was logged with "#".
+mark a day it was not logged with ".".
 install the tool as the command habit.
+given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".

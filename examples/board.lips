@@ -1,4 +1,8 @@
 show a kanban board in the terminal.
-the board is stored in /home/cornerman/notes/board.md.
+read the board from the file named on the command line, or from standard input when no file is named.
+the board is markdown: a "## name" line opens a column and a "- text" line under it is one of its cards.
 the board has the columns "todo, doing, done".
+print one line per column: its name, a colon, a space, then its cards joined with ", ".
+a column with no cards prints its name and the colon only.
 install the tool as the command board.
+given the lines "## todo", "- milk", "- eggs", "## doing" and "- taxes", print the lines "todo: milk, eggs", "doing: taxes" and "done:".
