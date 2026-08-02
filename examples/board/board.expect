@@ -1,4 +1,4 @@
-a1 expect artifact.<self>.args.pname from command.name
-a2 expect artifact.<self>.args.installPhase from command.name
-a3 expect artifact.<self>.fill.BOARD_PATH from board.storage
-a4 expect artifact.<self>.fill.COLUMNS from board.columns
+a1 expect artifact.<self>.args.pname from install.command.<cmd>
+a2 expect artifact.<self>.fill.columns from board.columns
+a3 expect claim.<cmd>.stdin from board.example.<cmd>#1
+a4 expect claim.<cmd>.stdout from board.example.<cmd>#6

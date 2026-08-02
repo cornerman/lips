@@ -1,92 +1,172 @@
 model: claude-sonnet-5
 target: home-manager
+schema: github:nix-community/home-manager/041a999e8c1c5b731913855909e68d30ca69b8e0?narHash=sha256-J5%2BC9wsO0lhDyUalQzfplDbRjyHDYeEH5%2B9sdyXtwa8%3D
 thinking: high
 confidence-threshold: 0.7
 --- system prompt ---
-TARGET WORLD: home-manager (one user's $HOME, unprivileged). Emit
-home-manager option paths ONLY, never NixOS system options: programs.*,
-services.* (home-manager user services), systemd.user.services.* and
-systemd.user.timers.*, home.packages, home.file.*, home.sessionVariables,
-xdg.*. There is no system-level config and no root. <self> keys an
-attrsOf-submodule instance name (systemd.user.services.<self>).
+TARGET WORLD: home-manager. A home-manager configuration governs one
+USER's $HOME, unprivileged: there is no system-level config and no root,
+so never emit a NixOS system option here. Its namespaces include
+programs.* (user programs and their own config), services.* (home-manager's
+OWN user services, not systemd system services), systemd.user.services.*
+and systemd.user.timers.* (user units and timers), home.packages,
+home.file.*, home.sessionVariables, and xdg.*. <self> keys an
+attrsOf-submodule instance name wherever this world's schema offers one --
+systemd.user.services.<self>. query_options searches exactly this world's
+pinned schema: the home-manager option tree, nothing else.
 
-You crystallize a loose program into a lips ENGINE: patterns (the
-language), rules (the mechanisms), and demands (completeness). You never
-state the program's meaning; the kernel derives it deterministically by
-applying your patterns to the program text.
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world (a module is imported into a home configuration, not run),
+so an observable is a command over ${artifact.<name>} and literal text, run
+in the build sandbox. A claim reaching anything else is refused.
 
-Your situation: you act exactly once. Afterwards the human edits the
-program and the kernel re-reads it with your patterns, deterministically,
-without you. So: replace every program VALUE with a hole, so edits flow
-without regeneration -- but a word that SELECTS A MECHANISM is not a value:
-keep it as a LITERAL token of the template (see MECHANISM below). The
-engine you mint is pure data; there is no
-escape to code. Never guess. Route each gap by its kind:
-  - A missing PROGRAM FACT (a value a human could write in the program and
-    a pattern could read) is not yours to invent: emit a high-confidence
-    demand asking for it, AND a pattern that will read the answer line, so
-    the human states it and re-runs. Prefer this whenever the program is
-    simply silent about something its setup needs.
-  - A value you must still choose (a free default, or a build input you
-    cannot deduce) gets LOW confidence -- refusal beats invention -- and a
-    separate because-note line (below) pairing the SAME id, naming in one
-    plain sentence what the human could state to pin it.
-  - A MECHANISM is not a gap at all: which builder, which module, which
-    service, which option carries a value is YOURS to choose, and choosing
-    it is the whole job. Pick the plainest one that satisfies the program,
-    at full confidence, and say in the report why. Only a VALUE the
-    programs leave unstated is ever refused; never file a gap because the
-    program did not name a builder.
-    A build-recipe CONSTANT with no observable effect on the program (a
-    version placeholder like 0.1.0, a go.mod module name) is a mechanism
-    too, so choose it at FULL confidence: never demand it from the program,
-    never invent a line shape for the human to state it, and never file it
-    as a gap. A human writing this program would not think about it, so a
-    demand for it only blocks every program in the language.
-    A word the program uses to SELECT that mechanism ("in go", "with
-    nginx") therefore belongs in the template as a LITERAL token, never in
-    a hole: no value in the grammar can carry a builder choice, and a rule
-    cannot branch on a captured word (that would be computation). Spelling
-    it literally is what keeps it honest -- edit that word and the line
-    stops matching, so lips says 'grow the language' and a fresh mint picks
-    the mechanism the new word asks for. Regeneration IS the branch. A hole
-    you bind and then ignore is REJECTED (see EVERY WORD YOU READ MUST
-    REACH OUTPUT): it would let the edited word govern nothing.
-Never work around the value grammar (no packing computation into strings);
-if something is inexpressible, give it low confidence so the kernel is
-extended instead.
+## Where You Are
 
-YOUR ONE TOOL: query_options(query) searches the pinned option schema of
-the target world named above. A dotted prefix browses a namespace
-(services.restic lists its options with their types); a plain domain word
-finds the namespace in the first place (backup, timer, webserver). A broad
-query answers with the namespaces holding the matches, the one with the
-most matches first -- ask again by that name to see its options. Every
-option path and type you are not certain of, look it up instead of
-recalling it: a rule naming an option that does not exist, or filling one
-with the wrong type, is rejected outright and the whole mint fails.
-The tool grounds NAMES, never VALUES. Being told an option exists is not
-permission to invent what fills it: a value the programs do not state is
-still a demand, or low confidence with a because-note, never an invention.
-There is no tool that judges your engine, and none that runs anything.
+lips exists to shrink the artifact a human must keep reviewing down to a
+few plain sentences: a `.lips` program. Everything else -- the mechanism,
+the option paths, the wiring of the target world -- is derived, and you are the one who
+derives it. The human owns only the program; you own the translation, once.
 
-Here is one full pass end to end, before the grammar rules below --
-study it first, since every term used below (pattern, rule, demand, expect,
-subject, hole, confidence) appears here already tied together:
+You act exactly once. You read the program (or several programs of one
+kind) and mint an ENGINE: patterns that read a line like this one, rules
+that turn what a pattern reads into option assignments, and demands that
+ask for what a program leaves silent. Once you answer, lips crystallizes
+the program with your engine, realizes a module, and validates it --
+and then you are gone. From then on the human edits the program and
+`compile` re-reads it with your patterns, deterministically, offline, with
+no model anywhere in the loop.
+
+This is why you replace every program VALUE with a hole, never a literal
+copied into the engine: a hole is what lets a later edit flow through the
+engine you already minted, without you having to mint again. A word that
+instead SELECTS A MECHANISM -- which builder, which service, which module
+to use -- is not a value in this sense, and stays a literal token of your
+template; the construct reference below (PATTERNS) says why and shows the
+form.
+
+A line your engine cannot read fails loud, at compile time, with no model
+to rescue it: lips sends the human back to `generate`, and that costs them
+a fresh mint. Design for exactly the lines you were shown, say plainly in
+your report what a program in this language must state, and never guess
+past what the programs actually say (the next two sections say how).
+
+The human reads three things afterward, never your reasoning: `<language>.lang`
+(the engine itself -- patterns, rules, demands, data, never code),
+`README.md` (your report, the one place you explain in plain words what you
+built and why), and `<language>.expect` (the behavioral contract your
+expects assert, checked on every future compile). Write for that reader.
+
+## The Machine You Program
+
+lips is not a reader of your prose: past this mint, it is a fixed grammar
+that reads a program's LINES, and your engine is the only thing that tells
+it what those lines mean. Learn the seven stages it runs your engine
+through, in its own terms, since a refusal always names one of them
+exactly:
+
+1. A program is a list of lines. CRYSTALLIZATION matches each line against
+   exactly one of your patterns; a line no pattern matches, and a line two
+   patterns both match, both fail the build.
+2. A match emits one or more DECISIONS, each `id kind subject "assertion"
+   @provenance`. The subject vocabulary is yours to invent; it is the
+   interface between your patterns and your rules, and nothing else reads it.
+3. REFINEMENT merges decisions across lines and programs. Two decisions on
+   the same subject with different assertions is a conflict and fails the
+   build: it means two lines disagree about the same thing.
+4. RULES map `kind subject` to option emits. Every decision your patterns
+   can produce must be mapped by some rule, with one exception: `concept`, a
+   decorative heading with nothing to realize.
+5. Emitted values are the closed VALUE GRAMMAR: strings, lists, booleans,
+   numbers, paths, typed holes, package and artifact references. There is no
+   constructor for computation, by construction -- no functions, no string
+   splitting, no conditionals; if you need one, the grammar is short, not
+   your rule.
+6. `<self>` binds to the program's own instance name at realize time; a
+   `<capture>` segment binds per item and fans one rule out across an
+   attrsOf option; a rule that emits into a list-typed option makes its
+   subject AGGREGATE across every line that produces one.
+7. REALIZATION renders a module for the target world. lips parses it with
+   `nix-instantiate --parse`, checks every option path and type it names
+   against the pinned schema, and evaluates the module to run your expects.
+
+Each stage above is a place your own engine can fail, and a refusal names
+the stage in exactly these terms: an unmatched line, a conflicting decision,
+an unmapped subject, a value the grammar cannot express, a misplaced
+capture, or a module that fails to parse or type-check.
+
+## How You Work
+
+You act once, and lips then judges your engine with checks you cannot run
+yourself: crystallizing programs you were never shown, realizing a module,
+evaluating your own expects. Verify beforehand everything you can, since
+nothing you get wrong here is caught before it costs the human a fresh mint.
+
+YOU HAVE TWO TOOLS, and using both is how a mint survives its own gates.
+
+query_options(query) searches the pinned option schema of the target world
+named above. A dotted
+prefix browses a namespace and lists its options with their types; a plain
+domain word finds the namespace in the first place. A broad query answers
+with the namespaces holding the matches, the one with the most matches first
+-- ask again by that name to see its options. Every option path and type you
+are not certain of, look it up instead of recalling it: a rule naming an
+option that does not exist, or filling one with the wrong type, is rejected
+outright and the whole mint fails.
+
+check_draft(draft) runs lips' own gates over the lines you are about to answer
+with, and reports the first gate that rejects them, in the exact words the
+refusal would use. Call it before you answer, and again after every fix.
+It does not run the claim gate or the artifact build, and it says so: a clean
+answer is not a guarantee of acceptance, while a dirty one is a guarantee of
+refusal. Nothing here judges FOR you and nothing runs your program: the gate
+that decides is still lips', after you are done.
+
+State the limit of the tool in the same breath: it grounds NAMES, never VALUES.
+Being told an option exists is not permission to invent what fills
+it. When the programs do not state a value, the honest moves are exactly
+three, and no others: a DEMAND, when a human could simply state the value
+and a pattern could read it (prefer this whenever the program is merely
+silent about something its setup needs); LOW confidence paired with a
+because-note, when you must still choose (a free default, a build input you
+cannot deduce) -- refusal beats invention, so say so instead of guessing;
+or a GAP, when the grammar itself cannot express what the program needs (the
+construct reference below and the checklist at the end say more). An item
+below the confidence threshold and an unmet demand both refuse the mint on
+the spot, by design: they mean the programs underspecify something, and no
+cleverness of yours can add information the input does not carry.
+
+None of this applies to a MECHANISM. Which builder, which module, which
+service, which option carries a value is yours to choose outright, at full
+confidence, and choosing it well is the whole job (the construct reference's
+PATTERNS subsection shows the literal-token form this takes; Section 6 says
+how to choose well). Only a VALUE the programs leave unstated is ever a
+demand, a low-confidence note, or a gap -- never demand an answer, and never
+file a gap, just because a program did not happen to name a mechanism.
+
+## What You May Say
+
+Here is one full pass end to end, before the grammar rules below -- study it
+first, since every term used below (pattern, rule, demand, expect, subject,
+hole, confidence) appears here already tied together:
+
 Example input line:
-  the bank drops csv files into inbox/.
+```
+the bank drops csv files into inbox/.
+```
 Example output lines:
-  0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source "<loc>"
-  0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
-  0.9 q1 demand feed.source "where do the files arrive?"
-  0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
+```lips-engine
+0.96 p1 pattern the bank drops csv files into <loc> => fact feed.source "<loc>"
+0.95 r1 match fact feed.source => systemd.services.ingest.environment.INBOX "\"<value>\""
+0.9 q1 demand feed.source "where do the files arrive?"
+0.95 a1 expect systemd.services.ingest.environment.INBOX from feed.source
+```
 One input line became a pattern (the language: a template with a hole,
 producing a fact under a subject you named), a rule (the mechanism: that
-subject realized into a NixOS option), a demand (what a program lacking such
+subject realized into an option of the target world), a demand (what a program lacking such
 a line must be asked), and an expect (the behavioral check that the value
-really lands in the option the rule named). The sections below define this
-vocabulary precisely and cover the special cases (typed values, packages,
-instance names, artifacts).
+really lands in the option the rule named). The construct reference below
+defines this vocabulary precisely and covers the special cases (typed
+values, packages, instance names, artifacts).
 
 Output ONLY lines of these forms, no prose, no code fences. Every line
 starts with a bare confidence NUMBER as its very first token -- never the
@@ -101,6 +181,28 @@ pattern template may itself begin with any word:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
   <confidence> <id> because "<reason>"
 
+Three more forms ride a heredoc, so verbatim text (source, prose, a bug
+report) never needs escaping:
+
+  <confidence> <id> source <name> <relpath> <<<lips
+  ...verbatim file content...
+  lips>>>
+  <confidence> <id> report <<<lips
+  ...markdown prose...
+  lips>>>
+  <confidence> <id> gap <slug> <<<lips
+  ...blocked line and a minimal repro...
+  lips>>>
+
+These seven forms sort into three groups by what becomes of them. `pattern`,
+`match`, `merge`, and `demand` become the ENGINE, the `<language>.lang`
+artifact lips crystallizes future programs with. `expect` and `source`
+become sibling artifacts beside it (`<language>.expect`, `artifacts/`),
+committed and reviewable but not part of the engine itself. `because`,
+`report`, and `gap` are conversation only: they explain a low-confidence
+item, tell the human what you built, or file a capability gap, and none of
+the three ever reaches `.lang`.
+
 confidence: a number in [0,1], ALWAYS token 1, on every line including a
 because line -- below 0.7 means unsure, and the build will refuse the
 engine (that is correct behavior, not failure). A because line shares its
@@ -110,6 +212,13 @@ confidence should match that item's, e.g. a rule minted as
 pairs with
   0.5 r4 because "the language token alone cannot select a build system"
 It carries no engine meaning itself, only text for the refusal message.
+
+## Construct Reference
+
+One subsection per construct below, each stating its prohibitions once and
+showing the correct form immediately after.
+
+### Patterns and Holes
 
 PATTERNS (ids p1, p2, ...): one per distinct line shape; together they
 must cover every input line. template = the loose line with VALUES
@@ -122,7 +231,12 @@ tokens joined by single spaces, may sit anywhere in the template, and ends
 where the template's next literal matches -- 'back up <src.words> to
 <target>' reads 'back up my home folder to nas' as src='my home folder'. As
 the LAST template token it binds the rest of the line, which is how one line
-carries several items ('install <pkgs.words>'). A BULLETED list item begins
+carries several items ('install <pkgs.words>'). A hole may also sit INSIDE a
+token, fused to punctuation, which is how a call or a flag is read:
+'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
+reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
+cannot be a multi-token hole; a value with spaces must be quoted (a quoted
+span is one token wherever it starts). A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -153,15 +267,106 @@ structure), its pattern template is a single hole and its subject is keyed
 by that hole alone (<item> => fact group.<item>), so each bare line becomes
 its own distinct subject and the items never collide; one rule then emits
 each to a list option, which aggregates the items from all such lines.
+That keying works only when the item carries a value that IDENTIFIES it (a
+package name, a route path). When it does not, or when the program repeats a
+group, nest the item pattern in the heading's BLOCK -- next subsection.
+
+### Blocks
+
+A heading line and the lines under it form a BLOCK. Declare it on the item
+pattern's id: `p5.under.p4` means "a line matching p5 is an item of the block
+opened by the nearest preceding p4 line". The item's emits may then use any
+hole THAT heading bound, so the heading's word keys what the items realize:
+
+```lips-engine
+0.95 p1 pattern queue <name>: => concept queue.<name> "a work queue"
+0.95 p2.under.p1 pattern - workers <count> => fact queue.<name>.workers "<count>"
+0.95 p3.under.p1 pattern - retry after <secs> seconds => fact queue.<name>.retry "<secs>"
+```
+
+reads two blocks without collision:
+
+  queue emails:
+  - workers 4
+  - retry after 30 seconds
+  queue reports:
+  - workers 1
+
+Without the block, both `- workers N` lines emit the SAME subject and lips
+refuses the program -- while the two `queue <name>:` lines, the only ones
+saying which queue is meant, would realize nothing. Reach for a block whenever
+an item needs a word from the line above it, or whenever a program could state
+the same group twice.
+
+Blocks are recognized by your PATTERNS, never by indentation: lips gives `-`,
+`:` and every other symbol no meaning of its own. Any wording works, as long as
+the heading has its own pattern.
+
+A SYMBOL IS A TOKEN'S OWN TEXT, so a template must WRITE every symbol its line
+carries: `content: <what.words>` reads `content: shows a painting`, while
+`content <what.words>` does not read that line at all. Copy the program's
+symbols into the template exactly (`host <domain>:`, `<fname>(<param>: <ptype>)`),
+or a hole swallows them into its value. The one exception is the sentence
+TERMINATOR: trailing `.,;:!?` on the LAST token of a line is noise on both
+sides, so a final period needs no template token and `<when>.` ending a
+template is just the hole `<when>`.
+
+TWO STRUCTURE HOLES, for items that cannot key themselves. Both are filled
+from the program's SHAPE, so they are declared in an emit and need no template
+token:
+
+  <n:index>  this line's position among the items of its block, from 1.
+             Use it when nothing in the item identifies it -- an ordered step,
+             an anonymous record. Refer to it later as plain <n>.
+  <k:key>    the subject of the line that opens this line's block. Only in a
+             nested pattern.
+
+```lips-engine
+0.95 p4 pattern steps: => concept steps "the ordered steps"
+0.95 p5.under.p4 pattern - <cmd.words> => fact step.<n:index>.command "<cmd>"
+```
+
+keeps four steps four, in order, even when two of them read the same.
+
+A pattern may name SEVERAL parents, tried in the order written. The use for
+this is unbounded depth: `p6.under.p6.under.p4` reads an item that sits inside
+another item of its own shape when it is more indented, and roots in the p4
+heading otherwise. Combined with `<k:key>` the keys compose
+(tree.File.New.Item), so two branches may hold the same node name. This is the
+ONLY construct for which leading whitespace means anything; every other
+pattern ignores it.
+
+lips refuses, at the gate: a parent id no pattern defines; a nesting cycle
+through two or more patterns; an emit hole bound by neither the pattern nor
+every block it can sit in; `<k:key>` in a pattern that nests under nothing.
+
+### Kinds
+
 kind: one of
 concept fact oblige forbid allow invariant view assume steer glue meta --
 all but one are ordinary decision kinds a rule must map to an option;
 'concept' is the one EXCEPTION, reserved for a decorative heading that
-carries no value of its own (detailed just below), so it alone needs no rule.
+carries no value of its own (the PATTERNS subsection above shows the form),
+so it alone needs no rule.
+
+### Subjects and Orthogonality
+
 subject: invent a dotted vocabulary for this problem
-(e.g. backup.source). Every hole used in the subject or assertion MUST
-appear in the template. Patterns must be orthogonal: no input line may
+(e.g. backup.source). Every hole used in the subject or assertion MUST be
+bound: by this pattern's template, by a structure hole it declares
+(<n:index>, <k:key>), or by the block it nests in (see BLOCKS). Patterns must be orthogonal: no input line may
 match two of them.
+
+A SUBJECT SEGMENT HOLDS NO SPACES. A decision is stored as one line whose
+subject is separated from the rest by whitespace, so a segment built from a
+hole whose value may be several words (a quoted label, a title, a sentence)
+cannot be read back, and lips refuses the whole language. Key such an item by
+<n:index> and carry the words in the ASSERTION, where quoting protects them:
+write `fact button.<n:index>.label "<label>"`, never `fact button.<label>`.
+A hole you know to be a single word (a name, a port, an identifier) keys a
+segment fine.
+
+### Generalizing Across Several Programs
 
 SEVERAL PROGRAMS: you may be given more than one example program (each in a
 === program ... === block). They are examples of ONE language. Generalize
@@ -169,6 +374,8 @@ ACROSS them: the same line-shape appearing in different programs is a SINGLE
 pattern, and every position where the examples differ is a hole (this is how
 you learn what varies). Never mint a separate pattern per program -- that
 breaks orthogonality, since the shared line then matches two patterns.
+
+### Rules and the Value Grammar
 
 RULES (ids r1, r2, ...): map EVERY subject your patterns produce to
 option assignments in the target world named above; any decision no rule
@@ -205,9 +412,13 @@ writeShellApplication's runtimeInputs) holds bare references, not strings:
 and curl/weather here are literal names you wrote, not values captured
 from the program.
 Inside Nix strings only two things beyond literal text parse: the holes
-<value> (the matched decision's assertion) / <value.N> (its Nth
-whitespace-separated token, 1-based; use it when a pattern's assertion
-joins several holes) and a literal ${pkgs.LITERALNAME} package reference.
+<value> (the matched decision's assertion) / <value.N> (its Nth PART,
+1-based; use it when a pattern's assertion joins several holes) and a
+literal ${pkgs.LITERALNAME} package reference. A part is one hole of that
+assertion, whatever it captured: an assertion joining several holes stores
+each part quoted, so <value.2> of "<status> <body>" is the whole body even
+when the program wrote several words. An assertion of ONE hole has no parts
+and splits into words, which is what <value.tail> reads.
 Outside a string, a bare ${pkgs.LITERALNAME} or ${artifact.LITERALNAME} is
 itself a value (a list element). No functions, no splitString, no other
 ${...}. CRITICAL: ${...} NEVER wraps a hole -- not <value>, not a
@@ -216,17 +427,29 @@ FROM THE PROGRAM must go through a typed pkg hole instead (<value:pkg> or
 <value.tail:pkg>, below), never through ${pkgs.<...>}; writing
 ${pkgs.<value>} or ${pkgs.<name>} is ALWAYS rejected, no matter how the
 hole got its name. Do not quote a package into a string when the option
-wants a derivation. Template holes bind single tokens; punctuation like a
-trailing period stays outside the hole.
+wants a derivation. Template holes bind single tokens verbatim, symbols
+included, so a symbol you want kept out of the value must appear in the
+template beside the hole.
 
-TYPED HOLES: a NixOS option is typed. For a NON-string option (a port, a
-count, a size, a toggle, a path) do NOT quote the hole; use a typed hole
-naming the type: <value:int>, <value:bool>, <value:float>, <value:path>
+### Typed Holes
+
+TYPED HOLES: an option is typed. For a NON-string option (a port, a
+count, a size, a toggle) do NOT quote the hole; use a typed hole
+naming the type: <value:int>, <value:bool>, <value:float>
 (or <value.N:int> for the Nth token). It emits a value of that type and
 fails if the program token is not of that type. Quote a hole
 ("\"<value>\"") only for genuinely string-typed options. So a port rule
-looks like services.nginx.defaultHTTPListenPort "<value:int>". Realize
-work as services and timers or other options in the target world.
+looks like services.jobwatch.port "<value:int>".
+NEVER <value:path>, even for an option whose type is path. A bare Nix path
+means "copy this location into the store": an absolute one is refused outright
+by pure evaluation, and a directory the program names (a document root, a data
+dir) exists on the RUNNING MACHINE, not in the store. A path-typed option
+accepts a string, so write "\"<value>\"". lips refuses an engine that does
+otherwise. Keep an unquoted path for a literal YOU write, like
+./artifacts/<name>. Realize work as services
+and timers or other options in the target world.
+
+### Package Holes
 
 PACKAGE NAMES: some options hold package DERIVATIONS (a list of
 packages -- environment.systemPackages, home.packages, a runtimeInputs),
@@ -263,14 +486,18 @@ reuses a pattern's own capture name (only <value>/<value.N>/<value.tail>
 read the matched fact's assertion), and ${...} never contains a hole at
 all, ever.
 
+### `<self>`
+
 INSTANCE NAMES (<self>): some options are an attrsOf of submodules keyed by
-an instance NAME you would otherwise invent -- services.restic.backups.<name>,
+an instance NAME you would otherwise invent -- services.jobwatch.instances.<name>,
 systemd.services.<name>. Do NOT bake a name read from the program into that
-key. Use the reserved segment <self>: services.restic.backups.<self>.paths.
+key. Use the reserved segment <self>: services.jobwatch.instances.<self>.pollSeconds.
 It binds to the program's own instance name (its file basename) at realize
 time, so ONE grammar serves many programs -- each its own instance -- and two
 of them compose in one configuration without collision. Use <self> only where
 the option schema has such a name placeholder; elsewhere it is rejected.
+
+### `<capture>`
 
 VALUE-KEYED OPTIONS (<capture>): when a program lists SEVERAL items of one
 kind, each identified by its own value -- http routes by path, mounts by
@@ -293,6 +520,8 @@ segment is accepted only where the option schema has a name placeholder
 elsewhere it is rejected. A capture fills the emit PATH and may also fill a
 VALUE by its own name (<path> as a rhs hole yields the captured key), beside
 <value>/<value.N> which carry the matched decision's assertion.
+
+### Artifacts and Source Blocks
 
 ARTIFACTS (only when the program needs a program BUILT FROM SOURCE, e.g. a
 server you must write): a rule may emit an artifact group under the subject
@@ -321,7 +550,10 @@ BOTH pname and version, where the version is yours to choose (see MECHANISM
 above: a constant, never a demand). A pname with no version cannot build:
 nixpkgs derives the name from pname and version together, and nix fails with
 'attribute name missing'. Give every other argument the builder requires
-too (a Go module needs vendorHash, a Rust one cargoHash).
+too (a Go module needs vendorHash, a Rust one cargoHash). An argument whose
+value is a Nix null is written bare -- vendorHash "null", never
+vendorHash "\"null\"": the quoted form is the STRING "null", and nix refuses it
+with 'hash null does not include a type'.
 A name may COMPOSE literal text with <self> or a <capture>, in the path, in
 args.src and in a reference: artifact.<self>-core is a SECOND build beside
 artifact.<self>, so a program needing a wrapper around a compiled core puts
@@ -382,6 +614,69 @@ format, the protocol. A REPEATING structure inside source (one code block per
 route, per mount) has no hole form -- a fill replaces a marker, it cannot
 repeat a block -- so that is a gap to file, not something to fake.
 
+### Claims
+
+CLAIMS (ids c1, c2, ...): what the program says it DOES, as something that
+can be run and compared. Every other check reads the configuration text; a
+claim runs the thing and looks. That is the only way a program's words can
+govern SOURCE you bake: the module text says nothing about what your code
+does, so without a claim nothing holds it -- or any later re-mint -- to the
+sentences it was written from.
+
+A claim is a reserved emit root, like artifact.<name>. Four sections, and no
+others:
+
+  claim.<id>.run    the command, a string; may hold ${artifact.<name>}
+  claim.<id>.stdin  what it is fed, a string (optional)
+  claim.<id>.stdout what it must print, a string (optional)
+  claim.<id>.exit   the status it must exit with (optional, default 0)
+
+The author writes the example as an ordinary sentence, and you read it with
+an ordinary pattern, exactly as you read any other line. There is no special
+syntax in the program. A witness line like
+  given {"a":1} with --a 1, print it unchanged
+becomes a pattern whose holes capture the input, the arguments and the
+expected output, plus a rule emitting the three sections from them:
+
+  0.9 p5 pattern given <in> with <args>, print <out>
+        => fact witness.<args>.out "<out>"
+  0.9 r5 match fact witness.<args>.out
+        => claim.echo.run "\"${artifact.<name>}/bin/<name> <args>\"" ;
+           claim.echo.stdin "\"<in>\"" ;
+           claim.echo.stdout "\"<value>\""
+
+NEVER INVENT A WITNESS. An example is intent, so it comes from the program
+and nowhere else. If a program bakes source and states no example, file a
+GAP saying an observable is missing -- do not make one up, and do not guess
+what the program would print.
+
+COMPARISON IS EXACT, byte for byte, not containment. Exactly one trailing
+newline is stripped from what the command printed, so state the printed LINE
+without its newline. A program printing two lines states them with a \n
+between: "200\n404".
+
+WHERE A CLAIM RUNS is derived from the command, never declared. A command
+naming only ${artifact.<name>} and literal text runs in the build sandbox --
+fast, no machine. Any other command (a bare name, a ${pkgs...} reference)
+runs inside a booted machine, and not every world HAS one to boot: the world
+section above says whether this one does, and a claim the world cannot
+observe is refused. So prefer an observable over the program's OWN binary --
+it needs no machine and reads the same in every world.
+
+A claim cannot compute: its sections take the same closed value grammar as
+any other rhs. No shell pipeline assembled from holes, no arithmetic.
+
+DO EXPECT A CLAIM SECTION, exactly as you expect an artifact arg:
+  0.95 a2 expect claim.echo.stdout from witness.<args>.out
+so a later mint that drops the author's example is refused instead of
+quietly narrowing what is observed.
+
+IF YOU BAKE SOURCE, YOU MUST STATE AT LEAST ONE CLAIM. A mint that writes a
+source block and no claim is refused. A pure-configuration language needs
+none: its behaviour IS its option assignments, which the expects pin.
+
+### List Aggregation
+
 SET OR LIST (ids m1, m2, ...; zero or more): when SEVERAL lines contribute
 elements to one list option, lips aggregates them, and by default the option
 is a SET -- two lines naming one package name it once, so a repeated element
@@ -389,6 +684,8 @@ collapses. Declare an option a LIST only where a repeat is genuinely meant:
   <confidence> m1 merge <option.path> list
 The path is written exactly as in a rule (a <capture> covers the whole
 family). Write no merge line for the ordinary case.
+
+### Demands
 
 DEMANDS (ids q1, q2, ...): what any program in this language must state,
 as a subject plus the question to ask when it is missing.
@@ -398,11 +695,13 @@ beside a pattern emitting command.<name>, demand command.<name>; a bare
 demand command is one segment short and no program can ever meet it. An
 unanswerable demand is refused.
 
+### Expects
+
 EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
 It asserts the value your patterns capture into <subject> (or its nth
-whitespace token, #n, 1-based) appears at NixOS option <option.path> in
+whitespace token, #n, 1-based) appears at option <option.path> in
 the realized module. Name the SAME option paths your rules assign. Emit
 one expect for every distinct program value a rule carries into an option,
 so realization and configurability are pinned. A VALUE-KEYED expect uses the
@@ -426,7 +725,10 @@ derivation reference inside the arg is fine). Whenever a program value ends
 up in an artifact arg rather than in a module option, write this expect --
 otherwise nothing pins that value and the contract is empty.
 
-REPORT (exactly one, id d1, REQUIRED -- a mint without it is refused):
+### Report
+
+The report block is required, exactly one per mint. REPORT (id d1, a mint
+without it is refused):
 explain in plain words the language you just built, for a human who will
 read it instead of the .lang: which line shapes it accepts, what each one
 means, which mechanism you chose and why, and anything you had to invent.
@@ -434,6 +736,8 @@ Markdown, no heading of your own (one is added). It rides a heredoc:
   <confidence> d1 report <<<lips
   ...markdown prose...
   lips>>>
+
+### Gaps
 
 GAPS (ids g1, g2, ...; zero or more): whenever you wanted to express
 something and the grammar above could not, file it instead of working
@@ -447,126 +751,353 @@ A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
 
 The kernel verifies: every line crystallizes, every decision is mapped,
-every demand is met, the result parses as a NixOS module, and every
+every demand is met, the result parses as a module, and every
 expect holds against the evaluated module.
+
+## Designing a Good Language
+
+The grammar above says what you may say; this section says what makes the
+result worth living with, since the vocabulary you invent is the human's
+future writing surface, not just an implementation detail of one mint.
+
+Hole everything a human might edit, and nothing else: a value that never
+changes across every program you were shown is a mechanism constant (see
+How You Work), not a hole waiting to happen. Keep patterns orthogonal --
+two patterns matching one line is not redundancy, it is ambiguity, and lips
+refuses it. Give a heading and the items grouped under it a shared subject
+prefix, so the output reads as one family instead of unrelated facts.
+
+When a program is merely silent about something its setup needs, prefer a
+demand over an invention: a demand costs the human one line on their next
+edit, while an invented default costs them a debugging session when it
+turns out wrong. When you must still choose and cannot demand (a free
+default, a build input with no natural question to ask), lower confidence
+rather than invent, and pair it with a because-note that says in one plain
+sentence what would pin it.
+
+Name subjects the way the domain talks, not the way the target world names
+its options: the vocabulary is what the human's next program is written
+against, so `backup.source` reads naturally beside a sentence about where
+files come from, while `systemd.services.<name>.environment.SRC` does not.
+
+On a REGENERATION, the previous engine, its report, and its expect contract
+are appended to your input when they exist. Treat them as context, never as
+evidence: the programs remain the only truth, and a rule that only the old
+report claims to justify is not thereby justified. Keep the previous
+vocabulary unless the programs now force a change (a line shape they no
+longer have, a distinction they now draw that the old subjects cannot
+express); when you do change it, say in your report what moved and why, so
+the human sees the vocabulary they write against is not shifting for no
+reason.
+
+## Two Worked Examples
+
+### A Configuration-Only Language
+
+Program (`watch.jobqueue.lips`, instance name `watch`):
+```
+watch the jobs queue every 30 seconds.
+alert when backlog exceeds 100 items.
+alerts go to ops-pager.
+packages:
+- htop
+- ripgrep
+```
+
+The full engine:
+```lips-engine
+0.95 p1 pattern watch the jobs queue every <secs> seconds. => fact watch.interval "<secs>"
+0.95 p2 pattern alert when backlog exceeds <count> items. => fact alert.threshold "<count>"
+0.9 p3 pattern alerts go to <dest.words> => fact alert.target "<dest>"
+0.95 p4 pattern packages: => concept packages "packages to install"
+0.95 p5 pattern - <name> => fact pkg.<name> "<name>"
+0.95 r1 match fact watch.interval => systemd.services.<self>.environment.POLL_SECONDS "<value:int>"
+0.95 r2 match fact alert.threshold => systemd.services.<self>.environment.ALERT_THRESHOLD "<value:int>"
+0.9 r3 match fact alert.target => systemd.services.<self>.environment.ALERT_TARGET "\"<value>\""
+0.95 r4 match fact pkg.<name> => environment.systemPackages "[ <value:pkg> ]"
+0.9 q1 demand alert.target "where should backlog alerts be sent?"
+0.95 a1 expect systemd.services.<self>.environment.POLL_SECONDS from watch.interval
+0.95 a2 expect systemd.services.<self>.environment.ALERT_THRESHOLD from alert.threshold
+0.9 a3 expect systemd.services.<self>.environment.ALERT_TARGET from alert.target
+0.95 d1 report <<<lips
+This language watches a job queue: a poll interval, an alert threshold, and
+where alerts go. Each program is its own systemd service, keyed by its
+instance name; a program silent about where alerts go is asked, since no
+sane default exists. Packages under "packages:" install onto the service's
+PATH.
+lips>>>
+```
+
+The human gets a plain-sentence language for describing a watcher, a report
+explaining the mechanism (one systemd service per instance), and a contract
+pinning every numeric and address value to the option it must reach.
+
+### A Language Built from Source
+
+Program (`greet.echo.lips`, instance name `greet`):
+```
+say "hello, friend" when someone runs greet.
+```
+
+The full engine:
+```lips-engine
+0.95 p1 pattern say "<msg>" when someone runs greet. => fact cmd.greet.msg "<msg>"
+0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "null" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
+0.9 a1 expect artifact.greet.fill.msg from cmd.greet.msg
+0.9 s1 source greet go.mod <<<lips
+module greet
+
+go 1.21
+lips>>>
+0.9 s2 source greet main.go <<<lips
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("@msg@")
+}
+lips>>>
+0.9 d1 report <<<lips
+This language builds a tiny greeter binary from the message the program
+states. The message reaches the Go source through a fill (@msg@ in
+main.go); no expect names the ExecStart line, since it holds a build
+reference, not a checkable value -- the fill is expected instead.
+lips>>>
+```
+
+The human gets a language that writes a whole small program from one
+sentence, with the message pinned by an expect on the fill that carries it
+into the source, and no expect wasted on the build reference itself.
+
+## Self-Review Checklist
+
+Before you answer, run this list against your own engine:
+
+1. Does every line of every program you were shown crystallize under exactly one pattern?
+1b. Does every item line that needs a word from its heading nest under that heading's pattern (`pN.under.pM`), and does every item with no value of its own key itself by `<n:index>`?
+1c. Does every subject segment hold a single word -- no hole whose value could be a quoted label or a phrase?
+2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
+3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
+4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
+5. Does every expect name a value option, never a package or artifact-build option?
+6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
+7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
 
 --- program (input) ---
 === program habit.lips ===
 track daily habits from the terminal.
-the habit log is stored in /home/cornerman/notes/habits.tsv.
+the first argument names the habit to print.
+read the habit log from the file named as the second argument, or from standard input when no file is named.
 each log line holds an ISO date and a habit name separated by a tab.
-print a heatmap of the last 365 days for the habit named on the command line.
+print one character per day from the log's earliest date to its latest date.
+mark a day the named habit was logged with "#".
+mark a day it was not logged with ".".
 install the tool as the command habit.
+given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".
 
 --- tool transcript ---
 -> query_options "home.packages"
 <- query_options
 home.packages : list of package
 
+-> check_draft "0.95 p1 pattern track daily habits from the terminal. => concept overview \"a daily habit tracker\"\n0.9 p2 pattern the first argument names the habit to print. => concept cli.arg1 \"first argument is the habit name\"\n0.9 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named. => concept cli.arg2 \"second argument or stdin is the log source\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab. => concept log.format \"tab-separated log lines\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date. => concept log.range \"one char per day across the log's date range\"\n0.95 p6 pattern mark a day the named habit was logged with \"<present>\". => fact mark.present \"<present>\"\n0.95 p7 pattern mark a day it was not logged with \"<absent>\". => fact mark.absent \"<absent>\"\n0.95 p8 pattern install the tool as the command <name>. => fact cmd.<name> \"<name>\"\n0.9 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<habit>\" prints \"<output>\". => fact witness.example \"<d1> <h1> <d2> <h2> <d3> <h3> <habit> <output>\"\n0.9 r1 match fact mark.present => artifact.<self>.fill.present \"\\\"<value>\\\"\"\n0.9 r2 match fact mark.absent => artifact.<self>.fill.absent \"\\\"<value>\\\"\"\n0.85 r3 match fact cmd.<name> => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.nativeBuildInputs \"[ ${pkgs.makeWrapper} ]\" ; artifact.<self>.args.installPhase \"\\\"mkdir -p $out/bin\\ninstall -m755 habit.sh $out/bin/<self>\\ninstall -m755 habit.sh $out/bin/<value>\\nwrapProgram $out/bin/<self> --prefix PATH : ${pkgs.coreutils}/bin\\nwrapProgram $out/bin/<value> --prefix PATH : ${pkgs.coreutils}/bin\\n\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"\n0.85 r4 match fact witness.example => claim.print.run \"\\\"${artifact.<self>}/bin/<self> <value.7>\\\"\" ; claim.print.stdin \"\\\"<value.1>\\t<value.2>\\n<value.3>\\t<value.4>\\n<value.5>\\t<value.6>\\n\\\"\" ; claim.print.stdout \"\\\"<value.8>\\\"\"\n0.85 a1 expect artifact.<self>.args.pname from cmd.<name>\n0.85 a2 expect artifact.<self>.fill.present from mark.present\n0.85 a3 expect artifact.<self>.fill.absent from mark.absent\n0.85 a4 expect claim.print.stdout from witness.example#8\n0.8 a5 expect claim.print.run from witness.example#7\n0.8 a6 expect claim.print.stdin from witness.example#1\n0.9 s1 source habit habit.sh <<<lips\n#!/usr/bin/env bash\nset -euo pipefail\n\nhabit=\"$1\"\nif [ \"$#\" -ge 2 ]; then\n  input=\"$2\"\nelse\n  input=\"/dev/stdin\"\nfi\n\nmindate=\"\"\nmaxdate=\"\"\ndeclare -A seen\n\nwhile IFS=$'\\t' read -r d h; do\n  [ -z \"${d:-}\" ] && continue\n  if [ \"$h\" = \"$habit\" ]; then\n    seen[\"$d\"]=1\n  fi\n  if [ -z \"$mindate\" ] || [[ \"$d\" < \"$mindate\" ]]; then\n    mindate=\"$d\"\n  fi\n  if [ -z \"$maxdate\" ] || [[ \"$d\" > \"$maxdate\" ]]; then\n    maxdate=\"$d\"\n  fi\ndone < \"$input\"\n\nout=\"\"\ncur=\"$mindate\"\nend_epoch=$(date -d \"$maxdate\" +%s)\nwhile [ -n \"$cur\" ] && [ \"$(date -d \"$cur\" +%s)\" -le \"$end_epoch\" ]; do\n  if [ \"${seen[$cur]:-}\" = \"1\" ]; then\n    out=\"${out}@present@\"\n  else\n    out=\"${out}@absent@\"\n  fi\n  cur=$(date -d \"$cur + 1 day\" +%Y-%m-%d)\ndone\n\nprintf '%s\\n' \"$out\"\nlips>>>\n0.95 d1 report <<<lips\nThis language describes a small daily-habit tracker CLI, built from source.\n\nLine shapes it reads:\n- The opening sentence and the four sentences describing the argument\n  convention, the log source, the log line format and the print-range rule\n  are treated as `concept` lines: they describe the fixed behaviour every\n  program of this kind shares (arg1 = habit name, arg2/stdin = log, tab\n  separated `date\\thabit` lines, one character per day from the log's\n  earliest to its latest date), which is baked into the generated script and\n  carries no per-program value to hole.\n- `mark a day the named habit was logged with \"X\".` and\n  `mark a day it was not logged with \"Y\".` capture the two marker\n  characters as program values (`mark.present`, `mark.absent`).\n- `install the tool as the command NAME.` captures the shell command name\n  the built binary is installed as.\n- `given the log of \"d\" for \"h\", ... the habit \"H\" prints \"OUT\".` is the\n  program's own worked example; it becomes the behavioural claim.\n\nMechanism: the tracker is built as a `stdenv.mkDerivation` (mechanism\nchoice, since the real work -- computing a date range and marking days --\nneeds a real script, not a nixpkgs writer) from a bundled bash script\n(`habit.sh`) that reads tab-separated `date TAB habit` lines from a file\nargument or stdin, using GNU `date` (wrapped onto PATH via `makeWrapper` and\n`coreutils` so the result is reproducible regardless of the host's date\ntool) to walk every day between the log's earliest and latest date. The two\nmarker characters reach the script through `fill`s (`@present@`/`@absent@`\nmarkers in `habit.sh`), so editing either quoted character changes the\nbuilt binary without touching the engine. The artifact is keyed by `<self>`\n(the program's own instance name) rather than by the captured command name,\nbecause the marker facts and the worked example need to reach the very same\nbuild regardless of line order in the program, and `<self>` is the one key\nevery rule can reach no matter which line produced its decision; the\ncaptured command name still governs real output -- it is installed as a\nsecond `$out/bin/<name>` entry and used as `pname`, so editing \"install the\ntool as the command X\" still renames the real command. The claim always\nexercises the `<self>`-named binary so it is stable however the command is\nnamed.\n\nThe program's own example is read verbatim as the behavioural claim: it is\nturned into a real tab-separated stdin, run against the built binary, and\nchecked byte-for-byte against the printed line. Only one such example line\nis supported per program, since the pattern reads exactly this list of\nthree dated entries; a program with a different count of entries needs the\nengine regenerated (or, ideally, a follow-up mint that generalises the\ncount -- see the filed gap).\nlips>>>\n0.6 g1 gap witness-entry-count <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nThe witness pattern is fixed to exactly three dated log entries because the\ngrammar has no way to repeat a sub-match within one line (no list-splitting,\nno computation): a program stating two or four entries in its example\nsentence cannot be read by the same pattern. A repeating bulleted block\n(\"- date for habit\") per entry, closed by a \"the habit ... prints ...\" line,\nwould let the count vary, but that is not the shape this program uses.\nlips>>>\n"
+<- check_draft
+examples/habit.lips: 9 of 9 lines crystallize.
+  line 1  ok        p1  overview
+  line 2  ok        p2  cli.arg1
+  line 3  ok        p3  cli.arg2
+  line 4  ok        p4  log.format
+  line 5  ok        p5  log.range
+  line 6  ok        p6  mark.present
+  line 7  ok        p7  mark.absent
+  line 8  ok        p8  cmd.habit
+  line 9  ok        p9  witness.example
+
+decorative, realizing nothing (5) -- editing these changes no output:
+  line 1  "track daily habits from the terminal."
+  line 2  "the first argument names the habit to print."
+  line 3  "read the habit log from the file named as the second argument, or from standard input when no file is named."
+  line 4  "each log line holds an ISO date and a habit name separated by a tab."
+  line 5  "print one character per day from the log's earliest date to its latest date."
+
+· crystallize examples/habit.lips
+✓ crystallize examples/habit.lips  (0.0s)
+examples/habit.lips: the language bakes source, but its generation record is missing or unreadable, so the specification that source was written from cannot be read.
+
+  /tmp/lips-iWFfkA/habit/habit.generation
+
+→ rebuild both from the program as it stands: lips generate examples/habit.lips
+
+-> check_draft "0.95 p1 pattern track daily habits from the terminal. => concept overview \"a daily habit tracker\"\n0.9 p2 pattern the first argument names the habit to print. => concept cli.arg1 \"first argument is the habit name\"\n0.9 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named. => concept cli.arg2 \"second argument or stdin is the log source\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab. => concept log.format \"tab-separated log lines\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date. => concept log.range \"one char per day across the log's date range\"\n0.95 p6 pattern mark a day the named habit was logged with \"<present>\". => fact mark.present \"<present>\"\n0.95 p7 pattern mark a day it was not logged with \"<absent>\". => fact mark.absent \"<absent>\"\n0.95 p8 pattern install the tool as the command <name>. => fact cmd.<name> \"<name>\"\n0.9 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<habit>\" prints \"<output>\". => fact witness.example \"<d1> <h1> <d2> <h2> <d3> <h3> <habit> <output>\"\n0.9 r1 match fact mark.present => artifact.<self>.fill.present \"\\\"<value>\\\"\"\n0.9 r2 match fact mark.absent => artifact.<self>.fill.absent \"\\\"<value>\\\"\"\n0.85 r3 match fact cmd.<name> => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.nativeBuildInputs \"[ ${pkgs.makeWrapper} ]\" ; artifact.<self>.args.installPhase \"\\\"mkdir -p $out/bin\\ninstall -m755 habit.sh $out/bin/<self>\\ninstall -m755 habit.sh $out/bin/<value>\\nwrapProgram $out/bin/<self> --prefix PATH : ${pkgs.coreutils}/bin\\nwrapProgram $out/bin/<value> --prefix PATH : ${pkgs.coreutils}/bin\\n\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"\n0.85 r4 match fact witness.example => claim.print.run \"\\\"${artifact.<self>}/bin/<self> <value.7>\\\"\" ; claim.print.stdin \"\\\"<value.1>\\t<value.2>\\n<value.3>\\t<value.4>\\n<value.5>\\t<value.6>\\n\\\"\" ; claim.print.stdout \"\\\"<value.8>\\\"\"\n0.85 a1 expect artifact.<self>.args.pname from cmd.<name>\n0.85 a2 expect artifact.<self>.fill.present from mark.present\n0.85 a3 expect artifact.<self>.fill.absent from mark.absent\n0.85 a4 expect claim.print.stdout from witness.example#8\n0.8 a5 expect claim.print.run from witness.example#7\n0.8 a6 expect claim.print.stdin from witness.example#1\n0.9 s1 source habit habit.sh <<<lips\n#!/usr/bin/env bash\nset -euo pipefail\n\nhabit=\"$1\"\nif [ \"$#\" -ge 2 ]; then\n  input=\"$2\"\nelse\n  input=\"/dev/stdin\"\nfi\n\nmindate=\"\"\nmaxdate=\"\"\ndeclare -A seen\n\nwhile IFS=$'\\t' read -r d h; do\n  [ -z \"${d:-}\" ] && continue\n  if [ \"$h\" = \"$habit\" ]; then\n    seen[\"$d\"]=1\n  fi\n  if [ -z \"$mindate\" ] || [[ \"$d\" < \"$mindate\" ]]; then\n    mindate=\"$d\"\n  fi\n  if [ -z \"$maxdate\" ] || [[ \"$d\" > \"$maxdate\" ]]; then\n    maxdate=\"$d\"\n  fi\ndone < \"$input\"\n\nout=\"\"\ncur=\"$mindate\"\nend_epoch=$(date -d \"$maxdate\" +%s)\nwhile [ -n \"$cur\" ] && [ \"$(date -d \"$cur\" +%s)\" -le \"$end_epoch\" ]; do\n  if [ \"${seen[$cur]:-}\" = \"1\" ]; then\n    out=\"${out}@present@\"\n  else\n    out=\"${out}@absent@\"\n  fi\n  cur=$(date -d \"$cur + 1 day\" +%Y-%m-%d)\ndone\n\nprintf '%s\\n' \"$out\"\nlips>>>\n0.95 d1 report <<<lips\nplaceholder\nlips>>>\n"
+<- check_draft
+examples/habit.lips: 9 of 9 lines crystallize.
+  line 1  ok        p1  overview
+  line 2  ok        p2  cli.arg1
+  line 3  ok        p3  cli.arg2
+  line 4  ok        p4  log.format
+  line 5  ok        p5  log.range
+  line 6  ok        p6  mark.present
+  line 7  ok        p7  mark.absent
+  line 8  ok        p8  cmd.habit
+  line 9  ok        p9  witness.example
+
+decorative, realizing nothing (5) -- editing these changes no output:
+  line 1  "track daily habits from the terminal."
+  line 2  "the first argument names the habit to print."
+  line 3  "read the habit log from the file named as the second argument, or from standard input when no file is named."
+  line 4  "each log line holds an ISO date and a habit name separated by a tab."
+  line 5  "print one character per day from the log's earliest date to its latest date."
+
+· crystallize examples/habit.lips
+✓ crystallize examples/habit.lips  (0.0s)
+examples/habit.lips: the language bakes source, but its generation record is missing or unreadable, so the specification that source was written from cannot be read.
+
+  /tmp/lips-FjhulY/habit/habit.generation
+
+→ rebuild both from the program as it stands: lips generate examples/habit.lips
+
+-> query_options "home.file"
+<- query_options
+home.file : attribute set of (submodule)
+home.file.*.enable : boolean
+home.file.*.executable : null or boolean
+home.file.*.force : boolean
+home.file.*.ignorelinks : boolean
+home.file.*.onChange : string
+home.file.*.recursive : boolean
+home.file.*.source : path
+home.file.*.target : string
+home.file.*.text : null or strings concatenated with "\n"
+
 
 --- raw reply ---
-0.95 p1 pattern track daily habits from the terminal. => concept intro "track daily habits from the terminal"
-0.95 p2 pattern the habit log is stored in <path>. => fact habit.log "<path>"
-0.95 p3 pattern each log line holds an ISO date and a habit name separated by a tab. => concept format "each log line holds an ISO date and a habit name separated by a tab"
-0.95 p4 pattern print a heatmap of the last <days> days for the habit named on the command line. => fact habit.heatmap.days "<days>"
-0.95 p5 pattern install the tool as the command <name>. => fact command.name "<name>"
-
-0.9 r1 match fact habit.log => artifact.<self>.fill.logpath "\"<value>\""
-0.9 r2 match fact habit.heatmap.days => artifact.<self>.fill.days "\"<value>\""
-0.9 r3 match fact command.name => home.packages "[ ${artifact.<self>} ]" ; artifact.<self>.builder "\"stdenv.mkDerivation\"" ; artifact.<self>.args.pname "\"<value>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.dontBuild "true" ; artifact.<self>.args.installPhase "\"install -Dm755 run.sh $out/bin/<value>\""
-
-0.85 q1 demand habit.log "what file path holds the habit log (tab-separated ISO-date + habit-name rows)?"
-0.85 q2 demand habit.heatmap.days "how many days should the printed heatmap span?"
-0.85 q3 demand command.name "what command name should the built tool be installed as?"
-
-0.9 a1 expect artifact.<self>.fill.logpath from habit.log
-0.9 a2 expect artifact.<self>.fill.days from habit.heatmap.days
-0.9 a3 expect artifact.<self>.args.pname from command.name
-
-0.9 s1 source habit run.sh <<<lips
+0.95 p1 pattern track daily habits from the terminal. => concept overview "a daily habit tracker"
+0.9 p2 pattern the first argument names the habit to print. => concept cli.arg1 "first argument is the habit name"
+0.9 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named. => concept cli.arg2 "second argument or stdin is the log source"
+0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab. => concept log.format "tab-separated log lines"
+0.9 p5 pattern print one character per day from the log's earliest date to its latest date. => concept log.range "one char per day across the log's date range"
+0.95 p6 pattern mark a day the named habit was logged with "<present>". => fact mark.present "<present>"
+0.95 p7 pattern mark a day it was not logged with "<absent>". => fact mark.absent "<absent>"
+0.95 p8 pattern install the tool as the command <name>. => fact cmd.<name> "<name>"
+0.9 p9 pattern given the log of "<d1>" for "<h1>", "<d2>" for "<h2>" and "<d3>" for "<h3>", the habit "<habit>" prints "<output>". => fact witness.example "<d1> <h1> <d2> <h2> <d3> <h3> <habit> <output>"
+0.9 r1 match fact mark.present => artifact.<self>.fill.present "\"<value>\""
+0.9 r2 match fact mark.absent => artifact.<self>.fill.absent "\"<value>\""
+0.85 r3 match fact cmd.<name> => artifact.<self>.builder "\"stdenv.mkDerivation\"" ; artifact.<self>.args.pname "\"<value>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.dontBuild "true" ; artifact.<self>.args.nativeBuildInputs "[ ${pkgs.makeWrapper} ]" ; artifact.<self>.args.installPhase "\"mkdir -p $out/bin\ninstall -m755 habit.sh $out/bin/<self>\ninstall -m755 habit.sh $out/bin/<value>\nwrapProgram $out/bin/<self> --prefix PATH : ${pkgs.coreutils}/bin\nwrapProgram $out/bin/<value> --prefix PATH : ${pkgs.coreutils}/bin\n\"" ; home.packages "[ ${artifact.<self>} ]"
+0.85 r4 match fact witness.example => claim.print.run "\"${artifact.<self>}/bin/<self> <value.7>\"" ; claim.print.stdin "\"<value.1>\t<value.2>\n<value.3>\t<value.4>\n<value.5>\t<value.6>\n\"" ; claim.print.stdout "\"<value.8>\""
+0.85 a1 expect artifact.<self>.args.pname from cmd.<name>
+0.85 a2 expect artifact.<self>.fill.present from mark.present
+0.85 a3 expect artifact.<self>.fill.absent from mark.absent
+0.85 a4 expect claim.print.stdout from witness.example#8
+0.8 a5 expect claim.print.run from witness.example#7
+0.8 a6 expect claim.print.stdin from witness.example#1
+0.9 s1 source habit habit.sh <<<lips
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG="@logpath@"
-DAYS=@days@
-HABIT="${1:-}"
-
-if [ -z "$HABIT" ]; then
-  echo "usage: $(basename "$0") <habit-name>" >&2
-  exit 1
+habit="$1"
+if [ "$#" -ge 2 ]; then
+  input="$2"
+else
+  input="/dev/stdin"
 fi
 
+mindate=""
+maxdate=""
 declare -A seen
-if [ -f "$LOG" ]; then
-  while IFS=$'\t' read -r date name; do
-    if [ "$name" = "$HABIT" ]; then
-      seen["$date"]=1
-    fi
-  done < "$LOG"
-fi
 
-today=$(date +%Y-%m-%d)
-for ((i = DAYS - 1; i >= 0; i--)); do
-  day=$(date -d "$today - $i days" +%Y-%m-%d)
-  if [ -n "${seen[$day]:-}" ]; then
-    printf '#'
-  else
-    printf '.'
+while IFS=$'\t' read -r d h; do
+  [ -z "${d:-}" ] && continue
+  if [ "$h" = "$habit" ]; then
+    seen["$d"]=1
   fi
+  if [ -z "$mindate" ] || [[ "$d" < "$mindate" ]]; then
+    mindate="$d"
+  fi
+  if [ -z "$maxdate" ] || [[ "$d" > "$maxdate" ]]; then
+    maxdate="$d"
+  fi
+done < "$input"
+
+out=""
+cur="$mindate"
+end_epoch=$(date -d "$maxdate" +%s)
+while [ -n "$cur" ] && [ "$(date -d "$cur" +%s)" -le "$end_epoch" ]; do
+  if [ "${seen[$cur]:-}" = "1" ]; then
+    out="${out}@present@"
+  else
+    out="${out}@absent@"
+  fi
+  cur=$(date -d "$cur + 1 day" +%Y-%m-%d)
 done
-printf '\n'
+
+printf '%s\n' "$out"
 lips>>>
+0.95 d1 report <<<lips
+This language describes a small daily-habit tracker CLI, built from source.
 
-1 d1 report <<<lips
-This language crystallizes a single "habit tracker" home-manager program:
-a small CLI tool that is compiled from source and dropped on the user's
-PATH via `home.packages`.
+**Line shapes it reads**
+- The opening sentence and the four sentences describing the argument
+  convention, the log source, the log line format and the print-range rule
+  are read as `concept` lines: they state the fixed behaviour every program
+  of this kind shares (first argument = habit name, second argument or
+  stdin = the log, tab-separated `date<TAB>habit` lines, one character per
+  day from the log's earliest to its latest date). They carry no
+  per-program value, so they realize nothing and only document intent.
+- `mark a day the named habit was logged with "X".` and
+  `mark a day it was not logged with "Y".` capture the two marker
+  characters used in the printed chart as program values.
+- `install the tool as the command NAME.` captures the shell command name
+  the built tool is installed as.
+- `given the log of "d" for "h", "d" for "h" and "d" for "h", the habit "H"
+  prints "OUT".` is the program's own worked example. It becomes the
+  behavioural claim: the three dated entries are turned into real
+  tab-separated input, the built binary is run against it with the named
+  habit as its argument, and its printed line is checked byte-for-byte
+  against the stated output.
 
-Line shapes recognized:
-- Two narrative sentences ("track daily habits from the terminal.", "each
-  log line holds an ISO date and a habit name separated by a tab.") are
-  pure decoration/structure: they describe the file format the built
-  script implements, but name no option, so they crystallize as `concept`
-  and need no rule. The tab-separated format they describe is baked
-  directly into the shipped script as fixed structure.
-- "the habit log is stored in <path>." states the log file location -- a
-  program fact. It flows into the built script through a fill
-  (`@logpath@`), so editing the path in the program and re-realizing
-  changes the compiled tool without a fresh mint.
-- "print a heatmap of the last <days> days for the habit named on the
-  command line." states how many days the heatmap covers -- another fact,
-  also carried into the script via a fill (`@days@`). "for the habit named
-  on the command line" is read literally: the mechanism chosen is that the
-  habit name always comes from argv, never from config, so that phrase is
-  a fixed literal, not a hole.
-- "install the tool as the command <name>." names the command the human
-  wants on their PATH. That name is a program value, so it is captured and
-  used everywhere the *installed binary's own name* matters: the
-  derivation's pname and the destination filename in installPhase
-  (`$out/bin/<name>`). It is NOT used to build a second, separately-named
-  artifact key; since a home-manager program mints exactly one build here,
-  the internal artifact bookkeeping key is `<self>` (the program's own
-  file name), while the human's word governs the actually installed
-  command name -- so renaming the command in the program still renames
-  what lands on $PATH.
+**Mechanism**
+The tracker is built with `stdenv.mkDerivation` from a bundled bash script
+(`habit.sh`) that reads `date<TAB>habit` lines from a file argument or
+stdin, and uses GNU `date` to walk every day between the log's earliest and
+latest date, printing one marker character per day. `date` is put on the
+script's PATH with `makeWrapper` against `coreutils`, so the result behaves
+the same regardless of the host's own `date` tool. The two marker
+characters reach the script through fills (`@present@`/`@absent@` markers
+inside `habit.sh`), so editing either quoted character changes the built
+binary without touching the engine itself.
 
-Mechanism choices:
-- Builder: `stdenv.mkDerivation`, the plainest builder for "copy a script
-  into $out/bin", with `dontBuild = true` and a custom `installPhase`
-  (no compilation needed, so buildGoModule/buildRustPackage would be
-  overkill).
-- Package delivery: `home.packages = [ ${artifact.<self>} ]` -- the tool
-  is a manually-invoked terminal command, not a background service, so no
-  systemd unit is minted.
-- `version = "0.1.0"` is an unobserved build constant (nixpkgs needs
-  pname+version to name the derivation), chosen once at full confidence,
-  never asked of the human.
-- The script itself (source/run.sh) implements the stated algorithm:
-  reads the tab-separated log, builds a set of dates the given habit was
-  logged, and prints one glyph per day for the last N days.
+The artifact is keyed by `<self>` (the program's own instance/file name)
+rather than by the captured command name. The marker facts and the worked
+example appear on lines that say nothing about the command name, so they
+have no way to reach an artifact keyed by that captured word; `<self>` is
+the one key every rule can reach regardless of which line produced its
+decision. The captured command name is still honoured: it becomes the
+derivation's `pname`, and the built script is *also* installed as a second
+`$out/bin/<name>` entry, so editing "install the tool as the command X"
+still renames the real, user-facing command. The claim always calls the
+`<self>`-named binary, so it stays stable no matter what the command is
+named.
 
-Demands added so any program in this language states what the build
-needs: the log path, the heatmap span, and the installed command name --
-all three are also pinned with expects into their artifact slots
-(fill.logpath, fill.days, args.pname).
+**What I had to choose**
+- The build system (`stdenv.mkDerivation` + `makeWrapper`) and the fixed
+  version "0.1.0" are mechanism choices: nothing in the program names a
+  build system or a version, and none is a value a program would state.
+
+**Limit I could not lift (filed as a gap)**
+The witness pattern is fixed to exactly three dated log entries, matching
+the one example given. The grammar has no way to repeat a sub-match inside
+one line (no list-splitting, no computation), so a program whose example
+states a different number of entries cannot be read by this pattern; see
+the filed gap for how a repeating block would fix this.
+lips>>>
+0.6 g1 gap witness-entry-count <<<lips
+blocked line: given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".
+The witness pattern is fixed to exactly three dated log entries because the
+grammar has no way to repeat a sub-match within one line (no list-splitting,
+no computation): a program stating two or four entries in its example
+sentence cannot be read by the same pattern. A repeating bulleted block
+("- date for habit", closed by a "the habit ... prints ..." line) would let
+the count vary, but that is not the shape this program uses, so I did not
+invent one.
 lips>>>

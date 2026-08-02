@@ -1,3 +1,6 @@
-a1 expect artifact.<self>.fill.logpath from habit.log
-a2 expect artifact.<self>.fill.days from habit.heatmap.days
-a3 expect artifact.<self>.args.pname from command.name
+a1 expect artifact.<self>.args.pname from cmd.<name>
+a2 expect artifact.<self>.fill.present from mark.present
+a3 expect artifact.<self>.fill.absent from mark.absent
+a4 expect claim.print.stdout from witness.example#8
+a5 expect claim.print.run from witness.example#7
+a6 expect claim.print.stdin from witness.example#1

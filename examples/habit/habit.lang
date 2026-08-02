@@ -1,11 +1,13 @@
-p1 meta lang.pattern.p1 stated "track daily habits from the terminal => concept intro \"track daily habits from the terminal\"" @gen:e2a9b81c2e0405b5
-p2 meta lang.pattern.p2 stated "the habit log is stored in <path> => fact habit.log \"<path>\"" @gen:e2a9b81c2e0405b5
-p3 meta lang.pattern.p3 stated "each log line holds an iso date and a habit name separated by a tab => concept format \"each log line holds an ISO date and a habit name separated by a tab\"" @gen:e2a9b81c2e0405b5
-p4 meta lang.pattern.p4 stated "print a heatmap of the last <days> days for the habit named on the command line => fact habit.heatmap.days \"<days>\"" @gen:e2a9b81c2e0405b5
-p5 meta lang.pattern.p5 stated "install the tool as the command <name> => fact command.name \"<name>\"" @gen:e2a9b81c2e0405b5
-q1 meta engine.demand.q1 stated "demand habit.log \"what file path holds the habit log (tab-separated ISO-date + habit-name rows)?\"" @gen:e2a9b81c2e0405b5
-q2 meta engine.demand.q2 stated "demand habit.heatmap.days \"how many days should the printed heatmap span?\"" @gen:e2a9b81c2e0405b5
-q3 meta engine.demand.q3 stated "demand command.name \"what command name should the built tool be installed as?\"" @gen:e2a9b81c2e0405b5
-r1 meta engine.rule.r1 stated "match fact habit.log => artifact.<self>.fill.logpath \"\\\"<value>\\\"\"" @gen:e2a9b81c2e0405b5
-r2 meta engine.rule.r2 stated "match fact habit.heatmap.days => artifact.<self>.fill.days \"\\\"<value>\\\"\"" @gen:e2a9b81c2e0405b5
-r3 meta engine.rule.r3 stated "match fact command.name => home.packages \"[ ${artifact.<self>} ]\" ; artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.installPhase \"\\\"install -Dm755 run.sh $out/bin/<value>\\\"\"" @gen:e2a9b81c2e0405b5
+p1 meta lang.pattern.p1 stated "track daily habits from the terminal => concept overview \"a daily habit tracker\"" @gen:bb0356e078c09032
+p2 meta lang.pattern.p2 stated "the first argument names the habit to print => concept cli.arg1 \"first argument is the habit name\"" @gen:bb0356e078c09032
+p3 meta lang.pattern.p3 stated "read the habit log from the file named as the second argument, or from standard input when no file is named => concept cli.arg2 \"second argument or stdin is the log source\"" @gen:bb0356e078c09032
+p4 meta lang.pattern.p4 stated "each log line holds an iso date and a habit name separated by a tab => concept log.format \"tab-separated log lines\"" @gen:bb0356e078c09032
+p5 meta lang.pattern.p5 stated "print one character per day from the log's earliest date to its latest date => concept log.range \"one char per day across the log's date range\"" @gen:bb0356e078c09032
+p6 meta lang.pattern.p6 stated "mark a day the named habit was logged with <present> => fact mark.present \"<present>\"" @gen:bb0356e078c09032
+p7 meta lang.pattern.p7 stated "mark a day it was not logged with <absent> => fact mark.absent \"<absent>\"" @gen:bb0356e078c09032
+p8 meta lang.pattern.p8 stated "install the tool as the command <name> => fact cmd.<name> \"<name>\"" @gen:bb0356e078c09032
+p9 meta lang.pattern.p9 stated "given the log of <d1> for \"<h1>\", <d2> for <h2> and <d3> for \"<h3>\", the habit <habit> prints <output> => fact witness.example \"<d1> <h1> <d2> <h2> <d3> <h3> <habit> <output>\"" @gen:bb0356e078c09032
+r1 meta engine.rule.r1 stated "match fact mark.present => artifact.<self>.fill.present \"\\\"<value>\\\"\"" @gen:bb0356e078c09032
+r2 meta engine.rule.r2 stated "match fact mark.absent => artifact.<self>.fill.absent \"\\\"<value>\\\"\"" @gen:bb0356e078c09032
+r3 meta engine.rule.r3 stated "match fact cmd.<name> => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.nativeBuildInputs \"[ ${pkgs.makeWrapper} ]\" ; artifact.<self>.args.installPhase \"\\\"mkdir -p $out/bin\\\\ninstall -m755 habit.sh $out/bin/<self>\\\\ninstall -m755 habit.sh $out/bin/<value>\\\\nwrapProgram $out/bin/<self> --prefix PATH : ${pkgs.coreutils}/bin\\\\nwrapProgram $out/bin/<value> --prefix PATH : ${pkgs.coreutils}/bin\\\\n\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"" @gen:bb0356e078c09032
+r4 meta engine.rule.r4 stated "match fact witness.example => claim.print.run \"\\\"${artifact.<self>}/bin/<self> <value.7>\\\"\" ; claim.print.stdin \"\\\"<value.1>\\\\t<value.2>\\\\n<value.3>\\\\t<value.4>\\\\n<value.5>\\\\t<value.6>\\\\n\\\"\" ; claim.print.stdout \"\\\"<value.8>\\\"\"" @gen:bb0356e078c09032

@@ -1,10 +1,14 @@
-p1 meta lang.pattern.p1 stated "show a kanban board in the terminal => concept kanban.board \"kanban board in the terminal\"" @gen:6267f91661386df7
-p2 meta lang.pattern.p2 stated "the board is stored in <path> => fact board.storage \"<path>\"" @gen:6267f91661386df7
-p3 meta lang.pattern.p3 stated "the board has the columns <cols> => fact board.columns \"<cols>\"" @gen:6267f91661386df7
-p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact command.name \"<name>\"" @gen:6267f91661386df7
-q1 meta engine.demand.q1 stated "demand board.storage \"where is the board file stored (its full path)?\"" @gen:6267f91661386df7
-q2 meta engine.demand.q2 stated "demand board.columns \"what are the board's column names, as a quoted comma-separated list?\"" @gen:6267f91661386df7
-q3 meta engine.demand.q3 stated "demand command.name \"what command name should the tool be installed as?\"" @gen:6267f91661386df7
-r1 meta engine.rule.r1 stated "match fact board.storage => artifact.<self>.fill.BOARD_PATH \"\\\"<value>\\\"\"" @gen:6267f91661386df7
-r2 meta engine.rule.r2 stated "match fact board.columns => artifact.<self>.fill.COLUMNS \"\\\"<value>\\\"\"" @gen:6267f91661386df7
-r3 meta engine.rule.r3 stated "match fact command.name => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.installPhase \"\\\"mkdir -p $out/bin; install -m755 run.sh $out/bin/<value>\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"" @gen:6267f91661386df7
+p1 meta lang.pattern.p1 stated "show a kanban board in the terminal => concept board.intro \"kanban board tool\"" @gen:c0cb5c1eeaaf9751
+p2 meta lang.pattern.p2 stated "read the board from the file named on the command line, or from standard input when no file is named => concept board.input \"reads file arg or stdin\"" @gen:c0cb5c1eeaaf9751
+p3 meta lang.pattern.p3 stated "the board is markdown: <desc.words> => concept board.format \"<desc>\"" @gen:c0cb5c1eeaaf9751
+p4 meta lang.pattern.p4 stated "the board has the columns <cols> => fact board.columns \"<cols>\"" @gen:c0cb5c1eeaaf9751
+p5 meta lang.pattern.p5 stated "print one line per column: <desc.words> => concept board.print \"<desc>\"" @gen:c0cb5c1eeaaf9751
+p6 meta lang.pattern.p6 stated "a column with no cards prints its name and the colon only => concept board.empty \"empty column format\"" @gen:c0cb5c1eeaaf9751
+p7 meta lang.pattern.p7 stated "install the tool as the command <cmd> => fact install.command.<cmd> \"<cmd>\"" @gen:c0cb5c1eeaaf9751
+p8 meta lang.pattern.p8.under.p7 stated "given the lines \"<l1>\", \"<l2>\", \"<l3>\", <l4> and \"<l5>\", print the lines \"<o1>\", <o2> and <o3> => fact board.example.<cmd> \"<l1> <l2> <l3> <l4> <l5> <o1> <o2> <o3>\"" @gen:c0cb5c1eeaaf9751
+q1 meta engine.demand.q1 stated "demand board.columns \"what are the board's columns, in order?\"" @gen:c0cb5c1eeaaf9751
+q2 meta engine.demand.q2 stated "demand install.command.<cmd> \"what command should the tool be installed as?\"" @gen:c0cb5c1eeaaf9751
+q3 meta engine.demand.q3 stated "demand board.example.<cmd> \"give a 'given ... print ...' example to verify the tool's output\"" @gen:c0cb5c1eeaaf9751
+r1 meta engine.rule.r1 stated "match fact install.command.<cmd> => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<cmd>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.installPhase \"\\\"install -Dm755 board.sh $out/bin/<cmd>\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"" @gen:c0cb5c1eeaaf9751
+r2 meta engine.rule.r2 stated "match fact board.columns => artifact.<self>.fill.columns \"\\\"<value>\\\"\"" @gen:c0cb5c1eeaaf9751
+r3 meta engine.rule.r3 stated "match fact board.example.<cmd> => claim.<cmd>.run \"\\\"${artifact.<self>}/bin/<cmd>\\\"\" ; claim.<cmd>.stdin \"\\\"<value.1>\\\\n<value.2>\\\\n<value.3>\\\\n<value.4>\\\\n<value.5>\\\"\" ; claim.<cmd>.stdout \"\\\"<value.6>\\\\n<value.7>\\\\n<value.8>\\\"\"" @gen:c0cb5c1eeaaf9751
