@@ -77,10 +77,25 @@ The scope this buys is precise. lips reaches as far as some external, typed
 vocabulary of mechanism reaches, because that is what a rule names: nixpkgs
 defines what `services.restic.backups.<name>.paths` means, lips looks the name
 up rather than inventing it, and your line fills the value. Configuring a
-system out of named parts is where lips is strongest, and it grows by adding
-worlds (NixOS, home-manager, kubenix, terranix, whatever ships a schema next)
-rather than by growing the kernel. `DESIGN.md` carries the long version, the
-evidence, and the honest limits.
+system out of named parts is where lips is strongest.
+
+Nix is the substrate, not the subject. Three layers are worth keeping apart.
+The *substrate* is Nix itself, and it does not move: a set of `path = value`
+assignments merged by path is the same algebra lips uses on decisions, so
+realizing is almost a translation, and the compiler's promise of bit-identical
+output rests on an evaluator that already promises it. The *world* is the
+option vocabulary a rule names, and that axis is open: NixOS, home-manager,
+kubenix, terranix, whatever ships a schema next, each of them reachable
+without touching the kernel. The *surface* is what you see, and it is your
+world's own artifact: a Kubernetes user gets multi-document YAML to pipe into
+`kubectl`, a Terraform user gets `config.tf.json` for `tofu plan`. Nix ran
+underneath; you never had to learn it.
+
+So lips grows by adding worlds rather than by growing the kernel, and anything
+declarative is in reach. Live cloud APIs that must be polled and reconciled
+are not: lips renders the desired state and hands it to the tool whose job
+applying is. `DESIGN.md` carries the long version, the evidence, and the
+honest limits.
 
 ## How You Work With It
 

@@ -489,6 +489,47 @@ mergeable, per-domain vocabulary over one general substrate, zero LLM;
 Survey D verified its mechanics firsthand), and terranix proves the
 machinery retargets beyond NixOS.
 
+### Why the Substrate Does Not Move
+
+Three layers are distinct, and conflating them is what makes "is lips only for
+Nix people?" look like an open question when it is not.
+
+- **Substrate**: Nix itself (evaluator, module system, hermetic build).
+  Permanent.
+- **World**: the option vocabulary a rule names (nixos, home-manager, kubenix,
+  terranix). Open axis, no kernel change, see the scaling law below.
+- **Surface**: what the author sees and must know. For a non-NixOS world it is
+  that world's own artifact (kubenix YAML for `kubectl`, `config.tf.json` for
+  `tofu`), so Nix can run underneath an author who never learns it.
+
+The substrate is fixed for a reason stronger than convenience. A NixOS
+configuration is an unordered set of `path = value` assignments merged by path
+with priorities, which is the decision calculus in different words. Realizing
+is therefore close to a homomorphism: merge in the calculus, emit, and the
+target composes the result the same way. A substrate composing differently
+(ordered steps, last-write-wins, no priorities) would need an adapter that
+knows how *that* target composes, and the only place such knowledge could live
+is the kernel, which is precisely what the kernel must never learn. Nix is the
+semantic mirror of the calculus, so leaving it costs kernel purity, not just
+effort.
+
+The mirror is currently used in shape and not in mechanism: nothing in
+`kernel/src` emits `mkDefault` or `mkForce`, so lips resolves strength itself
+and emits already-merged assignments. Section 11 records the consequence as an
+open question, since emitting priorities is what would let a lips module merge
+with a hand-written one rather than sit beside it.
+
+What no substrate change would buy: convergent targets (a live API that must be
+polled and reconciled) stay out of reach by design, because lips renders
+desired state and hands applying to the tool that owns it, exactly as terranix
+does; and application source stays limited by the absence of a vocabulary, not
+by Nix. Reconsidering the substrate becomes correct only on a falsifiable
+trigger: a schema-bearing world whose Nix bridge would cost more than emitting
+its format directly (unlikely, since rendering YAML or JSON from Nix is
+trivial), authors who must compile where `nix` cannot run (answerable with a
+static Nix before it is answerable with a second backend), or Nix evaluation
+measured as the bottleneck at real program counts. None is close.
+
 ## The Vocabulary Scaling Law
 
 What makes a fourteen-line engine produce a working system is not the kernel's
@@ -566,7 +607,18 @@ silently assumes.
   died on adoption into an existing codebase, and lips offers only coexistence
   (a hand-written module beside a lips one, §13 doctrine). That defense is
   real and may suffice, since Nix modules compose by construction, but it has
-  never been exercised on a system of any size.
+  never been exercised on a system of any size. The priority question below is
+  its first concrete lever.
+- **Should a realized assignment carry a priority?** lips resolves strength in
+  the calculus and emits plain `path = value`, so a lips module and a
+  hand-written module asserting the same path collide at eval instead of
+  merging. Emitting `mkDefault` (or a priority derived from the decision's
+  strength) would make coexistence a defined merge with a stated winner, which
+  is the cheapest brownfield lever available and the first real use of the
+  calculus-to-module-system correspondence (§10). Against it: a second place
+  where strength is interpreted, and a realized module that no longer reads as
+  the plain truth of the program. Undecided; no committed example yet needs a
+  lips path overridden from outside.
 - **Conflict explanation**: today a conflict names two competing decisions. A
   derived contradiction several refinement steps down needs the *minimal set
   of program lines* that cannot hold together. Model-based diagnosis solved
