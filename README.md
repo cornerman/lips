@@ -64,14 +64,20 @@ generating twice from one unchanged spec). In lips the model runs once, leaves
 a page of grammar and rules behind, and every later build is an offline,
 bit-identical compile.
 
-That is model-driven development with the part that killed it removed. MDD had
-the right shape (a real language, a real compiler, real editor support) and
-died because someone had to build and maintain a code generator per domain.
-Here a model mints the generator in one call, and it is disposable: when the
-domain moves, mint again. What you keep is the determinism, and determinism is
-the one property no better model will ever hand you, since a perfect model
-that writes valid but different code each run still leaves you with nothing to
-diff, bisect, or audit.
+That is model-driven development at the scale that actually works. The folk
+story says model-driven development died; the field studies say it narrowed.
+Surveying 450 practitioners, Hutchinson, Whittle and Rouncefield found that
+developers "rarely use it to generate whole systems; rather, they apply it to
+develop key parts of a system often using domain-specific modeling languages
+developed specifically for the purpose". What died was the big version: one
+universal notation, a hand-editable middle layer, and a code generator per
+domain that somebody had to build and keep alive. lips is the shape that
+survived, with the cost that kept it rare removed, since a model mints the
+generator in one call and it is disposable: when the domain moves, mint again.
+What you keep is the determinism, and determinism is the one property no
+better model will ever hand you, since a perfect model that writes valid but
+different code each run still leaves you with nothing to diff, bisect, or
+audit.
 
 The scope this buys is precise. lips reaches as far as some external, typed
 vocabulary of mechanism reaches, because that is what a rule names: nixpkgs

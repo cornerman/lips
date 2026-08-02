@@ -96,6 +96,21 @@ this buys is contingent on economics rather than physics: it holds only while
 a mint stays cheap and a language converges, which is why the mint-decay curve
 is an open question (§11).
 
+The premise of that objection needs one correction, and it moves the ground
+under lips from analogy to evidence (Survey J). Model-driven engineering did
+not die, it narrowed. Hutchinson, Whittle and Rouncefield, surveying 450
+practitioners and interviewing 22 more, report that developers "rarely use it
+to generate whole systems; rather, they apply it to develop key parts of a
+system often using domain-specific modeling languages developed specifically
+for the purpose", and that "adoption largely depends on social and
+organizational factors" (IEEE Software, 2014). Petre's fifty-engineer study
+found zero of fifty using UML the way its promoters described (ICSE 2013).
+What failed was one universal notation with a hand-editable middle layer and a
+per-domain generator somebody had to maintain; what works is exactly lips's
+shape, partial generation through a purpose-built language. The mint removes
+the cost that kept that shape rare, and the organizational finding is the part
+no technical property answers (§13, "Limits of scale").
+
 This position does not decay as models improve. The claim is reproducibility,
 not accuracy: a perfect model that emits a different valid implementation on
 each run still destroys diffs, bisection, review, and audit. Determinism is a
