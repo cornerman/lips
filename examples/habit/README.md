@@ -2,73 +2,88 @@
 
 # The `habit` language
 
-This language describes a small daily-habit tracker CLI, built from source.
+This language describes one small terminal tool that renders a habit log as a
+row of characters, and builds it. A program of this language is compiled into a
+Go program plus a home-manager module that puts the built command on your PATH
+(`home.packages`); there is nothing to boot and no service, because the thing
+described is a command you run yourself.
 
-**Line shapes it reads**
-- The opening sentence and the four sentences describing the argument
-  convention, the log source, the log line format and the print-range rule
-  are read as `concept` lines: they state the fixed behaviour every program
-  of this kind shares (first argument = habit name, second argument or
-  stdin = the log, tab-separated `date<TAB>habit` lines, one character per
-  day from the log's earliest to its latest date). They carry no
-  per-program value, so they realize nothing and only document intent.
-- `mark a day the named habit was logged with "X".` and
-  `mark a day it was not logged with "Y".` capture the two marker
-  characters used in the printed chart as program values.
-- `install the tool as the command NAME.` captures the shell command name
-  the built tool is installed as.
-- `given the log of "d" for "h", "d" for "h" and "d" for "h", the habit "H"
-  prints "OUT".` is the program's own worked example. It becomes the
-  behavioural claim: the three dated entries are turned into real
-  tab-separated input, the built binary is run against it with the named
-  habit as its argument, and its printed line is checked byte-for-byte
-  against the stated output.
+## The line shapes it reads
 
-**Mechanism**
-The tracker is built with `stdenv.mkDerivation` from a bundled bash script
-(`habit.sh`) that reads `date<TAB>habit` lines from a file argument or
-stdin, and uses GNU `date` to walk every day between the log's earliest and
-latest date, printing one marker character per day. `date` is put on the
-script's PATH with `makeWrapper` against `coreutils`, so the result behaves
-the same regardless of the host's own `date` tool. The two marker
-characters reach the script through fills (`@present@`/`@absent@` markers
-inside `habit.sh`), so editing either quoted character changes the built
-binary without touching the engine itself.
+Four shapes carry values, and editing them changes the built tool:
 
-The artifact is keyed by `<self>` (the program's own instance/file name)
-rather than by the captured command name. The marker facts and the worked
-example appear on lines that say nothing about the command name, so they
-have no way to reach an artifact keyed by that captured word; `<self>` is
-the one key every rule can reach regardless of which line produced its
-decision. The captured command name is still honoured: it becomes the
-derivation's `pname`, and the built script is *also* installed as a second
-`$out/bin/<name>` entry, so editing "install the tool as the command X"
-still renames the real, user-facing command. The claim always calls the
-`<self>`-named binary, so it stays stable no matter what the command is
-named.
+- `mark a day the named habit was logged with "#".` -- the character printed for
+  a day the named habit appears in the log. The quoted character is the value.
+- `mark a day it was not logged with ".".` -- the character printed for a day it
+  does not appear.
+- `install the tool as the command habit.` -- the word after "the command" names
+  the command. It becomes the Go module name (so the produced binary carries
+  that name) and the derivation's pname, so renaming it here renames the command
+  you type.
+- `given the log of "2026-01-01" for "run", "2026-01-02" for "read" and
+  "2026-01-04" for "run", the habit "run" prints "#..#".` -- the worked example.
+  This is the only line that holds the tool to its words: it is compiled into a
+  claim that actually runs the built binary in the build sandbox, feeding those
+  three date/habit pairs on standard input as tab-separated lines and comparing
+  what is printed byte for byte with the quoted output. This line must come
+  *after* the install line: it reads the command name from it (it is an item of
+  the block that line opens).
 
-**What I had to choose**
-- The build system (`stdenv.mkDerivation` + `makeWrapper`) and the fixed
-  version "0.1.0" are mechanism choices: nothing in the program names a
-  build system or a version, and none is a value a program would state.
+Five shapes are decorative -- they are the design of the generated source, not
+values it can vary, so editing their wording changes no output at all:
 
-**Limit I could not lift (filed as a gap)**
-The witness pattern is fixed to exactly three dated log entries, matching
-the one example given. The grammar has no way to repeat a sub-match inside
-one line (no list-splitting, no computation), so a program whose example
-states a different number of entries cannot be read by this pattern; see
-the filed gap for how a repeating block would fix this.
+- `track daily habits from the terminal.`
+- `the first argument names the habit to print.`
+- `read the habit log from the file named as the second argument, or from
+  standard input when no file is named.`
+- `each log line holds an ISO date and a habit name separated by a tab.`
+- `print one character per day from the log's earliest date to its latest date.`
+
+They are honest documentation of what the baked Go program does, and I kept them
+readable rather than dropping them; but the argument order, the tab separator,
+the ISO date format and the one-character-per-day span live in `main.go`. To
+change any of them you must regenerate the language, not edit the program.
+
+## What the built tool does
+
+`main.go` reads the log from the named file or from standard input, splits each
+line on the first tab into an ISO date and a habit name, takes the earliest and
+latest date over *all* log lines as the span, and prints one character per day
+in that span: the "logged" character when the queried habit was logged that day,
+the "not logged" character otherwise, followed by a newline. Unparsable and
+blank lines are skipped; an empty log prints an empty line. The two characters
+reach the source as fills (`@mark_logged@`, `@mark_missing@`), and the command
+name as the fill `@name@` in `go.mod` and in the usage message, so all three are
+substituted offline at compile time.
+
+## Choices I made, and what is pinned
+
+The builder is `buildGoModule` with `vendorHash = null`: the source uses only
+the Go standard library, so there is nothing to vendor. The version `0.1.0` is
+mine -- the program says nothing about versions, and no sensible question could
+ask for one. The derivation is keyed by the program's instance name (the file
+name, `habit`), because the two mark lines must reach the same build and they
+sit above the line that names the command, so they cannot borrow that word;
+the command's *name*, though, is entirely governed by the program.
+
+The contract checked on every future compile: the two marks and the command name
+land in the fills that carry them into the source, and the example's expected
+output is the claim's expected stdout. No expect names `home.packages`: it holds
+a build reference, not a checkable value.
+
+One limitation is filed as a gap: the witness line is fixed at three log
+entries, because a claim's standard input is a single value and nothing in the
+grammar repeats a chunk per entry. A two- or four-entry example will fail to
+compile with "no pattern matched"; regenerating with such an example in hand is
+the way to add it.
 
 ## Known Gaps
 
-### witness-entry-count
+### fixed-arity-witness
 
 blocked line: given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".
-The witness pattern is fixed to exactly three dated log entries because the
-grammar has no way to repeat a sub-match within one line (no list-splitting,
-no computation): a program stating two or four entries in its example
-sentence cannot be read by the same pattern. A repeating bulleted block
-("- date for habit", closed by a "the habit ... prints ..." line) would let
-the count vary, but that is not the shape this program uses, so I did not
-invent one.
+the example log holds three entries, and a claim's stdin is one value with no
+way to repeat a per-entry chunk: the pattern has to spell out exactly three
+date/habit pairs. a witness with two or four entries would need its own
+pattern, which is duplication a repeating-value construct would remove.
 

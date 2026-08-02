@@ -1,6 +1,4 @@
-a1 expect artifact.<self>.args.pname from cmd.<name>
-a2 expect artifact.<self>.fill.present from mark.present
-a3 expect artifact.<self>.fill.absent from mark.absent
-a4 expect claim.print.stdout from witness.example#8
-a5 expect claim.print.run from witness.example#7
-a6 expect claim.print.stdin from witness.example#1
+a1 expect artifact.<self>.fill.mark_logged from habit.mark.logged
+a2 expect artifact.<self>.fill.mark_missing from habit.mark.missing
+a3 expect artifact.<self>.fill.name from cmd.<name>.install
+a4 expect claim.<q>.stdout from witness.<name>.<q>#7

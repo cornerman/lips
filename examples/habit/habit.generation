@@ -1,4 +1,4 @@
-model: claude-sonnet-5
+model: claude-opus-5
 target: home-manager
 schema: github:nix-community/home-manager/041a999e8c1c5b731913855909e68d30ca69b8e0?narHash=sha256-J5%2BC9wsO0lhDyUalQzfplDbRjyHDYeEH5%2B9sdyXtwa8%3D
 thinking: high
@@ -898,206 +898,235 @@ given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04
 
 --- tool transcript ---
 -> query_options "home.packages"
+-> query_options "home.sessionVariables"
 <- query_options
 home.packages : list of package
 
--> check_draft "0.95 p1 pattern track daily habits from the terminal. => concept overview \"a daily habit tracker\"\n0.9 p2 pattern the first argument names the habit to print. => concept cli.arg1 \"first argument is the habit name\"\n0.9 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named. => concept cli.arg2 \"second argument or stdin is the log source\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab. => concept log.format \"tab-separated log lines\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date. => concept log.range \"one char per day across the log's date range\"\n0.95 p6 pattern mark a day the named habit was logged with \"<present>\". => fact mark.present \"<present>\"\n0.95 p7 pattern mark a day it was not logged with \"<absent>\". => fact mark.absent \"<absent>\"\n0.95 p8 pattern install the tool as the command <name>. => fact cmd.<name> \"<name>\"\n0.9 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<habit>\" prints \"<output>\". => fact witness.example \"<d1> <h1> <d2> <h2> <d3> <h3> <habit> <output>\"\n0.9 r1 match fact mark.present => artifact.<self>.fill.present \"\\\"<value>\\\"\"\n0.9 r2 match fact mark.absent => artifact.<self>.fill.absent \"\\\"<value>\\\"\"\n0.85 r3 match fact cmd.<name> => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.nativeBuildInputs \"[ ${pkgs.makeWrapper} ]\" ; artifact.<self>.args.installPhase \"\\\"mkdir -p $out/bin\\ninstall -m755 habit.sh $out/bin/<self>\\ninstall -m755 habit.sh $out/bin/<value>\\nwrapProgram $out/bin/<self> --prefix PATH : ${pkgs.coreutils}/bin\\nwrapProgram $out/bin/<value> --prefix PATH : ${pkgs.coreutils}/bin\\n\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"\n0.85 r4 match fact witness.example => claim.print.run \"\\\"${artifact.<self>}/bin/<self> <value.7>\\\"\" ; claim.print.stdin \"\\\"<value.1>\\t<value.2>\\n<value.3>\\t<value.4>\\n<value.5>\\t<value.6>\\n\\\"\" ; claim.print.stdout \"\\\"<value.8>\\\"\"\n0.85 a1 expect artifact.<self>.args.pname from cmd.<name>\n0.85 a2 expect artifact.<self>.fill.present from mark.present\n0.85 a3 expect artifact.<self>.fill.absent from mark.absent\n0.85 a4 expect claim.print.stdout from witness.example#8\n0.8 a5 expect claim.print.run from witness.example#7\n0.8 a6 expect claim.print.stdin from witness.example#1\n0.9 s1 source habit habit.sh <<<lips\n#!/usr/bin/env bash\nset -euo pipefail\n\nhabit=\"$1\"\nif [ \"$#\" -ge 2 ]; then\n  input=\"$2\"\nelse\n  input=\"/dev/stdin\"\nfi\n\nmindate=\"\"\nmaxdate=\"\"\ndeclare -A seen\n\nwhile IFS=$'\\t' read -r d h; do\n  [ -z \"${d:-}\" ] && continue\n  if [ \"$h\" = \"$habit\" ]; then\n    seen[\"$d\"]=1\n  fi\n  if [ -z \"$mindate\" ] || [[ \"$d\" < \"$mindate\" ]]; then\n    mindate=\"$d\"\n  fi\n  if [ -z \"$maxdate\" ] || [[ \"$d\" > \"$maxdate\" ]]; then\n    maxdate=\"$d\"\n  fi\ndone < \"$input\"\n\nout=\"\"\ncur=\"$mindate\"\nend_epoch=$(date -d \"$maxdate\" +%s)\nwhile [ -n \"$cur\" ] && [ \"$(date -d \"$cur\" +%s)\" -le \"$end_epoch\" ]; do\n  if [ \"${seen[$cur]:-}\" = \"1\" ]; then\n    out=\"${out}@present@\"\n  else\n    out=\"${out}@absent@\"\n  fi\n  cur=$(date -d \"$cur + 1 day\" +%Y-%m-%d)\ndone\n\nprintf '%s\\n' \"$out\"\nlips>>>\n0.95 d1 report <<<lips\nThis language describes a small daily-habit tracker CLI, built from source.\n\nLine shapes it reads:\n- The opening sentence and the four sentences describing the argument\n  convention, the log source, the log line format and the print-range rule\n  are treated as `concept` lines: they describe the fixed behaviour every\n  program of this kind shares (arg1 = habit name, arg2/stdin = log, tab\n  separated `date\\thabit` lines, one character per day from the log's\n  earliest to its latest date), which is baked into the generated script and\n  carries no per-program value to hole.\n- `mark a day the named habit was logged with \"X\".` and\n  `mark a day it was not logged with \"Y\".` capture the two marker\n  characters as program values (`mark.present`, `mark.absent`).\n- `install the tool as the command NAME.` captures the shell command name\n  the built binary is installed as.\n- `given the log of \"d\" for \"h\", ... the habit \"H\" prints \"OUT\".` is the\n  program's own worked example; it becomes the behavioural claim.\n\nMechanism: the tracker is built as a `stdenv.mkDerivation` (mechanism\nchoice, since the real work -- computing a date range and marking days --\nneeds a real script, not a nixpkgs writer) from a bundled bash script\n(`habit.sh`) that reads tab-separated `date TAB habit` lines from a file\nargument or stdin, using GNU `date` (wrapped onto PATH via `makeWrapper` and\n`coreutils` so the result is reproducible regardless of the host's date\ntool) to walk every day between the log's earliest and latest date. The two\nmarker characters reach the script through `fill`s (`@present@`/`@absent@`\nmarkers in `habit.sh`), so editing either quoted character changes the\nbuilt binary without touching the engine. The artifact is keyed by `<self>`\n(the program's own instance name) rather than by the captured command name,\nbecause the marker facts and the worked example need to reach the very same\nbuild regardless of line order in the program, and `<self>` is the one key\nevery rule can reach no matter which line produced its decision; the\ncaptured command name still governs real output -- it is installed as a\nsecond `$out/bin/<name>` entry and used as `pname`, so editing \"install the\ntool as the command X\" still renames the real command. The claim always\nexercises the `<self>`-named binary so it is stable however the command is\nnamed.\n\nThe program's own example is read verbatim as the behavioural claim: it is\nturned into a real tab-separated stdin, run against the built binary, and\nchecked byte-for-byte against the printed line. Only one such example line\nis supported per program, since the pattern reads exactly this list of\nthree dated entries; a program with a different count of entries needs the\nengine regenerated (or, ideally, a follow-up mint that generalises the\ncount -- see the filed gap).\nlips>>>\n0.6 g1 gap witness-entry-count <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nThe witness pattern is fixed to exactly three dated log entries because the\ngrammar has no way to repeat a sub-match within one line (no list-splitting,\nno computation): a program stating two or four entries in its example\nsentence cannot be read by the same pattern. A repeating bulleted block\n(\"- date for habit\") per entry, closed by a \"the habit ... prints ...\" line,\nwould let the count vary, but that is not the shape this program uses.\nlips>>>\n"
-<- check_draft
-examples/habit.lips: 9 of 9 lines crystallize.
-  line 1  ok        p1  overview
-  line 2  ok        p2  cli.arg1
-  line 3  ok        p3  cli.arg2
-  line 4  ok        p4  log.format
-  line 5  ok        p5  log.range
-  line 6  ok        p6  mark.present
-  line 7  ok        p7  mark.absent
-  line 8  ok        p8  cmd.habit
-  line 9  ok        p9  witness.example
-
-decorative, realizing nothing (5) -- editing these changes no output:
-  line 1  "track daily habits from the terminal."
-  line 2  "the first argument names the habit to print."
-  line 3  "read the habit log from the file named as the second argument, or from standard input when no file is named."
-  line 4  "each log line holds an ISO date and a habit name separated by a tab."
-  line 5  "print one character per day from the log's earliest date to its latest date."
-
-· crystallize examples/habit.lips
-✓ crystallize examples/habit.lips  (0.0s)
-examples/habit.lips: the language bakes source, but its generation record is missing or unreadable, so the specification that source was written from cannot be read.
-
-  /tmp/lips-iWFfkA/habit/habit.generation
-
-→ rebuild both from the program as it stands: lips generate examples/habit.lips
-
--> check_draft "0.95 p1 pattern track daily habits from the terminal. => concept overview \"a daily habit tracker\"\n0.9 p2 pattern the first argument names the habit to print. => concept cli.arg1 \"first argument is the habit name\"\n0.9 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named. => concept cli.arg2 \"second argument or stdin is the log source\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab. => concept log.format \"tab-separated log lines\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date. => concept log.range \"one char per day across the log's date range\"\n0.95 p6 pattern mark a day the named habit was logged with \"<present>\". => fact mark.present \"<present>\"\n0.95 p7 pattern mark a day it was not logged with \"<absent>\". => fact mark.absent \"<absent>\"\n0.95 p8 pattern install the tool as the command <name>. => fact cmd.<name> \"<name>\"\n0.9 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<habit>\" prints \"<output>\". => fact witness.example \"<d1> <h1> <d2> <h2> <d3> <h3> <habit> <output>\"\n0.9 r1 match fact mark.present => artifact.<self>.fill.present \"\\\"<value>\\\"\"\n0.9 r2 match fact mark.absent => artifact.<self>.fill.absent \"\\\"<value>\\\"\"\n0.85 r3 match fact cmd.<name> => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.nativeBuildInputs \"[ ${pkgs.makeWrapper} ]\" ; artifact.<self>.args.installPhase \"\\\"mkdir -p $out/bin\\ninstall -m755 habit.sh $out/bin/<self>\\ninstall -m755 habit.sh $out/bin/<value>\\nwrapProgram $out/bin/<self> --prefix PATH : ${pkgs.coreutils}/bin\\nwrapProgram $out/bin/<value> --prefix PATH : ${pkgs.coreutils}/bin\\n\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"\n0.85 r4 match fact witness.example => claim.print.run \"\\\"${artifact.<self>}/bin/<self> <value.7>\\\"\" ; claim.print.stdin \"\\\"<value.1>\\t<value.2>\\n<value.3>\\t<value.4>\\n<value.5>\\t<value.6>\\n\\\"\" ; claim.print.stdout \"\\\"<value.8>\\\"\"\n0.85 a1 expect artifact.<self>.args.pname from cmd.<name>\n0.85 a2 expect artifact.<self>.fill.present from mark.present\n0.85 a3 expect artifact.<self>.fill.absent from mark.absent\n0.85 a4 expect claim.print.stdout from witness.example#8\n0.8 a5 expect claim.print.run from witness.example#7\n0.8 a6 expect claim.print.stdin from witness.example#1\n0.9 s1 source habit habit.sh <<<lips\n#!/usr/bin/env bash\nset -euo pipefail\n\nhabit=\"$1\"\nif [ \"$#\" -ge 2 ]; then\n  input=\"$2\"\nelse\n  input=\"/dev/stdin\"\nfi\n\nmindate=\"\"\nmaxdate=\"\"\ndeclare -A seen\n\nwhile IFS=$'\\t' read -r d h; do\n  [ -z \"${d:-}\" ] && continue\n  if [ \"$h\" = \"$habit\" ]; then\n    seen[\"$d\"]=1\n  fi\n  if [ -z \"$mindate\" ] || [[ \"$d\" < \"$mindate\" ]]; then\n    mindate=\"$d\"\n  fi\n  if [ -z \"$maxdate\" ] || [[ \"$d\" > \"$maxdate\" ]]; then\n    maxdate=\"$d\"\n  fi\ndone < \"$input\"\n\nout=\"\"\ncur=\"$mindate\"\nend_epoch=$(date -d \"$maxdate\" +%s)\nwhile [ -n \"$cur\" ] && [ \"$(date -d \"$cur\" +%s)\" -le \"$end_epoch\" ]; do\n  if [ \"${seen[$cur]:-}\" = \"1\" ]; then\n    out=\"${out}@present@\"\n  else\n    out=\"${out}@absent@\"\n  fi\n  cur=$(date -d \"$cur + 1 day\" +%Y-%m-%d)\ndone\n\nprintf '%s\\n' \"$out\"\nlips>>>\n0.95 d1 report <<<lips\nplaceholder\nlips>>>\n"
-<- check_draft
-examples/habit.lips: 9 of 9 lines crystallize.
-  line 1  ok        p1  overview
-  line 2  ok        p2  cli.arg1
-  line 3  ok        p3  cli.arg2
-  line 4  ok        p4  log.format
-  line 5  ok        p5  log.range
-  line 6  ok        p6  mark.present
-  line 7  ok        p7  mark.absent
-  line 8  ok        p8  cmd.habit
-  line 9  ok        p9  witness.example
-
-decorative, realizing nothing (5) -- editing these changes no output:
-  line 1  "track daily habits from the terminal."
-  line 2  "the first argument names the habit to print."
-  line 3  "read the habit log from the file named as the second argument, or from standard input when no file is named."
-  line 4  "each log line holds an ISO date and a habit name separated by a tab."
-  line 5  "print one character per day from the log's earliest date to its latest date."
-
-· crystallize examples/habit.lips
-✓ crystallize examples/habit.lips  (0.0s)
-examples/habit.lips: the language bakes source, but its generation record is missing or unreadable, so the specification that source was written from cannot be read.
-
-  /tmp/lips-FjhulY/habit/habit.generation
-
-→ rebuild both from the program as it stands: lips generate examples/habit.lips
-
--> query_options "home.file"
 <- query_options
-home.file : attribute set of (submodule)
-home.file.*.enable : boolean
-home.file.*.executable : null or boolean
-home.file.*.force : boolean
-home.file.*.ignorelinks : boolean
-home.file.*.onChange : string
-home.file.*.recursive : boolean
-home.file.*.source : path
-home.file.*.target : string
-home.file.*.text : null or strings concatenated with "\n"
+home.sessionVariables : integer
+
+-> check_draft "0.95 p1 pattern track daily habits from the terminal => concept habit.overview \"the tool tracks daily habits in a terminal\"\n0.95 p2 pattern the first argument names the habit to print => concept habit.cli.argument \"argv[1] is the habit to render\"\n0.95 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => concept habit.cli.input \"argv[2] is the log file, else stdin\"\n0.95 p4 pattern each log line holds an ISO date and a habit name separated by a tab => concept habit.log.format \"tab separated date and habit per line\"\n0.95 p5 pattern print one character per day from the log's earliest date to its latest date => concept habit.output.span \"one character per day over the log's whole span\"\n0.95 p6 pattern mark a day the named habit was logged with \"<mark>\" => fact habit.mark.logged \"<mark>\"\n0.95 p7 pattern mark a day it was not logged with \"<mark>\" => fact habit.mark.missing \"<mark>\"\n0.95 p8 pattern install the tool as the command <name> => fact cmd.<name>.install \"<name>\"\n0.85 p9.under.p8 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<q>\" prints \"<out>\" => fact witness.<name>.<q> \"<d1> <h1> <d2> <h2> <d3> <h3> <out>\"\n0.9 r6 match fact habit.mark.logged => artifact.<self>.fill.mark_logged \"\\\"<value>\\\"\"\n0.9 r7 match fact habit.mark.missing => artifact.<self>.fill.mark_missing \"\\\"<value>\\\"\"\n0.85 r8 match fact cmd.<name>.install => artifact.<self>.builder \"\\\"buildGoModule\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.vendorHash \"null\" ; artifact.<self>.fill.name \"\\\"<value>\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"\n0.85 r9 match fact witness.<name>.<q> => claim.<q>.run \"\\\"${artifact.<self>}/bin/<name> <q>\\\"\" ; claim.<q>.stdin \"\\\"<value.1>\\t<value.2>\\n<value.3>\\t<value.4>\\n<value.5>\\t<value.6>\\n\\\"\" ; claim.<q>.stdout \"\\\"<value.7>\\\"\" ; claim.<q>.exit \"0\"\n0.9 q1 demand habit.mark.logged \"which character marks a day the habit was logged?\"\n0.9 q2 demand habit.mark.missing \"which character marks a day the habit was not logged?\"\n0.9 q3 demand cmd.<name>.install \"what command name should the tool be installed as?\"\n0.85 q4 demand witness.<name>.<q> \"give one example log and the characters the tool must print for it\"\n0.9 a1 expect artifact.<self>.fill.mark_logged from habit.mark.logged\n0.9 a2 expect artifact.<self>.fill.mark_missing from habit.mark.missing\n0.9 a3 expect artifact.<self>.fill.name from cmd.<name>.install\n0.85 a4 expect claim.<q>.stdout from witness.<name>.<q>#7\n0.9 s1 source habit go.mod <<<lips\nmodule @name@\n\ngo 1.21\nlips>>>\n0.9 s2 source habit main.go <<<lips\npackage main\n\nimport (\n\t\"bufio\"\n\t\"fmt\"\n\t\"os\"\n\t\"strings\"\n\t\"time\"\n)\n\nconst (\n\tmarkLogged  = \"@mark_logged@\"\n\tmarkMissing = \"@mark_missing@\"\n\tlayout      = \"2006-01-02\"\n)\n\nfunc main() {\n\tif len(os.Args) < 2 {\n\t\tfmt.Fprintln(os.Stderr, \"usage: @name@ HABIT [LOGFILE]\")\n\t\tos.Exit(2)\n\t}\n\twant := os.Args[1]\n\n\tin := os.Stdin\n\tif len(os.Args) > 2 {\n\t\tf, err := os.Open(os.Args[2])\n\t\tif err != nil {\n\t\t\tfmt.Fprintln(os.Stderr, err)\n\t\t\tos.Exit(1)\n\t\t}\n\t\tdefer f.Close()\n\t\tin = f\n\t}\n\n\tlogged := map[string]bool{}\n\tvar first, last time.Time\n\tsc := bufio.NewScanner(in)\n\tfor sc.Scan() {\n\t\tline := strings.TrimRight(sc.Text(), \"\\r\")\n\t\tif strings.TrimSpace(line) == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tparts := strings.SplitN(line, \"\\t\", 2)\n\t\tif len(parts) != 2 {\n\t\t\tcontinue\n\t\t}\n\t\tday, err := time.Parse(layout, strings.TrimSpace(parts[0]))\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}\n\t\tname := strings.TrimSpace(parts[1])\n\t\tif first.IsZero() || day.Before(first) {\n\t\t\tfirst = day\n\t\t}\n\t\tif last.IsZero() || day.After(last) {\n\t\t\tlast = day\n\t\t}\n\t\tif name == want {\n\t\t\tlogged[day.Format(layout)] = true\n\t\t}\n\t}\n\tif err := sc.Err(); err != nil {\n\t\tfmt.Fprintln(os.Stderr, err)\n\t\tos.Exit(1)\n\t}\n\tif first.IsZero() {\n\t\tfmt.Println(\"\")\n\t\treturn\n\t}\n\tvar out strings.Builder\n\tfor d := first; !d.After(last); d = d.AddDate(0, 0, 1) {\n\t\tif logged[d.Format(layout)] {\n\t\t\tout.WriteString(markLogged)\n\t\t} else {\n\t\t\tout.WriteString(markMissing)\n\t\t}\n\t}\n\tfmt.Println(out.String())\n}\nlips>>>\n0.8 g1 gap fixed-arity-witness <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nthe example log holds three entries, and a claim's stdin is one value with no\nway to repeat a per-entry chunk: the pattern must spell out exactly three\ndate/habit pairs. a witness with two or four entries needs a second pattern.\nlips>>>\n0.95 d1 report <<<lips\nplaceholder\nlips>>>\n"
+<- check_draft
+examples/habit.lips: 9 of 9 lines crystallize.
+  line 1  ok        p1  habit.overview
+  line 2  ok        p2  habit.cli.argument
+  line 3  ok        p3  habit.cli.input
+  line 4  ok        p4  habit.log.format
+  line 5  ok        p5  habit.output.span
+  line 6  ok        p6  habit.mark.logged
+  line 7  ok        p7  habit.mark.missing
+  line 8  ok        p8  cmd.habit.install
+  line 9  ok        p9  witness.habit.run  in the block at line 8
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 8  "install the tool as the command habit."  (1 line inside)
+
+decorative, realizing nothing (5) -- editing these changes no output:
+  line 1  "track daily habits from the terminal."
+  line 2  "the first argument names the habit to print."
+  line 3  "read the habit log from the file named as the second argument, or from standard input when no file is named."
+  line 4  "each log line holds an ISO date and a habit name separated by a tab."
+  line 5  "print one character per day from the log's earliest date to its latest date."
+
+· crystallize examples/habit.lips
+✓ crystallize examples/habit.lips  (0.0s)
+examples/habit.lips: the language bakes source, but its generation record is missing or unreadable, so the specification that source was written from cannot be read.
+
+  /tmp/lips-RZMh0t/habit/habit.generation
+
+→ rebuild both from the program as it stands: lips generate examples/habit.lips
 
 
 --- raw reply ---
-0.95 p1 pattern track daily habits from the terminal. => concept overview "a daily habit tracker"
-0.9 p2 pattern the first argument names the habit to print. => concept cli.arg1 "first argument is the habit name"
-0.9 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named. => concept cli.arg2 "second argument or stdin is the log source"
-0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab. => concept log.format "tab-separated log lines"
-0.9 p5 pattern print one character per day from the log's earliest date to its latest date. => concept log.range "one char per day across the log's date range"
-0.95 p6 pattern mark a day the named habit was logged with "<present>". => fact mark.present "<present>"
-0.95 p7 pattern mark a day it was not logged with "<absent>". => fact mark.absent "<absent>"
-0.95 p8 pattern install the tool as the command <name>. => fact cmd.<name> "<name>"
-0.9 p9 pattern given the log of "<d1>" for "<h1>", "<d2>" for "<h2>" and "<d3>" for "<h3>", the habit "<habit>" prints "<output>". => fact witness.example "<d1> <h1> <d2> <h2> <d3> <h3> <habit> <output>"
-0.9 r1 match fact mark.present => artifact.<self>.fill.present "\"<value>\""
-0.9 r2 match fact mark.absent => artifact.<self>.fill.absent "\"<value>\""
-0.85 r3 match fact cmd.<name> => artifact.<self>.builder "\"stdenv.mkDerivation\"" ; artifact.<self>.args.pname "\"<value>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.dontBuild "true" ; artifact.<self>.args.nativeBuildInputs "[ ${pkgs.makeWrapper} ]" ; artifact.<self>.args.installPhase "\"mkdir -p $out/bin\ninstall -m755 habit.sh $out/bin/<self>\ninstall -m755 habit.sh $out/bin/<value>\nwrapProgram $out/bin/<self> --prefix PATH : ${pkgs.coreutils}/bin\nwrapProgram $out/bin/<value> --prefix PATH : ${pkgs.coreutils}/bin\n\"" ; home.packages "[ ${artifact.<self>} ]"
-0.85 r4 match fact witness.example => claim.print.run "\"${artifact.<self>}/bin/<self> <value.7>\"" ; claim.print.stdin "\"<value.1>\t<value.2>\n<value.3>\t<value.4>\n<value.5>\t<value.6>\n\"" ; claim.print.stdout "\"<value.8>\""
-0.85 a1 expect artifact.<self>.args.pname from cmd.<name>
-0.85 a2 expect artifact.<self>.fill.present from mark.present
-0.85 a3 expect artifact.<self>.fill.absent from mark.absent
-0.85 a4 expect claim.print.stdout from witness.example#8
-0.8 a5 expect claim.print.run from witness.example#7
-0.8 a6 expect claim.print.stdin from witness.example#1
-0.9 s1 source habit habit.sh <<<lips
-#!/usr/bin/env bash
-set -euo pipefail
+0.95 p1 pattern track daily habits from the terminal => concept habit.overview "the tool tracks daily habits in a terminal"
+0.95 p2 pattern the first argument names the habit to print => concept habit.cli.argument "argv[1] is the habit to render"
+0.95 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => concept habit.cli.input "argv[2] is the log file, else stdin"
+0.95 p4 pattern each log line holds an ISO date and a habit name separated by a tab => concept habit.log.format "tab separated date and habit per line"
+0.95 p5 pattern print one character per day from the log's earliest date to its latest date => concept habit.output.span "one character per day over the log's whole span"
+0.95 p6 pattern mark a day the named habit was logged with "<mark>" => fact habit.mark.logged "<mark>"
+0.95 p7 pattern mark a day it was not logged with "<mark>" => fact habit.mark.missing "<mark>"
+0.95 p8 pattern install the tool as the command <name> => fact cmd.<name>.install "<name>"
+0.85 p9.under.p8 pattern given the log of "<d1>" for "<h1>", "<d2>" for "<h2>" and "<d3>" for "<h3>", the habit "<q>" prints "<out>" => fact witness.<name>.<q> "<d1> <h1> <d2> <h2> <d3> <h3> <out>"
+0.9 r6 match fact habit.mark.logged => artifact.<self>.fill.mark_logged "\"<value>\""
+0.9 r7 match fact habit.mark.missing => artifact.<self>.fill.mark_missing "\"<value>\""
+0.85 r8 match fact cmd.<name>.install => artifact.<self>.builder "\"buildGoModule\"" ; artifact.<self>.args.pname "\"<value>\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.vendorHash "null" ; artifact.<self>.fill.name "\"<value>\"" ; home.packages "[ ${artifact.<self>} ]"
+0.85 r8 because "the derivation is keyed by the program's own instance name, while the program's command word fills the go module name (hence the installed binary name) and the pname"
+0.85 r9 match fact witness.<name>.<q> => claim.<q>.run "\"${artifact.<self>}/bin/<name> <q>\"" ; claim.<q>.stdin "\"<value.1>\t<value.2>\n<value.3>\t<value.4>\n<value.5>\t<value.6>\n\"" ; claim.<q>.stdout "\"<value.7>\"" ; claim.<q>.exit "0"
+0.85 r9 because "the witness line fixes exactly three log entries; a log of another length needs a further pattern"
+0.9 q1 demand habit.mark.logged "which character marks a day the habit was logged?"
+0.9 q2 demand habit.mark.missing "which character marks a day the habit was not logged?"
+0.9 q3 demand cmd.<name>.install "what command name should the tool be installed as?"
+0.85 q4 demand witness.<name>.<q> "give one example log and the characters the tool must print for it"
+0.9 a1 expect artifact.<self>.fill.mark_logged from habit.mark.logged
+0.9 a2 expect artifact.<self>.fill.mark_missing from habit.mark.missing
+0.9 a3 expect artifact.<self>.fill.name from cmd.<name>.install
+0.85 a4 expect claim.<q>.stdout from witness.<name>.<q>#7
+0.9 s1 source habit go.mod <<<lips
+module @name@
 
-habit="$1"
-if [ "$#" -ge 2 ]; then
-  input="$2"
-else
-  input="/dev/stdin"
-fi
+go 1.21
+lips>>>
+0.9 s2 source habit main.go <<<lips
+package main
 
-mindate=""
-maxdate=""
-declare -A seen
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+)
 
-while IFS=$'\t' read -r d h; do
-  [ -z "${d:-}" ] && continue
-  if [ "$h" = "$habit" ]; then
-    seen["$d"]=1
-  fi
-  if [ -z "$mindate" ] || [[ "$d" < "$mindate" ]]; then
-    mindate="$d"
-  fi
-  if [ -z "$maxdate" ] || [[ "$d" > "$maxdate" ]]; then
-    maxdate="$d"
-  fi
-done < "$input"
+const (
+	markLogged  = "@mark_logged@"
+	markMissing = "@mark_missing@"
+	layout      = "2006-01-02"
+)
 
-out=""
-cur="$mindate"
-end_epoch=$(date -d "$maxdate" +%s)
-while [ -n "$cur" ] && [ "$(date -d "$cur" +%s)" -le "$end_epoch" ]; do
-  if [ "${seen[$cur]:-}" = "1" ]; then
-    out="${out}@present@"
-  else
-    out="${out}@absent@"
-  fi
-  cur=$(date -d "$cur + 1 day" +%Y-%m-%d)
-done
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: @name@ HABIT [LOGFILE]")
+		os.Exit(2)
+	}
+	want := os.Args[1]
 
-printf '%s\n' "$out"
+	in := os.Stdin
+	if len(os.Args) > 2 {
+		f, err := os.Open(os.Args[2])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer f.Close()
+		in = f
+	}
+
+	logged := map[string]bool{}
+	var first, last time.Time
+	sc := bufio.NewScanner(in)
+	for sc.Scan() {
+		line := strings.TrimRight(sc.Text(), "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		day, err := time.Parse(layout, strings.TrimSpace(parts[0]))
+		if err != nil {
+			continue
+		}
+		name := strings.TrimSpace(parts[1])
+		if first.IsZero() || day.Before(first) {
+			first = day
+		}
+		if last.IsZero() || day.After(last) {
+			last = day
+		}
+		if name == want {
+			logged[day.Format(layout)] = true
+		}
+	}
+	if err := sc.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if first.IsZero() {
+		fmt.Println("")
+		return
+	}
+	var out strings.Builder
+	for d := first; !d.After(last); d = d.AddDate(0, 0, 1) {
+		if logged[d.Format(layout)] {
+			out.WriteString(markLogged)
+		} else {
+			out.WriteString(markMissing)
+		}
+	}
+	fmt.Println(out.String())
+}
+lips>>>
+0.8 g1 gap fixed-arity-witness <<<lips
+blocked line: given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".
+the example log holds three entries, and a claim's stdin is one value with no
+way to repeat a per-entry chunk: the pattern has to spell out exactly three
+date/habit pairs. a witness with two or four entries would need its own
+pattern, which is duplication a repeating-value construct would remove.
 lips>>>
 0.95 d1 report <<<lips
-This language describes a small daily-habit tracker CLI, built from source.
+This language describes one small terminal tool that renders a habit log as a
+row of characters, and builds it. A program of this language is compiled into a
+Go program plus a home-manager module that puts the built command on your PATH
+(`home.packages`); there is nothing to boot and no service, because the thing
+described is a command you run yourself.
 
-**Line shapes it reads**
-- The opening sentence and the four sentences describing the argument
-  convention, the log source, the log line format and the print-range rule
-  are read as `concept` lines: they state the fixed behaviour every program
-  of this kind shares (first argument = habit name, second argument or
-  stdin = the log, tab-separated `date<TAB>habit` lines, one character per
-  day from the log's earliest to its latest date). They carry no
-  per-program value, so they realize nothing and only document intent.
-- `mark a day the named habit was logged with "X".` and
-  `mark a day it was not logged with "Y".` capture the two marker
-  characters used in the printed chart as program values.
-- `install the tool as the command NAME.` captures the shell command name
-  the built tool is installed as.
-- `given the log of "d" for "h", "d" for "h" and "d" for "h", the habit "H"
-  prints "OUT".` is the program's own worked example. It becomes the
-  behavioural claim: the three dated entries are turned into real
-  tab-separated input, the built binary is run against it with the named
-  habit as its argument, and its printed line is checked byte-for-byte
-  against the stated output.
+## The line shapes it reads
 
-**Mechanism**
-The tracker is built with `stdenv.mkDerivation` from a bundled bash script
-(`habit.sh`) that reads `date<TAB>habit` lines from a file argument or
-stdin, and uses GNU `date` to walk every day between the log's earliest and
-latest date, printing one marker character per day. `date` is put on the
-script's PATH with `makeWrapper` against `coreutils`, so the result behaves
-the same regardless of the host's own `date` tool. The two marker
-characters reach the script through fills (`@present@`/`@absent@` markers
-inside `habit.sh`), so editing either quoted character changes the built
-binary without touching the engine itself.
+Four shapes carry values, and editing them changes the built tool:
 
-The artifact is keyed by `<self>` (the program's own instance/file name)
-rather than by the captured command name. The marker facts and the worked
-example appear on lines that say nothing about the command name, so they
-have no way to reach an artifact keyed by that captured word; `<self>` is
-the one key every rule can reach regardless of which line produced its
-decision. The captured command name is still honoured: it becomes the
-derivation's `pname`, and the built script is *also* installed as a second
-`$out/bin/<name>` entry, so editing "install the tool as the command X"
-still renames the real, user-facing command. The claim always calls the
-`<self>`-named binary, so it stays stable no matter what the command is
-named.
+- `mark a day the named habit was logged with "#".` -- the character printed for
+  a day the named habit appears in the log. The quoted character is the value.
+- `mark a day it was not logged with ".".` -- the character printed for a day it
+  does not appear.
+- `install the tool as the command habit.` -- the word after "the command" names
+  the command. It becomes the Go module name (so the produced binary carries
+  that name) and the derivation's pname, so renaming it here renames the command
+  you type.
+- `given the log of "2026-01-01" for "run", "2026-01-02" for "read" and
+  "2026-01-04" for "run", the habit "run" prints "#..#".` -- the worked example.
+  This is the only line that holds the tool to its words: it is compiled into a
+  claim that actually runs the built binary in the build sandbox, feeding those
+  three date/habit pairs on standard input as tab-separated lines and comparing
+  what is printed byte for byte with the quoted output. This line must come
+  *after* the install line: it reads the command name from it (it is an item of
+  the block that line opens).
 
-**What I had to choose**
-- The build system (`stdenv.mkDerivation` + `makeWrapper`) and the fixed
-  version "0.1.0" are mechanism choices: nothing in the program names a
-  build system or a version, and none is a value a program would state.
+Five shapes are decorative -- they are the design of the generated source, not
+values it can vary, so editing their wording changes no output at all:
 
-**Limit I could not lift (filed as a gap)**
-The witness pattern is fixed to exactly three dated log entries, matching
-the one example given. The grammar has no way to repeat a sub-match inside
-one line (no list-splitting, no computation), so a program whose example
-states a different number of entries cannot be read by this pattern; see
-the filed gap for how a repeating block would fix this.
-lips>>>
-0.6 g1 gap witness-entry-count <<<lips
-blocked line: given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".
-The witness pattern is fixed to exactly three dated log entries because the
-grammar has no way to repeat a sub-match within one line (no list-splitting,
-no computation): a program stating two or four entries in its example
-sentence cannot be read by the same pattern. A repeating bulleted block
-("- date for habit", closed by a "the habit ... prints ..." line) would let
-the count vary, but that is not the shape this program uses, so I did not
-invent one.
+- `track daily habits from the terminal.`
+- `the first argument names the habit to print.`
+- `read the habit log from the file named as the second argument, or from
+  standard input when no file is named.`
+- `each log line holds an ISO date and a habit name separated by a tab.`
+- `print one character per day from the log's earliest date to its latest date.`
+
+They are honest documentation of what the baked Go program does, and I kept them
+readable rather than dropping them; but the argument order, the tab separator,
+the ISO date format and the one-character-per-day span live in `main.go`. To
+change any of them you must regenerate the language, not edit the program.
+
+## What the built tool does
+
+`main.go` reads the log from the named file or from standard input, splits each
+line on the first tab into an ISO date and a habit name, takes the earliest and
+latest date over *all* log lines as the span, and prints one character per day
+in that span: the "logged" character when the queried habit was logged that day,
+the "not logged" character otherwise, followed by a newline. Unparsable and
+blank lines are skipped; an empty log prints an empty line. The two characters
+reach the source as fills (`@mark_logged@`, `@mark_missing@`), and the command
+name as the fill `@name@` in `go.mod` and in the usage message, so all three are
+substituted offline at compile time.
+
+## Choices I made, and what is pinned
+
+The builder is `buildGoModule` with `vendorHash = null`: the source uses only
+the Go standard library, so there is nothing to vendor. The version `0.1.0` is
+mine -- the program says nothing about versions, and no sensible question could
+ask for one. The derivation is keyed by the program's instance name (the file
+name, `habit`), because the two mark lines must reach the same build and they
+sit above the line that names the command, so they cannot borrow that word;
+the command's *name*, though, is entirely governed by the program.
+
+The contract checked on every future compile: the two marks and the command name
+land in the fills that carry them into the source, and the example's expected
+output is the claim's expected stdout. No expect names `home.packages`: it holds
+a build reference, not a checkable value.
+
+One limitation is filed as a gap: the witness line is fixed at three log
+entries, because a claim's standard input is a single value and nothing in the
+grammar repeats a chunk per entry. A two- or four-entry example will fail to
+compile with "no pattern matched"; regenerating with such an example in hand is
+the way to add it.
 lips>>>
