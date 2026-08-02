@@ -45,6 +45,43 @@ in, and the compiler keeps working without a model ever running again.
 A line the engine cannot read fails loudly and sends you back to `generate`.
 lips never guesses.
 
+## Where This Sits
+
+Everyone is answering the same 2026 problem: machines write code faster than
+people can check it (Sonar's survey puts AI at some 42 percent of committed
+code, with 96 percent of developers not fully trusting it and 48 percent
+verifying before they commit). Three answers are on offer. Automate the review
+and keep the pile of code. Prove the code correct, in Lean, against a formal
+statement someone still has to write. Or shrink what a human reviews down to
+intent and derive the rest.
+
+lips takes the third road, and differs from the rest of it in one move: the
+model writes a **compiler**, not code. Every other spec-driven tool hands the
+spec back to a model on each run, so the same input can yield different output
+(Birgitta Böckeler [measured exactly
+that](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html)
+generating twice from one unchanged spec). In lips the model runs once, leaves
+a page of grammar and rules behind, and every later build is an offline,
+bit-identical compile.
+
+That is model-driven development with the part that killed it removed. MDD had
+the right shape (a real language, a real compiler, real editor support) and
+died because someone had to build and maintain a code generator per domain.
+Here a model mints the generator in one call, and it is disposable: when the
+domain moves, mint again. What you keep is the determinism, and determinism is
+the one property no better model will ever hand you, since a perfect model
+that writes valid but different code each run still leaves you with nothing to
+diff, bisect, or audit.
+
+The scope this buys is precise. lips reaches as far as some external, typed
+vocabulary of mechanism reaches, because that is what a rule names: nixpkgs
+defines what `services.restic.backups.<name>.paths` means, lips looks the name
+up rather than inventing it, and your line fills the value. Configuring a
+system out of named parts is where lips is strongest, and it grows by adding
+worlds (NixOS, home-manager, kubenix, terranix, whatever ships a schema next)
+rather than by growing the kernel. `DESIGN.md` carries the long version, the
+evidence, and the honest limits.
+
 ## How You Work With It
 
 The loop has three moves: write, (generate), compile. Only the middle

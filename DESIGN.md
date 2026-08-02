@@ -1,8 +1,8 @@
 # lips Design
 
 Status: approved concept design. lips is founded on a decision calculus.
-Evidence base: the four surveys in `docs/superpowers/survey/` (cited as
-Survey A/B/C/D).
+Evidence base: the surveys in `docs/superpowers/survey/` (cited as
+Survey A through G).
 
 ## Terminology
 
@@ -51,6 +51,55 @@ from an unchanged spec.
 
 The deliverable form of lips is a rigorous specification of the kernel
 calculus plus a conformance suite, not a blessed runtime.
+
+## Position in the Field
+
+By 2026 the thesis above is measured rather than argued. Sonar's 2026 survey
+of 1,100+ developers finds 96 percent of developers not fully trusting the
+accuracy of AI-generated code while only 48 percent verify before committing,
+with AI writing some 42 percent of committed code; 61 percent report code that
+"looks correct but isn't reliable", and 38 percent find reviewing it costlier
+than reviewing human code, the burden Werner Vogels named *verification debt*.
+Time spent on toil did not fall; it moved from writing to reviewing (Survey G,
+§1). The binding constraint is review capacity per unit of derived artifact.
+
+Three schools answer that constraint, and they differ in where they place
+trust (Survey G, §2):
+
+1. **Automate the review** (Anthropic's Code Review, SonarQube AI Code
+   Assurance, CodeQL): keep the artifact large, raise the throughput of
+   looking at it.
+2. **Prove the output** (Axiom Math, 200 million dollars at a 1.6 billion
+   valuation in March 2026, emitting Lean proofs): make the artifact
+   machine-checkable against a formal statement, and inherit the problem of
+   writing and trusting that statement.
+3. **Shrink the reviewed artifact** (spec-driven development in Böckeler's
+   three levels: spec-first, spec-anchored, spec-as-source): review intent,
+   derive mechanism.
+
+lips is in the third school and, per Surveys D, E and G, its only
+deterministic member. The move that separates it is not writing specs; it is
+that the model's output is a **compiler**, not code. An engine is reviewed
+once and amortized over every later compile of every program in its language,
+whereas every other tool in this school re-guesses the artifact on each run.
+
+The category's strongest published objection also predates lips, and lips is
+built as the answer to it. Böckeler observes that spec-as-source is
+model-driven development returning, and that MDD died because hand-built
+code generators cost more than they returned; LLMs remove that cost but pay in
+non-determinism, so the wave risks "the downsides of both MDD and LLMs:
+inflexibility *and* non-determinism". lips takes neither horn: it keeps MDD's
+parseable DSL, real compiler, and author tooling (the LSP, generated per
+language with no configuration), and it makes the generator disposable, a page
+of pure data minted per problem and re-minted whenever the domain moves. What
+this buys is contingent on economics rather than physics: it holds only while
+a mint stays cheap and a language converges, which is why the mint-decay curve
+is an open question (§11).
+
+This position does not decay as models improve. The claim is reproducibility,
+not accuracy: a perfect model that emits a different valid implementation on
+each run still destroys diffs, bisection, review, and audit. Determinism is a
+property no model quality supplies.
 
 ## 2. The Decision Calculus
 
@@ -440,6 +489,36 @@ mergeable, per-domain vocabulary over one general substrate, zero LLM;
 Survey D verified its mechanics firsthand), and terranix proves the
 machinery retargets beyond NixOS.
 
+## The Vocabulary Scaling Law
+
+What makes a fourteen-line engine produce a working system is not the kernel's
+cleverness but the vocabulary underneath it. When an engine emits
+`services.restic.backups.<name>.paths`, that name's meaning, type and behavior
+are defined and tested by nixpkgs; the mint confirms the name through the
+schema tool instead of inventing it, and the engine only selects and fills.
+Section 13 already states this in the small ("a hole is grounded from outside
+or by plurality"). Stated in the large it is a scaling law (Survey G, §4):
+
+> lips reaches exactly as far as some external, named, typed vocabulary of
+> mechanism reaches.
+
+Everything the corpus does well sits inside such a vocabulary; everything it
+does poorly sits outside one. Two consequences, both strategic:
+
+- **Breadth comes from new worlds, not new physics.** home-manager, kubenix
+  and terranix landed with no kernel change, because each is one more
+  vocabulary the same grammar can name. Every schema-bearing world is a
+  candidate on those terms, and the kernel must learn none of them.
+- **Application code is reachable only where a framework has already turned
+  itself into configuration.** Where it has not, no vocabulary grounds the
+  baked source and the entire correctness burden falls on claims, which is a
+  research bet and is labelled one below (§13, "Limits of scale").
+
+The law is cheaply falsifiable: mint into a schema-bearing world that is not
+infrastructure. Zero kernel changes confirms the axis is open; any kernel
+change the attempt demands measures how much of nixpkgs's shape the kernel
+silently assumes.
+
 ## 11. Open Questions
 
 - **Canonical text form**: the concrete decision-per-line format, under the
@@ -476,6 +555,18 @@ machinery retargets beyond NixOS.
   `in go` literally is clean under the gate and crystallizes 2 of 2 lines, and
   the same program edited to `rust` reports `no match` and exits 1 naming
   `lips generate`.
+- **The mint-decay curve is unmeasured**: the whole economic case (see
+  "Position in the field") rests on the ratio of edits that merely `compile` to
+  edits that need a fresh mint, falling over time on one real, growing program.
+  Decay toward zero means the thesis scales and the rest is engineering; a
+  plateau means the language is not converging, which no kernel work repairs.
+  Nothing in the repo records it, and recording it is cheap: dogfood one real
+  system and count.
+- **Brownfield adoption has no path**: every intent-level system in Survey B
+  died on adoption into an existing codebase, and lips offers only coexistence
+  (a hand-written module beside a lips one, §13 doctrine). That defense is
+  real and may suffice, since Nix modules compose by construction, but it has
+  never been exercised on a system of any size.
 - **Conflict explanation**: today a conflict names two competing decisions. A
   derived contradiction several refinement steps down needs the *minimal set
   of program lines* that cannot hold together. Model-based diagnosis solved
@@ -2679,6 +2770,37 @@ gate on an artifact-only engine, and the concept escape.
   cannot assert them (no GPU/display in CI), leaving the behavioral corpus
   thinner for those domains.
 - **`lips dev`.** Convenience wrapper (run, ask before generating). Minor.
+
+### Limits of Scale (what the corpus does not show)
+
+The ledger above measures physics, and the physics is nearly complete over its
+chosen domain. It measures no size. Twenty programs of four to nine lines,
+engines of ten to fourteen lines, and artifacts of one source file are the
+whole evidence base, so every statement about large systems is extrapolation
+from small points and is recorded here as such.
+
+- **Intent does not compress.** A large application carries irreducible
+  detail; lips relocates it from code into program lines rather than removing
+  it. Scale therefore arrives as many small languages composing in one
+  configuration, not as one large grammar, which makes the language the unit
+  of scale (the analogue of a module).
+- **Cross-language composition is accidental.** Two languages meet today only
+  by realizing into the same option namespace. No decision refers across a
+  language boundary, so contracts between languages have no representation.
+  This is the missing physics for systems of several languages, and it is not
+  yet needed by any committed example.
+- **Engine churn is safe for modules, not for baked source.** "Solutions
+  contain zero mechanism, so nothing above the engine can break" (§4) holds
+  for the emitted module, whose every path is grounded in nixpkgs. A re-mint
+  rewrites baked source outright, so on the artifact axis only claims hold
+  behavior in place, and claims are two, single-shot, with three of five
+  baked-source programs stating no observable at all (`TODO.md`, item 1).
+  Growing artifact size before claim density therefore reproduces the
+  untrusted-artifact problem lips exists to abolish.
+- **Minting is whole-engine.** Engine size multiplies the cost and the blast
+  radius of every new sentence, gated only where `.expect` pins something (and
+  not at all where `.expect` is empty). Invisible at a page; dominant at
+  hundreds of rules.
 
 ### Doctrine (settled by discussion, no code implied)
 
