@@ -2476,6 +2476,29 @@ but the loop around it is incomplete; "missing" means specced, not built.
   is now REFUSED (`line 11 no match`, remedy named). Flexibility went down and
   understanding went up, which is one event, not two: a language understands
   exactly the distinctions it refuses to collapse. Doctrine below.
+- **A program that can be FED can be observed** (2026-08-03, `examples/board`,
+  `examples/habit`). Both read an absolute HOST path their module never creates,
+  so the only thing observable in the nix sandbox was a failure, and neither
+  could state a witness -- which, since the observable gate landed, also meant
+  neither could be re-minted (the prerequisite on the re-mint sweep). The remedy
+  was a program edit, no kernel change: `board` reads the file named on the
+  command line or standard input, `habit` takes the habit as its first argument
+  and the log as an optional second, and its row spans the log's own earliest to
+  latest date instead of "the last 365 days" ending today, so what the witness
+  observes no longer depends on the clock. Both programs gained the plurality the
+  website work argued for: three columns of which one is empty and one holds two
+  cards, two contrasted mark characters. Each states one witness sentence, and
+  generate observed both claims in the sandbox. Evidence that a claim is not
+  decoration: the FIRST `habit` mint built source printing `#.` where the program
+  says `#..#`, and generate refused it -- a minted-source defect every other gate
+  passed. Model datapoint for the sweep: `board` minted clean with sonnet-5
+  (which called `check_draft` three times); `habit` did not -- sonnet's passing
+  attempt installed the same script twice (`$out/bin/<self>` AND
+  `$out/bin/<value>`) so the claim's path would exist, while opus-5 built one Go
+  binary named by the program's own word. Both models filed the same new gap
+  under two slugs (`fixed-arity-witness`, `witness-entry-count`): a witness
+  sentence listing N items has no repeating hole form, so the pattern is frozen
+  at the arity the example happens to use.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every

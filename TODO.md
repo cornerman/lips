@@ -10,20 +10,17 @@ tracks only what is still open.
    by the meaning-dimension work, DESIGN §13; the closed half of what used to be
    item 1).
 
-   Claims landed and two programs carry one (`logscan`, `hello.http`). Three
-   baked-source programs still state no observable, so nothing holds their minted
-   source to their sentences, and -- since the obligation is a gate on `generate`
-   -- none of them can be re-minted until this is settled. That makes this a
+   Claims landed and four programs carry one (`logscan`, `hello.http`, `board`,
+   `habit`). Two baked-source programs still state no observable, so nothing holds
+   their minted source to their sentences, and -- since the obligation is a gate on
+   `generate` -- neither can be re-minted until this is settled. That makes this a
    PREREQUISITE for item 3's sweep.
 
-   a. `board` and `habit` read an absolute HOST path their module never creates,
-      so in the nix sandbox only a failure is observable (`board` dies in `awk`;
-      `habit` guards the missing log and only its usage error is checkable, and
-      that goes to stderr, which claims deliberately do not have). A thin
-      error-path claim would satisfy the gate while verifying nothing, which is
-      worse than none. The honest remedy is a program that can be FED -- a path
-      argument or stdin -- which is a design change, and it is the same enrichment
-      item 7 argues for on other grounds. Do it there, then mint a real witness.
+   a. CLOSED 2026-08-03 (DESIGN §13, "A program that can be FED can be
+      observed"): `board` and `habit` read their input from a named file or
+      standard input instead of an absolute host path, `habit`'s row spans the
+      log's own dates rather than today's, and both were re-minted with a witness
+      that generate observed in the sandbox.
    b. `function` and `website` bake source and state no witness either; both are
       plain enough that an example should be cheap. Check when item 7 touches
       them.
@@ -39,6 +36,14 @@ tracks only what is still open.
       the port and unit wiring stay unobserved. Honest but narrower than it
       reads. If this recurs, the preamble should say when the booted machine is
       the only faithful place.
+   e. A witness sentence listing N items freezes its pattern at that arity: both
+      models minting `habit` filed the same gap (`fixed-arity-witness`,
+      `witness-entry-count`), since the grammar repeats a sub-match only in a
+      BULLETED block, never inside one prose line. The engine is honest (a
+      program with two or four entries simply fails to crystallize, loud), so
+      this is a completeness question, not a soundness one. Cheapest honest
+      answer if it recurs: write the witness as a bulleted block, which the
+      grammar already repeats -- try that before touching the kernel.
 
 2. **CLI-tool physics -- the record behind item 1** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
@@ -153,8 +158,14 @@ tracks only what is still open.
    needs a witness in its program FIRST (item 1). `logscan` and `http` already
    have one; `board`, `habit`, `function`, `website` do not, and cannot be
    re-minted until they do.
-   Two of the eighteen are already re-minted under the current binary
-   (`logscan`, `http`), so their stamps re-hash and the sweep is sixteen.
+   Four of the eighteen are already re-minted under the current binary
+   (`logscan`, `http`, `board`, `habit`), so their stamps re-hash and the sweep is
+   fourteen. Third model datapoint (2026-08-03, DESIGN §13): sonnet-5 minted
+   `board` cleanly, calling `check_draft` three times, but on `habit` its passing
+   attempt installed the built script twice so the claim's path would exist, and
+   one earlier attempt shipped source that the claim caught printing the wrong
+   row; opus-5 minted `habit` clean on the first attempt. Artifact-bearing
+   language, opus-5 again.
 
 4. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
    minted line is stamped `@gen:<id>` and the id must re-hash from the
@@ -248,12 +259,14 @@ tracks only what is still open.
    re-minting, which cost no kernel change and produced a closed action enum,
    a real dispatch, and a loud refusal of an unsupported action.
 
-   Candidates for the same treatment, in order of how much they bake:
+   `board` and `habit` were treated this way on 2026-08-03 (three columns, one of
+   them empty; two contrasted mark characters), together with the feedability item
+   1a needed. Remaining candidates, in order of how much they bake:
    `logscan` (55 lines of source, 4 of 5 program lines are `Concept`, all
-   singleton behaviour sentences), `habit` (30), `http` (24), `function` (23,
-   and note the reverse experiment: cutting its three calls to one should
-   demote the call to a constant), `board` (22). Each is one program edit plus
-   one `generate --renew`, so this is cheap and does not wait on items 1-6.
+   singleton behaviour sentences), `http` (24), `function` (23, and note the
+   reverse experiment: cutting its three calls to one should demote the call to a
+   constant). Each is one program edit plus one `generate --renew`, so this is
+   cheap and does not wait on items 1-6.
 
    Not decided: whether to make it a GATE. A baked-source hole binding only one
    distinct value across the program is statically visible and domain-blind, so
