@@ -575,6 +575,80 @@ infrastructure. Zero kernel changes confirms the axis is open; any kernel
 change the attempt demands measures how much of nixpkgs's shape the kernel
 silently assumes.
 
+## The Logic Axis: A Forced Paradigm
+
+Configuration is grounded because nixpkgs vouches for every name a rule emits.
+Program logic has no such vocabulary, so it escapes today into baked source: a
+Go file the mint writes once, complete but grounded by nothing, traceable to no
+program line, and demonstrably unstable across mints (see "A re-mint rewrites
+behavior the program never mentions", §13). This section records the direction
+chosen for that axis, why it was forced rather than preferred, and what stays
+open. Nothing here is built.
+
+**What was rejected first, because the reason generalizes.** The tempting move
+is to let the kernel own a grammar for computation, a small lambda or term
+calculus complete by construction. Nix refutes it by example: Nix can build
+anything and never understands a line of C++, because what it owns is the
+derivation interface (a name, typed inputs, a builder reference, an output
+hash) while bodies stay opaque. A kernel that owns computation pays for a
+programming language the substrate already proves unnecessary, and the project
+has exactly one word for that (see AGENTS.md on the complexity daemon).
+
+**The shape that remains.** A unit of logic is a pure, first-order definition
+given by NON-OVERLAPPING PATTERN CLAUSES over NAMED EXTERNAL PRIMITIVES, with
+general recursion, no effects and no higher-order values. Every part is forced
+by a commitment already made:
+
+- Clauses keyed by a name, unioned across decisions, because that IS the
+  decision base (Survey H finds the same algebra in Rego's rule composition,
+  DMN's hit policies and Catala's prioritized defaults; a candidate that
+  composes by DAG or by textual order, like dbt, fails for that reason alone).
+- Non-overlapping, because `Refine.hs` already makes it so: "at most one rule
+  ever fires per decision, rewriting is a function, hence confluent for free".
+  Static orthogonality is what replaces Prolog's clause order and cut, so the
+  paradigm is logic programming's representation without its search.
+- Pure and first-order, because that is what makes a clause testable alone in
+  the sandbox, renderable into any host, and readable at review.
+- Named primitives, because the kernel must not define computation; a leaf is
+  grounded exactly as `${pkgs.<path>}` is.
+- General recursion, because completeness is non-negotiable, and it is
+  inherited (Herbrand-Godel recursion equations) rather than built.
+
+Constrained first-order functional programming and deterministic Horn clauses
+are the same object here, argued from two traditions (Survey K).
+
+**Execution is rendering, not interpretation.** Non-overlapping first-order
+clauses ARE a pattern match, so a target-tier renderer prints each definition
+as an ordinary function in the host language and that host's compiler supplies
+speed and typing. No runtime of lips's own ships. Souffle compiling Datalog to
+C++ is the production precedent. A kernel interpreter survives only as an
+offline test oracle, which is what makes per-clause claims cheap.
+
+Two obligations come with rendering, both from Survey K, and both fall on lips
+rather than on the host: exhaustiveness must be checked in the kernel, since
+among Go, Rust, Haskell, JavaScript and Python only Rust refuses a
+non-exhaustive match (GHC's warning is off by default, Go has no check at all);
+and stratification must be a mint-time gate over the clause set if negation is
+ever admitted, distinct from the runtime step budget that already turns a
+runaway rewrite into a loud `Nonterminating` error. General recursion forfeits
+decidable termination on purpose, so that budget is the permanent answer rather
+than a placeholder.
+
+**What the axis buys.** Per-line ownership of behavior, so provenance reaches
+into logic and the `Derived [parent] rule` chain becomes a proof tree naming
+program lines rather than generated code, which is the one documented
+model-driven failure that no AI capability touches (Survey J). Per-clause tests
+that run offline with no VM. A small blast radius on re-mint. The honest gap,
+recorded rather than argued away: no controlled study shows that such
+explanations measurably help humans, and the proof tree only stays the review
+artifact while `.expect` remains the acceptance gate, since a human editing
+rendered output puts the CASE-tool graveyard back in play.
+
+**What it does not buy.** Nothing external vouches for a rule you invented five
+minutes ago; contracts do, and only contracts. The guarantee on this axis is
+therefore weaker than on the configuration axis, by construction rather than by
+omission.
+
 ## 11. Open Questions
 
 - **Canonical text form**: the concrete decision-per-line format, under the
@@ -611,6 +685,20 @@ silently assumes.
   `in go` literally is clean under the gate and crystallizes 2 of 2 lines, and
   the same program edited to `rust` reports `no match` and exits 1 naming
   `lips generate`.
+- **How do runtime facts enter (open predicates)?** The logic axis needs one
+  concept the calculus lacks: a predicate whose facts arrive when the program
+  RUNS, not when it compiles. That boundary is Datalog's EDB/IDB split read
+  sideways in time, and the incremental-view-maintenance line (DDlog,
+  differential dataflow) states the soundness condition lips would inherit: a
+  clause reading an open predicate must otherwise be pure, or recomputation is
+  unsound (Survey K). This is the only genuinely new physics the axis needs,
+  which is why it is worth stating before anything is built.
+- **Where do primitive signatures come from?** The artifact-axis analogue of
+  choosing nixpkgs. Candidates weighed in Survey K: a host language's own
+  package index (rejected, since it silently picks the render target), protobuf
+  or GraphQL (shape without effects), and WIT, the WebAssembly Component Model
+  interface language, which "defines only contracts between components" and so
+  names behavior without naming an implementation language. Undecided.
 - **The mint-decay curve is unmeasured**: the whole economic case (see
   "Position in the field") rests on the ratio of edits that merely `compile` to
   edits that need a fresh mint, falling over time on one real, growing program.
@@ -2693,6 +2781,36 @@ gate on an artifact-only engine, and the concept escape.
   as language `backup` and `examples/backup/backup.lang` as a program in
   language `backup`. The `.lips` marker is documented as the constant handle;
   refusing anything else is a one-line, fail-loud check.
+
+- **A re-mint rewrites behavior the program never mentions** (found 2026-08-02,
+  reproducible from files already in the tree). `examples/logscan` is five
+  lines. Commit 885a900 added one of them, the worked example pinning
+  `{"a":"1"}` against `a=1`, and re-minted. Comparing the committed
+  `artifacts/logscan/main.go` with the previous mint's copy under `out/` shows
+  the two differ in what the program DOES, not in how it reads: field matching
+  gained numeric coercion through a new `asString` helper, so `a=1` now matches
+  `{"a":1}` as well as `{"a":"1"}`; the bad-argument exit code moved from 1 to
+  2 with new message text; the scanner's maximum line length moved from 10MB to
+  16MB; argument splitting changed from `SplitN` to `Cut`. No program line asks
+  for any of it, and the added example asks for a string match only.
+
+  The promise this breaks is the one the whole loop rests on, that a mint
+  RESTATES intent and invents nothing (deduce-or-fail; "lips never guesses").
+  Every gate stays green while it happens: `.expect` pins option values, the
+  claim observes the stated example, and neither looks at behavior nobody
+  stated. An audit of the same file finds roughly fifteen of its 76 lines
+  traceable to the five sentences; the rest is invented policy, including a
+  silent `continue` on malformed JSON, which contradicts fail-loud doctrine
+  under a green suite.
+
+  Two entries elsewhere name the same defect from other directions: the
+  artifact-axis hole in "Silent concept demotion" (a compiled artifact records
+  no dependency on the program lines its baked source came from), and the one
+  AI-era failure the model-driven-engineering literature could not observe,
+  non-determinism reintroduced at the generation step (Survey J). The remedy
+  direction is "The Logic Axis" above, whose central gate is that a clause with
+  no parent program line is refused; until that exists, the defect is open by
+  design rather than by oversight.
 
 ### Missing
 - **Artifacts: deferred pieces.** The core landed (see Done), a program value
