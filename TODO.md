@@ -276,6 +276,34 @@ tracks only what is still open.
    enough, and item 1's claims falsify the same defect by observation rather
    than by counting. Revisit after the re-mints above supply more datapoints.
 
+8. **The logic-axis falsifier: re-mint `logscan` as clauses** (opened 2026-08-02
+   with DESIGN's "The Logic Axis"). Run BEFORE any kernel work, because it is
+   the cheapest possible refutation of the whole direction: five program lines,
+   no kernel changes, one afternoon.
+
+   Context, and the defect it targets: re-minting `logscan` after adding one
+   sentence changed what the program does (numeric coercion, exit code, buffer
+   limit; DESIGN §13, "A re-mint rewrites behavior the program never
+   mentions"). An audit of the committed 76-line Go file traces roughly fifteen
+   lines to the five sentences; the rest is invented policy, including a silent
+   `continue` on malformed JSON that contradicts fail-loud doctrine while every
+   gate stays green.
+
+   The experiment: mint the same program as a clause set (pure, first-order,
+   non-overlapping clauses over named primitives) and render it to the host,
+   then check three things.
+   a. Does every clause name the program line it came from, so the invented
+      policy above either disappears or surfaces as a demand the author must
+      answer?
+   b. Does a claim over one rendered definition pass offline, with no VM?
+   c. Do two mints of the same program produce clause sets that differ only
+      where the program differs?
+
+   It FAILS if the clause set is larger or harder to read than the Go file it
+   replaces, or if the mint still invents behavior no line asks for. Either
+   outcome is worth having: a pass makes the axis worth kernel work, a failure
+   costs one afternoon and kills a direction before it reaches `kernel/src`.
+
 ## Backlog (larger / deferred by design)
 
 - **Cross-program composition (one program naming another).** Nix composes;
