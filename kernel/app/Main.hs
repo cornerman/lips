@@ -666,17 +666,15 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
           [ sfArtifact sf <> "/" <> sfPath sf | sf <- bad ]
           ("\8594 a baked source tree needs the concrete name this program gives it"
             <> " (the RULE keeps the hole); run generate again."))
-      -- The obligation: where an engine BAKES source, the module text says
-      -- nothing about what that code does, so without one stated observable
-      -- nothing holds the implementation -- or any future re-mint -- to the
-      -- author's own words. A pure-configuration mint is unaffected.
+      -- Where an engine BAKES source, the module text says nothing about what
+      -- that code does, so without one stated observable nothing holds the
+      -- implementation -- or any future re-mint -- to the author's own words.
+      -- SAID, not refused: an engine that is otherwise correct is worth having,
+      -- and a witness comes from the author's own example, which no gate can
+      -- conjure. The mint is asked for a claim by the prompt and files a gap
+      -- where the program states none. A pure-configuration mint is unaffected.
       let allClaims = concatMap (rlClaims . snd) validated
-      when (claimlessBakedSource minted allClaims) $ die (report
-        (T.pack rep <> ": this setup builds a program from source, but nothing"
-          <> " observes what that program does.")
-        [ "the built source is " <> sfArtifact sf <> "/" <> sfPath sf | sf <- minted ]
-        ("\8594 state an example in the program -- what it is given and what it"
-          <> " prints -- and mint again: lips generate " <> T.pack rep))
+          unobserved = claimlessBakedSource minted allClaims
       case unplaceableClaims target allClaims of
         []  -> pure ()
         ids -> die (report
@@ -782,6 +780,13 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         say ""
         say ("lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":")
         mapM_ (\g -> note ("- " <> gapSlug g)) gaps
+      when unobserved $ do
+        say ""
+        say ("this setup builds a program from source, but nothing observes what"
+               <> " that program does:")
+        mapM_ (\sf -> note ("- " <> sfArtifact sf <> "/" <> sfPath sf)) minted
+        say ("\8594 state an example in the program -- what it is given and what it"
+               <> " prints -- and mint again: lips generate " <> T.pack rep)
       say ""
       say ("→ read the whole account: " <> T.pack (readmePath rep))
       mapM_ (\(f, _) -> say ("→ build it:              lips compile " <> T.pack f)) validated

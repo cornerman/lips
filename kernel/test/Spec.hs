@@ -3036,10 +3036,10 @@ main = hspec $ do
       p `shouldSatisfy` T.isInfixOf "claim.<id>.stdout"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.exit"
 
-    it "forbids inventing a witness and requires one where source is baked" $ do
+    it "forbids inventing a witness and asks for one where source is baked" $ do
       let p = systemPromptFor Nixos
       p `shouldSatisfy` T.isInfixOf "NEVER INVENT A WITNESS"
-      p `shouldSatisfy` T.isInfixOf "YOU MUST STATE AT LEAST ONE CLAIM"
+      p `shouldSatisfy` T.isInfixOf "STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE"
 
     it "states the exact-comparison rule" $
       systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
@@ -3052,7 +3052,7 @@ main = hspec $ do
     it "offers the booted machine only in the world that has one" $
       systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
 
-  describe "the mint owes an observable where it bakes source" $ do
+  describe "the mint is asked for an observable where it bakes source" $ do
     let src = SourceFile { sfArtifact = "tool", sfPath = "main.go", sfContent = "package main" }
         vstr t = case parseValue t of
           Right v -> v
@@ -3060,10 +3060,10 @@ main = hspec $ do
         derivC = Claim "echo" (vstr "\"${artifact.tool}/bin/tool\"") Nothing (Just "hi") 0 PlaceDerivation
         machC  = Claim "alive" (vstr "\"systemctl is-active api\"") Nothing (Just "active") 0 PlaceMachine
 
-    it "refuses baked source with no claim" $
+    it "warns on baked source with no claim" $
       claimlessBakedSource [src] [] `shouldBe` True
 
-    it "admits baked source with one claim" $
+    it "stays quiet on baked source with one claim" $
       claimlessBakedSource [src] [derivC] `shouldBe` False
 
     it "leaves a pure-configuration mint unaffected" $

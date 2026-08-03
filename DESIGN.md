@@ -882,8 +882,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   run (a machine claim without KVM) FAILS naming the remedy, never skips.
   `.expect` pins claim slots through the artifact-slot mechanism it already had,
   so a re-mint that drops the author's example trips the existing gate with no
-  new gate. `generate` refuses an engine that bakes source and states no claim,
-  and refuses a machine claim in a world with no machine to boot; it RUNS every
+  new gate. `generate` SAYS SO where an engine bakes source and states no claim
+  (a refusal at first; softened to a warning, see below), and refuses a machine
+  claim in a world with no machine to boot; it RUNS every
   claim before writing anything, against the pinned nixpkgs. The LSP warns,
   advisory, on a concept-only line where the language bakes source and the
   program states no observable.
@@ -938,11 +939,20 @@ but the loop around it is incomplete; "missing" means specced, not built.
   One consequence to know: for a claim-bearing program `check` needs an ambient
   nixpkgs (the compiled flake resolves `flake:nixpkgs`, as every other rung
   does), and a machine claim makes `check` boot a VM. A claim-free program is
-  untouched and `check` stays nixpkgs-free for it. Also: the six committed
-  baked-source engines that state no claim (`board`, `habit`, `function`,
-  `website`, and any other) can no longer be re-minted without first gaining a
-  witness -- the obligation is a gate on `generate`, so TODO item 3's re-mint
-  sweep now depends on this.
+  untouched and `check` stays nixpkgs-free for it.
+
+  SOFTENED, deliberately: the missing observable is now SAID in generate's
+  report (beside the gaps list, naming each baked file) instead of killing the
+  mint. A witness can only come from the author's own example, so a refusal
+  threw away an engine that was otherwise correct and left the author with
+  nothing to state the example against -- and it made `board`, `habit`,
+  `function` and `website` unre-mintable until each first gained a witness. The
+  pull toward claims now lives where it can be graceful: the prompt asks the
+  mint to read every line for an example and to file a GAP where the program
+  offers none, and the report repeats it. This is a considered exception to
+  "structural guards beat prompt pleas" (invariant 2), which governs what lips
+  READS; here the input simply does not carry the fact, and no guard can conjure
+  it.
 
 - **`meta.mainProgram` is stamped from the base's own `bin/<x>` reference, never
   guessed.** `nix run`/`nix develop`'s default program lookup assumes

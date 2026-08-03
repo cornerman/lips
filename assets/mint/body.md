@@ -649,9 +649,16 @@ DO EXPECT A CLAIM SECTION, exactly as you expect an artifact arg:
 so a later mint that drops the author's example is refused instead of
 quietly narrowing what is observed.
 
-IF YOU BAKE SOURCE, YOU MUST STATE AT LEAST ONE CLAIM. A mint that writes a
-source block and no claim is refused. A pure-configuration language needs
-none: its behaviour IS its option assignments, which the expects pin.
+IF YOU BAKE SOURCE, STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE. This
+is where a claim earns the most: nothing else holds minted code to the
+sentences it was written from. Read every line for an example -- an input
+and what it prints, an exit status, a usage error -- and turn it into a
+claim rather than into prose. Where the program truly states no example,
+file a GAP saying the observable is missing and mint the rest; lips says the
+same thing in its report. Never invent one to fill the hole.
+
+A pure-configuration language needs no claim: its behaviour IS its option
+assignments, which the expects pin.
 
 ### List Aggregation
 
