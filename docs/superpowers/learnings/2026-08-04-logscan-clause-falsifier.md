@@ -6,21 +6,25 @@ Hand-mint, no kernel changes. Files under `experiments/logscan-clauses/`.
 **Verdict: the direction survives.** Twenty-four lines of minted clauses replace
 seventy lines of minted Go, every one of them names the program line that caused
 it, and the claim that today needs a Go build and a witness run now passes in
-58 milliseconds with no build at all. The two checks the experiment could
+121 milliseconds with no build at all. The two checks the experiment could
 answer, pass. The third could not be answered by a hand-mint and is restated
 below as what to measure next.
+
+A second run then split the runtime into a declared contract set and adapters
+bound by name at link time, which settles the effect boundary the first run left
+open: every clause is claim-testable, and a mechanical gate proves the core can
+reach the world no other way ("The Contract Boundary").
 
 ## What Was Built
 
 `logscan.lips` keeps its five sentences and gains two, which are the answers to
-demands honest minting produces (see "The Demands"). Three files:
+demands honest minting produces (see "The Demands"). The files split by author:
 
-- `clauses.scm`, the minted part: 8 definitions, 24 code lines, each carrying
-  `;; @from logscan.lips:N`.
-- `runtime.scm`, the guile primitive vocabulary: 9 definitions, 21 code lines,
-  written once and shared by every program on this runtime. The analogue of
-  nixpkgs on the configuration axis.
-- `claims.scm`, five claims over single definitions.
+- `clauses.scm`, the minted part and the whole reviewed artifact: 8 definitions,
+  24 code lines, each carrying `;; @from logscan.lips:N`.
+- `contracts.scm` and three adapters, written once and shared by every program on
+  this runtime. The analogue of nixpkgs on the configuration axis.
+- `claims.scm` and `gate.scm`, the checks.
 
 `./run.sh a=1` on the witness input prints `{"a":"1"}` and nothing else.
 
@@ -49,9 +53,10 @@ a recursion over the pairs the author gave.
 
 ## Check (b): Does a Claim Over One Definition Pass Offline? Yes, Decisively
 
-`claims.scm` calls `keep?` directly on a parsed record and a parsed spec. Five
-claims, 58 ms, no VM, no `nix build`, no binary. Today the same witness costs a
-`buildGoModule` derivation and a process run against `${artifact.logscan}/bin/logscan`.
+`claims.scm` calls `keep?` directly on a parsed record and a parsed spec, and
+runs the whole program on a list of lines. Eight claims, 121 ms, no VM, no
+`nix build`, no binary. Today the same witness costs a `buildGoModule`
+derivation and a process run against `${artifact.logscan}/bin/logscan`.
 
 The claims also reach cases the current `.expect` cannot express at all, because
 `.expect` observes a whole binary through stdin and stdout while a claim observes
@@ -99,23 +104,19 @@ carry, the witness confirms it, and answering it would have cost the 18-line
 ## What the Run Says About the Open Questions
 
 **The primitive signature vocabulary is the real problem, and it bit immediately.**
-R7RS-small has no JSON and no `string-index`, so `runtime.scm` reaches for
+R7RS-small has no JSON and no `string-index`, so `adapter-pure.scm` reaches for
 guile-json and hand-writes `string-cut`. That is the concrete shape of the
 question §10 raised: the base notation is portable while the vocabulary fragments
 per runtime. Good news on the same point: JSON came from an external package, so
 lips owns no JSON code, exactly as it owns no restic code.
 
-**The effect boundary needs a decision the design has not yet made.** §7 says "no
-effects"; §12's emitted subset ("clause forms, calls to named primitives,
-literals, recursion") does not exclude them. The experiment put `scan`,
-`scan-line`, `emit` and `die` in the minted set, so four of the eight definitions
-are effectful, and only the pure four are claim-testable in isolation. Two ways
-out, and picking one is the next design decision:
-
-- Mint the effectful shell too, as here, and mark those definitions as unclaimable.
-- Keep the loop in the runtime as an archetype ("a line filter": read lines,
-  call `keep?`, print the kept ones) so the mint emits only the pure core, at the
-  cost of a library of archetypes that lips would own forever.
+**The effect boundary is settled, and the archetype alternative is dead.** §7 says
+"no effects"; §12's emitted subset ("clause forms, calls to named primitives,
+literals, recursion") does not exclude them. The first run put `scan`,
+`scan-line`, `emit` and `die` in the minted set and called those four
+unclaimable, offering a library of runtime archetypes ("a line filter") as the
+way out. The second run shows no archetype is needed. See "The Contract
+Boundary" below.
 
 **No renderer was needed, and none was missed.** The clause file is Scheme, the
 run object and the checked object are the same text, and nothing translated. On
@@ -127,9 +128,48 @@ The stated failure conditions were a clause set larger or harder to read than th
 Go file, or a mint that still invents behavior no line asks for. Twenty-four lines
 against seventy, and the inventions became demands.
 
+## The Contract Boundary, and the Subset Gate
+
+Second run, same core, no change to `clauses.scm`. The old `runtime.scm` was
+split into a declaration and three adapters, which turns the vague "named
+primitives" of §7 into something mechanical.
+
+**Capabilities bind by name at link time, not as passed values.** The core names
+`read-a-line`; which definition that name carries is decided by which adapter
+realize links, exactly as `${pkgs.<path>}` names a package realize binds. So
+nothing higher-order is needed and the clause language stays first-order, while
+the usual capability-passing discipline still holds.
+
+**Every clause is claim-testable, effectful ones included.** `claims.scm` links
+`adapter-effects-memory.scm` instead of the guile one and runs the whole program
+on a list of lines: the witness, byte-for-byte output, and both failure paths.
+Eight claims, 121 ms, no process, no stdin, no VM, no build. All 8 definitions
+are exercised.
+
+**A program's reach is a list, not an audit.** `contracts.scm` declares four
+effect contracts (`read-a-line`, `end-of-input?`, `emit`, `die`). That is
+`logscan`'s entire reach into the world, and a reviewer reads the list instead of
+reading the implementation. The Go file offers no such statement at any price.
+
+**The gate is mechanical, and it bites.** `gate.scm` reads `clauses.scm` as data
+(no parser: homoiconicity paying off directly) and checks that every free
+identifier is a base form, a base procedure, a declared contract, or a clause the
+core defines, plus that every clause carries `@from`. Against the real core it
+reports 8 clauses, 4 effect contracts, 0 ungrounded names, 0 missing provenance.
+Seeded with a clause calling `system` and a clause without `@from`, it names all
+three offenders and exits 3.
+
+This is the shape the prior art already uses: a safe subset of somebody else's
+language, enforced by a verifier, with authority arriving only through declared
+contracts. Joe-E does it to Java, SES to JavaScript, Starlark to Python, SPARK
+to Ada. lips owns the gate and the contract vocabulary; it owns no semantics and
+ships no runtime.
+
 ## Next
 
 1. Two real mints of `logscan` as clauses, through `pi`, to answer check (c).
-2. Decide the effect boundary (mint the shell, or own an archetype vocabulary).
+2. Decide where the contract declaration lives in a real mint: `contracts.scm`
+   is hand-written here, and in the loop it would be minted from the program
+   (a demand when a needed capability has no adapter on the chosen runtime).
 3. Reconcile `DESIGN.md`'s "Logic Axis" section, which still describes the
    per-host renderer that the 2026-08-02 decision rejected.
