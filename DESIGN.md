@@ -577,6 +577,11 @@ silently assumes.
 
 ## The Logic Axis: A Forced Paradigm
 
+The session that settled this, with the rejected alternatives and the reasoning
+behind each, is recorded in
+`docs/superpowers/decisions/2026-08-02-the-logic-axis.md`; the evidence is in
+Surveys G through K.
+
 Configuration is grounded because nixpkgs vouches for every name a rule emits.
 Program logic has no such vocabulary, so it escapes today into baked source: a
 Go file the mint writes once, complete but grounded by nothing, traceable to no
