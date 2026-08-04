@@ -775,6 +775,42 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A word's type is the engine's answer, so the editor can state it and check
+  it.** An author writing a sentence knows what a word MEANS; only the engine
+  knows what it must BE. That fact was derivable and unused: a hole's type is
+  fixed by the rhs position spending it (`<value:int>` -> int, a hole inside a
+  string -> text, `<value.tail:pkg>` -> package, a capture filling an emit path
+  -> name), and reading it needs no nix, no schema and no model.
+
+  Three pieces, bottom up. `Engine.Value.valueHoleTypes` answers for one rhs
+  (the grammar module owns the grammar question), over a closed `WordType`.
+  `Engine.Landing` holds the join that finds the position -- which emit carries
+  a word, its part index in a several-part assertion, the subject family, the
+  rules matching it -- extracted from `Engine.Reach`, which now reads a landing
+  instead of computing its own: one place knows how a word reaches a rule, and
+  the marker/`applyPattern` substitution is not copied. `Engine.Typing` joins
+  the two, and is SILENT where unsure (two rules typing one word differently, a
+  word no rule spends): a wrong type reads to the author as their own mistake
+  when it is the engine's.
+
+  The editor spends it twice. A completion labels each hole with its type
+  (`serve on port <port:int>`) and carries the same in the LSP `detail` field,
+  while the inserted snippet stays `${1:port}` -- accepting never leaves a type
+  in the program. And `diagnose` gained `diagUnfit`: for every matched line it
+  runs one rewrite step of the rules matching its decisions, which is exactly
+  what `refine` runs (the same `toRule`), so a word the option cannot take is
+  named ON ITS LINE while it is typed, by the same function the build judges
+  with. `<self>` is bound to a stand-in there, because the check judges the
+  author's word and an emit path lips cannot fill is the mint gate's business.
+  Both the CLI table (a `does not fit` block) and the LSP (an error diagnostic)
+  read that one field, so they cannot disagree.
+
+  One neighbour fixed by what this made visible: a `RewriteFailed` was reported
+  as "the setup lips built is broken, not your program" with `lips generate` as
+  the remedy, which is the wrong blame for its commonest cause. It now names
+  both possible causes and both remedies, and the per-line report says which
+  line stated the word.
+
 - **One voice, and a mint you can watch.** Every byte lips prints is decided in
   `Lips.Cli.Output`, not at forty call sites: four glyphs (`·` a phase running,
   `✓` one that held, `✗` one that failed, `→` the remedy), dim and bold, no
