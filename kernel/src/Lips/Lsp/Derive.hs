@@ -17,21 +17,28 @@ module Lips.Lsp.Derive
   ) where
 
 import           Data.Char       (isSpace)
+import           Data.List       (sortOn)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
+import Lips.Kernel.Lang.Store       (EngineData (..))
+import Lips.Kernel.Engine.Typing    (wordTypes)
+import Lips.Kernel.Engine.Value     (renderWordType)
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..))
 import Lips.Kernel.Lang.Diagnose    (Diagnosis (..))
 import Lips.Kernel.Lang.Pattern     (FusedSeg (..), Pattern (..), TplTok (..),
                                      matchFused, normalizeToken, tokenizeLine)
 
--- | One completion candidate: the human-readable sentence form of a pattern,
--- and a snippet with numbered tab-stops for its holes.
+-- | One completion candidate: the human-readable sentence form of a pattern, a
+-- snippet with numbered tab-stops for its holes, and what the engine says those
+-- holes must BE.
 data CItem = CItem
-  { ciLabel   :: Text -- ^ e.g. @back up \<src\> to \<dst\> daily@
-  , ciSnippet :: Text -- ^ e.g. @back up ${1:src} to ${2:dst} daily@
+  { ciLabel   :: Text       -- ^ e.g. @back up \<src\> to \<dst:path\> daily@
+  , ciSnippet :: Text       -- ^ e.g. @back up ${1:src} to ${2:dst} daily@
+  , ciDetail  :: Maybe Text -- ^ e.g. @src: text, dst: path@; 'Nothing' when the
+                            --   engine types none of the holes still to fill.
   }
   deriving (Eq, Show)
 
@@ -40,8 +47,11 @@ data CItem = CItem
 -- before any typed token): the editor offers every sentence form and the
 -- client filters by prefix. The contextual case ('completionItemsAt') reaches
 -- the same shape for an empty prefix, so the two share one renderer.
-completionItems :: [Pattern] -> [CItem]
-completionItems = map (renderPattern Map.empty)
+--
+-- Takes the whole engine, not its patterns: a hole's TYPE is fixed by the rule
+-- that spends the word, so the sentence alone cannot state it.
+completionItems :: EngineData -> [CItem]
+completionItems eng = map (renderPattern eng Map.empty) (edPatterns eng)
 
 -- | Contextual completion: complete the sentence a line has already started.
 -- @line@ is the whole current line and @col@ is the 0-based cursor column. A
@@ -55,10 +65,10 @@ completionItems = map (renderPattern Map.empty)
 -- words, only that a literal must equal a typed token and a hole binds one. A
 -- fragment at the cursor (the cursor mid-word) is matched positionally: it
 -- completes a literal it is a prefix of, or fills the hole at that position.
-completionItemsAt :: [Pattern] -> Text -> Int -> [CItem]
-completionItemsAt pats line col =
-  [ renderPattern binds p
-  | p <- pats
+completionItemsAt :: EngineData -> Text -> Int -> [CItem]
+completionItemsAt eng line col =
+  [ renderPattern eng binds p
+  | p <- edPatterns eng
   , let (toks, mfrag) = splitPrefix prefix
   , Just (binds, remaining) <- [matchPrefix (pTemplate p) toks mfrag]
   , not (null remaining)            -- nothing left to complete -> skip
@@ -165,11 +175,28 @@ applyPartial binds remaining (Just frag) = case remaining of
 -- tab-stop. Tab-stop numbers are assigned by hole name, so a repeated hole
 -- stays in sync across its occurrences. A multi-token hole uses the @\<name.words>@
 -- label form when unfilled, matching the no-context renderer.
-renderPattern :: Map Text Text -> Pattern -> CItem
-renderPattern binds p =
-  let (labels, snips, _) = foldl step ([], [], Map.empty) (pTemplate p)
-   in CItem (T.unwords (reverse labels)) (T.unwords (reverse snips))
+renderPattern :: EngineData -> Map Text Text -> Pattern -> CItem
+renderPattern eng binds p =
+  let (labels, snips, nums) = foldl step ([], [], Map.empty) (pTemplate p)
+   in CItem { ciLabel   = T.unwords (reverse labels)
+            , ciSnippet = T.unwords (reverse snips)
+            , ciDetail  = detailOf nums
+            }
   where
+    types = wordTypes (edPatterns eng) (edRules eng) p
+    typeOf h = Map.lookup h types
+    -- The type belongs on the label (where a reader looks) and in the detail
+    -- field, never in the snippet: an accepted tab-stop must leave a value's
+    -- placeholder behind, not a type the program would then state.
+    typed h lbl = maybe lbl (\t -> lbl <> ":" <> renderWordType t) (typeOf h)
+    -- The holes still to fill, in tab-stop order, with the types the engine
+    -- knows. An untyped hole is left out rather than guessed at.
+    detailOf nums = case [ h <> ": " <> renderWordType t
+                         | (h, _) <- sortOn snd (Map.toList nums)
+                         , Just t <- [typeOf h] ] of
+      []    -> Nothing
+      parts -> Just (T.intercalate ", " parts)
+    step :: ([Text], [Text], Map Text Int) -> TplTok -> ([Text], [Text], Map Text Int)
     step (ls, ss, nums) (TLit t)   = (t : ls, t : ss, nums)
     step (ls, ss, nums) (THole h)  = holeStep ls ss nums h False
     step (ls, ss, nums) (TMulti h) = holeStep ls ss nums h True
@@ -182,13 +209,14 @@ renderPattern binds p =
     fusedStep (l, s, nums) (FHole h) = case Map.lookup h binds of
       Just v  -> (l <> v, s <> v, nums)
       Nothing -> let (n, nums') = assign h nums
-                  in (l <> "<" <> h <> ">", s <> "${" <> T.pack (show n) <> ":" <> h <> "}", nums')
+                  in ( l <> "<" <> typed h h <> ">"
+                     , s <> "${" <> T.pack (show n) <> ":" <> h <> "}", nums')
     holeStep ls ss nums h isMulti =
       case Map.lookup h binds of
         Just v  -> (v : ls, v : ss, nums)                -- filled: literal
         Nothing ->
           let (n, nums') = assign h nums
-              label = if isMulti then "<" <> h <> ".words>" else "<" <> h <> ">"
+              label = "<" <> typed h (if isMulti then h <> ".words" else h) <> ">"
               tab   = "${" <> T.pack (show n) <> ":" <> h <> "}"
            in (label : ls, tab : ss, nums')
     -- Assign a stable number per hole name so repeated holes share a tab-stop.

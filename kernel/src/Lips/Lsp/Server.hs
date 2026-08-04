@@ -105,7 +105,7 @@ dispatch docs (Msg mid mmethod params) = case mmethod of
       let (line, col) = fromMaybe (0, 0) (paramPos params)
           ltext = lineText mtext line
           startCol = min col (leadingCol ltext)
-          items = maybe [] (\eng -> completionItemsAt (edPatterns eng) ltext col) meng
+          items = maybe [] (\eng -> completionItemsAt eng ltext col) meng
       respond mid (completionList line startCol col items)
     -- Any other request must still get a reply, or a strict client hangs.
     _ -> maybe (pure ()) (const (respond mid Null)) mid
@@ -156,7 +156,7 @@ completionList line startCol endCol items = object
   , "items" .= map citemValue items
   ]
   where
-    citemValue (CItem label snip) = object
+    citemValue (CItem label snip mdetail) = object $
       [ "label" .= label
       , "kind" .= (15 :: Int)          -- Snippet
       , "insertText" .= snip
@@ -169,6 +169,10 @@ completionList line startCol endCol items = object
           , "newText" .= snip
           ]
       ]
+      -- What each hole still to fill must BE, as the engine's rules fix it. Sent
+      -- only when the engine types at least one, so an editor never shows an
+      -- empty annotation.
+      ++ [ "detail" .= detail | Just detail <- [mdetail] ]
 
 diagValue :: Diag -> Value
 diagValue (Diag l s e sev msg) = object

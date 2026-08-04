@@ -2792,7 +2792,7 @@ main = hspec $ do
       retiredConcepts now was `shouldBe` []
 
     it "derives one completion snippet per pattern, holes as numbered tab-stops" $
-      case completionItems (edPatterns eng) of
+      case completionItems eng of
         (i0 : i1 : _) -> do
           map ciLabel [i0, i1] `shouldBe`
             [ "the bank drops csv files into <loc>"
@@ -2803,10 +2803,10 @@ main = hspec $ do
     -- Contextual completion: complete the sentence a line has already started.
     -- Already-typed holes become literals; only holes still to type become
     -- tab-stops; a fragment at the cursor completes the literal it prefixes.
-    let at line col = completionItemsAt (edPatterns eng) line col
+    let at line col = completionItemsAt eng line col
 
     it "offers every whole sentence on an empty line" $
-      at "" 0 `shouldBe` completionItems (edPatterns eng)
+      at "" 0 `shouldBe` completionItems eng
 
     it "keeps the common prefix and completes both patterns at a branch" $ do
       let items = at "the bank " (T.length "the bank ")
@@ -2841,6 +2841,64 @@ main = hspec $ do
       -- extra tokens after a filled loc: the line exceeds p1
       at "the bank drops csv files into inbox/ more" (T.length "the bank drops csv files into inbox/ more")
         `shouldBe` []
+
+    -- The type a hole has is the engine's own answer (Engine.Typing), so the
+    -- editor states it instead of leaving the author to guess what a word must
+    -- BE. Unknown stays silent: a wrong type reads as the author's mistake.
+    describe "a completion states the type the engine gives each hole" $ do
+      let engT = EngineData
+            { edPatterns =
+                [ patOne "p1" [TLit "serve", TLit "on", TLit "port", THole "port"]
+                    Fact [SLit "http.port"] [SHole "port"]
+                , patOne "p2" [TLit "alerts", TLit "go", TLit "to", THole "dest"]
+                    Fact [SLit "alert.target"] [SHole "dest"]
+                , patOne "p3" [TLit "run", TLit "it", TLit "in", THole "lang"]
+                    Steer [SLit "server.language"] [SHole "lang"]
+                , patOne "p4" [TLit "keep", THole "count", THole "period", TLit "snapshots"]
+                    Fact [SLit "backup.retention"] [SHole "count", SLit " ", SHole "period"]
+                ]
+            , edRules =
+                [ MapRule "r1" Fact ["http", "port"]
+                    [ Emit ["services", "nginx", "listenPort"] (tval "<value:int>") ]
+                , MapRule "r2" Fact ["alert", "target"]
+                    [ Emit ["environment", "etc", "a", "text"] (tval "\"<value>\"") ]
+                , MapRule "r3" Steer ["server", "language"]
+                    [ Emit ["artifact", "s", "builder"] (tval "\"buildGoModule\"") ]
+                , MapRule "r4" Fact ["backup", "retention"]
+                    [ Emit ["services", "x", "pruneOpts"] (tval "[ <value.1:int> \"<value.2>\" ]") ]
+                ]
+            , edDemands = [], edMerges = []
+            }
+
+      it "names the type in the label and in the detail" $
+        case completionItems engT of
+          (i1 : i2 : i3 : _) -> do
+            map ciLabel [i1, i2, i3] `shouldBe`
+              [ "serve on port <port:int>"
+              , "alerts go to <dest:text>"
+              , "run it in <lang>" ]
+            map ciDetail [i1, i2, i3] `shouldBe`
+              [ Just "port: int", Just "dest: text", Nothing ]
+          _ -> expectationFailure "expected three completion items"
+
+      it "leaves the inserted snippet free of the type" $
+        case completionItems engT of
+          (i1 : _) -> ciSnippet i1 `shouldBe` "serve on port ${1:port}"
+          _        -> expectationFailure "expected a completion item"
+
+      it "types each hole of a several-part value by its own part" $
+        case [ i | i <- completionItems engT, "keep" `T.isPrefixOf` ciLabel i ] of
+          (i : _) -> do
+            ciLabel i `shouldBe` "keep <count:int> <period:text> snapshots"
+            ciDetail i `shouldBe` Just "count: int, period: text"
+          _ -> expectationFailure "expected the retention item"
+
+      it "leaves a hole the author already typed out of the detail" $
+        case completionItemsAt engT "keep 7 " (T.length "keep 7 ") of
+          (i : _) -> do
+            ciLabel i `shouldBe` "keep 7 <period:text> snapshots"
+            ciDetail i `shouldBe` Just "period: text"
+          _ -> expectationFailure "expected the retention item"
 
     it "derives an error diagnostic on a line that escapes the language" $ do
       let ds = diagsOf (diagnose "f" eng "encrypt everything at rest.")
@@ -4685,3 +4743,10 @@ fencedBlocks tag = go . T.lines
       (_, [])        -> []
       (_, _ : rest)  -> let (body, rest') = break (== "```") rest
                         in T.unlines body : go (drop 1 rest')
+
+-- | A rhs written the way a rule states it, for a test that cares about the
+-- value's shape rather than about parsing it.
+tval :: Text -> Value
+tval t = case parseValue t of
+  Right v -> v
+  Left e  -> error (T.unpack ("test value does not parse: " <> e))
