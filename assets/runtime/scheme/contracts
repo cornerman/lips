@@ -1,0 +1,14 @@
+# The contract set: every name a clause may reach the world through. A pure
+# contract computes without touching anything, but is not in the base notation
+# (R7RS-small has neither JSON nor string search). An effect contract is a
+# program's actual reach into the world, and a reviewer reads this list instead
+# of auditing an implementation.
+pure json-parse 1 "text -> record, or #f when the text is not JSON"
+pure string-cut 2 "text char -> (before . after) at the first occurrence, or #f"
+pure field-of 2 "record name -> the field's value, or #f when absent"
+pure field-name 1 "pair -> its name"
+pure field-value 1 "pair -> its value"
+effect read-a-line 0 "-> the next input line, or the end-of-input value"
+effect end-of-input? 1 "x -> whether x is the end-of-input value"
+effect emit 1 "line -> writes it to the output, followed by a newline"
+effect die 2 "message subject -> stops the program, naming the subject"

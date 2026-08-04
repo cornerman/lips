@@ -34,6 +34,8 @@ import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
 import Lips.Kernel.Engine.Value
 import qualified Lips.Kernel.Sexp as Sx
+import Lips.Kernel.Clause.Vocabulary
+import Lips.Runtime (schemeVocabulary)
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
@@ -4765,6 +4767,54 @@ main = hspec $ do
 
     it "still refuses a bare identifier as a whole rhs" $
       parseValue "pkgs.curl" `shouldSatisfy` isLeft
+
+  -- What grounds a name in a clause is a vocabulary file, so the kernel
+  -- enumerates nothing: it reads the forms, procedures and contracts a runtime
+  -- declares, exactly as a rule reads an option path nixpkgs declares.
+  describe "clause vocabulary (Lips.Kernel.Clause.Vocabulary: data, not a branch)" $ do
+    it "reads a binder with its parameter position" $
+      fmap vBinders (parseVocabulary "binder lambda params 1")
+        `shouldBe` Right [Binder "lambda" (ParamsAt 1)]
+
+    it "reads a binder whose bindings are a let list" $
+      fmap vBinders (parseVocabulary "binder let bindings 1")
+        `shouldBe` Right [Binder "let" (BindingsAt 1)]
+
+    it "reads a special form" $
+      fmap vForms (parseVocabulary "form cond") `shouldBe` Right ["cond"]
+
+    it "reads a base procedure" $
+      fmap vProcedures (parseVocabulary "procedure null?") `shouldBe` Right ["null?"]
+
+    it "ignores comments and blank lines" $
+      fmap vForms (parseVocabulary "# a comment\n\nform cond\n")
+        `shouldBe` Right ["cond"]
+
+    it "fails loud on an unknown declaration, naming the line" $
+      parseVocabulary "wobble lambda"
+        `shouldSatisfy` either (T.isInfixOf "wobble lambda") (const False)
+
+    it "reads a contract with its kind, arity and meaning" $
+      parseContracts "effect emit 1 \"line -> writes it\""
+        `shouldBe` Right [Contract "emit" 1 Effect "line -> writes it"]
+
+    it "reads a pure contract" $
+      fmap (map cKind) (parseContracts "pure json-parse 1 \"text -> record\"")
+        `shouldBe` Right [Pure]
+
+    it "fails loud on a contract with no arity" $
+      parseContracts "effect emit \"line -> writes it\"" `shouldSatisfy` isLeft
+
+    -- The shipped vocabulary is an asset a human reviews, so the suite holds it
+    -- to the same parser and pins that it covers the corpus the falsifier ran.
+    it "ships a scheme vocabulary that parses" $
+      schemeVocabulary `shouldSatisfy` \v ->
+        "cond" `elem` vForms v && "equal?" `elem` vProcedures v
+
+    it "ships contracts covering what the logscan core reaches" $
+      map cName (vContracts schemeVocabulary)
+        `shouldSatisfy` \ns -> all (`elem` ns)
+          ["read-a-line", "end-of-input?", "emit", "die", "json-parse", "string-cut", "field-of"]
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).

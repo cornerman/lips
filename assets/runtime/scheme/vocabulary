@@ -1,0 +1,33 @@
+# The Scheme notation lips emits into: what grounds a name in a clause, as data.
+# The kernel reads this file and enumerates nothing itself.
+#
+# A binder brings names into scope for its body; the index says where its names
+# sit, because (lambda (x) ...) and (let ((x 1)) ...) carry them differently.
+binder lambda params 1
+binder let bindings 1
+binder let* bindings 1
+binder letrec bindings 1
+
+# Special forms that bind nothing.
+form cond
+form case
+form else
+form if
+form when
+form unless
+form and
+form or
+form not
+form quote
+
+# The base notation: present on every runtime, carrying no authority. A clause
+# needs no more than this to be a pure first-order definition; anything that
+# touches the world is a contract instead.
+procedure cons car cdr caar cadr cdar cddr
+procedure null? pair? list list? length append reverse
+procedure eq? eqv? equal?
+procedure + - * / = < > <= >= min max abs
+procedure number? string? boolean? symbol? char? procedure?
+procedure string=? string<? string-length string-append substring string->number number->string
+procedure char=?
+procedure apply
