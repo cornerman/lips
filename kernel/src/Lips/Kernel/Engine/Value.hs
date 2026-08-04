@@ -74,7 +74,8 @@ import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Capture (NamePiece (..), fillName, nameParse, nameTokens, selfName)
 import Lips.Kernel.Hole    (HoleType (..), holeTypeText, parseHoleType)
-import Lips.Kernel.Sexp    (SExp, fillSexp, parseSexpPrefix, renderSexp, sexpHoles)
+import Lips.Kernel.Sexp    (SExp, fillSexp, parseSexpPrefix, renderSexp, sexpHoleTypes,
+                            sexpHoles)
 import Lips.Kernel.Surface (stripTrailingPunct)
 
 -- | One piece of a string value. 'PRef' is a @${pkgs.<dotted-path>}@ package
@@ -325,6 +326,9 @@ valueHoleTypes = Map.mapMaybe id . Map.fromListWith agree . go
     go (VList vs) = concatMap go vs
     go (VAttr fs) = concatMap (go . snd) fs
     go (VHole ht h) = one h (fromHoleType ht)
+    -- A clause spends words at the same types as an option value: its typed
+    -- holes coerce, and a hole inside a Scheme string is text.
+    go (VSexp x) = [ (h, Just (maybe WText fromHoleType mht)) | (h, mht) <- sexpHoleTypes x ]
     -- A bare tail is a list of the line's remaining WORDS (text); a typed one
     -- coerces each word, so the element type is the word's type.
     go (VTail mht h) = one (h <> ".tail") (maybe WText fromHoleType mht)

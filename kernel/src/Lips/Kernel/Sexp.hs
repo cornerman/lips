@@ -42,6 +42,7 @@ module Lips.Kernel.Sexp
   , fillSexp
   , sexpSymbols
   , sexpHoles
+  , sexpHoleTypes
   ) where
 
 import           Data.Char      (isAlpha, isDigit, isSpace)
@@ -78,6 +79,17 @@ sexpSymbols :: SExp -> [Text]
 sexpSymbols (SSym s)   = [s]
 sexpSymbols (SList xs) = concatMap sexpSymbols xs
 sexpSymbols _          = []
+
+-- | Every hole the expression carries, paired with the type it coerces its word
+-- into. 'Nothing' is a hole inside a string, which is text like every other
+-- string hole. The value grammar asks, so a word a CLAUSE spends is typed for an
+-- editor exactly as a word an option value spends.
+sexpHoleTypes :: SExp -> [(Text, Maybe HoleType)]
+sexpHoleTypes (SHole ht h) = [(h, Just ht)]
+sexpHoleTypes (SStr ps)    = [ (h, Nothing) | SPHole h <- ps ]
+sexpHoleTypes (SList xs)   = concatMap sexpHoleTypes xs
+sexpHoleTypes (SQuote x)   = sexpHoleTypes x
+sexpHoleTypes _            = []
 
 -- | Every hole name the expression carries, in order: typed holes and string
 -- holes alike. The value grammar asks, so that a clause's holes are visible to

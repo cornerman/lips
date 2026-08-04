@@ -3777,6 +3777,15 @@ main = hspec $ do
     it "types a capture the rhs names as a name, not a value" $
       types (v "[ ${artifact.<cmd>} ]") `shouldBe` [("cmd", WName)]
 
+    -- A clause spends words too, so an editor must label them the same way. A
+    -- typed hole in a clause fixes the type; a hole inside a Scheme string is
+    -- text, exactly as inside a Nix string.
+    it "reads the type off a typed hole inside a clause" $
+      types (v "(define (limit) #<value:int>)") `shouldBe` [("value", WInt)]
+
+    it "types a hole inside a clause's string as text" $
+      types (v "(define (greet) \"hello #<who>\")") `shouldBe` [("who", WText)]
+
     it "reaches a hole nested in a list or an attrset" $ do
       types (v "[ <value:int> ]") `shouldBe` [("value", WInt)]
       types (v "{ port = <value:int>; }") `shouldBe` [("value", WInt)]
