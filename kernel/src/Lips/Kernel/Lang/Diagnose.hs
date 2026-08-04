@@ -29,6 +29,12 @@
 -- an engine at the gate, so what this reports are the engines committed before
 -- the gate existed -- and the report is per LINE, since that is what the author
 -- can act on.
+--
+-- Plus the UNFIT values: a word the rule spending it cannot take (a word where
+-- an option wants an int, a name where it wants a package). Refine catches that
+-- too, but only once every line has been read, and it names a decision id
+-- rather than the line. Here the very same fill runs one step early, so the
+-- complaint arrives on the line that stated the word.
 module Lips.Kernel.Lang.Diagnose
   ( Diagnosis (..)
   , diagnose
@@ -37,12 +43,14 @@ module Lips.Kernel.Lang.Diagnose
   , sourceSpecVerdict
   ) where
 
+import           Data.Either (lefts)
 import           Data.Text (Text)
 
 import Lips.Kernel.Base            (Base, fromList, toList)
 import Lips.Kernel.Decision        (Decision (..), Kind (..))
 import Lips.Kernel.Demand          (Demand (..), openQuestions)
-import Lips.Kernel.Engine.Data     (toDemand)
+import Lips.Kernel.Engine.Data     (MapRule, bindSelf, toDemand, toRule)
+import Lips.Kernel.Refine          (Rule (..))
 import Lips.Kernel.Engine.Reach    (DroppedValue (..), droppedValues)
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..), classifyLines, restatements)
 import Lips.Kernel.Lang.Store       (EngineData (..))
@@ -57,6 +65,7 @@ data Diagnosis = Diagnosis
   , diagDropped :: [(Int, Text, [Text])] -- ^ lines whose bound words reach no output: line no, source text, hole names
   , diagRestated :: [(Int, Int, Text)]   -- ^ lines absorbed by an earlier one: line no, that earlier line, the shared subject
   , diagHeads    :: [(Int, Text, Int)]   -- ^ lines that open a block: line no, source text, how many lines sit in it
+  , diagUnfit    :: [(Int, Text, [Text])] -- ^ lines whose value no rule can take: line no, source text, the complaints
   }
   deriving (Eq, Show)
 
@@ -78,7 +87,29 @@ diagnose file eng src =
         , diagDropped = droppedLines (droppedValues (edPatterns eng) (edRules eng)) outcomes
         , diagRestated = restatements outcomes
         , diagHeads    = blockHeads outcomes
+        , diagUnfit    = unfitLines (edRules eng) outcomes
         }
+
+-- | The lines whose stated word the rule spending it cannot take. One rewrite
+-- step of the rules matching each decision -- exactly what 'Lips.Kernel.Refine'
+-- runs, through the same 'toRule' -- so what an editor squiggles and what the
+-- build refuses can never disagree. A rule matching nothing, or a value that
+-- fits, yields nothing.
+unfitLines :: [MapRule] -> [LineOutcome] -> [(Int, Text, [Text])]
+unfitLines rules outcomes =
+  [ (n, txt, whys)
+  | Matched n txt _ _ decs <- outcomes
+  , let whys = [ why | d <- decs, r <- ruleSet, rMatches r d, why <- lefts [rRewrite r d] ]
+  , not (null whys)
+  ]
+  where
+    -- @\<self\>@ is bound to the program's instance name by the caller that runs
+    -- the pipeline, and the instance name is path knowledge the kernel does not
+    -- have here. It is bound to a stand-in instead, because this check judges
+    -- the AUTHOR'S WORD against the rule that spends it; an emit path lips
+    -- cannot fill is the ENGINE's defect, which the mint gate owns and no line
+    -- of a program can fix.
+    ruleSet = map (toRule . bindSelf "instance") rules
 
 -- | The lines that realize nothing. 'Concept' is the only kind realize drops
 -- ('Lips.Kernel.Run' filters it before the anti-MDA guard), so a line whose

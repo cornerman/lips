@@ -431,7 +431,8 @@ claimGate dir file rl
 renderDiagnosis :: FilePath -> Diagnosis -> Text
 renderDiagnosis file d =
   T.intercalate "\n" (headline : map row (diagLines d)
-                        ++ headBlock ++ inertBlock ++ restatedBlock ++ droppedBlock ++ openBlock)
+                        ++ headBlock ++ inertBlock ++ restatedBlock ++ droppedBlock
+                        ++ unfitBlock ++ openBlock)
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
@@ -490,6 +491,16 @@ renderDiagnosis file d =
               : [ "  line " <> tshow n <> "  \"" <> t <> "\"  <"
                     <> T.intercalate "> <" hs <> ">"
                 | (n, t, hs) <- diagDropped d ]
+    -- A word the rule spending it cannot take. Refine refuses it a phase later
+    -- naming a decision id; here it is named on the line the author wrote, which
+    -- is the only place they can fix it.
+    unfitBlock
+      | null (diagUnfit d) = []
+      | otherwise =
+          "" : ("does not fit (" <> tshow (length (diagUnfit d))
+                  <> ") -- these values are not what the option takes:")
+              : [ "  line " <> tshow n <> "  \"" <> t <> "\"  " <> why
+                | (n, t, whys) <- diagUnfit d, why <- whys ]
     openBlock
       | null (diagOpen d) = []
       | otherwise = "" : ("open questions (" <> tshow (length (diagOpen d)) <> "):")

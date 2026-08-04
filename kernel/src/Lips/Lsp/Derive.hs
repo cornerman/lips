@@ -240,8 +240,14 @@ data Diag = Diag
 -- whole-program warning (surfaced on the first line, since it belongs to no
 -- single line). A cleanly matched line yields nothing.
 diagsOf :: Diagnosis -> [Diag]
-diagsOf d = concatMap lineDiag (diagLines d) ++ map openDiag (diagOpen d)
+diagsOf d = concatMap lineDiag (diagLines d) ++ unfitDiags ++ map openDiag (diagOpen d)
   where
+    -- A word no rule can take: an error, since the build refuses it too (the
+    -- same fill runs there). Stated on the line that wrote the word, which is
+    -- the whole reason it is checked here and not left to refine.
+    unfitDiags =
+      [ Diag (n - 1) 0 (T.length t) 1 (T.intercalate "; " whys)
+      | (n, t, whys) <- diagUnfit d ]
     lineDiag (Matched {})       = []
     lineDiag (Unmatched n t)    =
       [Diag (n - 1) 0 (T.length t) 1

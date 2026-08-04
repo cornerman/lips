@@ -2900,6 +2900,35 @@ main = hspec $ do
             ciDetail i `shouldBe` Just "period: text"
           _ -> expectationFailure "expected the retention item"
 
+    -- A word that does not FIT the rule spending it (an int hole fed a word)
+    -- fails at refine, far from the line that stated it. The same fill runs here,
+    -- one step, so the author is told which line and why while they type.
+    describe "a value that does not fit the rule that spends it" $ do
+      let engU = EngineData
+            { edPatterns = [ patOne "p1" [TLit "serve", TLit "on", TLit "port", THole "port"]
+                               Fact [SLit "http.port"] [SHole "port"] ]
+            , edRules = [ MapRule "r1" Fact ["http", "port"]
+                            [ Emit ["services", "nginx", "listenPort"] (tval "<value:int>") ] ]
+            , edDemands = [], edMerges = []
+            }
+
+      it "names the line, the rule and the complaint" $
+        case diagUnfit (diagnose "f" engU "serve on port eighty") of
+          [(n, txt, whys)] -> do
+            n `shouldBe` 1
+            txt `shouldBe` "serve on port eighty"
+            whys `shouldSatisfy` any ("int" `T.isInfixOf`)
+          other -> expectationFailure ("unexpected: " ++ show other)
+
+      it "stays silent on a value that fits" $
+        diagUnfit (diagnose "f" engU "serve on port 8080") `shouldBe` []
+
+      it "reaches the editor as an error on that line" $
+        case [ x | x <- diagsOf (diagnose "f" engU "serve on port eighty")
+                 , dgSeverity x == 1 ] of
+          (x : _) -> dgLine x `shouldBe` 0
+          []      -> expectationFailure "expected an error diagnostic"
+
     it "derives an error diagnostic on a line that escapes the language" $ do
       let ds = diagsOf (diagnose "f" eng "encrypt everything at rest.")
       case [x | x <- ds, dgSeverity x == 1] of
