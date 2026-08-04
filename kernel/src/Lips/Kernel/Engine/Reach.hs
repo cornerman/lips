@@ -37,17 +37,15 @@ module Lips.Kernel.Engine.Reach
   , renderDroppedValue
   ) where
 
-import qualified Data.Map.Strict as Map
+import           Data.Maybe      (isJust)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Capture        (captureName, nameTokens)
-import Lips.Kernel.Decision       (Assertion (..), Kind (Concept), Subject (..))
 import Lips.Kernel.Engine.Data    (Emit (..), MapRule (..), renderAttrPath)
-import Lips.Kernel.Engine.Overlap (subjectsUnify)
+import Lips.Kernel.Engine.Landing (Landing (..), wordDecorates, wordLandings)
 import Lips.Kernel.Engine.Value   (valueCaptures, valueUsesAssertion)
-import Lips.Kernel.Lang.Nest    (holesInScope)
-import Lips.Kernel.Lang.Pattern   (Pattern (..), applyPattern, holesOf)
+import Lips.Kernel.Lang.Pattern   (Pattern (..), holesOf)
 
 -- | Why a word reaches no output.
 data DropWhy
@@ -79,57 +77,27 @@ droppedValues pats rules =
   , Just why <- [dropOf pats rules p h]
   ]
 
--- | Where a hole's word lands, decided by running the pattern's own
--- substitution with each hole bound to a unique marker. Reusing 'applyPattern'
--- (rather than re-deriving how a subject splits into segments) keeps this check
--- honest: it sees exactly the subjects and assertions crystallize will build.
+-- | Where a hole's word lands is 'Lips.Kernel.Engine.Landing''s answer; this
+-- module only judges what the rules there DO with it.
 dropOf :: [Pattern] -> [MapRule] -> Pattern -> Text -> Maybe DropWhy
 dropOf pats rules p h
-  | null carrying = if decorative then Nothing else Just EmittedNowhere
-  | any reached judged = Nothing
-  | otherwise = case [(fam, ids) | (fam, ids, _) <- judged, not (null ids)] of
-      []               -> Nothing
-      ((fam, ids) : _) -> Just (IgnoredBy fam ids)
+  | null landings = if wordDecorates pats p h then Nothing else Just EmittedNowhere
+  | any carriedBy landings = Nothing
+  | otherwise = case [ l | l <- landings, not (null (lgRules l)) ] of
+      []      -> Nothing
+      (l : _) -> Just (IgnoredBy (lgFamily l) (map mrId (lgRules l)))
   where
-    -- Every hole IN SCOPE, not just this template's: a nested pattern's emits
-    -- may name an ancestor's capture, and applyPattern is total only over a
-    -- complete binding map.
-    holes  = holesInScope pats p
-    marks  = Map.fromList [(x, marker x) | x <- holes]
-    filled = [(segs, k, a) | (Subject segs, k, Assertion a, _) <- applyPattern p marks]
-    mentions (segs, _, a) = any hit segs || hit a
-    hit t = marker h `T.isInfixOf` t
-    -- Only a realizing emit can carry a word to output; a Concept is dropped by
-    -- realize, so a hole reaching one is decoration, reported elsewhere.
-    carrying   = [e | e@(_, k, _) <- filled, k /= Concept, mentions e]
-    decorative = any mentions [e | e@(_, Concept, _) <- filled]
-    judged     = map judge carrying
-    reached (_, _, ok) = ok
-    judge (segs, k, a) =
-      let fam      = map famSeg segs
-          idx      = [i | (i, s) <- zip [0 :: Int ..] segs, hit s]
-          matching = [r | r <- rules, mrKind r == k, subjectsUnify fam (mrSubject r)]
-       in (fam, map mrId matching, any (carries a idx) matching)
-    -- A segment holding any marker becomes a capture named after the holes in
-    -- it, so the rule side unifies against a variable -- and a hole repeated in
-    -- two segments still constrains, since it yields the same variable twice.
-    famSeg s = case [x | x <- holes, marker x `T.isInfixOf` s] of
-      [] -> s
-      hs -> "<" <> T.intercalate "+" hs <> ">"
+    landings = wordLandings pats rules p h
+    carriedBy l = any (carries l) (lgRules l)
     -- The rule carries the word if it reads the decision's value, or if it names
     -- the capture standing where the word lands. A LITERAL there means the rule
     -- only fires for that word, so the word already governs the choice of rule.
-    carries a idx r =
-      (hit a && any (valueUsesAssertion . emRhs) (mrEmits r))
+    carries l r =
+      (isJust (lgPart l) && any (valueUsesAssertion . emRhs) (mrEmits r))
         || or [ maybe True (usesCapture r) (captureName s)
               | (i, s) <- zip [0 :: Int ..] (mrSubject r)
-              , i `elem` idx
+              , i `elem` lgSegments l
               ]
-
--- | A marker no program text can collide with, since it is built here and only
--- ever compared against text this module substituted.
-marker :: Text -> Text
-marker h = "\SOH" <> h <> "\SOH"
 
 -- | Does the rule name this capture anywhere its output can see: an emit path
 -- segment (whole or embedded, hence 'nameTokens') or an emit value (a string
