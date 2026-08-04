@@ -33,6 +33,7 @@ import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
 import Lips.Kernel.Engine.Value
+import qualified Lips.Kernel.Sexp as Sx
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
@@ -4679,6 +4680,58 @@ main = hspec $ do
       case materializeDraft "/tmp/x" "one.watch.lips" "not an engine line" Nothing of
         Left es -> es `shouldNotBe` []
         Right _ -> expectationFailure "an unreadable draft must not materialize"
+
+  -- The logic axis (decision doc 2026-08-02): behaviour is emitted as a small
+  -- Scheme subset. The kernel owns the GRAMMAR and never evaluates it, exactly
+  -- as it owns the Nix value grammar it never evaluates.
+  describe "s-expressions (Lips.Kernel.Sexp: the closed clause grammar)" $ do
+    it "round-trips a clause" $ do
+      let t = "(define (keep? r s) (cond ((null? s) #t) (else #f)))"
+      fmap Sx.renderSexp (Sx.parseSexp t) `shouldBe` Right t
+
+    it "round-trips a character literal, which a clause needs to split on" $
+      fmap Sx.renderSexp (Sx.parseSexp "(string-cut arg #\\=)")
+        `shouldBe` Right "(string-cut arg #\\=)"
+
+    it "reads a quoted empty list as data" $
+      Sx.parseSexp "'()" `shouldBe` Right (Sx.SQuote (Sx.SList []))
+
+    -- < and > are ordinary Scheme identifier characters, so the hole marker is
+    -- #<...>, which Scheme reserves. Without this a clause could not compare.
+    it "reads < as a symbol, not as the opening of a hole" $
+      Sx.parseSexp "(< n 3)"
+        `shouldBe` Right (Sx.SList [Sx.SSym "<", Sx.SSym "n", Sx.SInt 3])
+
+    it "refuses text left over after the expression" $
+      Sx.parseSexp "(a) (b)" `shouldSatisfy` isLeft
+
+    it "refuses an unclosed list" $
+      Sx.parseSexp "(define (f" `shouldSatisfy` isLeft
+
+    it "fills a typed hole with a program value" $
+      fmap Sx.renderSexp (Sx.fillSexp (const (Right "14")) (Sx.SHole HInt "value"))
+        `shouldBe` Right "14"
+
+    it "refuses a typed hole filled with something of the wrong type" $
+      Sx.fillSexp (const (Right "daily")) (Sx.SHole HInt "value") `shouldSatisfy` isLeft
+
+    it "escapes a program value landing in a string, so it cannot end the string" $
+      fmap Sx.renderSexp (Sx.fillSexp (const (Right "a\"b")) (Sx.SStr [Sx.SPHole "value"]))
+        `shouldBe` Right "\"a\\\"b\""
+
+    it "has no way to splice a program value as code" $
+      -- The only fillable positions are a typed hole and a string hole; a
+      -- filled symbol has no constructor, so program text can never become a
+      -- call. Pinned as a property of the grammar, not of a check.
+      fmap Sx.renderSexp (Sx.fillSexp (const (Right "(system \"rm\")")) (Sx.SStr [Sx.SPHole "value"]))
+        `shouldBe` Right "\"(system \\\"rm\\\")\""
+
+    it "lists every symbol it mentions, in order" $
+      fmap Sx.sexpSymbols (Sx.parseSexp "(f (g x) 1 \"s\")")
+        `shouldBe` Right ["f", "g", "x"]
+
+    it "does not list the symbols inside quoted data" $
+      fmap Sx.sexpSymbols (Sx.parseSexp "(f '(g x))") `shouldBe` Right ["f"]
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).

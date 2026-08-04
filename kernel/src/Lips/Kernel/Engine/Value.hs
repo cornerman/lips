@@ -73,6 +73,7 @@ import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Capture (NamePiece (..), fillName, nameParse, nameTokens, selfName)
+import Lips.Kernel.Hole    (HoleType (..), holeTypeText, parseHoleType)
 import Lips.Kernel.Surface (stripTrailingPunct)
 
 -- | One piece of a string value. 'PRef' is a @${pkgs.<dotted-path>}@ package
@@ -94,16 +95,6 @@ data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text | PSelf
 -- 'renderRealized' emits it bare (@pkgs.curl@, @artifact.weather@) because a
 -- Nix list holds derivations, not interpolations.
 data Ref = RPkg [Text] | RArt Text
-  deriving (Eq, Show)
-
--- | The type a bare (non-string) hole coerces its program token into. String
--- holes need no tag: they live inside 'VStr' as 'PHole'. 'HPkg' turns a
--- program token into a @pkgs.<token>@ derivation reference (a package whose
--- name comes from the program), validated segment-by-segment so program text
--- can never alter the path. It bridges the two universes a hole fills to
--- (values) and a ref names (derivations), letting a program-name token become
--- a derivation without computation.
-data HoleType = HInt | HBool | HFloat | HPath | HPkg
   deriving (Eq, Show)
 
 -- | A rhs value: the Nix value algebra minus computation. No constructor for
@@ -448,21 +439,6 @@ stringHoleName h =
                (b, ty) | not (T.null ty), Just _ <- parseHoleType (T.drop 1 ty) -> b
                _ -> h
    in if validHoleName base then Just base else Nothing
-
-holeTypeText :: HoleType -> Text
-holeTypeText HInt   = "int"
-holeTypeText HBool  = "bool"
-holeTypeText HFloat = "float"
-holeTypeText HPath  = "path"
-holeTypeText HPkg   = "pkg"
-
-parseHoleType :: Text -> Maybe HoleType
-parseHoleType "int"   = Just HInt
-parseHoleType "bool"  = Just HBool
-parseHoleType "float" = Just HFloat
-parseHoleType "path"  = Just HPath
-parseHoleType "pkg"   = Just HPkg
-parseHoleType _       = Nothing
 
 -- | Parse a rhs text into a 'Value'. Anything outside the grammar -- bare
 -- identifiers, function application, non-pkgs interpolation, an untyped bare
