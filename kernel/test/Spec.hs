@@ -4869,6 +4869,15 @@ main = hspec $ do
       gate schemeVocabulary [clauseOf "f" "(define (f x) (define y x) y)"]
         `shouldSatisfy` (/= [])
 
+    -- The proof that the kernel does not know Scheme: hand it a vocabulary whose
+    -- defining word is "defn" and it accepts a clause written that way, while
+    -- the shipped vocabulary (which says "define") refuses it.
+    it "accepts whatever word the vocabulary calls a definition" $ do
+      let otherLisp = schemeVocabulary { vDefiners = ["defn"] }
+          cl = clauseOf "f" "(defn (f x) x)"
+      gate otherLisp [cl] `shouldBe` []
+      gate schemeVocabulary [cl] `shouldSatisfy` any isNotADefinition
+
     it "reports a clause no program line caused" $
       gate schemeVocabulary [clauseNowhere "f" "(define (f x) x)"]
         `shouldBe` [Unprovenanced "f"]

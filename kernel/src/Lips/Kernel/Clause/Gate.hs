@@ -80,7 +80,7 @@ gate vocab clauses = concatMap check clauses
               <> map clName clauses
     check cl =
       [ Unprovenanced (clName cl) | null (clFrom cl) ]
-        <> case definition (clName cl) (clBody cl) of
+        <> case definition (vDefiners vocab) (clName cl) (clBody cl) of
              Left why           -> [NotADefinition (clName cl) why]
              Right (bound, body) ->
                [ Ungrounded (clName cl) n | n <- nub (concatMap (free vocab known bound) body) ]
@@ -88,20 +88,28 @@ gate vocab clauses = concatMap check clauses
 -- | Unpack the one shape a clause may have: @(define (name params...) body...)@
 -- or @(define name expr)@, the constant a stated number becomes. Returns the
 -- names the head binds and the body expressions.
-definition :: Text -> SExp -> Either Text ([Text], [SExp])
-definition name (SList (SSym "define" : SList (SSym n : params) : body))
-  | n /= name = Left (wrongName n)
-  | null body = Left "its body is empty"
-  | otherwise = (\ps -> (ps, body)) <$> traverse param params
+--
+-- The DEFINING WORD comes from the vocabulary, never from here. The kernel knows
+-- that a clause is one named definition, which is a fact about clauses; it must
+-- not know that Scheme spells it @define@, which is a fact about Scheme.
+definition :: [Text] -> Text -> SExp -> Either Text ([Text], [SExp])
+definition definers name (SList (SSym d : SList (SSym n : params) : body))
+  | d `elem` definers
+  , n /= name = Left (wrongName n)
+  | d `elem` definers
+  , null body = Left "its body is empty"
+  | d `elem` definers = (\ps -> (ps, body)) <$> traverse param params
   where
     param (SSym p) = Right p
     param other    = Left ("a parameter must be a name, not " <> renderSexp other)
-definition name (SList [SSym "define", SSym n, value])
-  | n /= name = Left (wrongName n)
-  | otherwise = Right ([], [value])
-definition _ other =
+definition definers name (SList [SSym d, SSym n, value])
+  | d `elem` definers
+  , n /= name = Left (wrongName n)
+  | d `elem` definers = Right ([], [value])
+definition definers _ other =
   Left ("it reads " <> T.take 40 (renderSexp other)
-         <> ", and a clause is exactly one (define ...)")
+         <> ", and a clause is exactly one definition ("
+         <> T.intercalate " or " definers <> " ...)")
 
 wrongName :: Text -> Text
 wrongName n = "it defines " <> n <> " instead"

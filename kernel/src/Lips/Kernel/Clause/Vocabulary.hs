@@ -6,6 +6,9 @@
 -- reads the list from a file. A name in a clause is grounded four ways, and the
 -- kernel knows only the four SHAPES, never the members:
 --
+--   * a /definer/: the form that names a definition. A clause IS one definition,
+--     so the kernel needs to know which form makes one, and it must not know
+--     WHICH WORD that is: @define@ in Scheme, @defn@ in another Lisp.
 --   * a /binder/: a form that brings names into scope for its body
 --     (@lambda@, @let@). The declaration says where its names sit, because
 --     @(lambda (x) ...)@ and @(let ((x 1)) ...)@ carry them differently.
@@ -18,6 +21,7 @@
 -- The file format is line-oriented and mirrors @.lang@, so a reviewer reads one
 -- grammar everywhere:
 --
+-- > definer define
 -- > binder lambda params 1
 -- > binder let bindings 1
 -- > form cond
@@ -67,7 +71,8 @@ data Contract = Contract
   deriving (Eq, Show)
 
 data Vocabulary = Vocabulary
-  { vBinders    :: [Binder]
+  { vDefiners   :: [Text]
+  , vBinders    :: [Binder]
   , vForms      :: [Text]
   , vProcedures :: [Text]
   , vContracts  :: [Contract]
@@ -87,8 +92,9 @@ effectContracts = filter ((== Effect) . cKind) . vContracts
 parseVocabulary :: Text -> Either Text Vocabulary
 parseVocabulary txt = do
   decls <- traverse parseLine (meaningfulLines txt)
-  Right (foldr add (Vocabulary [] [] [] []) (concat decls))
+  Right (foldr add (Vocabulary [] [] [] [] []) (concat decls))
   where
+    add (DDefiner d) v = v { vDefiners = d : vDefiners v }
     add (DBinder b) v = v { vBinders = b : vBinders v }
     add (DForm f) v = v { vForms = f : vForms v }
     add (DProcedure p) v = v { vProcedures = p : vProcedures v }
@@ -99,11 +105,12 @@ parseVocabulary txt = do
 parseContracts :: Text -> Either Text [Contract]
 parseContracts txt = do
   v <- parseVocabulary txt
-  if null (vBinders v) && null (vForms v) && null (vProcedures v)
+  if null (vDefiners v) && null (vBinders v) && null (vForms v) && null (vProcedures v)
     then Right (vContracts v)
     else Left "a contracts file declares only pure and effect contracts"
 
-data Decl = DBinder Binder | DForm Text | DProcedure Text | DContract Contract
+data Decl
+  = DDefiner Text | DBinder Binder | DForm Text | DProcedure Text | DContract Contract
 
 meaningfulLines :: Text -> [Text]
 meaningfulLines =
@@ -113,6 +120,7 @@ meaningfulLines =
 
 parseLine :: Text -> Either Text [Decl]
 parseLine line = case T.words body of
+  ("definer" : ds) | not (null ds) -> Right (map DDefiner ds)
   ("binder" : form : shape : n : []) -> do
     idx <- readIndex n
     sh <- case shape of
@@ -124,7 +132,7 @@ parseLine line = case T.words body of
   ("procedure" : ps) | not (null ps) -> Right (map DProcedure ps)
   ("pure" : name : n : _) -> contract Pure name n
   ("effect" : name : n : _) -> contract Effect name n
-  _ -> bad "a line declares a binder, form, procedure, pure or effect"
+  _ -> bad "a line declares a definer, binder, form, procedure, pure or effect"
   where
     -- The doc string is the quoted tail; splitting it off first keeps `words`
     -- from tearing a multi-word meaning apart.
