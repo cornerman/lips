@@ -1689,6 +1689,14 @@ failureReport file (FailRun err) = case err of
     reportHead (T.pack file <> " sets the same thing two ways:")
                [ niceSubject (conflictSubject c) <> ": "
                    <> loc (conflictLeft c) <> " and " <> loc (conflictRight c) | c <- cs ]
+  -- A rewrite that fails is the one refine error whose cause can be EITHER side:
+  -- a word the option cannot take (the program's) or a rule that cannot fill its
+  -- own emit (the engine's). Both are named rather than one guessed, and the
+  -- per-line report from 'diagnose' says which line stated the word.
+  RefineFailed e@(RewriteFailed {}) ->
+    reportHead ("lips could not fit what " <> T.pack file
+                  <> " states into the setup it was built with:")
+               [refineDetail e]
   RefineFailed e ->
     reportHead ("the setup lips built for " <> T.pack file <> " is broken, not your program:")
                [refineDetail e]
@@ -1707,6 +1715,9 @@ printFail file f = failureReport file f <> "\n\n" <> act
     act = case f of
       FailRun (OpenQuestions _) -> "→ answer each in " <> T.pack file <> ", then run again."
       FailRun (Conflicted _)    -> "→ keep only one of those lines in " <> T.pack file <> ", then run again."
+      FailRun (RefineFailed (RewriteFailed {})) ->
+        "→ state a value that fits in " <> T.pack file
+          <> ", or rebuild the setup: lips generate " <> T.pack file
       _                         -> "→ rebuild the setup: lips generate " <> T.pack file
 
 refineDetail :: RefineError -> Text
