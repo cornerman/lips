@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | The pure core of the language server: turn a language (its patterns) and a
--- program's 'Diagnosis' into the two things an editor shows -- completion items
--- and diagnostics -- as plain typed values, with no JSON and no IO. The server
+-- program's 'Diagnosis' into the things an editor shows -- completion items,
+-- diagnostics, and the hover that says what a line becomes -- as plain typed
+-- values, with no JSON and no IO. The server
 -- shell ('Lips.Lsp.Server') maps these to the wire protocol. Keeping this pure
 -- is functional-core/imperative-shell: the interesting logic is testable
 -- without a socket, and it reuses the very same 'diagnose' that @lips check@
@@ -14,6 +15,7 @@ module Lips.Lsp.Derive
   , Diag (..)
   , diagsOf
   , unobservedDiags
+  , hoverAt
   ) where
 
 import           Data.Char       (isSpace)
@@ -23,13 +25,17 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
-import Lips.Kernel.Lang.Store       (EngineData (..))
-import Lips.Kernel.Engine.Typing    (wordTypes)
-import Lips.Kernel.Engine.Value     (renderWordType)
+import Lips.Kernel.Decision        (Assertion (..), Decision (..), Kind (Concept),
+                                    Subject (..))
+import Lips.Kernel.Engine.Data     (bindSelf, toRule)
+import Lips.Kernel.Engine.Typing   (wordTypes)
+import Lips.Kernel.Engine.Value    (parseValue, renderRealized, renderWordType)
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..))
 import Lips.Kernel.Lang.Diagnose    (Diagnosis (..))
 import Lips.Kernel.Lang.Pattern     (FusedSeg (..), Pattern (..), TplTok (..),
                                      matchFused, normalizeToken, tokenizeLine)
+import Lips.Kernel.Lang.Store       (EngineData (..))
+import Lips.Kernel.Refine           (Rule (..))
 
 -- | One completion candidate: the human-readable sentence form of a pattern, a
 -- snippet with numbered tab-stops for its holes, and what the engine says those
@@ -292,3 +298,69 @@ unobservedDiags bakesSource statesClaim d
             <> " example (what it is given, what it prints) to hold that source to it.")
       | (n, t) <- diagInert d
       ]
+
+-- | What one line of a program BECOMES, as markdown for a hover.
+--
+-- lips' central claim is that a plain sentence is the whole artifact and the
+-- machinery is derived. Until an author compiled, that machinery was invisible;
+-- this states it in place: the pattern that read the line, the decisions the
+-- line makes, and every option those decisions realize, with the values filled
+-- in. Offline and model-free, from the same rewrite step 'Lips.Kernel.Refine'
+-- runs, so a hover cannot promise what the build will not do.
+--
+-- The instance name comes from the caller (it is path knowledge, see
+-- 'Lips.Identity'), and binds @\<self\>@, so the paths shown are the real ones.
+-- A line that is blank or a comment has no hover; a line lips cannot read says
+-- exactly that, since a hover is often the first thing an author reaches for.
+hoverAt :: EngineData -> Text -> Diagnosis -> Int -> Maybe Text
+hoverAt eng inst d line = case [ o | o <- diagLines d, lineNo o == Just (line + 1) ] of
+  (o : _) -> Just (render o)
+  []      -> Nothing
+  where
+    lineNo (Matched n _ _ _ _) = Just n
+    lineNo (Unmatched n _)     = Just n
+    lineNo (Ambiguous n _ _)   = Just n
+    lineNo (Orphan n _ _)      = Just n
+    lineNo (Illegible n _ _)   = Just n
+
+    render (Matched _ _ pid par decs) = T.intercalate "\n\n" (patLine : facts : rest)
+      where
+        patLine = "`" <> pid <> "`" <> maybe "" template (lookup pid templates)
+          <> maybe "" (\b -> "  (an item of the block at line " <> tshow b <> ")") par
+        template lbl = "  " <> lbl
+        facts = bullets [ subjectOf dc <> " = " <> assertionOf dc | dc <- decs ]
+        rest
+          -- A Concept realizes nothing by construction, so say that instead of
+          -- printing an empty realization and leaving the author to wonder.
+          | all ((== Concept) . dKind) decs = ["This line is decorative: it realizes nothing."]
+          | otherwise = case concatMap realizedBy decs of
+              []  -> ["No rule of this language maps it, so it realizes nothing."]
+              rs  -> ["realizes:", bullets rs]
+    render (Unmatched _ _)   = "No pattern reads this line. Run: `lips generate`"
+    render (Ambiguous _ _ ids) =
+      "This line matches several patterns (" <> T.intercalate ", " ids
+        <> "), so the language is not orthogonal here."
+    render (Orphan _ _ qs) =
+      "This line is an item of a block, and no line above it opens one ("
+        <> T.intercalate " or " qs <> ")."
+    render (Illegible _ _ why) = "A decision this line states cannot be read back: " <> why
+
+    -- One rewrite step per decision, exactly as refine runs it: the emitted
+    -- decisions ARE the option assignments, so nothing is re-derived here. A
+    -- rule that cannot fit the value says why, in the same words the build uses.
+    realizedBy dc =
+      [ txt
+      | r <- rules, rMatches r dc
+      , txt <- case rRewrite r dc of
+          Left why       -> ["**" <> why <> "**"]
+          Right children -> [ subjectOf c <> " = " <> realized (assertionOf c) | c <- children ]
+      ]
+    rules = map (toRule . bindSelf inst) (edRules eng)
+    templates = [ (pId p, ciLabel (renderPattern eng Map.empty p)) | p <- edPatterns eng ]
+    subjectOf dc = case dSubject dc of Subject segs -> T.intercalate "." segs
+    assertionOf dc = case dAssertion dc of Assertion a -> a
+    -- The module's own form, not the stored one: a reference reads as
+    -- @pkgs.curl@ where an author will see it, not as @${pkgs.curl}@.
+    realized a = either (const a) renderRealized (parseValue a)
+    bullets xs = T.intercalate "\n" [ "- `" <> x <> "`" | x <- xs ]
+    tshow = T.pack . show

@@ -2900,6 +2900,55 @@ main = hspec $ do
             ciDetail i `shouldBe` Just "period: text"
           _ -> expectationFailure "expected the retention item"
 
+    -- The map made visible: lips' whole claim is that a sentence becomes
+    -- machinery, and until now an author could only read the machinery in the
+    -- compiled module. Hover states it per line, offline, from the same rewrite
+    -- step the build runs.
+    describe "hover says what a line realizes" $ do
+      let engH = EngineData
+            { edPatterns =
+                [ patOne "p1" [TLit "serve", TLit "http", TLit "on", TLit "port", THole "port"]
+                    Fact [SLit "server.port"] [SHole "port"]
+                , patOne "p2" [TLit "http", TLit "routes"]
+                    Concept [SLit "routes"] [SLit "the http routes"]
+                ]
+            , edRules =
+                [ MapRule "r1" Fact ["server", "port"]
+                    [ Emit ["networking", "firewall", "allowedTCPPorts"] (tval "[ <value:int> ]")
+                    , Emit ["artifact", "<self>", "fill", "port"] (tval "\"<value>\"") ] ]
+            , edDemands = [], edMerges = []
+            }
+          hoverOn src n = hoverAt engH "hello" (diagnose "f" engH src) n
+
+      it "names the pattern, the decision, and every option the line sets" $
+        case hoverOn "serve http on port 8080." 0 of
+          Just t -> do
+            t `shouldSatisfy` T.isInfixOf "p1"
+            t `shouldSatisfy` T.isInfixOf "server.port = 8080"
+            t `shouldSatisfy` T.isInfixOf "networking.firewall.allowedTCPPorts = [ 8080 ]"
+            -- <self> is the program's own instance, so the path is the real one
+            t `shouldSatisfy` T.isInfixOf "artifact.hello.fill.port = \"8080\""
+          Nothing -> expectationFailure "expected a hover"
+
+      it "says a decorative line realizes nothing" $
+        case hoverOn "http routes:" 0 of
+          Just t  -> t `shouldSatisfy` T.isInfixOf "realizes nothing"
+          Nothing -> expectationFailure "expected a hover"
+
+      it "says so on a line no pattern reads" $
+        case hoverOn "encrypt everything at rest." 0 of
+          Just t  -> t `shouldSatisfy` T.isInfixOf "No pattern reads"
+          Nothing -> expectationFailure "expected a hover"
+
+      it "gives no hover for a blank or comment line" $ do
+        hoverOn "# a note" 0 `shouldBe` Nothing
+        hoverOn "" 0 `shouldBe` Nothing
+
+      it "reports the complaint where the value does not fit" $
+        case hoverOn "serve http on port eighty." 0 of
+          Just t  -> t `shouldSatisfy` T.isInfixOf "not a int"
+          Nothing -> expectationFailure "expected a hover"
+
     -- A word that does not FIT the rule spending it (an int hole fed a word)
     -- fails at refine, far from the line that stated it. The same fill runs here,
     -- one step, so the author is told which line and why while they type.

@@ -1,10 +1,20 @@
 # Editor Integration
 
 One server, every language: `lips lsp` is domain-blind and serves any lips
-program from the shared `<language>/<language>.lang` beside it (completion from the
-language's patterns, diagnostics from `diagnose`). Configure it once; every
-program you mint gets tooling for free. It is pure of AI and offline, like
-`run`.
+program from the shared `<language>/<language>.lang` beside it. Configure it
+once; every program you mint gets tooling for free. It is pure of AI and
+offline, like `run`.
+
+Three things it does, all derived from the language beside your program:
+
+- **Completion** from the language's patterns, each hole labelled with the type
+  the engine gives it (`serve http on port <port:int>`).
+- **Diagnostics** from the same `diagnose` that `lips check` prints: a line no
+  pattern reads, a line two patterns read, a question left open, a value the
+  option cannot take.
+- **Hover** on any line: the pattern that read it, the decisions it states, and
+  every option it realizes with the values filled in -- the machinery lips
+  derives from your sentence, without compiling.
 
 `lips` must be on `PATH`. On NixOS / home-manager, add the flake package
 once: `home.packages = [ inputs.lips.packages.${pkgs.system}.default ];`.

@@ -8,7 +8,7 @@
 -- completion and diagnostics from
 -- that (via 'Lips.Lsp.Derive', reusing the same 'diagnose' as @lips check@).
 --
--- Deliberately small: full-text sync, completion, and push diagnostics. No
+-- Deliberately small: full-text sync, completion, hover, and push diagnostics. No
 -- caching (each event re-reads the @.lang@ from disk, so a regenerate is picked
 -- up for free) and no model, ever -- the server is pure of AI, like @run@.
 module Lips.Lsp.Server
@@ -39,7 +39,8 @@ import           System.Exit             (exitSuccess)
 import           System.IO
 import           Text.Read               (readMaybe)
 
-import Lips.Identity              (artifactsPathIn, langPath, resolveLangDir)
+import Lips.Identity              (artifactsPathIn, instanceName, langPath,
+                                   resolveLangDir)
 import Lips.Kernel.Claim         (claimRooted)
 import Lips.Kernel.Engine.Data   (Emit (..), MapRule (..))
 import Lips.Kernel.Lang.Diagnose (diagnose)
@@ -107,6 +108,23 @@ dispatch docs (Msg mid mmethod params) = case mmethod of
           startCol = min col (leadingCol ltext)
           items = maybe [] (\eng -> completionItemsAt eng ltext col) meng
       respond mid (completionList line startCol col items)
+    -- What a line BECOMES, on demand: the machinery lips derives is otherwise
+    -- only readable in the compiled module, and an author's whole artifact is
+    -- the sentence. Pure ('hoverAt'), so it states what the build will do.
+    "textDocument/hover" -> do
+      let uri = fromMaybe "" (paramUri params)
+          path = uriToPath uri
+      meng <- loadLang path
+      docsMap <- readIORef docs
+      mtext <- case Map.lookup uri docsMap of
+        Just t  -> pure (Just t)
+        Nothing -> tryReadFile path
+      let (line, _) = fromMaybe (0, 0) (paramPos params)
+          mhover = do
+            eng  <- meng
+            text <- mtext
+            hoverAt eng (instanceName path) (diagnose path eng text) line
+      respond mid (maybe Null (hoverValue line (lineText mtext line)) mhover)
     -- Any other request must still get a reply, or a strict client hangs.
     _ -> maybe (pure ()) (const (respond mid Null)) mid
   where
@@ -144,6 +162,7 @@ initResult = object
   [ "capabilities" .= object
       [ "textDocumentSync" .= (1 :: Int)
       , "completionProvider" .= object ["resolveProvider" .= False]
+      , "hoverProvider" .= True
       ]
   , "serverInfo" .= object ["name" .= ("lips" :: Text)]
   ]
@@ -173,6 +192,14 @@ completionList line startCol endCol items = object
       -- only when the engine types at least one, so an editor never shows an
       -- empty annotation.
       ++ [ "detail" .= detail | Just detail <- [mdetail] ]
+
+-- | A hover: markdown, ranged over the whole line so the editor highlights the
+-- sentence the answer is about.
+hoverValue :: Int -> Text -> Text -> Value
+hoverValue line ltext body = object
+  [ "contents" .= object ["kind" .= ("markdown" :: Text), "value" .= body]
+  , "range" .= object ["start" .= lspPos line 0, "end" .= lspPos line (T.length ltext)]
+  ]
 
 diagValue :: Diag -> Value
 diagValue (Diag l s e sev msg) = object

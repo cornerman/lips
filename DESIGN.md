@@ -775,6 +775,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Hover: the machinery a sentence becomes, in place.** lips' claim is that the
+  plain sentence is the whole artifact and everything else is derived -- and until
+  now the derived part was only readable by compiling. `textDocument/hover`
+  (`Lsp.Derive.hoverAt`, pure) answers per line: the pattern that read it (with
+  its typed template), the decisions it states, and every option those decisions
+  realize with the values filled in. It is ONE rewrite step of the matching
+  rules, the same `toRule` that `refine` runs, so a hover cannot promise what the
+  build will not do; a rule that cannot fit the value shows the build's own
+  complaint instead. `<self>` is bound to the program's instance name, passed in
+  by the server (path knowledge stays in `Lips.Identity`), so the paths shown are
+  the real ones -- `artifact.hello.fill.port`, not `artifact.<self>.fill.port`. A
+  `Concept` line says it realizes nothing rather than showing an empty list, and
+  an unread line says so, since a hover is the first thing an author reaches for.
+  Verified live over stdio against `hello.http`: four sentences, four
+  realizations, including the Go build args, the systemd unit and the claim.
+
 - **A word's type is the engine's answer, so the editor can state it and check
   it.** An author writing a sentence knows what a word MEANS; only the engine
   knows what it must BE. That fact was derivable and unused: a hole's type is
