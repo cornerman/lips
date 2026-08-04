@@ -31,6 +31,7 @@ import Lips.Kernel.Engine.Gate (engineViolations)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft)
 import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Reach
+import Lips.Kernel.Engine.Typing (wordTypes)
 import Lips.Kernel.Engine.Value
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
@@ -3488,6 +3489,61 @@ main = hspec $ do
   -- language's own patterns emit can ever answer one. A demand outside every
   -- emitted family blocks every program in the language -- and reports it as the
   -- author's missing fact, which is why it is caught at the mint gate.
+  describe "word types (what type does the engine give a word it reads)" $ do
+    let pat i body = case parsePatternBody i body of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test pattern: " <> e))
+        rul i body = case parseRuleBody i body of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test rule: " <> e))
+        types ps rs = Map.toList (wordTypes ps rs (case ps of (q : _) -> q; [] -> error "no pattern"))
+
+    it "types a word by the option value it lands in" $
+      types [pat "p1" "serve http on port <port> => fact http.port \"<port>\""]
+            [rul "r1" "match fact http.port => services.nginx.listenPort \"<value:int>\""]
+        `shouldBe` [("port", WInt)]
+
+    it "types a word landing in a string as text" $
+      types [pat "p1" "alerts go to <dest> => fact alert.target \"<dest>\""]
+            [rul "r1" "match fact alert.target => systemd.services.a.environment.T \"\\\"<value>\\\"\""]
+        `shouldBe` [("dest", WText)]
+
+    it "reads the part index of a several-part value" $
+      types [pat "p1" "keep <count> <period> snapshots => fact backup.retention \"<count> <period>\""]
+            [rul "r1" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-<value.2>\\\" <value.1:int> ]\""]
+        `shouldBe` [("count", WInt), ("period", WText)]
+
+    it "types a package word by the pkg hole that spends it" $
+      types [pat "p1" "- <name> => fact pkg.<name> \"<name>\""]
+            [rul "r1" "match fact pkg.<name> => environment.systemPackages \"[ <value:pkg> ]\""]
+        `shouldBe` [("name", WPkg)]
+
+    it "types a word the rule carries as an artifact name" $
+      types [pat "p1" "install a command <cmd> that prints <msg> => fact cmd.<cmd>.msg \"<msg>\""]
+            [rul "r1" "match fact cmd.<cmd>.msg => artifact.<cmd>.args.text \"\\\"echo <value>\\\"\""]
+        `shouldBe` [("cmd", WName), ("msg", WText)]
+
+    it "names the rule's own capture, not the pattern's" $
+      types [pat "p1" "install a command <cmd> => fact cmd.<cmd>.msg \"hi\""]
+            [rul "r1" "match fact cmd.<who>.msg => environment.etc.greet.text \"\\\"<who>\\\"\""]
+        `shouldBe` [("cmd", WText)]
+
+    it "types every token of a tail hole by its element type" $
+      types [pat "p1" "install <pkgs.words> => fact install.list \"<pkgs>\""]
+            [rul "r1" "match fact install.list => environment.systemPackages \"<value.tail:pkg>\""]
+        `shouldBe` [("pkgs", WPkg)]
+
+    it "says nothing where two rules disagree about the type" $
+      types [pat "p1" "port <port> => fact a.port \"<port>\" ; fact b.port \"<port>\""]
+            [ rul "r1" "match fact a.port => services.x.port \"<value:int>\""
+            , rul "r2" "match fact b.port => services.y.host \"\\\"<value>\\\"\"" ]
+        `shouldBe` []
+
+    it "says nothing about a word no rule spends" $
+      types [pat "p1" "write it in <lang> => steer server.language \"<lang>\""]
+            [rul "r1" "match steer server.language => artifact.s.builder \"\\\"buildGoModule\\\"\""]
+        `shouldBe` []
+
   describe "unanswerable demands (can a program ever meet it)" $ do
     let pat body = case parsePatternBody "p1" body of
           Right ok -> ok
