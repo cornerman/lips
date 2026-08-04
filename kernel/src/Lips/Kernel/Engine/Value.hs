@@ -52,6 +52,9 @@ module Lips.Kernel.Engine.Value
   , valueCaptures
   , valuePathHoles
   , valueUsesAssertion
+  , WordType (..)
+  , valueHoleTypes
+  , renderWordType
   , holeIndex
   , valueRefsDerivation
   , sourceText
@@ -271,6 +274,64 @@ bindCaptureValue caps = go
     -- name or embedded in it (<name>-core), and an unbound token is left
     -- standing so the caller reports it by name.
     bound = fillName (`Map.lookup` caps)
+
+-- | The type a rhs gives the program word it spends. A superset of 'HoleType'
+-- by exactly two cases the grammar also fixes: 'WText' (a hole inside a string,
+-- which escapes rather than coerces) and 'WName' (a capture used as a name -- an
+-- artifact reference, a path literal -- which is validated as an identifier and
+-- never becomes a value).
+--
+-- This is the whole answer the engine can give about a word, and it is closed:
+-- the value grammar has no other place a hole can sit.
+data WordType = WText | WName | WInt | WBool | WFloat | WPath | WPkg
+  deriving (Eq, Ord, Show)
+
+-- | The word type in the language the author reads (an LSP label, a diagnostic).
+renderWordType :: WordType -> Text
+renderWordType WText  = "text"
+renderWordType WName  = "name"
+renderWordType WInt   = "int"
+renderWordType WBool  = "bool"
+renderWordType WFloat = "float"
+renderWordType WPath  = "path"
+renderWordType WPkg   = "package"
+
+-- | Every hole a value spends, with the type that position gives it: the
+-- decision's own value (@value@, @value.N@, @value.tail@) and every capture the
+-- rule's subject bound. Keyed by hole name exactly as written, so a caller
+-- joining a pattern's word to its landing site asks by that name.
+--
+-- One hole name in two positions of one rhs with two types is dropped rather
+-- than guessed: a caller that cannot be sure must say nothing (a wrong type
+-- reads as an author's mistake when it is the engine's).
+valueHoleTypes :: Value -> Map.Map Text WordType
+valueHoleTypes = Map.mapMaybe id . Map.fromListWith agree . go
+  where
+    agree new old = if new == old then old else Nothing
+    one h t = [(h, Just t)]
+    go (VStr ps)  = concatMap piece ps
+    go (VList vs) = concatMap go vs
+    go (VAttr fs) = concatMap (go . snd) fs
+    go (VHole ht h) = one h (fromHoleType ht)
+    -- A bare tail is a list of the line's remaining WORDS (text); a typed one
+    -- coerces each word, so the element type is the word's type.
+    go (VTail mht h) = one (h <> ".tail") (maybe WText fromHoleType mht)
+    go (VRef (RArt n)) = nameCaps n
+    go (VPath p)  = nameCaps p
+    go _          = []
+    -- A string hole is filled by escaping, never by coercion, so its type is
+    -- text whether it reads the decision's value or a capture.
+    piece (PHole h) = one h WText
+    piece (PArt n)  = nameCaps n
+    piece _         = []
+    nameCaps n = [ (c, Just WName) | c <- pathCaptures n ]
+
+fromHoleType :: HoleType -> WordType
+fromHoleType HInt   = WInt
+fromHoleType HBool  = WBool
+fromHoleType HFloat = WFloat
+fromHoleType HPath  = WPath
+fromHoleType HPkg   = WPkg
 
 -- | Every capture name a value mentions: a string hole that is neither
 -- @\<value\>@ nor @\<value.N\>@, and an artifact reference named by a capture.

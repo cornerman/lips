@@ -3546,6 +3546,41 @@ main = hspec $ do
     it "does not count a subject capture as reading the value" $
       valueUsesAssertion (v "\"<name>\"") `shouldBe` False
 
+  describe "valueHoleTypes (what type does the rhs give the word it spends)" $ do
+    let v t = case parseValue t of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test value: " <> e))
+        types = Map.toList . valueHoleTypes
+
+    it "types a hole inside a string as text" $
+      types (v "\"echo <value>\"") `shouldBe` [("value", WText)]
+
+    it "reads the type off a bare typed hole" $ do
+      types (v "<value:int>") `shouldBe` [("value", WInt)]
+      types (v "<value:bool>") `shouldBe` [("value", WBool)]
+      types (v "<value:float>") `shouldBe` [("value", WFloat)]
+      types (v "<value:pkg>") `shouldBe` [("value", WPkg)]
+
+    it "types each part of a several-part value on its own" $
+      types (v "\"<value.1>:<value.2>\"") `shouldBe` [("value.1", WText), ("value.2", WText)]
+
+    it "gives a tail hole the type its elements coerce to" $ do
+      types (v "<value.tail:pkg>") `shouldBe` [("value.tail", WPkg)]
+      types (v "<value.tail>") `shouldBe` [("value.tail", WText)]
+
+    it "types a capture the rhs names as a name, not a value" $
+      types (v "[ ${artifact.<cmd>} ]") `shouldBe` [("cmd", WName)]
+
+    it "reaches a hole nested in a list or an attrset" $ do
+      types (v "[ <value:int> ]") `shouldBe` [("value", WInt)]
+      types (v "{ port = <value:int>; }") `shouldBe` [("value", WInt)]
+
+    it "says nothing about a constant rhs" $
+      types (v "\"buildGoModule\"") `shouldBe` []
+
+    it "keeps a path literal's capture a name" $
+      types (v "./artifacts/<name>") `shouldBe` [("name", WName)]
+
   describe "value language (round-trip and injection safety, spec: closed rhs)" $ do
     it "parseValue . renderValue == id for canonical values" $
       property $ forAll genValue $ \v -> parseValue (renderValue v) === Right v
