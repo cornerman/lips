@@ -1,5 +1,6 @@
 {
   "name": "lips",
+  "publisher": "lips",
   "displayName": "lips",
   "description": "Completion and diagnostics for lips programs via the lips language server.",
   "version": "0.0.1",

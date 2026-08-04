@@ -49,16 +49,41 @@ Completion via `<C-x><C-o>` (vim-lsp sets omnifunc), or asyncomplete.
 
 ## VS Code
 
-VS Code needs a thin extension (it will not launch an arbitrary LSP binary
-otherwise). The minimal one is in `vscode/`:
+VS Code needs a thin extension: it will not start a language server from
+settings, and a language id no extension declares falls back to plain text
+([microsoft/vscode#194759](https://github.com/microsoft/vscode/issues/194759)).
+So `vscode/` holds one, and it does exactly two things -- declare the `lips`
+language for `.lips`, and spawn `lips lsp` over stdio. Every capability lives in
+the server, which is why this file has no reason to change as lips grows.
+
+The flake builds it, so nothing needs `npm` at install time:
+
+    nix build .#vscode-extension
+
+On NixOS / home-manager, take it from the flake you already use for `lips`:
+
+    programs.vscode = {
+      enable = true;
+      mutableExtensionsDir = true;   # keep installing marketplace extensions by hand
+      profiles.default.extensions = [
+        inputs.lips.packages.${pkgs.system}.vscode-extension
+      ];
+    };
+
+`lips` must be on `PATH` for the editor process (`home.packages` is enough); the
+extension spawns whatever `lips` it finds, so upgrading lips moves the server
+without rebuilding the extension.
+
+Elsewhere, or to hack on the extension itself:
 
     cd editors/vscode
-    npm install
-    # then press F5 in VS Code to launch an Extension Development Host,
+    npm install          # package-lock.json is committed; nix builds from it
+    # press F5 in VS Code for an Extension Development Host,
     # or package it:  npx vsce package   and install the .vsix
 
-It launches `lips lsp` for `.lips` files. Completion and diagnostics then work
-like any language.
+After changing `package-lock.json`, refresh the hash the flake pins:
+
+    nix run nixpkgs#prefetch-npm-deps -- editors/vscode/package-lock.json
 
 ## Helix
 

@@ -30,6 +30,58 @@
       # file-embed: the mint prompt lives as markdown under assets/mint/,
       # embedded at compile time (see kernel/src/Lips/Generate/Minting.hs).
       ghc = pkgs: pkgs.haskellPackages.ghcWithPackages (p: [ p.hspec p.QuickCheck p.aeson p.optparse-applicative p.file-embed ]);
+      # The VS Code client, as an installable extension package.
+      #
+      # VS Code will not start a language server from settings: a client must be
+      # launched by an extension, and a language id no extension declares falls
+      # back to plaintext (microsoft/vscode#194759). So this exists, and it is
+      # deliberately the thinnest thing that can: it declares the `lips`
+      # language for `.lips` and spawns `lips lsp` over stdio. Every capability
+      # lives in the server, which is why the extension has no reason to change
+      # as lips grows.
+      #
+      # It VERSIONS WITH THE PROTOCOL it speaks, which is why it ships here and
+      # not in a consumer's config: a flake sees only its own git-tracked files,
+      # so a downstream derivation could not read editors/vscode/ without a
+      # second input pointing back at this same checkout.
+      #
+      # `lips` itself is NOT a dependency of this package: the extension spawns
+      # whatever `lips` the user's PATH provides, so upgrading lips moves the
+      # server without rebuilding the client.
+      vscodeExtension = pkgs: pkgs.buildNpmPackage {
+        pname = "vscode-lips";
+        version = "0.0.1";
+        src = ./editors/vscode;
+        # Regenerate after any package-lock.json change:
+        #   nix run nixpkgs#prefetch-npm-deps -- editors/vscode/package-lock.json
+        npmDepsHash = "sha256-L2HZ1rHLwbmPumdDlLy+OdIlcComrsOlRWtgKTz8jDs=";
+        # There is nothing to compile: the extension is plain CommonJS, and a
+        # bundler would only add a build step and a devDependency to maintain.
+        dontNpmBuild = true;
+        # The layout home-manager's programs.vscode (and `code
+        # --extensions-dir`) reads: one directory per extension, named
+        # <publisher>.<name>, holding the manifest, the entry point and its
+        # runtime deps.
+        installPhase = ''
+          runHook preInstall
+          dir="$out/share/vscode/extensions/lips.lips"
+          mkdir -p "$dir"
+          cp package.json extension.js "$dir/"
+          cp -r node_modules "$dir/"
+          runHook postInstall
+        '';
+        # What an installer reads off the derivation: nixpkgs'
+        # vscode-utils.toExtensionJson (which home-manager's programs.vscode
+        # uses to write extensions.json) takes the id and publisher from HERE,
+        # not from package.json -- and VS Code 1.74+ lists only what
+        # extensions.json names, so an extension missing these is installed and
+        # invisible.
+        passthru = {
+          vscodeExtUniqueId = "lips.lips";
+          vscodeExtPublisher = "lips";
+          vscodeExtName = "lips";
+        };
+      };
     in
     {
       # Everything a developer needs: the compiler for the suite, and just
@@ -41,6 +93,7 @@
       # The reference `lips` CLI, built from the deliverable in kernel/.
       # `nix run . -- compile examples/ledger.backup.lips`.
       packages = forAll (pkgs: {
+        vscode-extension = vscodeExtension pkgs;
         default = pkgs.runCommand "lips"
           { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper pkgs.installShellFiles ]; } ''
           # assets/ is copied as build's SIBLING (not build/assets/), so the
