@@ -35,6 +35,7 @@ import Lips.Kernel.Engine.Typing (wordTypes)
 import Lips.Kernel.Engine.Value
 import qualified Lips.Kernel.Sexp as Sx
 import Lips.Kernel.Clause.Vocabulary
+import Lips.Kernel.Clause.Gate
 import Lips.Runtime (schemeVocabulary)
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
@@ -4816,6 +4817,60 @@ main = hspec $ do
         `shouldSatisfy` \ns -> all (`elem` ns)
           ["read-a-line", "end-of-input?", "emit", "die", "json-parse", "string-cut", "field-of"]
 
+  -- The gate is the whole safety argument: a clause reaches the world only
+  -- through a declared contract, and nothing else can slip in. Ported from
+  -- experiments/logscan-clauses/gate.scm, which proved the walk by hand.
+  describe "the subset gate (Lips.Kernel.Clause.Gate)" $ do
+    it "passes the logscan core the falsifier ran" $
+      gate schemeVocabulary logscanClauses `shouldBe` []
+
+    it "names an identifier no vocabulary grounds" $
+      gate schemeVocabulary [clauseOf "sneaky" "(define (sneaky p) (system p))"]
+        `shouldBe` [Ungrounded "sneaky" "system"]
+
+    it "does not report a lambda parameter as ungrounded" $
+      gate schemeVocabulary [clauseOf "f" "(define (f xs) ((lambda (y) y) xs))"]
+        `shouldBe` []
+
+    it "does not report a let binding as ungrounded" $
+      gate schemeVocabulary [clauseOf "f" "(define (f xs) (let ((y xs)) y))"]
+        `shouldBe` []
+
+    it "does not look inside quoted data" $
+      gate schemeVocabulary [clauseOf "f" "(define (f) '(system))"] `shouldBe` []
+
+    it "sees a clause calling another clause as grounded" $
+      gate schemeVocabulary [ clauseOf "a" "(define (a x) (b x))"
+                            , clauseOf "b" "(define (b x) x)" ] `shouldBe` []
+
+    it "accepts a constant clause, which is what a stated number becomes" $
+      gate schemeVocabulary [clauseOf "daily-limit" "(define daily-limit 14)"]
+        `shouldBe` []
+
+    it "refuses a body that is not a definition" $
+      gate schemeVocabulary [clauseOf "f" "(emit \"now\")"]
+        `shouldSatisfy` any isNotADefinition
+
+    it "refuses a definition whose name is not the clause's own" $
+      gate schemeVocabulary [clauseOf "f" "(define (g x) x)"]
+        `shouldSatisfy` any isNotADefinition
+
+    it "refuses an internal definition, so one clause is one definition" $
+      gate schemeVocabulary [clauseOf "f" "(define (f x) (define y x) y)"]
+        `shouldSatisfy` (/= [])
+
+    it "reports a clause no program line caused" $
+      gate schemeVocabulary [clauseNowhere "f" "(define (f x) x)"]
+        `shouldBe` [Unprovenanced "f"]
+
+    it "reports the contracts the core reaches, and nothing more" $
+      map cName (reachedContracts schemeVocabulary logscanClauses)
+        `shouldBe` ["die", "emit", "end-of-input?", "field-name", "field-of", "field-value", "json-parse", "read-a-line", "string-cut"]
+
+    it "reports four effect contracts: the whole reach of logscan into the world" $
+      map cName (filter ((== Effect) . cKind) (reachedContracts schemeVocabulary logscanClauses))
+        `shouldBe` ["die", "emit", "end-of-input?", "read-a-line"]
+
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).
 subjectsOf :: Base -> [[Text]]
@@ -4979,3 +5034,33 @@ tval t = case parseValue t of
 isSexpValue :: Value -> Bool
 isSexpValue (VSexp _) = True
 isSexpValue _         = False
+
+-- | The logscan core exactly as the falsifier ran it
+-- (experiments/logscan-clauses/clauses.scm), stated here so the suite pins the
+-- corpus rather than a paraphrase of it.
+logscanClauses :: [Clause]
+logscanClauses = zipWith line [1 :: Int ..]
+  [ ("main",          "(define (main args) (scan (parse-spec args)))")
+  , ("parse-spec",    "(define (parse-spec args) (cond ((null? args) '()) (else (cons (parse-pair (car args)) (parse-spec (cdr args))))))")
+  , ("parse-pair",    "(define (parse-pair arg) (or (string-cut arg #\\=) (die \"argument is not field=value:\" arg)))")
+  , ("scan",          "(define (scan spec) (scan-line (read-a-line) spec))")
+  , ("scan-line",     "(define (scan-line line spec) (cond ((end-of-input? line) 'done) ((keep? (record-of line) spec) (emit line) (scan spec)) (else (scan spec))))")
+  , ("record-of",     "(define (record-of line) (or (json-parse line) (die \"line is not JSON:\" line)))")
+  , ("keep?",         "(define (keep? record spec) (cond ((null? spec) #t) ((field-equals? record (field-name (car spec)) (field-value (car spec))) (keep? record (cdr spec))) (else #f)))")
+  , ("field-equals?", "(define (field-equals? record name value) (equal? (field-of record name) value))")
+  ]
+  where line n (nm, body) = (clauseOf nm body) { clFrom = [SourceLoc "logscan.lips" n] }
+
+-- | A clause with provenance, as realize builds one from a decision.
+clauseOf :: Text -> Text -> Clause
+clauseOf name body = case Sx.parseSexp body of
+  Left e  -> error ("test clause does not parse: " <> T.unpack e)
+  Right x -> Clause name x [SourceLoc "test.lips" 1]
+
+-- | A clause no program line caused: what the gate must refuse.
+clauseNowhere :: Text -> Text -> Clause
+clauseNowhere name body = (clauseOf name body) { clFrom = [] }
+
+isNotADefinition :: GateFault -> Bool
+isNotADefinition (NotADefinition _ _) = True
+isNotADefinition _                    = False
