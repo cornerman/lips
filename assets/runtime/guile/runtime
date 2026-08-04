@@ -1,0 +1,20 @@
+# Guile: GNU's Scheme, a native runtime with a fast start. The name of this
+# runtime is the name of this directory; the files below are linked before the
+# minted core, in this order.
+property native
+property fast-start
+
+# Every contract guile's adapters provide. A program reaching for anything not
+# listed here fails loud at compile, naming the contract.
+provides json-parse string-cut field-of field-name field-value
+provides read-a-line end-of-input? emit die
+
+package guile
+package guile-json
+
+file adapter-pure.scm
+file adapter-effects.scm
+
+# Linked in place of adapter-effects.scm when a claim runs the core offline: the
+# same four names, backed by lists instead of by stdin and stdout.
+claim-file adapter-effects-memory.scm

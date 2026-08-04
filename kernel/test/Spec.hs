@@ -36,7 +36,8 @@ import Lips.Kernel.Engine.Value
 import qualified Lips.Kernel.Sexp as Sx
 import Lips.Kernel.Clause.Vocabulary
 import Lips.Kernel.Clause.Gate
-import Lips.Runtime (schemeVocabulary)
+import Lips.Kernel.Clause.Catalogue
+import Lips.Runtime (guileRuntime, schemeVocabulary)
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
@@ -4909,6 +4910,45 @@ main = hspec $ do
       realizeClausesOf
         [ clauseDecision "c1" "keep" "\"just a string\"" (FromSource (SourceLoc "p.lips" 1)) ]
         `shouldSatisfy` either (const True) (const False)
+
+  -- Which runtime a clause set runs on is a computation over data, never a
+  -- choice a model makes: the contracts are derived from the clauses, the
+  -- properties are stated by the author, and the catalogue says who covers both.
+  describe "runtime covering (Lips.Kernel.Clause.Catalogue)" $ do
+    let guile = Runtime "guile" ["native", "fast-start"]
+                        ["emit", "json-parse", "read-a-line"] ["guile", "guile-json"]
+                        ["adapter-pure.scm"] ["adapter-effects-memory.scm"]
+        hoot = Runtime "hoot" ["browser"] ["emit", "json-parse"] ["guile-hoot"]
+                       ["adapter-pure.scm"] []
+
+    it "reads a runtime declaration" $
+      parseRuntime "guile" (T.unlines
+        [ "property native", "provides emit json-parse", "package guile"
+        , "file adapter-pure.scm", "claim-file adapter-effects-memory.scm" ])
+        `shouldBe` Right (Runtime "guile" ["native"] ["emit", "json-parse"] ["guile"]
+                                  ["adapter-pure.scm"] ["adapter-effects-memory.scm"])
+
+    it "picks the one runtime covering the contracts and the properties" $
+      coveringRuntime [guile, hoot] ["emit", "json-parse"] ["native"] `shouldBe` Right guile
+
+    it "fails naming the contract nothing provides" $
+      coveringRuntime [guile, hoot] ["talk-to-serial-port"] []
+        `shouldSatisfy` either (T.isInfixOf "talk-to-serial-port") (const False)
+
+    it "fails naming the property nothing has" $
+      coveringRuntime [guile] ["emit"] ["browser"]
+        `shouldSatisfy` either (T.isInfixOf "browser") (const False)
+
+    -- Deduce-or-fail: an author adding one requirement is cheaper than lips
+    -- choosing wrong and nobody noticing which runtime they got.
+    it "fails listing the candidates when several cover, rather than choosing" $
+      coveringRuntime [guile, hoot] ["emit"] []
+        `shouldSatisfy` either (\e -> T.isInfixOf "guile" e && T.isInfixOf "hoot" e)
+                               (const False)
+
+    it "ships a guile runtime that covers what the logscan core reaches" $
+      coveringRuntime [guileRuntime] (map cName (reachedContracts schemeVocabulary logscanClauses)) []
+        `shouldBe` Right guileRuntime
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).

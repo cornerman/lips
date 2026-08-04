@@ -14,11 +14,14 @@
 -- way under @nix build@ and under a direct @ghc@ from @kernel/@.
 module Lips.Runtime
   ( schemeVocabulary
+  , guileRuntime
+  , runtimes
   ) where
 
 import           Data.FileEmbed (embedStringFile)
 import qualified Data.Text      as T
 
+import Lips.Kernel.Clause.Catalogue  (Runtime, parseRuntime)
 import Lips.Kernel.Clause.Vocabulary (Vocabulary (..), parseContracts, parseVocabulary)
 
 -- | The Scheme vocabulary with its contracts. A malformed asset is a build-time
@@ -36,3 +39,18 @@ formsText = T.pack $(embedStringFile "../assets/runtime/scheme/vocabulary")
 
 contractsText :: T.Text
 contractsText = T.pack $(embedStringFile "../assets/runtime/scheme/contracts")
+
+-- | Every runtime lips ships adapters for. One today; adding another is adding a
+-- directory under @assets\/runtime\/@, which is why breadth on this axis costs
+-- no kernel change.
+runtimes :: [Runtime]
+runtimes = [guileRuntime]
+
+-- | GNU Guile: the first runtime, and the one the falsifier ran on.
+guileRuntime :: Runtime
+guileRuntime = case parseRuntime "guile" guileText of
+  Right r -> r
+  Left e  -> error ("shipped guile runtime is malformed: " <> T.unpack e)
+
+guileText :: T.Text
+guileText = T.pack $(embedStringFile "../assets/runtime/guile/runtime")

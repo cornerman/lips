@@ -1,0 +1,105 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | Which runtime a clause set runs on, computed rather than chosen.
+--
+-- Two sets meet here and neither is guessed. The CONTRACTS come from the clauses
+-- ('Lips.Kernel.Clause.Gate.reachedContracts'), so they are derived from the
+-- program and never stated. The PROPERTIES come from the author, because "runs
+-- in a browser" or "is one static binary" is intent that lives nowhere else.
+-- A runtime covers a program when it provides every contract and has every
+-- property; the catalogue is data, maintained per runtime, exactly as nixpkgs is
+-- data maintained per package.
+--
+-- The model never decides this, and cannot: a clause set names contracts only,
+-- so the choice happens at compile time, after the mint is gone. Switching
+-- runtime relinks adapters instead of re-minting, which is what lets one core
+-- serve several places at once.
+--
+-- 'coveringRuntime' fails rather than guesses, in both directions. Nothing covering names
+-- what is missing. Several covering lists the candidates, because an author
+-- adding one requirement is cheaper than lips picking silently.
+module Lips.Kernel.Clause.Catalogue
+  ( Runtime (..)
+  , parseRuntime
+  , coveringRuntime
+  ) where
+
+import           Data.List (intercalate)
+import           Data.Text (Text)
+import qualified Data.Text as T
+
+-- | One place a clause set can run. @rFiles@ are the adapter files linked
+-- before the core, in this order; @rClaimFiles@ replace the effect adapters when
+-- a claim runs the core offline.
+data Runtime = Runtime
+  { rName       :: Text
+  , rProperties :: [Text]
+  , rProvides   :: [Text]
+  , rPackages   :: [Text]
+  , rFiles      :: [FilePath]
+  , rClaimFiles :: [FilePath]
+  }
+  deriving (Eq, Show)
+
+-- | Parse a runtime declaration. The name comes from the caller (the directory
+-- the file sits in), so the filesystem stays the index and a file cannot claim a
+-- name its location contradicts.
+parseRuntime :: Text -> Text -> Either Text Runtime
+parseRuntime name txt = do
+  decls <- traverse parseLine (meaningfulLines txt)
+  Right (foldr add (Runtime name [] [] [] [] []) (concat decls))
+  where
+    add (DProperty p) r = r { rProperties = p : rProperties r }
+    add (DProvides c) r = r { rProvides = c : rProvides r }
+    add (DPackage p) r = r { rPackages = p : rPackages r }
+    add (DFile f) r = r { rFiles = f : rFiles r }
+    add (DClaimFile f) r = r { rClaimFiles = f : rClaimFiles r }
+
+data Decl
+  = DProperty Text | DProvides Text | DPackage Text | DFile FilePath | DClaimFile FilePath
+
+meaningfulLines :: Text -> [Text]
+meaningfulLines =
+  filter (\l -> not (T.null l) && not ("#" `T.isPrefixOf` l))
+    . map T.strip
+    . T.lines
+
+parseLine :: Text -> Either Text [Decl]
+parseLine line = case T.words line of
+  ("property" : ps) | not (null ps) -> Right (map DProperty ps)
+  ("provides" : cs) | not (null cs) -> Right (map DProvides cs)
+  ("package" : ps) | not (null ps) -> Right (map DPackage ps)
+  ("file" : fs) | not (null fs) -> Right (map (DFile . T.unpack) fs)
+  ("claim-file" : fs) | not (null fs) -> Right (map (DClaimFile . T.unpack) fs)
+  _ -> Left ("a runtime declares property, provides, package, file or claim-file,\
+             \ but this line reads: " <> line)
+
+-- | The one runtime covering these contracts and properties, or why none does.
+coveringRuntime :: [Runtime] -> [Text] -> [Text] -> Either Text Runtime
+coveringRuntime runtimes needed required = case filter covers runtimes of
+  [r] -> Right r
+  []  -> Left noneCovers
+  many -> Left ("several runtimes cover this program ("
+                  <> commas (map rName many)
+                  <> "), so lips will not pick for you. State one more\
+                     \ requirement, or name the runtime you mean.")
+  where
+    covers r = all (`elem` rProvides r) needed && all (`elem` rProperties r) required
+
+    noneCovers = case (unprovided, unmet) of
+      (c : _, _) -> "no runtime provides the contract " <> c
+                      <> ", which this program's behaviour needs. Adapters known: "
+                      <> commas (map rName runtimes)
+      (_, p : _) -> "no runtime has the property " <> p
+                      <> ", which this program requires. Runtimes known: "
+                      <> commas (map rName runtimes)
+      _ -> "no runtime covers this program, and every contract and property is\
+           \ met by some runtime, so no single one meets them together. Requirements: "
+             <> commas required
+    -- A contract, or a property, that not one runtime offers: the honest name to
+    -- report, since a partial cover is confusing to read.
+    unprovided = [ c | c <- needed, not (any (elem c . rProvides) runtimes) ]
+    unmet = [ p | p <- required, not (any (elem p . rProperties) runtimes) ]
+
+commas :: [Text] -> Text
+commas = T.pack . intercalate ", " . map T.unpack
