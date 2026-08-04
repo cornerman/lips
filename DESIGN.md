@@ -588,7 +588,18 @@ Go file the mint writes once, complete but grounded by nothing, traceable to no
 program line, and demonstrably unstable across mints (see "A re-mint rewrites
 behavior the program never mentions", §13). This section records the direction
 chosen for that axis, why it was forced rather than preferred, and what stays
-open. Nothing here is built.
+open.
+
+The physics is now partly built. The falsifier ran and passed
+(`docs/superpowers/learnings/2026-08-04-logscan-clause-falsifier.md`: 24 lines of
+clauses for 70 of Go, every clause traceable, claims in 121 ms with no build),
+and the plan it earned is `docs/superpowers/plans/2026-08-04-logic-axis-plan.md`.
+Landed: the closed clause grammar (`Kernel/Sexp.hs`), a clause as a rule's rhs
+(`VSexp`), the vocabulary and contracts as data (`assets/runtime/scheme/`), the
+subset gate (`Kernel/Clause/Gate.hs`), clause assembly with provenance walked
+back to program lines (`Realize.realizeClauses`), and runtime covering
+(`Kernel/Clause/Catalogue.hs`). Not yet built: the compiled site, offline clause
+claims, the mint, and several sites per program.
 
 **What was rejected first, because the reason generalizes.** The tempting move
 is to let the kernel own a grammar for computation, a small lambda or term
@@ -622,14 +633,47 @@ by a commitment already made:
 Constrained first-order functional programming and deterministic Horn clauses
 are the same object here, argued from two traditions (Survey K).
 
-**Execution is rendering, not interpretation.** Non-overlapping first-order
-clauses ARE a pattern match, so a target-tier renderer prints each definition
-as an ordinary function in the host language and that host's compiler supplies
-speed and typing. No runtime of lips's own ships. Souffle compiling Datalog to
-C++ is the production precedent. A kernel interpreter survives only as an
-offline test oracle, which is what makes per-clause claims cheap.
+**Execution is serialization, not interpretation, and not translation.** A
+clause is emitted as a safe subset of an existing Lisp, so the structure lips
+checks and the text a runtime runs are the same object: emitting is a bijection,
+pinned by a round-trip test (`parse . render = id`), and the host's own compiler
+supplies speed and typing. No runtime of lips's own ships. A kernel interpreter
+survives only as an offline test oracle, which is what makes per-clause claims
+cheap.
 
-Two obligations come with rendering, both from Survey K, and both fall on lips
+**Why not a printer per host, settled.** lips owns printers already (`renderValue`
+for Nix, `renderSexp` for the clause grammar), so the question is never printer or
+no printer. It is serializer or translator. A serializer maps a structure onto a
+syntax that already is that structure, so no choice is made and the round trip
+proves it. A translator into Go or Rust must choose: a match or an if-chain, what
+is owned, which name each temporary gets. Those choices are semantics that appear
+in no clause the gate checked, and no round trip can recover them, since reading
+the output back would need a parser for the host language.
+
+The cost that decides it is not maintenance. Printing into a typed host drags
+types into the clause language, so a contract would have to carry a real
+signature (what WIT exists for) instead of an arity and a sentence. That is a new
+axis, not a printer.
+
+And what a printer would buy is already reachable. A host's LIBRARIES arrive as a
+contract whose adapter is a package that host built, named and never read, which
+is the derivation-interface lesson one level up and costs one directory under
+`assets/runtime/`. Host PERFORMANCE matters for nothing in the corpus and would
+be measured before it counted. Host FAMILIARITY is a social argument and the one
+honest item on the list. So the trade is a permanent semantic gap against a
+four-line adapter declaration.
+
+The falsifiable trigger to reopen it, stated so nobody reopens it on taste: a
+program whose LOGIC must run inside a host that can neither host a Lisp nor be
+reached by name. Kawa covers the JVM, Hoot covers the browser through Wasm,
+Chicken and Gambit cover native binaries, so the real candidates are eBPF, a GPU
+shader, an EVM contract, a spreadsheet cell. If one arrives, the safety net that
+would make a translator admissible is differential claim checking: run every
+claim on every site. Not a proof of equivalence, but it holds the translator to
+the program's own stated observables, and it catches adapter drift a proof would
+not.
+
+Two obligations come with emitting, both from Survey K, and both fall on lips
 rather than on the host: exhaustiveness must be checked in the kernel, since
 among Go, Rust, Haskell, JavaScript and Python only Rust refuses a
 non-exhaustive match (GHC's warning is off by default, Go has no check at all);
