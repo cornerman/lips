@@ -4733,6 +4733,39 @@ main = hspec $ do
     it "does not list the symbols inside quoted data" $
       fmap Sx.sexpSymbols (Sx.parseSexp "(f '(g x))") `shouldBe` Right ["f"]
 
+    -- A clause is a rule's rhs, so the value grammar must carry one. Without
+    -- this a clause could only reach the module as opaque text, which is the
+    -- one thing the logic axis exists to avoid (decision doc §12).
+    it "parses an s-expression as a whole rhs value" $
+      parseValue "(define (limit) #<value:int>)"
+        `shouldSatisfy` either (const False) isSexpValue
+
+    it "round-trips an s-expression rhs through the canonical form" $ do
+      let t = "(define (limit) #<value:int>)"
+      fmap renderValue (parseValue t) `shouldBe` Right t
+
+    it "emits an s-expression rhs unchanged into the module" $
+      fmap renderRealized (parseValue "(define (f x) x)")
+        `shouldBe` Right "(define (f x) x)"
+
+    it "reports the assertion hole inside an s-expression rhs" $
+      fmap valueUsesAssertion (parseValue "(define (limit) #<value:int>)")
+        `shouldBe` Right True
+
+    it "reports a capture an s-expression rhs names" $
+      fmap valueCaptures (parseValue "(define (greet) \"hello #<who>\")")
+        `shouldBe` Right ["who"]
+
+    it "fills a hole inside an s-expression rhs from the program value" $
+      fmap (fillValue (const (Right "14"))) (parseValue "(define (limit) #<value:int>)")
+        `shouldBe` Right (Right "(define (limit) 14)")
+
+    it "has no plain text form, so it can never be written into source" $
+      fmap sourceText (parseValue "(define (f x) x)") `shouldBe` Right Nothing
+
+    it "still refuses a bare identifier as a whole rhs" $
+      parseValue "pkgs.curl" `shouldSatisfy` isLeft
+
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).
 subjectsOf :: Base -> [[Text]]
@@ -4890,3 +4923,9 @@ tval :: Text -> Value
 tval t = case parseValue t of
   Right v -> v
   Left e  -> error (T.unpack ("test value does not parse: " <> e))
+
+-- | Is this value an s-expression (a clause)? Stated as a helper so the test
+-- reads as the property it pins rather than as a pattern match.
+isSexpValue :: Value -> Bool
+isSexpValue (VSexp _) = True
+isSexpValue _         = False

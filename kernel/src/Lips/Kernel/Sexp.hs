@@ -37,9 +37,11 @@ module Lips.Kernel.Sexp
   ( SExp (..)
   , SPiece (..)
   , parseSexp
+  , parseSexpPrefix
   , renderSexp
   , fillSexp
   , sexpSymbols
+  , sexpHoles
   ) where
 
 import           Data.Char      (isAlpha, isDigit, isSpace)
@@ -77,27 +79,40 @@ sexpSymbols (SSym s)   = [s]
 sexpSymbols (SList xs) = concatMap sexpSymbols xs
 sexpSymbols _          = []
 
+-- | Every hole name the expression carries, in order: typed holes and string
+-- holes alike. The value grammar asks, so that a clause's holes are visible to
+-- the same capture and assertion checks every other rhs gets.
+sexpHoles :: SExp -> [Text]
+sexpHoles (SHole _ h) = [h]
+sexpHoles (SStr ps)   = [ h | SPHole h <- ps ]
+sexpHoles (SList xs)  = concatMap sexpHoles xs
+sexpHoles (SQuote x)  = sexpHoles x
+sexpHoles _           = []
+
 -- Parsing -------------------------------------------------------------------
 
 -- | Parse one expression, which must be the whole text. Anything outside the
 -- grammar is a 'Left' naming what was rejected.
 parseSexp :: Text -> Either Text SExp
 parseSexp t = do
-  (x, rest) <- pSexp t
+  (x, rest) <- parseSexpPrefix t
   if T.null (T.stripStart rest)
     then Right x
     else Left ("text is left over after the expression; a clause is one\
                \ expression, not a sequence: " <> T.strip rest)
 
-pSexp :: Text -> Either Text (SExp, Text)
-pSexp raw =
+-- | Parse one expression off the front, returning what follows it. The value
+-- grammar needs this rather than 'parseSexp': an s-expression appears as a
+-- right-hand side inside a larger text the other parser is still consuming.
+parseSexpPrefix :: Text -> Either Text (SExp, Text)
+parseSexpPrefix raw =
   let t = T.stripStart raw
    in case T.uncons t of
         Nothing          -> Left "the expression is empty"
         Just ('(', rest) -> pList rest []
         Just (')', _)    -> Left "a closing ) with no list open"
         Just ('\'', rest) -> do
-          (x, rest') <- pSexp rest
+          (x, rest') <- parseSexpPrefix rest
           Right (SQuote x, rest')
         Just ('"', rest) -> pString rest [] T.empty
         Just ('#', rest) -> pHash rest
@@ -110,7 +125,7 @@ pList raw acc =
         Nothing          -> Left "a list is not closed with )"
         Just (')', rest) -> Right (SList (reverse acc), rest)
         _                -> do
-          (x, rest) <- pSexp t
+          (x, rest) <- parseSexpPrefix t
           pList rest (x : acc)
 
 -- | The @#@ forms: booleans, a character, and a hole. A vector (@#(@) is

@@ -74,6 +74,7 @@ import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Capture (NamePiece (..), fillName, nameParse, nameTokens, selfName)
 import Lips.Kernel.Hole    (HoleType (..), holeTypeText, parseHoleType)
+import Lips.Kernel.Sexp    (SExp, fillSexp, parseSexpPrefix, renderSexp, sexpHoles)
 import Lips.Kernel.Surface (stripTrailingPunct)
 
 -- | One piece of a string value. 'PRef' is a @${pkgs.<dotted-path>}@ package
@@ -116,6 +117,12 @@ data Value
                           -- like any other. No quoted keys: a field name that is
                           -- not a bare identifier is rejected, so a program value
                           -- can never alter the attrset's shape.
+  | VSexp SExp            -- ^ a clause: an s-expression in the closed grammar of
+                          -- 'Lips.Kernel.Sexp', emitted verbatim and never
+                          -- evaluated by the kernel. It is the one rhs whose
+                          -- destination is a program rather than an option, so
+                          -- it has no plain text form ('sourceText') and names
+                          -- no derivation.
   | VTail (Maybe HoleType) Text
                           -- ^ @<value.tail>[@:@type]@: fills to a 'VList' of
                           -- the program value's whitespace tokens (trailing
@@ -346,6 +353,9 @@ fromHoleType HPkg   = WPkg
 valueCaptures :: Value -> [Text]
 valueCaptures = go
   where
+    -- A clause's holes are captures by the same rule as everywhere else: any
+    -- hole name that is not the matched assertion.
+    go (VSexp x)  = filter (\h -> h /= "value" && not (isJust (holeIndex h))) (sexpHoles x)
     go (VStr ps)  = concatMap piece ps
     go (VList vs) = concatMap go vs
     go (VAttr fs) = concatMap (go . snd) fs
@@ -399,6 +409,7 @@ valuePathHoles = go
 valueUsesAssertion :: Value -> Bool
 valueUsesAssertion = go
   where
+    go (VSexp x)    = any assertionHole (sexpHoles x)
     go (VStr ps)    = any piece ps
     go (VList vs)   = any go vs
     go (VAttr fs)   = any (go . snd) fs
@@ -457,6 +468,10 @@ pValue raw =
    in case T.uncons t of
         Nothing -> Left "the right-hand side is empty"
         Just ('"', rest) -> pString rest
+        -- A clause: the one rhs that is a program, not an option value. Handed
+        -- to the s-expression parser, which consumes exactly its own text.
+        Just ('(', _)    -> fmap (\(x, r) -> (VSexp x, r)) (parseSexpPrefix t)
+        Just ('\'', _)   -> fmap (\(x, r) -> (VSexp x, r)) (parseSexpPrefix t)
         Just ('[', rest) -> pList (T.stripStart rest) []
         Just ('{', rest) -> pAttr (T.stripStart rest) []
         Just ('<', more) -> pTypedHole more
@@ -704,6 +719,7 @@ renderValue (VAttr [])     = "{}"
 renderValue (VAttr fs)     = "{ " <> T.unwords (map (\(k, v) -> k <> " = " <> renderValue v <> ";") fs) <> " }"
 renderValue (VTail Nothing _)   = "<value.tail>"
 renderValue (VTail (Just ht) _) = "<value.tail:" <> holeTypeText ht <> ">"
+renderValue (VSexp x)      = renderSexp x
 renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
   where
     piece (PLit t)  = escape t
@@ -764,6 +780,7 @@ escape = T.replace "${" "\\${"
 fillValue :: (Text -> Either Text Text) -> Value -> Either Text Text
 fillValue pick = fmap renderValue . fillV
   where
+    fillV (VSexp x)    = VSexp <$> fillSexp pick x
     fillV (VStr ps)    = VStr <$> traverse fillP ps
     fillV (VList vs)   = VList <$> traverse fillV vs
     fillV (VAttr fs)   = VAttr <$> traverse (\(k, v) -> (k,) <$> fillV v) fs
