@@ -152,6 +152,9 @@ fromRealizeError (RDangling ns)      = Unrealizable
   ["references artifact(s) nothing builds: " <> T.intercalate ", " ns]
 fromRealizeError (RBadArtifact n why) = Unrealizable ["artifact " <> n <> ": " <> why]
 fromRealizeError (RBadClaim why)     = Unrealizable [why]
+-- A clause that fails the subset gate is an engine bug like the others: the
+-- program is fine, the mint reached for something it may not name.
+fromRealizeError (RBadClause why)    = Unrealizable [why]
 fromRealizeError (RMalformed s e)    = Unrealizable ["option " <> subjText s <> ": " <> e]
 
 -- | Render a subject as a dotted path for a plain-language error.

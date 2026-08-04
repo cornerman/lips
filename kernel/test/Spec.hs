@@ -4871,6 +4871,45 @@ main = hspec $ do
       map cName (filter ((== Effect) . cKind) (reachedContracts schemeVocabulary logscanClauses))
         `shouldBe` ["die", "emit", "end-of-input?", "read-a-line"]
 
+  -- A clause is a decision, so realize assembles the core the same way it
+  -- assembles a module: resolve, then project. Order is the program's own and
+  -- every definition names the line that caused it.
+  describe "realize clauses (a clause is a decision, not baked source)" $ do
+    it "assembles clause decisions in source-line order, with provenance" $
+      realizeClausesOf
+        [ clauseDecision "c2" "keep" "(define (keep x) x)" (FromSource (SourceLoc "p.lips" 2))
+        , clauseDecision "c1" "main" "(define (main a) (keep a))" (FromSource (SourceLoc "p.lips" 1))
+        ]
+        `shouldBe` Right (Just (T.concat
+          [ ";; @from p.lips:1\n(define (main a) (keep a))\n"
+          , "\n;; @from p.lips:2\n(define (keep x) x)\n" ]))
+
+    it "returns nothing for a program that states no clauses" $
+      realizeClausesOf [(mk "g1" "services" "true" Stated)] `shouldBe` Right Nothing
+
+    -- A minted clause is DERIVED (a rule emitted it), so its own provenance
+    -- names a rule. The program lines are its parents', which is what makes the
+    -- chain a proof tree over sentences rather than over rules.
+    it "walks a derived clause back to the program line behind it" $
+      realizeClausesOf
+        [ (mk "p1" "filter.logic" "keep matching lines" Stated)
+            { dProv = FromSource (SourceLoc "logscan.lips" 2) }
+        , clauseDecision "c1" "keep" "(define (keep x) x)"
+            (Derived [DecisionId "p1"] (RuleId "r1"))
+        ]
+        `shouldBe` Right (Just ";; @from logscan.lips:2\n(define (keep x) x)\n")
+
+    it "refuses a core whose clause reaches a name no contract grounds" $
+      realizeClausesOf
+        [ clauseDecision "c1" "sneaky" "(define (sneaky p) (system p))"
+            (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldSatisfy` either (const True) (const False)
+
+    it "refuses an assertion that is not an s-expression at all" $
+      realizeClausesOf
+        [ clauseDecision "c1" "keep" "\"just a string\"" (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldSatisfy` either (const True) (const False)
+
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).
 subjectsOf :: Base -> [[Text]]
@@ -5064,3 +5103,12 @@ clauseNowhere name body = (clauseOf name body) { clFrom = [] }
 isNotADefinition :: GateFault -> Bool
 isNotADefinition (NotADefinition _ _) = True
 isNotADefinition _                    = False
+
+-- | A decision a rule emitted to clause.<name>, as realize sees it.
+clauseDecision :: Text -> Text -> Text -> Provenance -> Decision
+clauseDecision i name body prov =
+  (mk i "clause" body Stated)
+    { dSubject = Subject ["clause", name], dKind = Meta, dProv = prov }
+
+realizeClausesOf :: [Decision] -> Either RealizeError (Maybe Text)
+realizeClausesOf = realizeClauses (const Replace) noAssembly schemeVocabulary . fromList

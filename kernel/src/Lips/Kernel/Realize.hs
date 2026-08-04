@@ -22,6 +22,7 @@ module Lips.Kernel.Realize
   , realizeArtifactPaths
   , realizeArtifactFills
   , realizeClaims
+, realizeClauses
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
@@ -30,10 +31,13 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
-import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve)
+import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve, toList)
+import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate)
+import Lips.Kernel.Clause.Vocabulary (Vocabulary)
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim        (Claim, claimRooted, claimsFromDecisions)
 import Lips.Kernel.Decision
+import Lips.Kernel.Sexp         (renderSexp)
 import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
                                   sourceText, valueArtifactNames, valueArtifactPaths,
@@ -56,6 +60,9 @@ data RealizeError
   | -- | An option assertion that is not a canonical 'Value' (an engine defect;
     --    after the R1 canonical-storage refactor every assertion must re-parse).
     RMalformed Subject Text
+  | -- | The clause set does not pass the subset gate: a mint defect, reported
+    --   in the gate's own words so the offending name travels.
+    RBadClause Text
   deriving (Eq, Show)
 
 -- | Realize a base to a NixOS module, or report why it cannot. The merge
@@ -160,6 +167,76 @@ realizeClaims modeOf assemble base =
     Left errs     -> Left (resolveErr errs)
     Right winners -> either (Left . RBadClaim) Right
                             (claimsFromDecisions (Map.toList winners))
+
+-- | The clause core a ground base states: every @clause.\<name\>@ decision,
+-- gated, then rendered as one Scheme file.
+--
+-- Two things make this more than a concatenation. Order is the program's own:
+-- clauses come out in source-line order, the same rule
+-- 'Lips.Kernel.Engine.Aggregate' uses for list contributors, so a human reads
+-- the file in the order they wrote the sentences. And each definition carries
+-- the program lines that caused it, walked out of the provenance chain, which is
+-- what makes invented behaviour visible instead of merely present.
+--
+-- 'Nothing' when the program states no clauses, so a configuration-only program
+-- is untouched by the logic axis.
+realizeClauses :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+               -> Vocabulary -> Base -> Either RealizeError (Maybe Text)
+realizeClauses modeOf assemble vocab base =
+  case resolve modeOf assemble base of
+    Left errs -> Left (resolveErr errs)
+    Right winners -> do
+      clauses <- traverse (clauseOf (byId base)) (clauseDecisions (Map.toList winners))
+      case gate vocab (sortOn (locOf . clFrom) clauses) of
+        (f : _) -> Left (RBadClause (faultText f))
+        []      -> Right (renderCore (sortOn (locOf . clFrom) clauses))
+  where
+    -- A clause with no provenance sorts last; the gate rejects it anyway, so the
+    -- order only has to be total.
+    locOf locs = case locs of
+      (SourceLoc _ n : _) -> n
+      []                  -> maxBound
+
+clauseDecisions :: [(Subject, Decision)] -> [(Text, Decision)]
+clauseDecisions winners =
+  [ (name, d) | (Subject ("clause" : name : _), d) <- winners ]
+
+-- | One clause from its decision: the assertion must be an s-expression, and the
+-- program lines behind it are walked out of the provenance chain.
+clauseOf :: Map.Map DecisionId Decision -> (Text, Decision) -> Either RealizeError Clause
+clauseOf index (name, d) = case parseValue (unAssertion (dAssertion d)) of
+  Right (VSexp x) -> Right (Clause name x (sourceLocs index d))
+  Right _ -> Left (RBadClause ("clause " <> name <> " is not an s-expression: "
+                                <> unAssertion (dAssertion d)))
+  Left e  -> Left (RBadClause ("clause " <> name <> " does not parse: " <> e))
+
+-- | The program lines a decision rests on, by walking @Derived@ parents back to
+-- their sources. A minted clause is always derived (a rule emitted it), so its
+-- own provenance names a rule; the LINES are its parents', and they are what a
+-- human wrote.
+sourceLocs :: Map.Map DecisionId Decision -> Decision -> [SourceLoc]
+sourceLocs index = nub . go 8
+  where
+    go :: Int -> Decision -> [SourceLoc]
+    go 0 _ = []                       -- a cycle cannot arise, but never loop on one
+    go fuel d = case dProv d of
+      FromSource loc  -> [loc]
+      Derived ids _   -> concat [ go (fuel - 1) p | i <- ids, Just p <- [Map.lookup i index] ]
+      FromGeneration _ -> []
+
+byId :: Base -> Map.Map DecisionId Decision
+byId b = Map.fromList [ (dId d, d) | d <- toList b ]
+
+-- | The core file: each definition preceded by the program lines that caused it.
+-- Text, because what a runtime consumes is a file; the structure lives in the
+-- decisions this is rendered from.
+renderCore :: [Clause] -> Maybe Text
+renderCore [] = Nothing
+renderCore clauses = Just (T.intercalate "\n" (map one clauses))
+  where
+    one cl = T.concat [ T.concat (map from (clFrom cl))
+                      , renderSexp (clBody cl), "\n" ]
+    from (SourceLoc f n) = ";; @from " <> f <> ":" <> T.pack (show n) <> "\n"
 
 -- | Every RELATIVE path the realized base names, paired with the decision that
 -- named it. Nix resolves such a path against the module directory, i.e. against

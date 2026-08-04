@@ -175,6 +175,10 @@ segEq k c = k == "*" || k == c
 reservedRoot :: [Text] -> Bool
 reservedRoot ("artifact" : _) = True
 reservedRoot ("claim" : _)    = True
+-- A clause is behaviour, assembled by 'Lips.Kernel.Realize.realizeClauses' and
+-- gated by 'Lips.Kernel.Clause.Gate'. No world declares it, and its type check
+-- is the gate, not an option type.
+reservedRoot ("clause" : _)   = True
 reservedRoot _                = False
 
 -- | The human wording of an option type (the nixpkgs 'type' string, not the
