@@ -17,6 +17,32 @@ runtimes with no re-mint.
 **Tech Stack:** Haskell (kernel, `-Wall` clean, hspec), Nix (substrate and
 build), Guile 3 (first runtime), guile-json (first pure adapter package).
 
+## Status, and Where the Plan Was Corrected in Flight
+
+Tasks 1 to 6 are landed and green (620 examples, 0 failures, `-Wall` clean).
+Six things turned out differently than written, and the plan is corrected here
+rather than left to mislead whoever runs Tasks 7 to 10:
+
+- **The hole marker inside a clause is `#<value:int>`, not `<value:int>`.** `<`
+  and `>` are ordinary Scheme identifier characters, so a clause must be able to
+  write `(< n 3)`. `#<...>` is reserved notation in Scheme, which reads exactly
+  right: unreadable until filled.
+- **`HoleType` moved to `kernel/src/Lips/Kernel/Hole.hs`**, imported by both value
+  grammars, so `<value:int>` cannot come to mean two things. `Value` re-exports
+  it, so no caller changed.
+- **`Sexp` exports `parseSexpPrefix`** beside `parseSexp`, because the value
+  grammar parses a clause out of the middle of a larger text.
+- **Tests live in the existing monolithic `kernel/test/Spec.hs`**, not in new
+  spec files: that is the suite's pattern. `Lips.Kernel.Sexp` is imported
+  qualified as `Sx` there, since `Lips.Kernel.Lang.Pattern` already owns the
+  names `SLit` and `SHole`.
+- **`cover` is called `coveringRuntime`**, because `Test.QuickCheck` exports a
+  `cover` the suite imports.
+- **The shipped vocabulary and catalogue load in a new tier,
+  `kernel/src/Lips/Runtime.hs`**, which embeds the assets and hands the kernel a
+  `Vocabulary` and a `[Runtime]`. The kernel stays a reader; what lips happens to
+  ship is this module's decision.
+
 ## Global Constraints
 
 - The kernel knows nothing about any program, language or runtime. Every
