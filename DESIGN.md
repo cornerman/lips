@@ -789,9 +789,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   rules matching it -- extracted from `Engine.Reach`, which now reads a landing
   instead of computing its own: one place knows how a word reaches a rule, and
   the marker/`applyPattern` substitution is not copied. `Engine.Typing` joins
-  the two, and is SILENT where unsure (two rules typing one word differently, a
-  word no rule spends): a wrong type reads to the author as their own mistake
-  when it is the engine's.
+  the two, and takes the NARROWEST position spending the word: a string hole
+  escapes rather than coerces, so it constrains nothing and never contradicts a
+  coercion (the committed `http` engine writes its port into Go source AND into
+  `allowedTCPPorts`, so the honest answer is int, not text). Where two positions
+  genuinely contradict, or no rule spends the word, it is SILENT: a wrong type
+  reads to the author as their own mistake when it is the engine's.
 
   The editor spends it twice. A completion labels each hole with its type
   (`serve on port <port:int>`) and carries the same in the LSP `detail` field,

@@ -3620,10 +3620,19 @@ main = hspec $ do
             [rul "r1" "match fact install.list => environment.systemPackages \"<value.tail:pkg>\""]
         `shouldBe` [("pkgs", WPkg)]
 
-    it "says nothing where two rules disagree about the type" $
+    -- A string position takes any text, so it does not contradict a coercion:
+    -- the word must satisfy the narrower one. This is the committed http engine's
+    -- shape, where the port is both written into Go source and opened in the
+    -- firewall, and "text" there would be the less useful half of the truth.
+    it "takes the narrower of a string and a typed position" $
+      types [pat "p1" "serve on port <port> => fact http.port \"<port>\""]
+            [rul "r1" "match fact http.port => artifact.s.fill.port \"\\\"<value>\\\"\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\""]
+        `shouldBe` [("port", WInt)]
+
+    it "says nothing where two rules coerce the word differently" $
       types [pat "p1" "port <port> => fact a.port \"<port>\" ; fact b.port \"<port>\""]
             [ rul "r1" "match fact a.port => services.x.port \"<value:int>\""
-            , rul "r2" "match fact b.port => services.y.host \"\\\"<value>\\\"\"" ]
+            , rul "r2" "match fact b.port => services.y.debug \"<value:bool>\"" ]
         `shouldBe` []
 
     it "says nothing about a word no rule spends" $

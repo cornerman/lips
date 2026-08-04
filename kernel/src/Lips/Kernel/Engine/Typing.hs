@@ -28,7 +28,8 @@ import           Data.Text       (Text)
 import Lips.Kernel.Capture        (captureName, nameTokens)
 import Lips.Kernel.Engine.Data    (Emit (..), MapRule (..))
 import Lips.Kernel.Engine.Landing (Landing (..), Part (..), wordLandings)
-import Lips.Kernel.Engine.Value   (WordType (..), holeIndex, valueHoleTypes)
+import Lips.Kernel.Engine.Value   (WordType (..), holeIndex, narrowerWordType,
+                                   valueHoleTypes)
 import Lips.Kernel.Lang.Pattern   (Pattern (..), holesOf)
 
 -- | The type of every word a pattern reads, where the engine fixes one.
@@ -39,26 +40,32 @@ wordTypes pats rules p = Map.fromList
   [ (h, t) | h <- holesOf p, Just t <- [oneType (typesOf h)] ]
   where
     typesOf h = [ t | l <- wordLandings pats rules p h, r <- lgRules l, t <- siteTypes l r ]
-    -- Only one answer counts as an answer: two positions disagreeing means the
-    -- engine itself gives the word two shapes, which no label can state.
+    -- Every position the word fills constrains it, so the answer is the
+    -- narrowest of them ('narrowerWordType'): a port written into source AND
+    -- into an int option is an int. Positions that contradict give no answer at
+    -- all -- the engine itself gives the word two shapes, which no label can
+    -- state, and a wrong one reads as the author's mistake.
     oneType ts = case ts of
-      (t : rest) | all (== t) rest -> Just t
-      _                            -> Nothing
+      []       -> Nothing
+      (t : ts') -> foldl (\acc x -> acc >>= narrowerWordType x) (Just t) ts'
 
 -- | The types one rule gives a word: from the assertion it reads, and from the
 -- subject capture standing where the word lands.
 siteTypes :: Landing -> MapRule -> [WordType]
 siteTypes l r = assertionTypes ++ captureTypes
   where
-    rhsTypes = Map.unionsWith keepFirst (map (valueHoleTypes . emRhs) (mrEmits r))
-    keepFirst a _ = a
+    -- Every emit of the rule, not the first: one rule may write the word into
+    -- several options, and each of those positions constrains it.
+    rhsTypes = Map.fromListWith (++)
+      [ (n, [t])
+      | e <- mrEmits r, (n, t) <- Map.toList (valueHoleTypes (emRhs e)) ]
     -- The rhs hole that reads this word: <value> and <value.tail> read the whole
     -- assertion, an indexed <value.N> reads part N -- and reads a WORD of a
     -- one-part value, which is the same position.
     assertionTypes = case lgPart l of
-      Nothing     -> []
-      Just Whole  -> [ t | (n, t) <- Map.toList rhsTypes, reads' n Nothing ]
-      Just (Part i) -> [ t | (n, t) <- Map.toList rhsTypes, reads' n (Just i) ]
+      Nothing       -> []
+      Just Whole    -> [ t | (n, ts) <- Map.toList rhsTypes, reads' n Nothing, t <- ts ]
+      Just (Part i) -> [ t | (n, ts) <- Map.toList rhsTypes, reads' n (Just i), t <- ts ]
     reads' n mi = n == "value" || n == "value.tail"
                     || maybe (isJust (holeIndex n)) (\i -> holeIndex n == Just i) mi
     -- A capture the rule's subject binds at the segment the word lands in. A
@@ -69,7 +76,7 @@ siteTypes l r = assertionTypes ++ captureTypes
       [ if inPath c then WName else t
       | i <- lgSegments l
       , Just c <- [captureName (segAt i)]
-      , Just t <- [Map.lookup c rhsTypes]
+      , t <- Map.findWithDefault [] c rhsTypes
       ] ++
       [ WName
       | i <- lgSegments l

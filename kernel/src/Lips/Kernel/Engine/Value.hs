@@ -54,6 +54,7 @@ module Lips.Kernel.Engine.Value
   , valueUsesAssertion
   , WordType (..)
   , valueHoleTypes
+  , narrowerWordType
   , renderWordType
   , holeIndex
   , valueRefsDerivation
@@ -286,6 +287,19 @@ bindCaptureValue caps = go
 data WordType = WText | WName | WInt | WBool | WFloat | WPath | WPkg
   deriving (Eq, Ord, Show)
 
+-- | The narrower of two positions the same word fills, or 'Nothing' when they
+-- contradict. 'WText' is the weakest constraint the grammar has -- a string hole
+-- takes any text, escaping rather than coercing -- so a typed position beside a
+-- string position is what the word must satisfy, not a disagreement. Two
+-- different coercions (an int and a bool) genuinely contradict, and a word the
+-- engine cannot describe is better left undescribed.
+narrowerWordType :: WordType -> WordType -> Maybe WordType
+narrowerWordType a b
+  | a == b     = Just a
+  | a == WText = Just b
+  | b == WText = Just a
+  | otherwise  = Nothing
+
 -- | The word type in the language the author reads (an LSP label, a diagnostic).
 renderWordType :: WordType -> Text
 renderWordType WText  = "text"
@@ -307,7 +321,7 @@ renderWordType WPkg   = "package"
 valueHoleTypes :: Value -> Map.Map Text WordType
 valueHoleTypes = Map.mapMaybe id . Map.fromListWith agree . go
   where
-    agree new old = if new == old then old else Nothing
+    agree new old = old >>= \o -> new >>= narrowerWordType o
     one h t = [(h, Just t)]
     go (VStr ps)  = concatMap piece ps
     go (VList vs) = concatMap go vs
