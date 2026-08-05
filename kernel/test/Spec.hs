@@ -32,6 +32,7 @@ import Lips.Generate.Draft (DraftTree (..), materializeDraft)
 import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
+import Lips.Kernel.Grounding
 import Lips.Kernel.Engine.Value
 import qualified Lips.Kernel.Sexp as Sx
 import Lips.Kernel.Clause.Vocabulary
@@ -4928,6 +4929,49 @@ main = hspec $ do
       realizeClausesOf
         [ clauseDecision "c1" "keep" "\"just a string\"" (FromSource (SourceLoc "p.lips" 1)) ]
         `shouldSatisfy` either (const True) (const False)
+
+  -- Making the status quo visible: every assertion is vouched by a schema, by
+  -- the contract set, by the author, or by nothing. The last class is where
+  -- seventy lines of Go arrive in a five-line program, so it is counted.
+  describe "grounding (what vouches for each assertion, counted)" $ do
+    let base =
+          [ (Subject ["services", "x", "enable"], mk "o1" "x" "true" Stated)
+          , (Subject ["clause", "keep"], mk "c1" "x" "(define (keep x) x)" Stated)
+          , (Subject ["claim", "run", "stdout"], mk "k1" "x" "\"hi\"" Stated)
+          , (Subject ["artifact", "greet", "args", "text"],
+              (mk "g1" "x" "echo \"hello from lips\"" Stated)
+                { dProv = FromSource (SourceLoc "greet.lips" 1) })
+          , (Subject ["artifact", "greet", "builder"], mk "b1" "x" "\"writeShellApplication\"" Stated)
+          , (Subject ["artifact", "logscan", "args", "src"],
+              (mk "s1" "x" "./artifacts/logscan" Stated)
+                { dProv = FromSource (SourceLoc "logscan.lips" 4) })
+          ]
+        g = grounding base
+
+    it "counts what the schema vouches for" $
+      gOptions g `shouldBe` 1
+
+    it "counts clauses and claims separately, since different things vouch" $ do
+      gClauses g `shouldBe` 1
+      gClaims g `shouldBe` 1
+
+    it "names an artifact argument as glue, because no schema declares one" $
+      map (uSubject) (gGlue g) `shouldBe` [Subject ["artifact", "greet", "args", "text"]]
+
+    it "names a staged source tree separately: the same defect at file scale" $
+      map (uSubject) (gStaged g) `shouldBe` [Subject ["artifact", "logscan", "args", "src"]]
+
+    it "does not count a builder reference, which names rather than carries text" $
+      length (gGlue g) + length (gStaged g) `shouldBe` 2
+
+    it "reports the four classes on one line, then names the unvouched" $ do
+      case groundingReport g of
+        (summary : glueLine : _) -> do
+          summary `shouldBe`
+            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 2 unvouched assertions (nothing)"
+          glueLine `shouldSatisfy` T.isInfixOf "glue: artifact.greet.args.text"
+          glueLine `shouldSatisfy` T.isInfixOf "<- greet.lips:1"
+        out -> expectationFailure ("report is too short: " <> show out)
 
   -- Which runtime a clause set runs on is a computation over data, never a
   -- choice a model makes: the contracts are derived from the clauses, the
