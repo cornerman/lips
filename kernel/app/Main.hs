@@ -753,16 +753,36 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- Where an engine BAKES source, the module text says nothing about what
       -- that code does, so without one stated observable nothing holds the
       -- implementation -- or any future re-mint -- to the author's own words.
-      -- SAID, not refused: an engine that is otherwise correct is worth having,
-      -- and a witness comes from the author's own example, which no gate can
-      -- conjure. The mint is asked for a claim by the prompt and files a gap
-      -- where the program states none. A pure-configuration mint is unaffected.
+      --
+      -- REFUSED, not said (changed 2026-08-04). It was a warning, on the argument
+      -- that an otherwise-correct engine is worth having and a witness cannot be
+      -- conjured. `logscan` spent months as the counter-example: 76 lines of Go,
+      -- roughly fifteen traceable, a silent `continue` against fail-loud doctrine,
+      -- two mints disagreeing about what the program did, and every gate green
+      -- throughout. The cost of refusing is one sentence from the author, which
+      -- the message names. A pure-configuration mint is unaffected, and so is an
+      -- engine whose behaviour is clauses with a claim over them.
       let allClaims = concatMap (rlClaims . snd) validated
           unobserved = claimlessBakedSource minted allClaims
           -- The same defect one axis over, and less forgivable: a clause claim
           -- needs no machine and no compiler, so the cost that makes an
           -- unobserved artifact understandable does not apply.
           unobservedClauses = clauselessClaims (edRules eng)
+      -- Refused for the same reason and with less excuse: a claim over clauses
+      -- needs no machine, no compiler and about a second, so behaviour minted
+      -- with nothing watching it is a choice rather than a cost.
+      when unobservedClauses $ die (report
+        (T.pack rep <> " puts the program's behaviour in clauses, and nothing"
+          <> " observes what they do.")
+        []
+        ("\8594 state an example in the program -- what it is given and what it"
+          <> " prints -- and mint again: lips generate " <> T.pack rep))
+      when unobserved $ die (report
+        (T.pack rep <> " builds a program from source, and nothing observes what"
+          <> " that program does:")
+        [ sfArtifact sf <> "/" <> sfPath sf | sf <- minted ]
+        ("\8594 state an example in the program -- what it is given and what it"
+          <> " prints -- and mint again: lips generate " <> T.pack rep))
       case unplaceableClaims target allClaims of
         []  -> pure ()
         ids -> die (report
@@ -877,19 +897,7 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         say ""
         say ("lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":")
         mapM_ (\g -> note ("- " <> gapSlug g)) gaps
-      when unobservedClauses $ do
-        say ""
-        say ("this setup puts the program's behaviour in clauses, and nothing"
-               <> " observes what they do:")
-        say ("\8594 state an example in the program -- what it is given and what it"
-               <> " prints -- and mint again: lips generate " <> T.pack rep)
-      when unobserved $ do
-        say ""
-        say ("this setup builds a program from source, but nothing observes what"
-               <> " that program does:")
-        mapM_ (\sf -> note ("- " <> sfArtifact sf <> "/" <> sfPath sf)) minted
-        say ("\8594 state an example in the program -- what it is given and what it"
-               <> " prints -- and mint again: lips generate " <> T.pack rep)
+
       say ""
       say ("→ read the whole account: " <> T.pack (readmePath rep))
       mapM_ (\(f, _) -> say ("→ build it:              lips compile " <> T.pack f)) validated

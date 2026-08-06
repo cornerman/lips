@@ -3192,6 +3192,26 @@ from small points and is recorded here as such.
   whole Nix value algebra minus computation, the template grammar a small
   complete capture algebra. Computation is the single deliberate hole, routed
   to glue. A missing grammar case is a kernel bug, not an acceptable refusal.
+- **No per-program source written by a model (settled 2026-08-04, gated).** A
+  blob is admissible only where it is NOT per program and reviewed once (an
+  adapter under `assets/runtime/`, serving every program), or where it is somebody
+  else's package reached by name. Behaviour a program states goes in clauses.
+  Where no contract covers the capability the behaviour needs -- files, clocks,
+  sockets, as `experiments/validate` measured with `rotate` -- baked source stays
+  admissible, because refusing it would refuse the program rather than the
+  mechanism. What is NOT admissible either way is behaviour nothing observes:
+  `generate` now REFUSES an engine that bakes source with no claim, and one that
+  mints clauses with no claim over them, naming the one sentence that fixes it.
+  `logscan` spent months as the counter-example (76 lines of Go, roughly fifteen
+  traceable, two mints disagreeing about what the program did, every gate green)
+  and is now clauses.
+  The escape for a genuine one-off is a VALUE, never a file: `greet`'s four words
+  of bash are bounded by sitting in one assertion attached to one program line,
+  where a staged tree has no such bound and grew to 76 lines. Two grades deserve
+  different trust: AUTHOR glue, whose foreign text is in the program, is
+  legitimate without qualification; MINT glue, where the model chose it (`echo` in
+  `greet`), is admissible but counted (`Lips.Kernel.Grounding`) and pinned by a
+  claim, since it is exactly what a re-mint rewrites.
 - **Expressiveness gaps route through three doors, never a plugin API.**
   Per-problem computation -> marked glue (in the Solution, visible blast
   radius); mechanism reach -> nixpkgs/flakes (an engine emitting the options
