@@ -165,6 +165,32 @@ contracts. Joe-E does it to Java, SES to JavaScript, Starlark to Python, SPARK
 to Ada. lips owns the gate and the contract vocabulary; it owns no semantics and
 ships no runtime.
 
+## The Corpus, Measured
+
+The run earned a counter, `Lips.Kernel.Grounding`, printed on every `lips check`:
+every assertion is vouched by the target schema, by the contract set, by the
+author who stated an observable, or by nothing. It classifies nothing by shape,
+because guessing which strings are really programs is the invention lips refuses.
+The caller that stages measures file sizes, since the kernel is pure and a path
+would otherwise read as one harmless word.
+
+What the corpus says, before any migration:
+
+| program | unvouched |
+|---|---|
+| `logscan` | staged tree, 80 lines in 2 files |
+| `hello.http` | staged tree, 66 lines in 2 files |
+| `board` | staged tree, 41 lines in 1 file |
+| `function` | staged tree, 25 lines in 2 files |
+| `habit` | staged tree |
+| `greet` | 4 words of mint-chosen bash (`echo "hello from lips"`) |
+| the other 14 | nothing: every assertion is an option the schema defines |
+
+So the defect is exactly localized. Configuration-only programs are clean, and
+every unvouched line in the corpus belongs to an artifact. `greet` is the
+interesting borderline: four words in one assertion attached to one program line,
+which is the escape worth keeping, bounded by its own shape.
+
 ## Next
 
 1. Two real mints of `logscan` as clauses, through `pi`, to answer check (c).

@@ -276,33 +276,53 @@ tracks only what is still open.
    enough, and item 1's claims falsify the same defect by observation rather
    than by counting. Revisit after the re-mints above supply more datapoints.
 
-8. **The logic-axis falsifier: re-mint `logscan` as clauses** (opened 2026-08-02
-   with DESIGN's "The Logic Axis"). Run BEFORE any kernel work, because it is
-   the cheapest possible refutation of the whole direction: five program lines,
-   no kernel changes, one afternoon.
+8. **The logic axis: finish the plan** (falsifier opened 2026-08-02, run and
+   PASSED 2026-08-04). The refutation is spent: `docs/superpowers/learnings/2026-08-04-logscan-clause-falsifier.md`
+   holds the numbers, `docs/superpowers/plans/2026-08-04-logic-axis-plan.md` the
+   ten tasks, and DESIGN §13 what landed. Six tasks are done and green; four
+   remain, in this order.
 
-   Context, and the defect it targets: re-minting `logscan` after adding one
-   sentence changed what the program does (numeric coercion, exit code, buffer
-   limit; DESIGN §13, "A re-mint rewrites behavior the program never
-   mentions"). An audit of the committed 76-line Go file traces roughly fifteen
-   lines to the five sentences; the rest is invented policy, including a silent
-   `continue` on malformed JSON that contradicts fail-loud doctrine while every
-   gate stays green.
+   a. **Compile emits a runnable site** (plan Task 7). `compile` already writes
+      `core.scm`; it must also link the runtime's adapters, write the entry
+      point, and wrap them in a derivation naming the runtime's packages, so
+      `nix run` over a clause program works. Mirror
+      `experiments/logscan-clauses/logscan.scm`, which is exactly the assembly.
+   b. **Clause claims inside `check`** (plan Task 8). A claim whose call names
+      only clauses runs under the in-memory adapter: no derivation, no boot, no
+      binary. Derived like the other two places, never declared. The experiment's
+      `claims.scm` is the file to generate, and it runs in 121 ms.
+   c. **Teach the mint to emit clauses** (plan Task 9), then mint `logscan`
+      twice from one program and diff the cores. That answers falsifier check
+      (c), the one question a hand-mint could not: do two mints differ only
+      where the program differs? The baseline to beat is measured on the Go
+      axis, where two mints disagree on the exit code for a bad argument (1
+      versus 2) and on whether `{"a":1e-7}` matches `a=0.0000001`.
+   d. **Sites** (plan Task 10). A program states where it runs, coverage runs
+      per site over one shared core, and compile writes one directory per site.
+      This is what lets a rule hold in a browser and on a server without two
+      implementations that drift.
 
-   The experiment: mint the same program as a clause set (pure, first-order,
-   non-overlapping clauses over named primitives) and render it to the host,
-   then check three things.
-   a. Does every clause name the program line it came from, so the invented
-      policy above either disappears or surfaces as a demand the author must
-      answer?
-   b. Does a claim over one rendered definition pass offline, with no VM?
-   c. Do two mints of the same program produce clause sets that differ only
-      where the program differs?
+9. **The no-blob doctrine, with its gate** (agreed 2026-08-04, deliberately
+   deferred until item 8c lands so doctrine and enforcement arrive together).
 
-   It FAILS if the clause set is larger or harder to read than the Go file it
-   replaces, or if the mint still invents behavior no line asks for. Either
-   outcome is worth having: a pass makes the axis worth kernel work, a failure
-   costs one afternoon and kills a direction before it reaches `kernel/src`.
+   The rule: **no per-program source written by a model.** A blob is admissible
+   only when it is not per program and reviewed once (an adapter under
+   `assets/runtime/`, serving every program), or when it is somebody else's
+   package reached by name. The escape for genuine one-offs is a VALUE, never a
+   file: `greet`'s four words of bash are bounded by sitting in one assertion
+   attached to one program line, where a staged tree has no such bound and grew
+   to 80 lines in `logscan`.
+
+   Two grades, deserving different trust. AUTHOR glue, where the foreign text is
+   in the program, is legitimate without qualification. MINT glue, where the
+   model chose it (`echo` in `greet`), is admissible but must be marked, counted
+   and pinned by a claim, since it is exactly what a re-mint rewrites.
+
+   What exists: the counting (`Lips.Kernel.Grounding`, printed on every check).
+   What is missing: the `Glue` kind is declared in `Decision.hs` and used
+   nowhere, so glue is counted structurally rather than marked as such; and no
+   gate refuses a new staged tree. Both land with 8c, when `logscan`'s line moves
+   from "80 lines vouched by nothing" to "8 clauses (contracts)".
 
 9. **The `.expect` gate is a two-position switch, so re-blessing is
    all-or-nothing** (specified 2026-08-04, not implemented). Today the committed

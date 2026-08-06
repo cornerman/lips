@@ -23,7 +23,14 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
 | `Lips.Kernel.Lang.Store` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
 | `Lips.Kernel.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |
-| `Lips.Kernel.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int/float/path/null, attrsets; holes, typed holes and `${pkgs...}`/`${artifact...}` refs only) -- computation and injection unrepresentable |
+| `Lips.Kernel.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int/float/path/null, attrsets, s-expressions; holes, typed holes and `${pkgs...}`/`${artifact...}` refs only) -- computation and injection unrepresentable |
+| `Lips.Kernel.Hole` | ledger 13 | the type a hole coerces a program word into, shared by BOTH value grammars so `<value:int>` cannot come to mean two things |
+| `Lips.Kernel.Sexp` | logic axis | the closed clause grammar: s-expressions parsed, rendered and hole-filled, never evaluated. A symbol is the only way a clause names anything, and no constructor turns a program word into code |
+| `Lips.Kernel.Clause.Vocabulary` | logic axis | what grounds a name in a clause, as data: definers, binders, forms, base procedures, contracts. The kernel reads it and enumerates nothing |
+| `Lips.Kernel.Clause.Gate` | logic axis | the subset gate: every free identifier must be grounded, every clause must name a program line, and `reachedContracts` reports the program's whole reach into the world |
+| `Lips.Kernel.Clause.Catalogue` | logic axis | runtimes as data, and `coveringRuntime`: which runtime covers a program's contracts and stated properties, failing rather than guessing |
+| `Lips.Kernel.Grounding` | logic axis | what vouches for each assertion, counted: schema, contracts, author, or nothing. Names the unvouched so a blob cannot grow unwatched |
+| `Lips.Runtime` | logic axis | loads the shipped `assets/runtime/` data (Scheme vocabulary, guile adapters) and hands the kernel a `Vocabulary`, keeping the kernel a reader |
 | `Lips.Kernel.Engine.Aggregate` | ledger 13 | list aggregation: `Append` mode derived from the rule emits, and the assembly of N same-subject list decisions (a set by default, a list where the engine declares it) |
 | `Lips.Kernel.Engine.Overlap` | ledger 13 | static orthogonality, both layers: critical pairs over rule left-hand sides (`ruleOverlaps`, `subjectsUnify`) and a product walk over token templates (`patternOverlaps`) |
 | `Lips.Kernel.Engine.Reach` | ledger 13 | a program word the language reads and then discards (`droppedValues`) |

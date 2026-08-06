@@ -1,5 +1,11 @@
 ;;; The minted part: one definition per thing the program says.
 ;;; Every clause names the program line that caused it. Nothing else is here.
+;;;
+;;; Line numbers are into THIS directory's logscan.lips, which has SEVEN lines:
+;;; the five of examples/logscan.lips, plus two the author added to answer the
+;;; demands honest minting produced (what to do with a bad argument, and with a
+;;; line that is not JSON). The Go mint answered both silently instead of asking,
+;;; which is why examples/logscan.lips still has only five.
 
 ;; @from logscan.lips:1 @from logscan.lips:2
 (define (main args)

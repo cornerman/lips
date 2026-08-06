@@ -819,6 +819,37 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **The logic axis, physics half: behaviour is clauses, and a clause is a
+  decision.** The falsifier ran first and passed
+  (`docs/superpowers/learnings/2026-08-04-logscan-clause-falsifier.md`): 24 lines
+  of clauses for 70 of Go, 8 of 8 traceable against roughly 15 of 76, three
+  inventions turned into demands, one vanished for want of a knob to invent, and
+  one reversed to the faithful reading of the author's own word "every". The
+  plan it earned is `docs/superpowers/plans/2026-08-04-logic-axis-plan.md`; six of
+  its ten tasks are landed. Emitting is serialization, not translation: `SExp`
+  round-trips (`parse . render = id`), so the object the gate checks is the object
+  a runtime runs. The kernel holds no word of any language: the defining word,
+  the binders, the base procedures and the contracts all arrive from
+  `assets/runtime/scheme/`, pinned by a test that hands the gate a vocabulary
+  saying `defn` and watches it accept what the shipped one refuses. Capabilities
+  bind by NAME at link time, so nothing higher-order is needed, one core serves
+  several runtimes, and a claim links an in-memory adapter to run a whole program
+  offline (8 claims, 121 ms, no build, no VM). Runtime choice is arithmetic over
+  data (`coveringRuntime`), never a model's decision, and it fails rather than
+  guesses in both directions. Not yet built: the compiled site, clause claims
+  inside `check`, the mint, several sites per program.
+- **Grounding is counted and the unvouched is named, on every check.** Every
+  assertion is vouched by the target schema, by the contract set, by the author
+  who stated an observable, or by nothing. `Lips.Kernel.Grounding` counts the four
+  classes, names the members of the last, and the caller that stages measures how
+  many lines each staged tree holds (the kernel is pure and owns no filesystem, so
+  a path would otherwise read as one harmless word). It classifies nothing by
+  shape, because guessing which strings are really programs is the invention lips
+  refuses. The corpus as measured: 14 of 21 programs fully vouched, 6 carrying
+  unvouched text and every one of those an artifact, 5 with a staged tree
+  (`logscan` 80 lines, `hello.http` 66, `board` 41, `function` 25, `habit`), and
+  `greet` carrying the value-scale case, four words of mint-chosen bash. A number
+  nobody watches is how seventy lines of Go arrive in a five-line program.
 - **Hover: the machinery a sentence becomes, in place.** lips' claim is that the
   plain sentence is the whole artifact and everything else is derived -- and until
   now the derived part was only readable by compiling. `textDocument/hover`

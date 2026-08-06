@@ -19,8 +19,19 @@ build), Guile 3 (first runtime), guile-json (first pure adapter package).
 
 ## Status, and Where the Plan Was Corrected in Flight
 
-Tasks 1 to 6 are landed and green (620 examples, 0 failures, `-Wall` clean).
-Six things turned out differently than written, and the plan is corrected here
+Tasks 1 to 6 are landed and green (655 examples, 0 failures, `-Wall` clean across
+library, app and suite). Two things landed that the plan did not ask for, and
+both belong to whoever runs the rest:
+
+- **`Lips.Kernel.Grounding`**, which counts what vouches for each assertion and
+  names what nothing does, printed on every `lips check`. It measured the corpus
+  before any migration (see the learnings doc), which is what the no-blob
+  doctrine will be argued from.
+- **Clause holes participate in word typing**, since main gained that feature
+  while this branch was open: a typed hole in a clause labels its word for the
+  LSP exactly as an option value does.
+
+Seven things turned out differently than written, and the plan is corrected here
 rather than left to mislead whoever runs Tasks 7 to 10:
 
 - **The hole marker inside a clause is `#<value:int>`, not `<value:int>`.** `<`
@@ -38,6 +49,10 @@ rather than left to mislead whoever runs Tasks 7 to 10:
   names `SLit` and `SHole`.
 - **`cover` is called `coveringRuntime`**, because `Test.QuickCheck` exports a
   `cover` the suite imports.
+- **The clause vocabulary is injected into `runBase`**, not imported by the
+  kernel, and `Realization` gained `rlCore` and `rlGrounding`. So `compile`
+  already writes `core.scm`; Task 7 is the adapters, the entry point and the
+  derivation around them.
 - **The shipped vocabulary and catalogue load in a new tier,
   `kernel/src/Lips/Runtime.hs`**, which embeds the assets and hands the kernel a
   `Vocabulary` and a `[Runtime]`. The kernel stays a reader; what lips happens to

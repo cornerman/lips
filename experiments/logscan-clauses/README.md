@@ -6,7 +6,10 @@ then extended to prove the contract boundary. Result and numbers:
 
 Human-written intent:
 
-- `logscan.lips` -- the five original sentences plus two that answer demands.
+- `logscan.lips` -- SEVEN lines: the five of `examples/logscan.lips`, plus two
+  answering the demands honest minting produced (a bad argument, a non-JSON
+  line). Every `@from logscan.lips:N` in `clauses.scm` counts into this file, not
+  into the five-line committed example.
 
 The minted core (this is the whole reviewed artifact):
 
