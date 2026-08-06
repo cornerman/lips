@@ -304,6 +304,44 @@ tracks only what is still open.
    outcome is worth having: a pass makes the axis worth kernel work, a failure
    costs one afternoon and kills a direction before it reaches `kernel/src`.
 
+9. **The `.expect` gate is a two-position switch, so re-blessing is
+   all-or-nothing** (specified 2026-08-04, not implemented). Today the committed
+   contract C governs a re-mint, or `--renew` discards C wholesale and blesses
+   the freshly minted set M. That single word hides two independent permissions:
+   may a committed assertion VANISH (drop), and may a minted one JOIN (add).
+   Name both and the switch becomes a four-point lattice, spelled
+   `lips generate --compat both|backwards|forwards|none` (default `both`;
+   `--renew` is dropped, since `none` is exactly it):
+
+   - `both` grants neither: contract stays C, minted extras ignored, only a real
+     violation of C refuses. Byte-identical to today, so no committed example
+     churns and a differently-worded re-mint still passes.
+   - `backwards` grants add: all of C must hold and M's extras join, so the
+     written contract is C ∪ M and can only grow.
+   - `forwards` grants drop: M governs, a committed entry M no longer mentions
+     may leave, no extras join, so the contract can only shrink within C.
+   - `none` grants both: rewrite from M (today's `--renew`).
+
+   Two assertions are THE SAME when option path and subject-plus-token agree;
+   the `a1`/`a2` ids are minted fresh every run and carry no identity.
+
+   The guard that keeps `forwards` from letting the model choose which checks to
+   skip: a drop is admissible only when NO rule in the new engine assigns that
+   option path (the engine genuinely stopped filling it); a path still filled but
+   no longer asserted stays gated and refuses. Structural and kernel-checkable,
+   the same shape as `uncheckableExpects` (invariant 2: structural guards beat
+   prompt pleas), and invariant 5 survives -- every relaxation is one explicit
+   human word and the `.expect` diff stays the semantic changelog.
+
+   The mode gates, it does not mint: it stays out of `.generation` and `genId`,
+   and the mint's validation tool keeps seeing C except under `none`.
+
+   Work: `Lips.Cli` (flag, replacing `--renew`), the set algebra plus the
+   drop guard in `Kernel/Expect.hs`, wiring in `Main.generate`, `Spec.hs`
+   parse + algebra cases, refusal text naming the SMALLEST sufficient mode
+   (all violations are unassigned paths -> `forwards`, otherwise `none`),
+   DESIGN §13 entry replacing the `--renew` one.
+
 ## Backlog (larger / deferred by design)
 
 - **Cross-program composition (one program naming another).** Nix composes;
