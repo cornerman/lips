@@ -4950,6 +4950,17 @@ main = hspec $ do
           [ ";; @from p.lips:1\n(define (main a) (keep a))\n"
           , "\n;; @from p.lips:2\n(define (keep x) x)\n" ]))
 
+    -- Found by the first live mint that emitted clauses: every gate passed and
+    -- the module then failed to parse, because a clause had been rendered as an
+    -- option assignment carrying text that is not Nix.
+    it "keeps clauses out of the module: they are run, not assigned" $
+      realizeReplace (fromList
+        [ (mk "o1" "services" "true" Stated)
+            { dSubject = Subject ["services", "x", "enable"] }
+        , clauseDecision "c1" "keep?" "(define (keep? x) x)" (FromSource (SourceLoc "p.lips" 1))
+        ])
+        `shouldSatisfy` either (const False) (not . T.isInfixOf "clause")
+
     it "returns nothing for a program that states no clauses" $
       realizeClausesOf [(mk "g1" "services" "true" Stated)] `shouldBe` Right Nothing
 

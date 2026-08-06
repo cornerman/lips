@@ -208,6 +208,12 @@ realizeClauses modeOf assemble vocab source base =
       (SourceLoc _ n : _) -> n
       []                  -> maxBound
 
+-- | Is this path the clause vocabulary? Twin of 'Lips.Kernel.Claim.claimRooted'
+-- and 'Lips.Kernel.OptionType.reservedRoot': no head of it becomes an option.
+clauseRooted :: [Text] -> Bool
+clauseRooted ("clause" : _) = True
+clauseRooted _              = False
+
 clauseDecisions :: [(Subject, Decision)] -> [(Text, Decision)]
 clauseDecisions winners =
   [ (name, d) | (Subject ("clause" : name : _), d) <- winners ]
@@ -337,11 +343,15 @@ realizeArtifactFills modeOf assemble base =
 renderModule :: [(Subject, Decision)] -> Either RealizeError Text
 renderModule winners = do
   let (arts, rest) = partition (rootedAtArtifact . fst) winners
-      -- A claim is kernel vocabulary like an artifact: it is OBSERVED, not
-      -- assigned, so it must not become an option. Without this it would render
-      -- as `claim.echo.run = "...";`, a path no target world declares, and the
-      -- module would fail to evaluate wherever it was imported.
-      opts = [ sd | sd@(Subject segs, _) <- rest, not (claimRooted segs) ]
+      -- A claim and a clause are kernel vocabulary like an artifact: one is
+      -- OBSERVED and the other RUN, neither is assigned, so neither may become an
+      -- option. Without this a claim would render as `claim.echo.run = "...";`
+      -- and a clause as `clause."keep?" = (define ...);` -- paths no target world
+      -- declares, carrying text that is not even Nix. The clause case was found
+      -- by the first live mint that emitted clauses: every gate passed and the
+      -- module then failed to parse.
+      opts = [ sd | sd@(Subject segs, _) <- rest
+                  , not (claimRooted segs), not (clauseRooted segs) ]
       defined  = [ n | (Subject ("artifact" : n : _), _) <- arts ]
   -- Each option assertion is canonical 'Value' text (stored by 'fillValue'),
   -- so parse it once: the Value drives both artifact-reference detection
