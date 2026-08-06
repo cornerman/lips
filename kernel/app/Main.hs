@@ -79,7 +79,7 @@ import           Lips.Kernel.Grounding  (Grounding, Unvouched (..), gStaged, gro
 import           Lips.Runtime            (runtimeAsset, runtimes, schemeVocabulary)
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
-import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..), ClauseClaim,
+import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..),
                                                 renderClauseClaim)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), SourceSpecVerdict (..), diagnose,
                                                 sourceSpecVerdict)
@@ -179,7 +179,7 @@ compileLoose mout mLangDir noContract file = do
     -- holding the runtime's adapters, the minted core, the assembled entry and
     -- the runtime's own builder. A configuration-only program writes none, so
     -- its output stays byte-identical.
-    hasSite <- writeSite outDirPath (rlClauseClaims rl) (rlCore rl)
+    hasSite <- writeSite outDirPath rl
     artNames <- case rlArtifact rl of
       Nothing            -> pure []
       Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
@@ -425,7 +425,7 @@ clauseClaimGate file rl
   | otherwise =
       step ("clause claims: " <> plural (length (rlClauseClaims rl)) "claim") $
         withTempDir $ \tmp -> do
-          _ <- writeSite tmp (rlClauseClaims rl) (rlCore rl)
+          _ <- writeSite tmp rl
           TIO.writeFile (tmp </> "flake.nix")
             (flakeText Nixos noRungs { hasSite = True, hasSiteClaims = True })
           res <- try (readProcessWithExitCode "nix"
@@ -766,11 +766,11 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- another name is refused here instead of shipping a broken build.
       forM_ validated $ \(f, rl) ->
         stagedGate (\root -> writeSources (root </> "artifacts") minted
-                               >> void (writeSite root (rlClauseClaims rl) (rlCore rl))) f rl
+                               >> void (writeSite root rl)) f rl
       -- The shared contract gates every program, each bound to its own <self>.
       step ("contract: " <> plural (length expects) "check") $ forM_ validated $ \(f, rl) -> do
         gate <- runExpects (\root -> writeSources (root </> "artifacts") minted
-                                      >> void (writeSite root (rlClauseClaims rl) (rlCore rl)))
+                                      >> void (writeSite root rl))
                            (map (bindSelfExpect (instanceName f)) expects) rl
         case gate of
           Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
@@ -789,7 +789,7 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
           artifactGate nixpkgs (\root -> writeSources (root </> "artifacts") minted
-                                          >> void (writeSite root (rlClauseClaims rl) (rlCore rl))) f rl
+                                          >> void (writeSite root rl)) f rl
       -- And the gate that observes what the program DOES: run every claim the
       -- mint stated. Against the pinned nixpkgs, so the mint observes the world
       -- it was grounded against.
@@ -797,7 +797,7 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
           mintClaimGate nixpkgs (\root -> writeSources (root </> "artifacts") minted
-                                           >> void (writeSite root (rlClauseClaims rl) (rlCore rl))) f rl
+                                           >> void (writeSite root rl)) f rl
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
@@ -1707,7 +1707,7 @@ stageFromDisk dir file dst = do
 stageBeside :: FilePath -> FilePath -> Realization -> FilePath -> IO ()
 stageBeside dir file rl root = do
   stageFromDisk dir file (root </> "artifacts")
-  void (writeSite root (rlClauseClaims rl) (rlCore rl))
+  void (writeSite root rl)
 
 -- | Write the site: the runtime's adapters, the minted core, the assembled file
 -- that loads them in order and starts the program, and the runtime's own Nix
@@ -1718,10 +1718,13 @@ stageBeside dir file rl root = do
 -- program no runtime covers fails loud naming the contract nobody offers. Sites
 -- with stated properties are the next step; today a program has one site and no
 -- stated requirements, so the covering has one input.
-writeSite :: FilePath -> [ClauseClaim] -> Maybe (Text, [Text]) -> IO Bool
-writeSite _ _ Nothing = pure False
-writeSite outDirPath ccs (Just (core, contracts)) = do
-  rt <- either (die . coverFail) pure (coveringRuntime runtimes contracts [])
+writeSite :: FilePath -> Realization -> IO Bool
+writeSite outDirPath rl = case rlCore rl of
+ Nothing -> pure False
+ Just (core, contracts) -> do
+  let ccs = rlClauseClaims rl
+  rt <- either (die . coverFail) pure
+          (coveringRuntime runtimes contracts (rlSiteProps rl))
   let siteDir = outDirPath </> "site"
       files = rFiles rt <> ["core.scm"]
   createDirectoryIfMissing True siteDir
@@ -1743,7 +1746,7 @@ writeSite outDirPath ccs (Just (core, contracts)) = do
       (clauseClaimsFile (rFiles rt <> rClaimFiles rt <> ["core.scm"])
                         (concatMap renderClauseClaim ccs))
   pure True
-  where
+ where
     coverFail why = report
       "lips can't decide where this program's behaviour runs."
       [why]

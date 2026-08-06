@@ -3201,6 +3201,9 @@ main = hspec $ do
       p `shouldSatisfy` T.isInfixOf "${site}"
       p `shouldSatisfy` T.isInfixOf "site.name"
 
+    it "tells the model how to state where the behaviour must run" $
+      p `shouldSatisfy` T.isInfixOf "site.<self>.property."
+
     it "forbids wrapping the site, which only renames what site.name names" $
       p `shouldSatisfy` T.isInfixOf "MUST NOT WRAP THE SITE"
 
@@ -4973,7 +4976,8 @@ main = hspec $ do
       realizeReplace (fromList
         [ (mk "o1" "packages" "[ ${site} ]" Stated)
             { dSubject = Subject ["environment", "systemPackages"] }
-        , (mk "n1" "site" "\"logscan\"" Stated) { dSubject = Subject ["site", "name"] }
+        , (mk "n1" "site" "\"logscan\"" Stated)
+            { dSubject = Subject ["site", "tool", "command"] }
         ])
         `shouldSatisfy` either (const False) (\t ->
           T.isInfixOf "site = import ./site/build.nix" t
@@ -4981,7 +4985,7 @@ main = hspec $ do
             && T.isInfixOf "environment.systemPackages = [ site ];" t
             -- site.name tells the module what to call the build; it is kernel
             -- vocabulary, so it must not also become an option.
-            && not (T.isInfixOf "site.name =" t))
+            && not (T.isInfixOf "site.tool" t))
 
     -- Found by a live mint: a wrapper renaming the program referenced ${site}
     -- from an artifact ARGUMENT, and the module bound nothing, so nix reported an
@@ -4994,9 +4998,22 @@ main = hspec $ do
             { dSubject = Subject ["artifact", "w", "args", "name"] }
         , (mk "a2" "artifact" "\"exec ${site}/bin/logscan\"" Stated)
             { dSubject = Subject ["artifact", "w", "args", "text"] }
-        , (mk "n1" "site" "\"logscan\"" Stated) { dSubject = Subject ["site", "name"] }
+        , (mk "n1" "site" "\"logscan\"" Stated)
+            { dSubject = Subject ["site", "tool", "command"] }
         ])
         `shouldSatisfy` either (const False) (T.isInfixOf "site = import ./site/build.nix")
+
+    -- A site is NAMED because a program may one day run its behaviour in several
+    -- places. Two is refused loudly rather than silently choosing one, so growing
+    -- to several is a kernel change nobody can stumble into.
+    it "refuses two sites rather than picking one" $
+      realizeReplace (fromList
+        [ (mk "o1" "packages" "[ ${site} ]" Stated)
+            { dSubject = Subject ["environment", "systemPackages"] }
+        , (mk "n1" "site" "\"a\"" Stated) { dSubject = Subject ["site", "one", "command"] }
+        , (mk "n2" "site" "\"b\"" Stated) { dSubject = Subject ["site", "two", "command"] }
+        ])
+        `shouldSatisfy` either (const True) (const False)
 
     it "does not import a site directory when nothing names the site" $
       realizeReplace (fromList

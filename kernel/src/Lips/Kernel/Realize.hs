@@ -25,11 +25,12 @@ module Lips.Kernel.Realize
   , realizeClauseClaims
   , realizeClauses
   , siteNameIn
+  , sitePropertiesIn
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
 import           Data.List       (nub, partition, sortOn)
-import           Data.Maybe      (fromMaybe)
+
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -149,6 +150,7 @@ realizeArtifactFile modeOf assemble base =
            else do
              requireDefined names =<< artifactArgRefs arts
              argSite <- anyArgReferencesSite arts
+             siteNm <- siteNameFrom (Map.toList winners) argSite
              mp <- mainPrograms (Map.toList winners)
              entries <- artifactEntries mp arts
              -- The same @let artifact = { ... }@ shape the module uses, for the
@@ -159,8 +161,7 @@ realizeArtifactFile modeOf assemble base =
              let body = T.unlines (
                    [ "# lips-realized artifact derivations. Generated; do not edit."
                    , "{ pkgs }:"
-                   ] ++ letBlock (siteNameFrom (Map.toList winners) argSite) entries
-                     ++ ["artifact"])
+                   ] ++ letBlock siteNm entries ++ ["artifact"])
              Right (Just (body, names))
 
 -- | The claims a ground base states: the observables the author supplied,
@@ -216,6 +217,12 @@ realizeClauses modeOf assemble vocab source base =
 -- write the same binding realize does (the claims file, the compiled flake).
 -- 'Nothing' when nothing in the base names the site, so a program without
 -- behaviour never mentions a directory compile did not write.
+--
+-- The head is @site.\<name\>.command@: a site is NAMED, because a program may
+-- one day run its behaviour in several places (a browser and a server sharing
+-- one clause core) and each place needs its own requirements. Only one site is
+-- supported today; two is a loud failure rather than a silent choice, so growing
+-- to several is a kernel change nobody can stumble into.
 siteNameIn :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
            -> Base -> Either RealizeError (Maybe Text)
 siteNameIn modeOf assemble base =
@@ -228,19 +235,42 @@ siteNameIn modeOf assemble base =
                           Right v -> Right v
                           Left e  -> Left (RMalformed sub e)) rest
       argSite <- anyArgReferencesSite arts
-      Right (siteNameFrom ws (any referencesSite vals || argSite))
+      siteNameFrom ws (any referencesSite vals || argSite)
 
 -- | The @name@ the site derivation is built under, when anything names the site
 -- at all. What the program said to install it as; absent, the derivation is
 -- called @site@, which builds and runs but installs under a name no sentence
 -- chose.
-siteNameFrom :: [(Subject, Decision)] -> Bool -> Maybe Text
+siteNameFrom :: [(Subject, Decision)] -> Bool -> Either RealizeError (Maybe Text)
 siteNameFrom winners referenced
-  | not referenced = Nothing
-  | otherwise = Just (fromMaybe "\"site\"" (lookup ["site", "name"] stated))
+  | not referenced = Right Nothing
+  | otherwise = case commands of
+      []      -> Right (Just "\"site\"")
+      [(_, c)] -> Right (Just c)
+      several -> Left (RBadClause
+        ("this program states " <> T.pack (show (length several))
+          <> " sites (" <> T.intercalate ", " (map fst several)
+          <> "), and lips builds one. Several places for one clause core is\
+             \ physics lips does not have yet."))
   where
-    stated = [ (segs, unAssertion (dAssertion d))
-             | (Subject segs@("site" : _), d) <- winners ]
+    commands = [ (n, unAssertion (dAssertion d))
+               | (Subject ["site", n, "command"], d) <- winners ]
+
+-- | The properties this program's site requires, for the caller that chooses a
+-- runtime. Projected from the same base as everything else.
+sitePropertiesIn :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+                 -> Base -> Either RealizeError [Text]
+sitePropertiesIn modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs     -> Left (resolveErr errs)
+    Right winners -> Right (siteProperties (Map.toList winners))
+
+-- | The properties a site requires, which is what covering selects on beside the
+-- contracts the clauses reach. Stated by the author, because "runs in a browser"
+-- or "is one static binary" is intent that lives nowhere else.
+siteProperties :: [(Subject, Decision)] -> [Text]
+siteProperties winners =
+  nub [ p | (Subject ["site", _, "property", p], _) <- winners ]
 
 -- | Does any artifact ARGUMENT name the site? A wrapper renaming the program is
 -- exactly that shape, and its reference needs the same @let@ binding an option
@@ -436,8 +466,8 @@ renderModule winners = do
   -- Missing the second is how a live mint produced a module with an undefined
   -- variable, every gate green.
   artSitesRef <- anyArgReferencesSite arts
-  let siteName = siteNameFrom winners
-                   (any (referencesSite . valOf) optVals || artSitesRef)
+  siteName <- siteNameFrom winners
+                (any (referencesSite . valOf) optVals || artSitesRef)
   Right $ T.unlines $
     [ "# lips-realized module. Generated from a ground decision base; do not edit."
     , "{ config, lib, pkgs, ... }:"
