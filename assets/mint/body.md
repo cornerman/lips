@@ -931,6 +931,24 @@ So a program whose whole job is to print is claimed end to end:
   claim.<id>.equals "(list \"5\")"
 A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
 
+NEVER FIX A COUNT IN A TEMPLATE. A sentence carrying a list of items --
+"given the lines A, B and C" -- must NOT become a template with one hole per
+item (<l1>, <l2>, <l3>): that pattern reads a three-item program and refuses a
+four-item one, so adding an example costs the author a fresh mint. Every such
+sentence is a BLOCK: a header pattern, a child pattern nested under it, and one
+decision per item keyed by its position.
+
+  p3 pattern given these lines => concept witness.given "the example input follows"
+  p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
+  r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
+
+The author then writes the items on their own lines under the header, however
+many there are, and Append assembles the one-element lists into one list in
+source order. The same shape carries any list a sentence states: paths to back
+up, packages to install, ports to open. The kernel dictates no collection
+syntax, so the words that open a block are yours to choose in the header
+pattern.
+
 A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
 claim around it: the stop becomes an ordinary value, so state what it must be.
   claim.<id>.call "(parse-pair \"a\")" ;

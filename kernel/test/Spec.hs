@@ -3241,6 +3241,15 @@ main = hspec $ do
     -- A live mint reported "emitted-output-not-observable" as a GAP for a program
     -- whose whole job is to print: (emitted) existed in the memory adapter and
     -- the prompt never said so, so no model could write the claim.
+    -- Four live mints wrote a witness with one hole per example line, so a
+    -- three-line example refused a four-line program. Blocks already express a
+    -- variable-length list (Lang.Nest, and Append assembles it); nothing told
+    -- the model so, which made a prompt gap look like a grammar limit.
+    it "tells the model never to fix a count in a template" $ do
+      p `shouldSatisfy` T.isInfixOf "NEVER FIX A COUNT IN A TEMPLATE"
+      p `shouldSatisfy` T.isInfixOf "<n:index>"
+      p `shouldSatisfy` T.isInfixOf "under.p"
+
     it "tells the model how to observe what the program printed" $ do
       p `shouldSatisfy` T.isInfixOf "(emitted) is the lines the program printed"
       -- And that a clause may not reach for it: it is no contract.

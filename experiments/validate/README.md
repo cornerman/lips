@@ -76,21 +76,44 @@ counting the literal words a mint writes into option strings, which now reports
 both binaries died on first run with every gate green. Fixed by deriving what the
 core must define from the entry expression itself.
 
-## The Limits This Corpus Found
+## One Limit, and One Thing I Wrongly Called a Limit
 
-Two are precise and worth keeping in view.
+**A number word is not a number, and that is correct.** `report` was asked for
+"the ten most common" and reported `counted-word-is-not-a-number`: a hole
+capturing "ten" binds the word, and neither grammar converts it to 10. This is
+not a hole in the concepts. A count is already expressible: the author writes
+`10`, a pattern captures it, `#<value:int>` carries it into a clause, and
+`threshold` proves that path end to end. Teaching lips English numerals would put
+a table of one language's words in the kernel, which is exactly what "the kernel
+knows nothing" forbids.
 
-**A number word is not a number.** `report` was asked for "the ten most common"
-and reported `counted-word-is-not-a-number`: a hole capturing "ten" binds the
-word, and neither grammar converts it to 10. The count stayed a literal, so
-changing it needs a fresh mint. Writing `10` in the program instead is the
-author's fix; teaching lips English number words would be domain knowledge the
-kernel must not hold.
+**A witness fixing its own arity was NOT a grammar gap.** Four mints -- `logscan`,
+`watch`, `dedupe` and the older `board` -- wrote witness patterns with one hole
+per example line (`<l1>`, `<l2>`, `<l3>`), so a three-line example refuses a
+four-line program and adding one costs a fresh mint. I recorded that as a missing
+repeating hole in the template grammar. It is not.
 
-**A witness fixes its own shape.** Several mints reported that an example pinning
-two input lines cannot be reused for three, because a claim's feed is a list value
-and no hole repeats. The general answer is a repeating hole in the template
-grammar, which nothing else needs yet.
+`Lang/Nest.hs` already carries the case, and its header says why the kernel must
+not carry it any other way: "The kernel would otherwise be dictating a collection
+syntax". A block is a header pattern plus a child nested under it, each item keyed
+by `<n:index>`, and `Append` assembles one list from the N contributors.
+
+Demonstrated with a hand-written engine, one engine and no model:
+
+    given these lines:        given these lines:
+      "a"                       "a"
+      "b"                       "b"
+      "c"                       "c"
+                                "d"
+                                "e"
+
+    feed-lines ("a" "b" "c")  feed-lines ("a" "b" "c" "d" "e")
+
+Same pattern, no arity anywhere, and the five-item run correctly failed the claim
+whose expected value still said three. So the concept had no limit; the prompt
+had a gap, the same class as `emitted-output-not-observable` above. Fixed by
+telling the mint never to fix a count in a template, with the block shape spelled
+out.
 
 ## What This Does Not Prove
 
