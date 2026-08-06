@@ -41,7 +41,7 @@ import qualified Data.Text as T
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..), Binder (..),
                                       BinderShape (..), contractNames)
 import Lips.Kernel.Decision          (SourceLoc (..))
-import Lips.Kernel.Sexp              (SExp (..), renderSexp)
+import Lips.Kernel.Sexp              (SExp (..), renderSexp, sexpSymbols)
 
 -- | One minted definition, with the program lines that caused it. Provenance is
 -- a field rather than a comment because a clause IS a decision: it already
@@ -168,7 +168,7 @@ reachedContracts :: Vocabulary -> [Clause] -> [Contract]
 reachedContracts vocab clauses =
   sortOn cName [ c | c <- vContracts vocab, cName c `elem` mentioned ]
   where
-    mentioned = sort (nub (concatMap (symbolsOf . clBody) clauses))
-    symbolsOf (SSym s)   = [s]
-    symbolsOf (SList xs) = concatMap symbolsOf xs
-    symbolsOf _          = []
+    -- The one symbol walk, shared with the gate: a private copy would drift, and
+    -- the two must agree by construction, since what the gate grounds and what a
+    -- runtime must provide are the same set.
+    mentioned = sort (nub (concatMap (sexpSymbols . clBody) clauses))

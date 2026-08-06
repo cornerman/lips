@@ -393,7 +393,9 @@ expectGate contract claims dir file eng program = do
               (T.pack file <> " no longer produces what it promised:")
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
-  when claims (claimGate dir file rl)
+  when claims $ do
+    target <- readRecordedTarget dir file
+    claimGate target dir file rl
   pure rl
 
 -- | The claim gate: every observable the program states must actually hold.
@@ -412,22 +414,23 @@ expectGate contract claims dir file eng program = do
 -- needs an ambient nixpkgs (the compiled flake resolves @flake:nixpkgs@, as it
 -- does for every other rung). A claim-free program is untouched and @check@
 -- stays nixpkgs-free for it.
-claimGate :: FilePath -> FilePath -> Realization -> IO ()
-claimGate dir file rl = clauseClaimGate file rl >> commandClaimGate dir file rl
+claimGate :: Target -> FilePath -> FilePath -> Realization -> IO ()
+claimGate target dir file rl =
+  clauseClaimGate target file rl >> commandClaimGate dir file rl
 
 -- | The clause claims, judged: one small derivation that evaluates the program's
 -- own definitions with the runtime's list-backed adapters. No machine boots and
 -- no binary is compiled, so this gate costs a fraction of the one below and can
 -- observe a single definition rather than a whole process.
-clauseClaimGate :: FilePath -> Realization -> IO ()
-clauseClaimGate file rl
+clauseClaimGate :: Target -> FilePath -> Realization -> IO ()
+clauseClaimGate target file rl
   | null (rlClauseClaims rl) = pure ()
   | otherwise =
       step ("clause claims: " <> plural (length (rlClauseClaims rl)) "claim") $
         withTempDir $ \tmp -> do
           _ <- writeSite tmp rl
           TIO.writeFile (tmp </> "flake.nix")
-            (flakeText Nixos noRungs { hasSite = True, hasSiteClaims = True })
+            (flakeText target noRungs { hasSite = True, hasSiteClaims = True })
           res <- try (readProcessWithExitCode "nix"
             ["build", "--no-link", "path:" <> tmp <> "#site-claims"] "")
           case res of
@@ -793,6 +796,11 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- And the gate that observes what the program DOES: run every claim the
       -- mint stated. Against the pinned nixpkgs, so the mint observes the world
       -- it was grounded against.
+      -- The clause claims first: they are the ONLY contract a clause program has
+      -- (a clause is no option, so .expect can pin nothing about it), and they
+      -- cost a small derivation rather than a boot. Without this the mint would
+      -- write an engine whose stated behaviour was never observed.
+      forM_ validated $ \(f, rl) -> clauseClaimGate target f rl
       when (not (null allClaims)) $ do
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
