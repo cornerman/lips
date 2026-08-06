@@ -788,7 +788,8 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       when (any (isJust . rlArtifact . snd) validated) $ do
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
-          artifactGate nixpkgs (\dst -> writeSources dst minted) f rl
+          artifactGate nixpkgs (\root -> writeSources (root </> "artifacts") minted
+                                          >> void (writeSite root (rlClauseClaims rl) (rlCore rl))) f rl
       -- And the gate that observes what the program DOES: run every claim the
       -- mint stated. Against the pinned nixpkgs, so the mint observes the world
       -- it was grounded against.
@@ -1453,7 +1454,9 @@ artifactGate nixpkgs stage file rl = case rlArtifact rl of
     -- The build reads the tree exactly as compile writes it: artifact.nix beside
     -- a staged, FILLED artifacts/ tree, so `src = ./artifacts/<name>` resolves.
     TIO.writeFile (dir </> "artifact.nix") body
-    stage (dir </> "artifacts")
+    -- The whole neighbourhood, since an artifact's own argument may name the
+    -- site: a wrapper renaming the program is exactly that shape.
+    stage dir
     fillStagedTree file (dir </> "artifacts") (rlFills rl)
     note ("looking inside " <> T.intercalate ", " names)
     built <- forM names (\n -> (,) n <$> buildArtifact nixpkgs file dir n)
