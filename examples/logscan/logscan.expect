@@ -1,3 +1,1 @@
-a1 expect artifact.<name>.args.pname from tool.<name>.command
-a2 expect artifact.<name>.fill.name from tool.<name>.command
-a3 expect claim.filter.stdout from witness.<name>.<args>.example#3
+a1 expect claim.filter.args from witness.filter#3

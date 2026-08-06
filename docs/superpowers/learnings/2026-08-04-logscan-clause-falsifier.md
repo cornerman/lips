@@ -3,6 +3,11 @@
 Run of `TODO.md` item 8, the cheapest possible refutation of the logic axis.
 Hand-mint, no kernel changes. Files under `experiments/logscan-clauses/`.
 
+**Superseded in one respect, 2026-08-04: `examples/logscan` now IS clauses.** The
+76-line Go file this document audits was deleted when the example was re-minted;
+every measurement of it below is history, and the two engines that produced the
+comparison are committed under `experiments/logscan-mints/`.
+
 **Verdict: the direction survives.** Twenty-four lines of minted clauses replace
 seventy lines of minted Go, every one of them names the program line that caused
 it, and the claim that today needs a Go build and a witness run now passes in

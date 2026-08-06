@@ -2948,6 +2948,16 @@ gate on an artifact-only engine, and the concept escape.
   silent `continue` on malformed JSON, which contradicts fail-loud doctrine
   under a green suite.
 
+  RESOLVED for this program, 2026-08-04: `examples/logscan` was re-minted as
+  CLAUSES and its 76 lines of Go are deleted from the repo. Five clauses replace
+  them, each naming the sentence that caused it, and the grounding counter reports
+  "1 option assignment, 5 clauses, 0 unvouched assertions" where it once reported
+  80 lines vouched by nothing. The behaviour it drifted on is now pinned: the
+  witness holds and a bad argument still exits 1. The measurements above are kept
+  as the evidence that motivated the logic axis, in the past tense they now
+  deserve; the two engines that produced them are committed under
+  `experiments/logscan-mints/`.
+
   Two entries elsewhere name the same defect from other directions: the
   artifact-axis hole in "Silent concept demotion" (a compiled artifact records
   no dependency on the program lines its baked source came from), and the one

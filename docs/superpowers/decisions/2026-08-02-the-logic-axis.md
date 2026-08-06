@@ -69,6 +69,10 @@ owning a compute grammar.
 
 ## 5. The Artifact Axis Is Empirically Broken
 
+(Historical as of 2026-08-04: the `logscan` measured below was re-minted as
+clauses and its Go is deleted. The numbers stand as the evidence that motivated
+the axis; the file they describe is no longer in the repo.)
+
 `examples/logscan` is five lines of intent and 76 lines of minted Go. Commit
 885a900 added one sentence, a worked example pinning a string match, and
 re-minted. The result differs from the previous mint in what the program DOES:

@@ -1,5 +1,9 @@
 # Two Mints of One Program
 
+(`examples/logscan` was re-minted as clauses on 2026-08-04 and its Go deleted, so
+the committed corpus now demonstrates the axis rather than the defect. The four
+engines here are kept as the evidence that got it there.)
+
 Falsifier check (c): mint the same five-line `examples/logscan.lips` twice, same
 model, target and thinking level, and see whether the results differ only where
 the program differs. Run twice, before and after the capability gaps the first
