@@ -1,0 +1,16 @@
+p1 meta lang.pattern.p1 stated "read lines of a name and a number, separated by a space, from standard input => fact input.format \"a name and a number separated by a space\"" @gen:16c422eb1892b0db
+p2 meta lang.pattern.p2 stated "print the name of every line whose number is above <limit> => fact rule.threshold \"<limit>\"" @gen:16c422eb1892b0db
+p3 meta lang.pattern.p3 stated "fail, naming the line, when a line has no number => fact rule.malformed \"stop and name the offending line\"" @gen:16c422eb1892b0db
+p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact install.command \"<name>\"" @gen:16c422eb1892b0db
+p5 meta lang.pattern.p5 stated "given the lines <line1> and \"<line2>\", print only <out> => fact witness.input \"<line1> <line2>\" ; fact witness.output \"<out>\"" @gen:16c422eb1892b0db
+q1 meta engine.demand.q1 stated "demand input.format \"how is each input line shaped?\"" @gen:16c422eb1892b0db
+q2 meta engine.demand.q2 stated "demand rule.threshold \"above what number should a line's name be printed?\"" @gen:16c422eb1892b0db
+q3 meta engine.demand.q3 stated "demand rule.malformed \"what should happen to a line that has no number?\"" @gen:16c422eb1892b0db
+q4 meta engine.demand.q4 stated "demand install.command \"what command name should the tool be installed as?\"" @gen:16c422eb1892b0db
+q5 meta engine.demand.q5 stated "demand witness.output \"for an example pair of input lines, what should the tool print?\"" @gen:16c422eb1892b0db
+r1 meta engine.rule.r1 stated "match fact input.format => clause.split-line \"(define (split-line line) (string-cut line #\\\\space))\"" @gen:16c422eb1892b0db
+r2 meta engine.rule.r2 stated "match fact rule.threshold => clause.above? \"(define (above? text) (> (string->number text) #<value:int>))\" ; clause.main \"(define (main) (let ((line (read-a-line))) (if (end-of-input? line) #t (let ((pair (parse-line line))) (when (above? (cdr pair)) (emit (car pair))) (main)))))\"" @gen:16c422eb1892b0db
+r3 meta engine.rule.r3 stated "match fact rule.malformed => clause.parse-line \"(define (parse-line line) (let ((cut (split-line line))) (cond ((not cut) (die \\\"line has no number:\\\" line)) ((not (string->number (cdr cut))) (die \\\"line has no number:\\\" line)) (else cut))))\"" @gen:16c422eb1892b0db
+r4 meta engine.rule.r4 stated "match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"" @gen:16c422eb1892b0db
+r5 meta engine.rule.r5 stated "match fact witness.input => claim.example.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.example.call \"(begin (main) (emitted))\"" @gen:16c422eb1892b0db
+r6 meta engine.rule.r6 stated "match fact witness.output => claim.example.equals \"(list \\\"#<value>\\\")\"" @gen:16c422eb1892b0db

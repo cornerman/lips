@@ -1,0 +1,5 @@
+read lines of a name and a number, separated by a space, from standard input.
+print the name of every line whose number is above 100.
+fail, naming the line, when a line has no number.
+install the tool as the command alert.
+given the lines "db 250" and "web 40", print only db.

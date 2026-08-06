@@ -1,0 +1,7 @@
+# args|stdin|expected stdout|exit
+|db 250\nweb 40\n|db|0
+|x 100\n||0
+|x 101\n|x|0
+|y 99.5\nz 100.5\n|z|0
+|a 1000\nb 2\nc 500\n|a\nc|0
+|novalue\n||1
