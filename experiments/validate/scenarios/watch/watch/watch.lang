@@ -1,0 +1,17 @@
+p1 meta lang.pattern.p1 stated "read a line at a time from standard input and print every line that contains the word <word> => fact filter.word \"<word>\"" @gen:8fa1c227d87a3600
+p2 meta lang.pattern.p2 stated "install the tool as the command <cmd> => fact install.command \"<cmd>\"" @gen:8fa1c227d87a3600
+p3 meta lang.pattern.p3 stated "run <cmd> every <mins> minutes as a system service => fact schedule.<cmd>.command \"<cmd>\" ; fact schedule.<cmd>.interval \"<mins>\"" @gen:8fa1c227d87a3600
+p4 meta lang.pattern.p4 stated "give the service the name <name> => fact service.<name>.title \"<name>\"" @gen:8fa1c227d87a3600
+p5 meta lang.pattern.p5 stated "given the lines <a> and \"<b>\", print only <out.words> => fact witness.input \"<a> <b>\" ; fact witness.output \"<out>\"" @gen:8fa1c227d87a3600
+q1 meta engine.demand.q1 stated "demand filter.word \"which word must a line contain for it to be printed?\"" @gen:8fa1c227d87a3600
+q2 meta engine.demand.q2 stated "demand install.command \"what should the installed command be called?\"" @gen:8fa1c227d87a3600
+q3 meta engine.demand.q3 stated "demand schedule.<cmd>.interval \"how many minutes should pass between runs?\"" @gen:8fa1c227d87a3600
+q4 meta engine.demand.q4 stated "demand service.<name>.title \"what should the system service be called?\"" @gen:8fa1c227d87a3600
+q5 meta engine.demand.q5 stated "demand witness.output \"given two example input lines, what must the tool print?\"" @gen:8fa1c227d87a3600
+r1 meta engine.rule.r1 stated "match fact filter.word => clause.contains? \"(define (contains? line word) (let ((n (string-length line)) (m (string-length word))) (letrec ((scan (lambda (i) (cond ((> (+ i m) n) #f) ((string=? (substring line i (+ i m)) word) #t) (else (scan (+ i 1))))))) (scan 0))))\" ; clause.main \"(define (main) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) ((contains? line \\\"#<value>\\\") (let ((printed (emit line))) (main))) (else (main)))))\"" @gen:8fa1c227d87a3600
+r2 meta engine.rule.r2 stated "match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"" @gen:8fa1c227d87a3600
+r3 meta engine.rule.r3 stated "match fact schedule.<cmd>.command => systemd.services.<cmd>.serviceConfig.ExecStart \"\\\"${site}/bin/<value>\\\"\" ; systemd.services.<cmd>.serviceConfig.Type \"\\\"oneshot\\\"\"" @gen:8fa1c227d87a3600
+r4 meta engine.rule.r4 stated "match fact schedule.<cmd>.interval => systemd.timers.<cmd>.wantedBy \"[ \\\"timers.target\\\" ]\" ; systemd.timers.<cmd>.timerConfig.OnBootSec \"\\\"1min\\\"\" ; systemd.timers.<cmd>.timerConfig.OnUnitActiveSec \"\\\"<value>min\\\"\" ; systemd.timers.<cmd>.description \"\\\"runs <cmd> every <value> minutes\\\"\"" @gen:8fa1c227d87a3600
+r5 meta engine.rule.r5 stated "match fact service.<name>.title => systemd.services.<name>.description \"\\\"<value>\\\"\" ; systemd.services.<name>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"" @gen:8fa1c227d87a3600
+r6 meta engine.rule.r6 stated "match fact witness.input => claim.w1.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.w1.call \"(begin (main) (emitted))\"" @gen:8fa1c227d87a3600
+r7 meta engine.rule.r7 stated "match fact witness.output => claim.w1.equals \"(list \\\"#<value>\\\")\"" @gen:8fa1c227d87a3600

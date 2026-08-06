@@ -1,0 +1,7 @@
+# args|stdin|expected stdout|exit
+|all fine\ndisk ERROR now\nok\n|disk ERROR now|0
+|ERROR\n|ERROR|0
+|no errors here\n||0
+|error lowercase\n||0
+|a ERROR b\nc ERROR d\n|a ERROR b\nc ERROR d|0
+|||0

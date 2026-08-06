@@ -1,0 +1,5 @@
+read a line at a time from standard input and print every line that contains the word ERROR.
+install the tool as the command heartbeat.
+run heartbeat every 5 minutes as a system service.
+give the service the name heartbeat.
+given the lines "all fine" and "disk ERROR now", print only disk ERROR now.

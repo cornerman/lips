@@ -1,0 +1,3 @@
+a1 expect systemd.services.<name>.description from service.<name>.title
+a2 expect systemd.timers.<cmd>.timerConfig.OnUnitActiveSec from schedule.<cmd>.interval
+a3 expect claim.w1.equals from witness.output
