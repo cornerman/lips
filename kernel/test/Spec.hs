@@ -3249,6 +3249,14 @@ main = hspec $ do
     it "tells the model a missing capability is a gap, not a workaround" $
       p `shouldSatisfy` T.isInfixOf "that is a GAP"
 
+    -- The gate refuses an engine whose claims leave a definition unreached, so
+    -- the prompt must say so and show the shape that reaches the whole program.
+    -- Three live-minted scenarios claimed only pure helpers and left the entry
+    -- unobserved, which the structural check waved through.
+    it "tells the model every clause must be reached by a claim" $ do
+      p `shouldSatisfy` T.isInfixOf "EVERY CLAUSE MUST BE REACHED BY A CLAIM"
+      p `shouldSatisfy` T.isInfixOf "(begin (main) (emitted))"
+
     it "states the clause claim sections" $ do
       p `shouldSatisfy` T.isInfixOf "claim.<id>.call"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.equals"

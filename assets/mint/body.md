@@ -915,6 +915,19 @@ every behaviour sentence should have one:
   claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
   claim.<id>.equals "#t"
 
+EVERY CLAUSE MUST BE REACHED BY A CLAIM, following calls from the claim's own
+expression through the clauses it calls. lips computes that set and REFUSES an
+engine leaving any definition outside it, naming the ones nothing runs -- a
+clause no claim reaches is behaviour the next mint may rewrite with every gate
+still green. So claim the ENTRY, not only the helpers: one claim of the shape
+
+  claim.whole.feed "[ \"first line\" \"second line\" ]" ;
+  claim.whole.call "(begin (main) (emitted))" ;
+  claim.whole.equals "(list \"what it prints\")"
+
+reaches main and everything main calls, which is usually the whole program.
+Claims over single definitions are good beside it, never instead of it.
+
 Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
 serve those lines to read-a-line first, and claim.<id>.args the same way to set
 the command line the program sees. That is how a whole program is observed end
