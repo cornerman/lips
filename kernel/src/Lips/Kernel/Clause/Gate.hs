@@ -41,6 +41,7 @@ import qualified Data.Text as T
 
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..), Binder (..),
                                       BinderShape (..), contractNames)
+
 import Lips.Kernel.Decision          (SourceLoc (..))
 import Lips.Kernel.Sexp              (SExp (..), renderSexp, sexpSymbols)
 
@@ -135,6 +136,12 @@ definition definers name (SList (SSym d : SList (SSym n : params) : body))
   , null body = Left "its body is empty"
   | d `elem` definers = (\ps -> (ps, body)) <$> traverse param params
   where
+    -- A dot is dotted-pair notation, not a name: (define (f . rest) ...) is a
+    -- VARIADIC definition, and counting its two tokens as two parameters made the
+    -- gate's arity disagree with the runtime's -- refusing an honest three-argument
+    -- call and accepting a two-argument one that means something else.
+    param (SSym ".") = Left "a variadic parameter list (. rest) is not in the clause\
+                            \ grammar; give each parameter a name"
     param (SSym p) = Right p
     param other    = Left ("a parameter must be a name, not " <> renderSexp other)
 definition definers name (SList [SSym d, SSym n, value])
@@ -169,14 +176,14 @@ calls :: Vocabulary -> [Text] -> SExp -> [(Text, Int)]
 calls vocab bound = go bound
   where
     go scope (SList xs@(SSym h : args))
-      | Just b <- lookupBinder h = concatMap (go (binderScope scope b xs)) (drop 1 xs)
+      | Just b <- lookupBinder vocab h =
+          let bp = binderParts b xs
+           in concatMap (go (bpNames bp <> scope)) (bpInits bp <> bpBody bp)
       | h `elem` scope = concatMap (go scope) args
       | otherwise = (h, length args) : concatMap (go scope) args
     go scope (SList xs) = concatMap (go scope) xs
     go _ (SQuote _)     = []
     go _ _              = []
-    lookupBinder h = lookup h [ (bForm b, bShape b) | b <- vBinders vocab ]
-    binderScope scope shape xs = boundBy shape xs <> scope
 
 -- | Every ungrounded symbol in an expression, given what is in scope.
 free :: Vocabulary -> [Text] -> [Text] -> SExp -> [Text]
@@ -186,50 +193,64 @@ free vocab known bound = go bound
       | s `elem` scope || s `elem` known = []
       | otherwise                        = [s]
     go scope (SList xs@(SSym h : _))
-      | Just b <- lookupBinder h = binder scope b xs
-      | otherwise                = concatMap (go scope) xs
+      | Just b <- lookupBinder vocab h =
+          let bp = binderParts b xs
+           -- A binder's own names enter scope for everything after its head,
+           -- which includes its initializers (lenient by design, see the header).
+           in concatMap (go (bpNames bp <> scope)) (bpInits bp <> bpBody bp)
+      | otherwise = concatMap (go scope) xs
     go scope (SList xs) = concatMap (go scope) xs
     go _ (SQuote _)     = []      -- data, not a call
     go _ _              = []
 
-    lookupBinder h = lookup h [ (bForm b, bShape b) | b <- vBinders vocab ]
-
-    -- A binder's own names enter scope for everything after its head, which
-    -- includes its initializers (lenient by design, see the module header).
-    binder scope shape xs =
-      let names = boundBy shape xs
-          scope' = names <> scope
-          rest = drop (1 + shapeIndex shape) xs
-          inits = binderInits shape xs
-       in concatMap (go scope') (inits <> rest)
-
-    shapeIndex (ParamsAt i)   = i
-    shapeIndex (BindingsAt i) = i
-
-    binderInits shape xs = case (shape, atIndex (shapeIndex shape) xs) of
-      (BindingsAt _, Just (SList items)) -> concat [ es | SList (SSym _ : es) <- items ]
-      _                                  -> []
+lookupBinder :: Vocabulary -> Text -> Maybe BinderShape
+lookupBinder vocab h = lookup h [ (bForm b, bShape b) | b <- vBinders vocab ]
 
 atIndex :: Int -> [a] -> Maybe a
 atIndex i xs = case drop i xs of
   (x : _) -> Just x
   []      -> Nothing
 
--- | The names a binder brings into scope, from its own list. Shared by the
--- grounding walk and the arity walk, so the two cannot disagree about what is a
--- parameter.
-boundBy :: BinderShape -> [SExp] -> [Text]
-boundBy shape xs = case atIndex (shapeIndex' shape) xs of
-  Just (SList items) -> case shape of
-    ParamsAt _   -> [ p | SSym p <- items ]
-    BindingsAt _ -> [ p | SList (SSym p : _) <- items ]
-  -- (lambda args body): a single name taking the whole argument list.
-  Just (SSym p) -> [p]
-  _             -> []
+-- | How a binder's own form decomposes: the names it brings into scope, the
+-- initializer expressions inside its list, and where its body starts.
+--
+-- ONE decomposition, shared by the grounding walk and the arity walk, so the two
+-- cannot disagree about what is a parameter. They were separate and did: the
+-- arity walk treated a binding list as an expression and only happened to reach
+-- the right answer.
+data BinderParts = BinderParts
+  { bpNames :: [Text]
+  , bpInits :: [SExp]
+  , bpBody  :: [SExp]
+  }
 
-shapeIndex' :: BinderShape -> Int
-shapeIndex' (ParamsAt i)   = i
-shapeIndex' (BindingsAt i) = i
+binderParts :: BinderShape -> [SExp] -> BinderParts
+binderParts shape xs = case (shape, atIndex i xs) of
+  -- @(lambda (x y) body)@: the names are the list at the shape's index.
+  (ParamsAt _, Just (SList items)) ->
+    BinderParts [ p | SSym p <- items ] [] (from (i + 1))
+  -- @(lambda args body)@: a single name taking the whole argument list.
+  (ParamsAt _, Just (SSym p)) -> BinderParts [p] [] (from (i + 1))
+  -- @(let ((x 1)) body)@: each element's head is a name, its tail an initializer.
+  (BindingsAt _, Just (SList items)) ->
+    BinderParts (heads items) (inits items) (from (i + 1))
+  -- @(let loop ((i 0)) body)@: a binder may NAME ITSELF before its bindings,
+  -- which is how a lisp writes a loop -- the name is in scope for the body and
+  -- the bindings are one place further along. A SHAPE, not a word: nothing here
+  -- knows that Scheme spells this one @let@. Reading the name as the binding list
+  -- reported every loop variable as ungrounded and refused honest clauses.
+  (BindingsAt _, Just (SSym nm)) -> case atIndex (i + 1) xs of
+    Just (SList items) ->
+      BinderParts (nm : heads items) (inits items) (from (i + 2))
+    _ -> BinderParts [nm] [] (from (i + 1))
+  _ -> BinderParts [] [] (from (i + 1))
+  where
+    i = case shape of
+      ParamsAt n   -> n
+      BindingsAt n -> n
+    from n = drop n xs
+    heads items = [ p | SList (SSym p : _) <- items ]
+    inits items = concat [ es | SList (SSym _ : es) <- items ]
 
 -- | The contracts the clause set actually reaches, by name. This is the
 -- program's reach into the world, and the covering computation

@@ -4877,6 +4877,20 @@ main = hspec $ do
       fmap Sx.renderSexp (Sx.fillSexp (const (Right "(system \"rm\")")) (Sx.SStr [Sx.SPHole "value"]))
         `shouldBe` Right "\"(system \\\"rm\\\")\""
 
+    -- A word carrying the hole marker would render into a string that reads back
+    -- as a HOLE, so the clause stored and the clause meant would differ. There is
+    -- no escape for it -- guile refuses \# as an invalid escape sequence -- so the
+    -- only total answer is a refusal at the door.
+    it "refuses a program word carrying the hole marker" $ do
+      Sx.fillSexp (const (Right "a #<value> b")) (Sx.SStr [Sx.SPHole "value"])
+        `shouldSatisfy` either (T.isInfixOf "how a\
+          \ clause writes a hole") (const False)
+      -- and what survives filling always reads back as what was filled
+      let survives t = case Sx.fillSexp (const (Right t)) (Sx.SStr [Sx.SPHole "value"]) of
+            Left _  -> True
+            Right x -> Sx.parseSexp (Sx.renderSexp x) == Right x
+      all survives ["a\"b", "a\\b", "a\nb", "#<v>", "#t", "a#b", "<v>"] `shouldBe` True
+
     it "lists every symbol it mentions, in order" $
       fmap Sx.sexpSymbols (Sx.parseSexp "(f (g x) 1 \"s\")")
         `shouldBe` Right ["f", "g", "x"]
@@ -4993,6 +5007,25 @@ main = hspec $ do
 
     it "does not look inside quoted data" $
       gate schemeVocabulary [clauseOf "f" "(define (f) '(system))"] `shouldBe` []
+
+    -- A binder may name itself before its bindings, which is how every lisp
+    -- writes a loop. Reading that name as the binding list reported every loop
+    -- variable as ungrounded, so the gate refused honest clauses -- a grammar gap,
+    -- which is a kernel bug, not a fact about the program.
+    it "does not report a named binder's own variables as ungrounded" $ do
+      gate schemeVocabulary
+        [clauseOf "run" "(define (run xs) (let loop ((i 0)) (cond ((null? xs) i) (else (loop (+ i 1))))))"]
+        `shouldBe` []
+      -- the loop's own name is callable, and its arity is not the kernel's to know
+      gate schemeVocabulary
+        [clauseOf "f" "(define (f n) (let go ((k n) (acc 0)) (go k acc)))"] `shouldBe` []
+
+    -- A dot is dotted-pair notation, not a name. Counting its two tokens as two
+    -- parameters refused an honest three-argument call and accepted a
+    -- two-argument one that means something else.
+    it "refuses a variadic parameter list rather than mis-counting it" $
+      gate schemeVocabulary [clauseOf "f" "(define (f . rest) (length rest))"]
+        `shouldSatisfy` any isNotADefinition
 
     it "sees a clause calling another clause as grounded" $
       gate schemeVocabulary [ clauseOf "a" "(define (a x) (b x))"
