@@ -322,18 +322,38 @@ tracks only what is still open.
     module into a temp directory had to stage the site beside it, not just
     `artifacts/`.
 
-11. **Re-run falsifier check (c) with the holes closed** (blocked only on
-    patience: each mint is 13 to 15 minutes and the loop is manual). The last
-    attempt got as far as booting a VM and failing a machine claim with exit 127,
-    which is the mint wrapping the site in a `writeShellApplication` and getting
-    the inner path wrong. The prompt now forbids wrapping the site
-    (`MUST NOT WRAP THE SITE`), which should remove that failure class; the run
-    to confirm it has not happened yet.
+11. **Falsifier check (c) is ANSWERED, and it passes behaviourally**
+    (2026-08-04, `experiments/logscan-mints/`, mints `e` and `f`). Both mints of
+    the same five-line program chose clauses, neither wrote a line of source,
+    both cores are seven traceable definitions, and the two binaries agree
+    byte-for-byte on thirteen probes including every case where the two Go mints
+    diverged. They do NOT agree textually: the two cores factor the loop
+    differently. So the honest verdict is that two mints differ where the program
+    does not in TEXT, and not at all in BEHAVIOUR.
 
-    While re-running, watch two things the first pair already showed: whether
-    both mints now choose clauses (the question check (c) actually asks), and how
-    often a mint returns "no usable reply" (two of three attempts did, after 47s
-    and 12m 26s, so budget exhaustion is a real cost of the longer prompt).
+    Two qualifications kept in the open: thirteen probes are evidence, not proof;
+    and both mints invented the same unstated policy for a non-JSON line (drop
+    it), which is now visible in a traceable clause instead of buried in Go, but
+    is still invention. Closing that is the author's job (state the line) or a
+    demand's (ask for it), not a gate's.
+
+    The run caught one defect no gate had: both mints defined `(define (main) ...)`
+    against an entry calling `(main (arguments))`, so both binaries died on first
+    run with every gate green. Fixed by deriving what the core must define from
+    the entry expression itself.
+
+12. **Remaining known gaps on the clause axis** (none blocking).
+
+    a. **A witness pattern fixes its example's line count** (reported by mint `f`
+       as `witness-line-count`): a claim's feed is a list value and no hole
+       repeats, so "the lines A, B and C" needs a fresh mint. The general shape
+       is a repeating hole in the template grammar, which nothing else needs yet.
+    b. **`app/Main.hs` is 2000 lines.** `writeSite` was extracted to `Lips.Site`
+       when it grew four jobs; the gates around it deserve the same treatment,
+       and that is real work with real regression risk, not a logic-axis errand.
+    c. **Several sites at once is refused, not built** (plan Task 10 landed as
+       shape only). No committed example needs a second place; the refusal makes
+       growing to several a kernel change nobody can stumble into.
    d. **Sites** (plan Task 10). A program states where it runs, coverage runs
       per site over one shared core, and compile writes one directory per site.
       This is what lets a rule hold in a browser and on a server without two
