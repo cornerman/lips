@@ -27,7 +27,7 @@ module Main (main) where
 import           Control.Concurrent (forkIO)
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import           Control.Exception  (IOException, finally, try)
-import           Control.Monad      (filterM, forM, forM_, unless, when)
+import           Control.Monad      (filterM, forM, forM_, unless, when, void)
 import           Data.IORef         (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import           Data.Bifunctor     (first)
 import           Data.List          (intercalate, partition)
@@ -366,7 +366,7 @@ draftTarget = do
 expectGate :: Bool -> Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realization
 expectGate contract claims dir file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
-  stagedGate (stageFromDisk dir file) file rl
+  stagedGate (stageBeside dir file rl) file rl
   sourceSpecGate dir file eng program
   expSrc <- if contract then tryRead (expectPathIn dir file) else pure Nothing
   case expSrc of
@@ -384,7 +384,7 @@ expectGate contract claims dir file eng program = do
         | otherwise -> step ("contract: " <> plural (length expects) "check") $ do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
-          res <- runExpects (stageFromDisk dir file) (map (bindSelfExpect (instanceName file)) expects) rl
+          res <- runExpects (stageBeside dir file rl) (map (bindSelfExpect (instanceName file)) expects) rl
           case res of
             Right () -> pure ()
             Left (ToolMissing e) -> die (nixMissing file "check the program" "check" e)
@@ -765,10 +765,12 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- a mint that emits `src ./artifacts/<name>` but writes its source under
       -- another name is refused here instead of shipping a broken build.
       forM_ validated $ \(f, rl) ->
-        stagedGate (\dst -> writeSources dst minted) f rl
+        stagedGate (\root -> writeSources (root </> "artifacts") minted
+                               >> void (writeSite root (rlClauseClaims rl) (rlCore rl))) f rl
       -- The shared contract gates every program, each bound to its own <self>.
       step ("contract: " <> plural (length expects) "check") $ forM_ validated $ \(f, rl) -> do
-        gate <- runExpects (\dst -> writeSources dst minted)
+        gate <- runExpects (\root -> writeSources (root </> "artifacts") minted
+                                      >> void (writeSite root (rlClauseClaims rl) (rlCore rl)))
                            (map (bindSelfExpect (instanceName f)) expects) rl
         case gate of
           Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
@@ -1354,7 +1356,11 @@ evalOptionExpects stage nixModule pairs = withTempDir $ \dir -> do
           pvs     = map snd pairs
           tmp     = dir <> "/module.nix"
       TIO.writeFile tmp nixModule
-      stage (dir <> "/artifacts")
+      -- The module may name things BESIDE it: a staged source tree, and the site
+      -- its own clauses build. So the callback stages the whole neighbourhood
+      -- rather than one subdirectory of it; a module referencing ./site/build.nix
+      -- in a directory nobody wrote it into dies inside nix, naming no remedy.
+      stage dir
       let expr = evalExpr tmp expects
       res <- try (readProcessWithExitCode "nix"
                     ["eval", "--raw", "--impure", "--expr", T.unpack expr] "")
@@ -1410,7 +1416,7 @@ stagedGate :: (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 stagedGate stage file rl
   | null staged && null (rlFills rl) = pure ()
   | otherwise = withTempDir $ \dir -> do
-  stage (dir </> "artifacts")
+  stage dir
   -- The same fill compile performs, so a fill defect (a value no source names, a
   -- marker no engine declares) is refused here rather than shipping @marker@
   -- verbatim into a compiled program.
@@ -1687,6 +1693,15 @@ stageFromDisk dir file dst = do
   let src = artifactsPathIn dir file
   there <- doesDirectoryExist src
   when there (copyTree src dst)
+
+-- | Everything a realized module names beside itself: the staged source tree and
+-- the site its clauses build. Handed to a gate that materializes the module into
+-- a temp directory, so what nix evaluates there is what a compiled directory
+-- holds.
+stageBeside :: FilePath -> FilePath -> Realization -> FilePath -> IO ()
+stageBeside dir file rl root = do
+  stageFromDisk dir file (root </> "artifacts")
+  void (writeSite root (rlClauseClaims rl) (rlCore rl))
 
 -- | Write the site: the runtime's adapters, the minted core, the assembled file
 -- that loads them in order and starts the program, and the runtime's own Nix
