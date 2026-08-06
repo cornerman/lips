@@ -11,10 +11,17 @@
 -- builder's own conventions govern. A STAGED SOURCE TREE is the same defect at
 -- file scale.
 --
--- This module counts those four classes and names the members of the two
--- unvouched ones. It judges nothing and classifies nothing by shape, because
--- guessing which strings are "really programs" is exactly the invention lips
--- refuses; it reports where the grounding runs out and lets a human read.
+-- A schema vouches for a NAME and a TYPE, never for the text inside a string. So
+-- there is a fifth number beside the four classes: how many words of literal text
+-- the mint wrote into string values that no program word reaches. A live mint put
+-- a whole shell pipeline into @systemd.services.x.script@ and the four classes
+-- called it a vouched option assignment, which is true of the option and false of
+-- the pipeline.
+--
+-- This module counts, names the members of the two unvouched classes, and
+-- measures mint-written text. It judges nothing and classifies nothing by shape,
+-- because guessing which strings are "really programs" is exactly the invention
+-- lips refuses; it reports where the grounding runs out and lets a human read.
 --
 -- Why counting matters. A number nobody watches is how seventy lines of Go
 -- arrive in a five-line program (§13, "A re-mint rewrites behavior the program
@@ -31,6 +38,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import Lips.Kernel.Decision
+import Lips.Kernel.Engine.Value (Piece (..), Value (..), parseValue)
 
 -- | One assertion nothing outside lips vouches for.
 data Unvouched = Unvouched
@@ -46,6 +54,11 @@ data Grounding = Grounding
   , gClaims   :: Int         -- ^ vouched by the author, who stated the observable
   , gGlue     :: [Unvouched] -- ^ artifact arguments: foreign text, vouched by nothing
   , gStaged   :: [Unvouched] -- ^ staged source trees: the same defect at file scale
+  , gWritten  :: [Unvouched]
+    -- ^ String option values carrying literal words no program word reaches: text
+    -- the mint wrote and a schema cannot vouch for. Not a defect by itself (a
+    -- unit description is prose, and prose is fine); a number to watch, because
+    -- behaviour hiding in an option string is behaviour no gate reads.
   }
   deriving (Eq, Show)
 
@@ -54,7 +67,7 @@ data Grounding = Grounding
 -- are kernel vocabulary, @artifact.\<n\>.args.@ is an argument to somebody
 -- else's builder, and everything else names an option of the target world.
 grounding :: [(Subject, Decision)] -> Grounding
-grounding winners = foldr add (Grounding 0 0 0 [] []) (nubBy sameSubject winners)
+grounding winners = foldr add (Grounding 0 0 0 [] [] []) (nubBy sameSubject winners)
   where
     -- One SUBJECT is one assertion, however many agreeing decisions carry it.
     -- Several program lines may state the same artifact argument (three lines
@@ -73,7 +86,10 @@ grounding winners = foldr add (Grounding 0 0 0 [] []) (nubBy sameSubject winners
       -- An artifact's builder and its fills name things; only its arguments
       -- carry text, so the rest is not counted as unvouched.
       ("artifact" : _) -> g
-      _ -> g { gOptions = gOptions g + 1 }
+      _ -> let g' = g { gOptions = gOptions g + 1 }
+            in case mintWords d of
+                 0 -> g'
+                 n -> g' { gWritten = (unvouchedOf s d) { uWords = n } : gWritten g' }
 
     segments (Subject ss) = ss
 
@@ -84,6 +100,19 @@ grounding winners = foldr add (Grounding 0 0 0 [] []) (nubBy sameSubject winners
       }
 
     assertionOf d = case dAssertion d of Assertion a -> a
+
+    -- The literal words inside a string value, with the holes removed: what the
+    -- mint wrote rather than what the program said. A non-string value (a
+    -- boolean, a number, a path, a package reference) is not prose and counts
+    -- zero, so this measures text and never mistakes a typed value for it.
+    mintWords d = case parseValue (assertionOf d) of
+      Right v -> length (concatMap T.words (literals v))
+      Left _  -> 0
+
+    literals (VStr ps)  = [ t | PLit t <- ps ]
+    literals (VList vs) = concatMap literals vs
+    literals (VAttr fs) = concatMap (literals . snd) fs
+    literals _          = []
 
 -- | How much foreign text a program carries, in words. One monotone number, so
 -- growth is visible at a glance: a five-line program that acquires seventy lines
@@ -102,10 +131,16 @@ groundingReport g =
       , count (gClaims g) "claim" <> " (stated)"
       , count (length (gGlue g) + length (gStaged g)) "unvouched assertion"
           <> " (nothing), " <> count (unvouchedWords g) "word"
+      , count (sum (map uWords (gWritten g))) "mint-written word"
+          <> " inside option strings"
       ]
   ]
     <> map (line "glue") (sortOn (negate . uWords) (gGlue g))
     <> map (line "staged") (sortOn (negate . uWords) (gStaged g))
+    -- Only the wordiest few: prose in a description is normal, and a list of
+    -- every one-word string would bury the number that matters.
+    <> map (line "mint wrote")
+           (take 3 (filter ((> 3) . uWords) (sortOn (negate . uWords) (gWritten g))))
   where
     count 1 what = "1 " <> what
     count n what = T.pack (show n) <> " " <> what <> "s"

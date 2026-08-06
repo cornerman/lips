@@ -5335,11 +5335,27 @@ main = hspec $ do
                             , mk "g2" "x" "echo \"hello from lips\"" Stated) ]
        in length (gGlue (grounding twice)) `shouldBe` 1
 
+    -- A schema vouches for a name and a type, never for the text inside a string.
+    -- A live mint put a whole shell pipeline into systemd.services.x.script and
+    -- the four classes called it a vouched option assignment, which is true of
+    -- the option and false of the pipeline.
+    it "counts the words a mint wrote into an option string" $ do
+      let g2 = grounding
+            [ ( Subject ["systemd", "services", "x", "script"]
+              , mk "s1" "x" "\"<value> | mail -s report ops@example.com\"" Stated )
+            , ( Subject ["services", "x", "enable"], mk "s2" "x" "true" Stated )
+            , ( Subject ["systemd", "timers", "x", "timerConfig", "OnCalendar"]
+              , mk "s3" "x" "\"<value>\"" Stated ) ]
+      map uWords (gWritten g2) `shouldBe` [5]
+      -- A boolean is not prose, and a value that is only a hole is the program's
+      -- own word, so neither is counted.
+      map uSubject (gWritten g2) `shouldBe` [Subject ["systemd", "services", "x", "script"]]
+
     it "reports the four classes on one line, then names the unvouched" $ do
       case groundingReport g of
         (summary : glueLine : _) -> do
           summary `shouldBe`
-            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 2 unvouched assertions (nothing), 5 words"
+            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 2 unvouched assertions (nothing), 5 words, 0 mint-written words inside option strings"
           glueLine `shouldSatisfy` T.isInfixOf "glue: artifact.greet.args.text"
           glueLine `shouldSatisfy` T.isInfixOf "<- greet.lips:1"
         out -> expectationFailure ("report is too short: " <> show out)
