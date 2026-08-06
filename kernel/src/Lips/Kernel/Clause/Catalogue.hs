@@ -24,11 +24,14 @@ module Lips.Kernel.Clause.Catalogue
   , coveringRuntime
   , siteFile
   , clauseClaimsFile
+  , entryDemand
   ) where
 
 import           Data.List (intercalate)
 import           Data.Text (Text)
 import qualified Data.Text as T
+
+import Lips.Kernel.Sexp (SExp (..), parseSexp)
 
 -- | One place a clause set can run. @rFiles@ are the adapter files linked
 -- before the core, in this order; @rClaimFiles@ replace the effect adapters when
@@ -166,3 +169,20 @@ clauseClaimsFile files forms = T.unlines
     <> [ "(load \"" <> T.pack f <> "\")" | f <- files ]
     <> forms
     <> [ "(claims-done)" ])
+
+-- | What the runtime's entry demands of the minted core: the definition it calls
+-- and how many arguments it passes. Derived from the entry expression itself, so
+-- the requirement cannot drift from the call the way a second declaration would.
+--
+-- @entry (main)@ demands @main@ with no parameters; @entry (main (arguments))@
+-- demands one. A 'Left' is a malformed entry, which is a defect in lips's own
+-- runtime declaration and says so.
+--
+-- Without this check the entry and the core can disagree with every gate green:
+-- two live mints defined @(define (main) ...)@ against an entry passing one
+-- argument, and both binaries died at runtime with "wrong number of arguments".
+entryDemand :: Runtime -> Either Text (Text, Int)
+entryDemand rt = case parseSexp (rEntry rt) of
+  Right (SList (SSym n : args)) -> Right (n, length args)
+  Right (SSym n)                -> Right (n, 0)
+  _ -> Left ("the " <> rName rt <> " runtime's entry is not a call: " <> rEntry rt)

@@ -15,11 +15,13 @@ module Lips.Site
   , planSite
   ) where
 
+import           Data.Bifunctor (first)
 import           Data.Text (Text)
 import qualified Data.Text as T
 
 import Lips.Kernel.Claim            (renderClauseClaim)
-import Lips.Kernel.Clause.Catalogue (Runtime (..), clauseClaimsFile, coveringRuntime, siteFile)
+import Lips.Kernel.Clause.Catalogue (Runtime (..), clauseClaimsFile, coveringRuntime,
+                                     entryDemand, siteFile)
 import Lips.Kernel.Run              (Realization (..))
 
 -- | The WHOLE content of a site directory: every file it should hold, and
@@ -44,11 +46,26 @@ data SitePlan = SitePlan
 -- where lips keeps its runtime files, and the suite can plan a site against a
 -- runtime it invents.
 planSite :: (Text -> FilePath -> Maybe Text) -> [Runtime] -> Realization
-         -> Either Text (Maybe SitePlan)
+         -> Either (Text, Text) (Maybe SitePlan)
 planSite asset runtimes rl = case rlCore rl of
   Nothing -> Right Nothing
-  Just (core, contracts) -> do
-    rt <- coveringRuntime runtimes contracts (rlSiteProps rl)
+  Just (core, contracts, defined) -> do
+    rt <- first (\why -> (why, "\8594 state a requirement in the program, or add a\
+                                \ runtime that covers it."))
+            (coveringRuntime runtimes contracts (rlSiteProps rl))
+    -- The core must satisfy the runtime's entry, or the site builds and dies on
+    -- first run with "wrong number of arguments" and every lips gate green.
+    (entryName, entryArgs) <- first (\why -> (why, "\8594 this is a lips bug; report it."))
+                                    (entryDemand rt)
+    case lookup entryName defined of
+      Just n | n == entryArgs -> Right ()
+      Just n -> engineFault (T.pack (show entryName) <> " is defined with " <> plural n
+                       <> ", but the " <> rName rt <> " runtime starts a program by\
+                          \ calling it with " <> plural entryArgs <> " ("
+                       <> rEntry rt <> "). Define it to take " <> plural entryArgs <> ".")
+      Nothing -> engineFault ("the " <> rName rt <> " runtime starts a program by calling "
+                        <> entryName <> " (" <> rEntry rt <> "), and this program\
+                           \ defines no clause of that name.")
     -- A run links the pure adapters, the real effects, then the core. A claim
     -- swaps the effects for the list-backed ones and the verdict harness, so the
     -- real ones are never loaded beside them.
@@ -69,10 +86,14 @@ planSite asset runtimes rl = case rlCore rl of
                | not (null claims) ]
       })
   where
+    -- The engine is at fault, not the program: the remedy is a fresh mint.
+    engineFault why = Left (why, "\8594 rebuild the setup: lips generate <program>.")
+    plural 1 = "1 parameter"
+    plural n = T.pack (show n) <> " parameters"
     -- The builder is written under a fixed name, so the module and the flake can
     -- import ./site/build.nix without knowing which runtime wrote it.
     fromAsset rt f = case asset (rName rt) f of
       Just body -> Right (if f == rBuild rt then "build.nix" else f, body)
       Nothing -> Left ("lips ships no file " <> T.pack f <> " for the " <> rName rt
-                        <> " runtime, although that runtime declares it. This is a\
-                           \ lips bug; report it.")
+                        <> " runtime, although that runtime declares it."
+                       , "\8594 this is a lips bug; report it.")

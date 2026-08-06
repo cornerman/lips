@@ -42,7 +42,7 @@ import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim        (Claim, ClauseClaim, claimRooted, claimsFromDecisions,
                                  clauseClaimsFromDecisions)
 import Lips.Kernel.Decision
-import Lips.Kernel.Sexp         (renderSexp)
+import Lips.Kernel.Sexp         (SExp (..), renderSexp)
 import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Engine.Value  (Piece (..), Ref (..), Value (..), parseValue, renderRealized,
                                   sourceText, valueArtifactNames, valueArtifactPaths,
@@ -195,7 +195,8 @@ realizeClaims modeOf assemble base =
 -- 'Nothing' when the program states no clauses, so a configuration-only program
 -- is untouched by the logic axis.
 realizeClauses :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-               -> Vocabulary -> Base -> Base -> Either RealizeError (Maybe (Text, [Text]))
+               -> Vocabulary -> Base -> Base
+               -> Either RealizeError (Maybe (Text, [Text], [(Text, Int)]))
 realizeClauses modeOf assemble vocab source base =
   case resolve modeOf assemble base of
     Left errs -> Left (resolveErr errs)
@@ -211,7 +212,9 @@ realizeClauses modeOf assemble vocab source base =
         -- The contracts travel with the core, because the caller needs both and
         -- deriving them twice would let them disagree: what the gate grounded and
         -- what the runtime must provide are the same set by construction.
-        []      -> Right ((\t -> (t, map cName (reachedContracts vocab ordered)))
+        []      -> Right ((\t -> ( t
+                                 , map cName (reachedContracts vocab ordered)
+                                 , [ (clName c, arityOf c) | c <- ordered ] ))
                             <$> renderCore ordered)
   where
     -- A clause with no provenance sorts last; the gate rejects it anyway, so the
@@ -310,6 +313,14 @@ referencesSite (VList vs) = any referencesSite vs
 referencesSite (VAttr fs) = any (referencesSite . snd) fs
 referencesSite (VRef RSite) = True
 referencesSite _          = False
+
+-- | How many parameters a clause's definition takes. A caller checking that the
+-- core satisfies its runtime's entry needs it, and the shape is already known:
+-- 'Lips.Kernel.Clause.Gate.gate' has accepted the clause by the time this runs.
+arityOf :: Clause -> Int
+arityOf cl = case clBody cl of
+  SList (_ : SList (_ : params) : _) -> length params
+  _                                  -> 0
 
 -- | Is this path the clause vocabulary? Twin of 'Lips.Kernel.Claim.claimRooted'
 -- and 'Lips.Kernel.OptionType.reservedRoot': no head of it becomes an option.

@@ -1,4 +1,4 @@
 p1 meta lang.pattern.p1 stated "print each line read from standard input => fact echo.lines \"all\"" @gen:0000000000000000
 p2 meta lang.pattern.p2 stated "given the lines <in1> and <in2>, print both => fact witness.<in1>.<in2>.both \"yes\"" @gen:0000000000000000
-r1 meta engine.rule.r1 stated "match fact echo.lines => clause.main \"(define (main args) (scan))\" ; clause.scan \"(define (scan) (scan-line (read-a-line)))\" ; clause.scan-line \"(define (scan-line line) (cond ((end-of-input? line) 'done) (else (emit line) (scan))))\"" @gen:0000000000000000
-r2 meta engine.rule.r2 stated "match fact witness.<in1>.<in2>.both => claim.both.feed \"[ \\\"<in1>\\\" \\\"<in2>\\\" ]\" ; claim.both.call \"(begin (main (arguments)) (emitted))\" ; claim.both.equals \"(list \\\"#<in1>\\\" \\\"#<in2>\\\")\"" @gen:0000000000000000
+r1 meta engine.rule.r1 stated "match fact echo.lines => clause.main \"(define (main) (scan))\" ; clause.scan \"(define (scan) (scan-line (read-a-line)))\" ; clause.scan-line \"(define (scan-line line) (cond ((end-of-input? line) 'done) (else (emit line) (scan))))\"" @gen:0000000000000000
+r2 meta engine.rule.r2 stated "match fact witness.<in1>.<in2>.both => claim.both.feed \"[ \\\"<in1>\\\" \\\"<in2>\\\" ]\" ; claim.both.call \"(begin (main) (emitted))\" ; claim.both.equals \"(list \\\"#<in1>\\\" \\\"#<in2>\\\")\"" @gen:0000000000000000

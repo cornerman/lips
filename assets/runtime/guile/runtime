@@ -18,9 +18,12 @@ file adapter-pure.scm
 # The adapters that touch the world, linked for a real run only.
 effect-file adapter-effects.scm
 
-# The last line of main.scm: how this runtime hands a program its arguments and
-# starts it. Data, because lips must not know that Guile spells it command-line.
-entry (main (arguments))
+# The last line of main.scm: how this runtime starts a program. Data, because
+# lips must not know how any runtime spells it. A clause reads the command line
+# through the `arguments` contract, so the entry passes nothing -- and lips
+# DERIVES from this line that the core must define `main` taking no parameters,
+# refusing a core that does not.
+entry (main)
 
 # The Nix file that turns the linked site into a runnable derivation. It takes
 # { pkgs, name, src } and returns one; lips copies it and calls it.

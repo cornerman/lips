@@ -1754,10 +1754,10 @@ stageBeside dir file rl root = do
 -- was written, which is what decides the compiled flake's rungs.
 writeSite :: FilePath -> Realization -> IO Bool
 writeSite outDirPath rl = case planSite runtimeAsset runtimes rl of
-  Left why -> die (report
-    "lips can't decide where this program's behaviour runs."
+  Left (why, remedy) -> die (report
+    "lips can't build this program's behaviour."
     [why]
-    "\8594 state a requirement in the program, or add a runtime that covers it.")
+    remedy)
   Right Nothing -> pure False
   Right (Just plan) -> do
     let siteDir = outDirPath </> "site"

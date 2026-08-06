@@ -5204,7 +5204,7 @@ main = hspec $ do
                      "(main (arguments))" "build-toy.nix"
         assets _ f = Just ("; " <> T.pack f)
         withCore ccs = emptyRealization
-          { rlCore = Just ("(define (main a) a)\n", ["emit"])
+          { rlCore = Just ("(define (main a) a)\n", ["emit"], [("main", 1)])
           , rlClauseClaims = ccs }
         plan ccs = planSite assets [rt] (withCore ccs)
         names p = case p of
@@ -5240,14 +5240,25 @@ main = hspec $ do
       names (plan []) `shouldSatisfy` \ns ->
         "memory.scm" `notElem` ns && "claims.scm" `notElem` ns
 
+    -- Every gate was green and both live mints produced a binary that died on
+    -- first run: they defined (main) while the entry called (main (arguments)).
+    it "refuses a core that does not satisfy the runtime's entry" $ do
+      let wrongArity = (withCore []) { rlCore = Just ("", ["emit"], [("main", 0)]) }
+      planSite assets [rt] wrongArity
+        `shouldSatisfy` either (\(e, _) -> T.isInfixOf "1 parameter" e && T.isInfixOf "main" e)
+                               (const False)
+      let noMain = (withCore []) { rlCore = Just ("", ["emit"], [("scan", 1)]) }
+      planSite assets [rt] noMain
+        `shouldSatisfy` either (T.isInfixOf "defines no clause of that name" . fst) (const False)
+
     it "refuses, with the reason, when no runtime has a required property" $
       planSite assets [rt] (withCore []) { rlSiteProps = [("browser", "typed live")] }
-        `shouldSatisfy` either (\e -> T.isInfixOf "browser" e && T.isInfixOf "typed live" e)
+        `shouldSatisfy` either (\(e, _) -> T.isInfixOf "browser" e && T.isInfixOf "typed live" e)
                                (const False)
 
     it "reports a runtime declaring a file lips does not ship" $
       planSite (\_ _ -> Nothing) [rt] (withCore [])
-        `shouldSatisfy` either (T.isInfixOf "ships no file") (const False)
+        `shouldSatisfy` either (T.isInfixOf "ships no file" . fst) (const False)
 
   -- Making the status quo visible: every assertion is vouched by a schema, by
   -- the contract set, by the author, or by nothing. The last class is where
@@ -5306,7 +5317,7 @@ main = hspec $ do
     let guile = Runtime "guile" ["native", "fast-start"]
                         ["emit", "json-parse", "read-a-line"] ["guile", "guile-json"]
                         ["adapter-pure.scm"] ["adapter-effects.scm"]
-                        ["adapter-effects-memory.scm"] "(main (arguments))" "site.nix"
+                        ["adapter-effects-memory.scm"] "(main)" "site.nix"
         hoot = Runtime "hoot" ["browser"] ["emit", "json-parse"] ["guile-hoot"]
                        ["adapter-pure.scm"] [] [] "(main '())" "site.nix"
 
@@ -5325,11 +5336,19 @@ main = hspec $ do
       fmap rEntry (parseRuntime "guile" "entry (main (arguments))")
         `shouldBe` Right "(main (arguments))"
 
+    -- One declaration, so the requirement cannot drift from the call: what the
+    -- core must define is read out of the entry expression itself.
+    it "derives what the core must define from the entry it calls" $ do
+      fmap entryDemand (parseRuntime "r" "entry (main)")
+        `shouldBe` Right (Right ("main", 0))
+      fmap entryDemand (parseRuntime "r" "entry (main (arguments))")
+        `shouldBe` Right (Right ("main", 1))
+
     it "assembles the site file: adapters, then core, then the runtime's entry" $
       siteFile guile ["adapter-pure.scm", "core.scm"] `shouldSatisfy` \t ->
         T.isInfixOf "(load \"adapter-pure.scm\")" t
           && T.isInfixOf "(load \"core.scm\")" t
-          && T.isSuffixOf "(main (arguments))\n" t
+          && T.isSuffixOf "(main)\n" t
 
     it "ships every file the guile runtime declares" $
       map (runtimeAsset "guile")
@@ -5575,13 +5594,15 @@ clauseDecision i name body prov =
 
 realizeClausesOf :: [Decision] -> Either RealizeError (Maybe Text)
 realizeClausesOf =
-  fmap (fmap fst) . withBase (realizeClauses (const Replace) noAssembly schemeVocabulary)
+  fmap (fmap (\(t, _, _) -> t))
+    . withBase (realizeClauses (const Replace) noAssembly schemeVocabulary)
 
 -- | The contracts a clause base reaches, for a test that cares about the reach
 -- rather than the text.
 realizeContractsOf :: [Decision] -> Either RealizeError (Maybe [Text])
 realizeContractsOf =
-  fmap (fmap snd) . withBase (realizeClauses (const Replace) noAssembly schemeVocabulary)
+  fmap (fmap (\(_, cs, _) -> cs))
+    . withBase (realizeClauses (const Replace) noAssembly schemeVocabulary)
 
 -- | Hand one base in as both the source and the ground base: in a test the
 -- program's decisions and the clauses sit in the same list.
