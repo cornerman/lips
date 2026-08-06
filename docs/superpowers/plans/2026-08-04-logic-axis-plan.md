@@ -19,8 +19,19 @@ build), Guile 3 (first runtime), guile-json (first pure adapter package).
 
 ## Status, and Where the Plan Was Corrected in Flight
 
-Tasks 1 to 6 are landed and green (655 examples, 0 failures, `-Wall` clean across
-library, app and suite). Two things landed that the plan did not ask for, and
+Tasks 1 to 7 are landed and green (665 examples, 0 failures, `-Wall` clean across
+library, app and suite). Task 7 is proved end to end by
+`experiments/clause-site/`: `lips compile` writes the site and
+`printf 'a\nb\nc\n' | nix run 'path:...#site'` prints the three lines. Its engine
+is hand-written, because no mint emits clauses until Task 9.
+
+Two things Task 7 forced, both keeping host knowledge out of the kernel: a
+runtime now declares its ENTRY expression (`entry (main (cdr (command-line)))`,
+so lips never learns that Guile spells it `command-line`) and its BUILDER
+(`build site.nix`, a Nix file taking `{ pkgs, name, src }` that lips copies and
+calls). And `realizeClauses` takes the SOURCE base beside the ground one, since a
+minted clause is derived from a program decision that refine removes before
+realize, so the ground base alone cannot say which line caused it. Two things landed that the plan did not ask for, and
 both belong to whoever runs the rest:
 
 - **`Lips.Kernel.Grounding`**, which counts what vouches for each assertion and
