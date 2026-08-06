@@ -344,10 +344,16 @@ tracks only what is still open.
 
 12. **Remaining known gaps on the clause axis** (none blocking).
 
-    a. **A witness pattern fixes its example's line count** (reported by mint `f`
-       as `witness-line-count`): a claim's feed is a list value and no hole
-       repeats, so "the lines A, B and C" needs a fresh mint. The general shape
-       is a repeating hole in the template grammar, which nothing else needs yet.
+    a. **RESOLVED, and it was never a grammar gap.** Four mints wrote witness
+       patterns with one hole per example line, which reads a three-line program
+       and refuses a four-line one. `Lang/Nest.hs` already carries the case, and
+       its header says why the kernel must not carry it any other way ("the
+       kernel would otherwise be dictating a collection syntax"): a block is a
+       header pattern plus a child under it keyed by `<n:index>`, and `Append`
+       assembles one list from the N contributors. Demonstrated with one
+       hand-written engine over three and five items, no model. Fixed in the mint
+       prompt ("NEVER FIX A COUNT IN A TEMPLATE"), not in the kernel. Watch the
+       next mints to confirm they use a block.
     b. **`app/Main.hs` is 2000 lines.** `writeSite` was extracted to `Lips.Site`
        when it grew four jobs; the gates around it deserve the same treatment,
        and that is real work with real regression risk, not a logic-axis errand.
