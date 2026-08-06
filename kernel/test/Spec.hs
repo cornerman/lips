@@ -3085,7 +3085,7 @@ main = hspec $ do
     -- observing less than the author stated.
     it "refuses a section the grammar does not have" $
       claimsFromDecisions [ pair ["claim","echo","stderr"] "\"boom\"" ]
-        `shouldBe` Left "claim section stderr is not one of run, stdin, stdout, exit, call, equals, feed"
+        `shouldBe` Left "claim section stderr is not one of run, stdin, stdout, exit, call, equals, feed, args"
 
     it "refuses a claim with no command" $
       claimsFromDecisions [ pair ["claim","echo","stdout"] "\"hi\"" ]
@@ -5004,7 +5004,7 @@ main = hspec $ do
       clauseClaimsFromDecisions
         [ dec "witness" "call" "(keep? r s)", dec "witness" "equals" "#t" ]
         `shouldBe` Right [ClauseClaim "witness" (Sx.SList [Sx.SSym "keep?", Sx.SSym "r", Sx.SSym "s"])
-                                      (Sx.SBool True) []]
+                                      (Sx.SBool True) [] []]
 
     it "reads the lines a claim feeds the program first" $
       fmap (map ccFeed) (clauseClaimsFromDecisions
@@ -5030,11 +5030,18 @@ main = hspec $ do
         `shouldBe` Right ["expr"]
 
     it "emits the feed and the judgment, and nothing about how a verdict prints" $
-      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a", "b"])
+      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a", "b"] [])
         `shouldBe` [ "(feed-lines (list \"a\" \"b\"))", "(claim \"w\" (f) #t)" ]
 
+    -- A claim may vary the command line the program sees, which is the only way
+    -- to observe a program whose behaviour depends on its arguments.
+    it "serves a stated command line before the input lines" $
+      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["l"] ["a=1"])
+        `shouldBe` [ "(feed-args (list \"a=1\"))", "(feed-lines (list \"l\"))"
+                   , "(claim \"w\" (f) #t)" ]
+
     it "escapes a fed line so it cannot end the string it lands in" $
-      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a\"b"])
+      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a\"b"] [])
         `shouldSatisfy` any (T.isInfixOf "\"a\\\"b\"")
 
     it "assembles a claims file that loads, judges, then reports" $

@@ -7,7 +7,7 @@ property fast-start
 # Every contract guile's adapters provide. A program reaching for anything not
 # listed here fails loud at compile, naming the contract.
 provides json-parse string-cut field-of field-name field-value
-provides read-a-line end-of-input? emit die
+provides arguments read-a-line end-of-input? emit die
 
 package guile
 package guile-json
@@ -17,7 +17,7 @@ file adapter-effects.scm
 
 # The last line of main.scm: how this runtime hands a program its arguments and
 # starts it. Data, because lips must not know that Guile spells it command-line.
-entry (main (cdr (command-line)))
+entry (main (arguments))
 
 # The Nix file that turns the linked site into a runnable derivation. It takes
 # { pkgs, name, src } and returns one; lips copies it and calls it.

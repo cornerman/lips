@@ -2,9 +2,15 @@
 ;;; Linking this instead of the guile one runs the whole program offline, with
 ;;; no process, no stdin and no VM. Mutation lives here, in the shell, never in
 ;;; the minted core.
+(define pending-args '())
 (define pending-lines '())
 (define emitted-lines '())
 (define end-of-input-token 'end-of-input)
+
+(define (feed-args args)
+  (set! pending-args args))
+
+(define (arguments) pending-args)
 
 (define (feed-lines lines)
   (set! pending-lines lines)

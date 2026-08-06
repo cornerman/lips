@@ -76,6 +76,7 @@ data ClauseClaim = ClauseClaim
   , ccCall   :: SExp     -- ^ the expression to evaluate
   , ccEquals :: SExp     -- ^ what it must equal
   , ccFeed   :: [Text]   -- ^ input lines served to @read-a-line@ first
+  , ccArgs   :: [Text]   -- ^ the command line the program sees, served to @arguments@
   }
   deriving (Eq, Show)
 
@@ -83,7 +84,7 @@ data ClauseClaim = ClauseClaim
 -- command sections are: a mint's typo must fail loud, never be dropped in
 -- silence and pass by observing less than the author stated.
 clauseSections :: [Text]
-clauseSections = ["call", "equals", "feed"]
+clauseSections = ["call", "equals", "feed", "args"]
 
 -- | Gather the clause claims out of a ground base. Deterministic (ordered by
 -- id). An id carrying both a command section and a clause section is a loud
@@ -102,13 +103,9 @@ clauseClaimsFromDecisions winners = traverse one (Map.toList grouped)
       | otherwise = do
           call <- need "call" parts
           want <- need "equals" parts
-          feed <- case lookup "feed" parts of
-            Nothing -> Right []
-            Just d  -> case parseValue (assertionOf d) of
-              Right (VList vs) -> traverse feedLine vs
-              Right v          -> (: []) <$> feedLine v
-              Left e           -> Left (pre <> "feed is not a value: " <> e)
-          Right (ClauseClaim cid call want feed)
+          feed <- textList "feed" parts
+          args <- textList "args" parts
+          Right (ClauseClaim cid call want feed args)
       where
         pre = "claim " <> cid <> ": "
         need sec ps = case lookup sec ps of
@@ -116,9 +113,18 @@ clauseClaimsFromDecisions winners = traverse one (Map.toList grouped)
           Just d  -> case parseSexp (assertionOf d) of
             Right x -> Right x
             Left e  -> Left (pre <> sec <> " is not an expression: " <> e)
-        feedLine v = case sourceText v of
+        -- A list of plain strings, or a single one written bare. Both feed and
+        -- args are BYTES the program will see, so only a value with a text form
+        -- can be one.
+        textList sec ps = case lookup sec ps of
+          Nothing -> Right []
+          Just d  -> case parseValue (assertionOf d) of
+            Right (VList vs) -> traverse (one' sec) vs
+            Right v          -> (: []) <$> one' sec v
+            Left e           -> Left (pre <> sec <> " is not a value: " <> e)
+        one' sec v = case sourceText v of
           Just t  -> Right t
-          Nothing -> Left (pre <> "a fed line must be plain text, got " <> renderish v)
+          Nothing -> Left (pre <> sec <> " must be plain text, got " <> renderish v)
 
     assertionOf d = case dAssertion d of Assertion a -> a
 
@@ -127,8 +133,10 @@ clauseClaimsFromDecisions winners = traverse one (Map.toList grouped)
 -- harness, so these two forms are the whole interface.
 renderClauseClaim :: ClauseClaim -> [Text]
 renderClauseClaim cc =
-  [ "(feed-lines (list " <> T.unwords (map schemeStr (ccFeed cc)) <> "))"
-  | not (null (ccFeed cc)) ]
+  [ "(feed-args (list " <> T.unwords (map schemeStr (ccArgs cc)) <> "))"
+  | not (null (ccArgs cc)) ]
+    <> [ "(feed-lines (list " <> T.unwords (map schemeStr (ccFeed cc)) <> "))"
+       | not (null (ccFeed cc)) ]
     <> [ "(claim " <> schemeStr (ccId cc) <> " " <> renderSexp (ccCall cc)
           <> " " <> renderSexp (ccEquals cc) <> ")" ]
   where

@@ -1,6 +1,7 @@
 ;;; guile adapter, effect contracts: the imperative shell, for the real run.
 (use-modules (ice-9 rdelim))
 
+(define (arguments) (cdr (command-line)))
 (define (read-a-line) (read-line))
 (define (end-of-input? x) (eof-object? x))
 (define (emit line) (display line) (newline))
