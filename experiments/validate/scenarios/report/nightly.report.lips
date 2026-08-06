@@ -1,0 +1,2 @@
+read lines from standard input and mail the ten most common ones to ops@example.com every night.
+install the tool as the command nightly.

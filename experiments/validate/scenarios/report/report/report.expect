@@ -1,0 +1,2 @@
+a1 expect systemd.services.<self>.environment.REPORT_RECIPIENT from report.recipient
+a2 expect systemd.services.<self>.script from tool.command
