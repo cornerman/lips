@@ -1,0 +1,7 @@
+# args|stdin|expected stdout|exit
+|2\n3\n|5|0
+|2\nx\n3\n|5|0
+||0|0
+|1\n2\n3\n4\n|10|0
+|-5\n5\n|0|0
+|2.5\n2.5\n|5.0|0

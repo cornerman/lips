@@ -3238,6 +3238,15 @@ main = hspec $ do
 
     -- A third of logscan is fail-loud behaviour, so a prompt that could not claim
     -- a stop would leave a third of that program unobserved.
+    -- A live mint reported "emitted-output-not-observable" as a GAP for a program
+    -- whose whole job is to print: (emitted) existed in the memory adapter and
+    -- the prompt never said so, so no model could write the claim.
+    it "tells the model how to observe what the program printed" $ do
+      p `shouldSatisfy` T.isInfixOf "(emitted) is the lines the program printed"
+      -- And that a clause may not reach for it: it is no contract.
+      gate schemeVocabulary [clauseOf "f" "(define (f) (emitted))"]
+        `shouldBe` [Ungrounded "f" "emitted"]
+
     it "tells the model that a program which stops is observable" $ do
       p `shouldSatisfy` T.isInfixOf "A PROGRAM THAT STOPS IS OBSERVABLE"
       parseValue "(list (quote died) \"argument is not field=value:\" \"a\")"

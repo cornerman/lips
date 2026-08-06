@@ -1,0 +1,15 @@
+p1 meta lang.pattern.p1 stated "read numbers, one per line, from standard input => fact tally.input \"one number per line from standard input\"" @gen:b7f166b666e3f535
+p2 meta lang.pattern.p2 stated "print their total when the input ends => fact tally.output \"the total of the numbers read\"" @gen:b7f166b666e3f535
+p3 meta lang.pattern.p3 stated "ignore a line that is not a number => fact tally.skip \"a line that is not a number is dropped\"" @gen:b7f166b666e3f535
+p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact install.command \"<name>\"" @gen:b7f166b666e3f535
+p5 meta lang.pattern.p5 stated "given the lines <a> and <b>, print <sum> => fact witness.sum \"<a> <b> <sum>\"" @gen:b7f166b666e3f535
+q1 meta engine.demand.q1 stated "demand tally.input \"where do the numbers come from? say: read numbers, one per line, from standard input.\"" @gen:b7f166b666e3f535
+q2 meta engine.demand.q2 stated "demand tally.output \"what is printed, and when? say: print their total when the input ends.\"" @gen:b7f166b666e3f535
+q3 meta engine.demand.q3 stated "demand tally.skip \"what happens to a line that is not a number? say: ignore a line that is not a number.\"" @gen:b7f166b666e3f535
+q4 meta engine.demand.q4 stated "demand install.command \"what command name should the tool be installed as?\"" @gen:b7f166b666e3f535
+q5 meta engine.demand.q5 stated "demand witness.sum \"give a worked example: given the lines A and B, print S.\"" @gen:b7f166b666e3f535
+r1 meta engine.rule.r1 stated "match fact tally.input => clause.numbers \"(define (numbers) (let ((line (read-a-line))) (if (end-of-input? line) (list) (let ((n (number-of line))) (if n (cons n (numbers)) (numbers))))))\"" @gen:b7f166b666e3f535
+r2 meta engine.rule.r2 stated "match fact tally.output => clause.total \"(define (total ns) (if (null? ns) 0 (+ (car ns) (total (cdr ns)))))\" ; clause.main \"(define (main) (emit (number->string (total (numbers)))))\"" @gen:b7f166b666e3f535
+r3 meta engine.rule.r3 stated "match fact tally.skip => clause.number-of \"(define (number-of line) (string->number line))\"" @gen:b7f166b666e3f535
+r4 meta engine.rule.r4 stated "match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"" @gen:b7f166b666e3f535
+r5 meta engine.rule.r5 stated "match fact witness.sum => claim.sum.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.sum.call \"(total (numbers))\" ; claim.sum.equals \"<value.3:int>\"" @gen:b7f166b666e3f535

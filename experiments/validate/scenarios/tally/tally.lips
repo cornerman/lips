@@ -1,0 +1,5 @@
+read numbers, one per line, from standard input.
+print their total when the input ends.
+ignore a line that is not a number.
+install the tool as the command tally.
+given the lines 2 and 3, print 5.

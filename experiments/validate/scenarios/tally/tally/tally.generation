@@ -1,3 +1,26 @@
+model: claude-opus-5
+target: nixos
+schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
+thinking: high
+confidence-threshold: 0.7
+--- system prompt ---
+TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
+evaluated as root, so every option you emit affects the system as a whole,
+never one user's session alone. Its namespaces include services.* (system
+services), systemd.services.* and systemd.timers.* (units and timers),
+environment.* (system-wide packages and files), networking.*, and users.*.
+<self> keys an attrsOf-submodule instance name wherever this world's schema
+offers one -- systemd.services.<self>, or a service family's own instance
+table (an option shaped like services.<name>.<instances>.<self>).
+query_options searches exactly this world's pinned schema: the NixOS
+option tree, nothing narrower and nothing wider.
+
+A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
+command that reaches beyond the program's own artifacts (a systemctl call, a
+curl against a running service) is run inside the booted module. It costs a
+boot, so prefer an observable over the program's own binary where the
+behaviour lives in a binary.
+
 ## Where You Are
 
 lips exists to shrink the artifact a human must keep reviewing down to a
@@ -900,7 +923,17 @@ command or reach the network; it calls a contract by name and an adapter
 provides it, chosen at compile time by what the clauses need. The contracts
 available are:
 
-{{CONTRACTS}}
+  json-parse (1) -- text -> record, or #f when the text is not JSON
+  string-cut (2) -- text char -> (before . after) at the first occurrence, or #f
+  field-of (2) -- record name -> the field's value, or #f when absent
+  field-name (1) -- pair -> its name
+  field-value (1) -- pair -> its value
+  arguments (0) -- -> the words after the command name, as a list of strings
+  read-a-line (0) -- -> the next input line, or the end-of-input value
+  end-of-input? (1) -- x -> whether x is the end-of-input value
+  emit (1) -- line -> writes it to the output, followed by a newline
+  die (2) -- message subject -> stops the program, naming the subject
+
 
 If the program needs a capability no contract offers, that is a GAP: report it
 and refuse, exactly as you would for a missing option. Never reach for a shell
@@ -920,16 +953,6 @@ serve those lines to read-a-line first, and claim.<id>.args the same way to set
 the command line the program sees. That is how a whole program is observed end
 to end rather than one definition at a time. A claim states either a command
 (run/stdin/stdout/exit) or an expression (call/equals/feed/args), never both.
-
-WHAT THE PROGRAM PRINTED IS OBSERVABLE. Inside a claim (never inside a clause)
-three more names exist, provided by the same list-backed adapters that replace
-the real effects: (emitted) is the lines the program printed, in order, and
-feed-lines / feed-args are what claim.<id>.feed and claim.<id>.args compile to.
-So a program whose whole job is to print is claimed end to end:
-  claim.<id>.feed "[ \"2\" \"3\" ]" ;
-  claim.<id>.call "(begin (main) (emitted))" ;
-  claim.<id>.equals "(list \"5\")"
-A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
 
 A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
 claim around it: the stop becomes an ordinary value, so state what it must be.
@@ -961,3 +984,189 @@ A SOURCE BLOCK IS THE LAST RESORT, for behaviour clauses genuinely cannot
 express. Prefer clauses every time you can: a source file is traceable to no
 program line, is rewritten wholesale on the next mint, and is the one thing lips
 cannot check.
+
+--- program (input) ---
+=== program tally.lips ===
+read numbers, one per line, from standard input.
+print their total when the input ends.
+ignore a line that is not a number.
+install the tool as the command tally.
+given the lines 2 and 3, print 5.
+
+--- tool transcript ---
+-> query_options "environment.systemPackages"
+-> query_options "environment."
+<- query_options
+environment.systemPackages : list of package
+
+<- query_options
+environment.etc.* (9 options)
+services.n8n.environment (8 options)
+services.strichliste.environment (5 options)
+services.gokapi.environment (4 options)
+services.shelfmark.environment (4 options)
+services.koito.environment (3 options)
+services.slurm.rest (3 options)
+services.coder.environment (2 options)
+services.n8n.taskRunners (2 options)
+services.postgres-websockets.environment (2 options)
+environment.budgie.excludePackages (1 option)
+environment.checkConfigurationOptions (1 option)
+environment.cinnamon.excludePackages (1 option)
+environment.corePackages (1 option)
+environment.cosmic.excludePackages (1 option)
+environment.debuginfodServers (1 option)
+environment.defaultPackages (1 option)
+environment.enableAllTerminfo (1 option)
+environment.enableDebugInfo (1 option)
+environment.enlightenment.excludePackages (1 option)
+environment.etc (1 option)
+environment.extraInit (1 option)
+environment.extraOutputsToInstall (1 option)
+environment.extraSetup (1 option)
+environment.freetds (1 option)
+environment.gnome.excludePackages (1 option)
+environment.homeBinInPath (1 option)
+environment.interactiveShellInit (1 option)
+environment.ldso (1 option)
+environment.ldso32 (1 option)
+environment.localBinInPath (1 option)
+environment.loginShellInit (1 option)
+environment.lxqt.excludePackages (1 option)
+environment.mate.excludePackages (1 option)
+environment.memoryAllocator.provider (1 option)
+environment.pantheon.excludePackages (1 option)
+environment.pathsToLink (1 option)
+environment.plasma6.excludePackages (1 option)
+environment.profileRelativeEnvVars (1 option)
+environment.profileRelativeSessionVariables (1 option)
+… and 15 more namespaces.
+Ask again with one of these paths to see its options.
+
+-> check_draft "0.95 p1 pattern read numbers, one per line, from standard input. => fact tally.input \"one number per line from standard input\"\n0.95 p2 pattern print their total when the input ends. => fact tally.output \"the total of the numbers read\"\n0.95 p3 pattern ignore a line that is not a number. => fact tally.skip \"a line that is not a number is ignored\"\n0.95 p4 pattern install the tool as the command <name> => fact install.command \"<name>\"\n0.9 p5 pattern given the lines <a> and <b>, print <sum> => fact witness.sum \"<a> <b> <sum>\"\n0.9 r1 match fact tally.input => clause.numbers \"(define (numbers) (let ((line (read-a-line))) (if (end-of-input? line) (list) (let ((n (number-of line))) (if n (cons n (numbers)) (numbers))))))\"\n0.9 r2 match fact tally.output => clause.total \"(define (total ns) (if (null? ns) 0 (+ (car ns) (total (cdr ns)))))\" ; clause.main \"(define (main) (emit (number->string (total (numbers)))))\"\n0.9 r3 match fact tally.skip => clause.number-of \"(define (number-of line) (string->number line))\"\n0.95 r4 match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.sum => claim.sum.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.sum.call \"(total (numbers))\" ; claim.sum.equals \"<value.3:int>\"\n0.9 q1 demand install.command \"what command name should the tool be installed as?\"\n0.95 a1 expect site.<self>.command from install.command\n0.9 a2 expect claim.sum.equals from witness.sum#3\n0.95 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+tally.lips: 5 of 5 lines crystallize.
+  line 1  ok        p1  tally.input
+  line 2  ok        p2  tally.output
+  line 3  ok        p3  tally.skip
+  line 4  ok        p4  install.command
+  line 5  ok        p5  witness.sum
+
+· crystallize tally.lips
+✓ crystallize tally.lips  (0.0s)
+· contract: 2 checks
+✗ contract: 2 checks  (0.0s)
+tally.lips no longer produces what it promised:
+
+  site.tally.command: should contain tally, but is null
+
+→ if you changed the program on purpose, rebuild: lips generate tally.lips
+
+-> check_draft "0.95 p1 pattern read numbers, one per line, from standard input. => fact tally.input \"one number per line from standard input\"\n0.95 p2 pattern print their total when the input ends. => fact tally.output \"the total of the numbers read\"\n0.95 p3 pattern ignore a line that is not a number. => fact tally.skip \"a line that is not a number is ignored\"\n0.95 p4 pattern install the tool as the command <name> => fact install.command \"<name>\"\n0.9 p5 pattern given the lines <a> and <b>, print <sum> => fact witness.sum \"<a> <b> <sum>\"\n0.9 r1 match fact tally.input => clause.numbers \"(define (numbers) (let ((line (read-a-line))) (if (end-of-input? line) (list) (let ((n (number-of line))) (if n (cons n (numbers)) (numbers))))))\"\n0.9 r2 match fact tally.output => clause.total \"(define (total ns) (if (null? ns) 0 (+ (car ns) (total (cdr ns)))))\" ; clause.main \"(define (main) (emit (number->string (total (numbers)))))\"\n0.9 r3 match fact tally.skip => clause.number-of \"(define (number-of line) (string->number line))\"\n0.95 r4 match fact install.command => site.<self>.name \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.sum => claim.sum.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.sum.call \"(total (numbers))\" ; claim.sum.equals \"<value.3:int>\"\n0.9 q1 demand install.command \"what command name should the tool be installed as?\"\n0.95 a1 expect site.<self>.name from install.command\n0.9 a2 expect claim.sum.equals from witness.sum#3\n0.95 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+tally.lips: 5 of 5 lines crystallize.
+  line 1  ok        p1  tally.input
+  line 2  ok        p2  tally.output
+  line 3  ok        p3  tally.skip
+  line 4  ok        p4  install.command
+  line 5  ok        p5  witness.sum
+
+· crystallize tally.lips
+✓ crystallize tally.lips  (0.0s)
+· contract: 2 checks
+✗ contract: 2 checks  (0.0s)
+tally.lips no longer produces what it promised:
+
+  site.tally.name: should contain tally, but is null
+
+→ if you changed the program on purpose, rebuild: lips generate tally.lips
+
+-> check_draft "0.95 p1 pattern read numbers, one per line, from standard input. => fact tally.input \"one number per line from standard input\"\n0.95 p2 pattern print their total when the input ends. => fact tally.output \"the total of the numbers read\"\n0.95 p3 pattern ignore a line that is not a number. => fact tally.skip \"a line that is not a number is ignored\"\n0.95 p4 pattern install the tool as the command <name> => fact install.command \"<name>\"\n0.9 p5 pattern given the lines <a> and <b>, print <sum> => fact witness.sum \"<a> <b> <sum>\"\n0.9 r1 match fact tally.input => clause.numbers \"(define (numbers) (let ((line (read-a-line))) (if (end-of-input? line) (list) (let ((n (number-of line))) (if n (cons n (numbers)) (numbers))))))\"\n0.9 r2 match fact tally.output => clause.total \"(define (total ns) (if (null? ns) 0 (+ (car ns) (total (cdr ns)))))\" ; clause.main \"(define (main) (emit (number->string (total (numbers)))))\"\n0.9 r3 match fact tally.skip => clause.number-of \"(define (number-of line) (string->number line))\"\n0.95 r4 match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.sum => claim.sum.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.sum.call \"(total (numbers))\" ; claim.sum.equals \"<value.3:int>\"\n0.9 q1 demand install.command \"what command name should the tool be installed as?\"\n0.9 a2 expect claim.sum.equals from witness.sum#3\n0.95 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
+-> check_draft "0.95 p1 pattern read numbers, one per line, from standard input. => fact tally.input \"one number per line from standard input\"\n0.95 p2 pattern print their total when the input ends. => fact tally.output \"the total of the numbers read\"\n0.95 p3 pattern ignore a line that is not a number. => fact tally.skip \"a line that is not a number is dropped\"\n0.95 p4 pattern install the tool as the command <name> => fact install.command \"<name>\"\n0.9 p5 pattern given the lines <a> and <b>, print <sum> => fact witness.sum \"<a> <b> <sum>\"\n0.9 r1 match fact tally.input => clause.numbers \"(define (numbers) (let ((line (read-a-line))) (if (end-of-input? line) (list) (let ((n (number-of line))) (if n (cons n (numbers)) (numbers))))))\"\n0.9 r2 match fact tally.output => clause.total \"(define (total ns) (if (null? ns) 0 (+ (car ns) (total (cdr ns)))))\" ; clause.main \"(define (main) (emit (number->string (total (numbers)))))\"\n0.9 r3 match fact tally.skip => clause.number-of \"(define (number-of line) (string->number line))\"\n0.95 r4 match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.sum => claim.sum.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.sum.call \"(total (numbers))\" ; claim.sum.equals \"<value.3:int>\"\n0.9 q1 demand tally.input \"where do the numbers come from? say: read numbers, one per line, from standard input.\"\n0.9 q2 demand tally.output \"what is printed, and when? say: print their total when the input ends.\"\n0.9 q3 demand tally.skip \"what happens to a line that is not a number? say: ignore a line that is not a number.\"\n0.95 q4 demand install.command \"what command name should the tool be installed as?\"\n0.9 q5 demand witness.sum \"give a worked example: given the lines A and B, print S.\"\n0.9 a1 expect claim.sum.equals from witness.sum#3\n0.85 g1 gap emitted-output-not-observable <<<lips\nblocked line: print their total when the input ends.\nan expression claim observes a returned value (call/equals); there is no way\nto observe what a clause wrote with emit, short of a command claim on a built\nbinary. the witness is therefore stated as claim.sum.call \"(total (numbers))\"\nwith feed, which observes the total that main prints, not the printed bytes.\nrepro: feed [ \"2\" \"3\" ], call (main), and nothing can be compared.\nlips>>>\n0.95 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
+
+--- raw reply ---
+0.95 p1 pattern read numbers, one per line, from standard input. => fact tally.input "one number per line from standard input"
+0.95 p2 pattern print their total when the input ends. => fact tally.output "the total of the numbers read"
+0.95 p3 pattern ignore a line that is not a number. => fact tally.skip "a line that is not a number is dropped"
+0.95 p4 pattern install the tool as the command <name> => fact install.command "<name>"
+0.9 p5 pattern given the lines <a> and <b>, print <sum> => fact witness.sum "<a> <b> <sum>"
+0.9 r1 match fact tally.input => clause.numbers "(define (numbers) (let ((line (read-a-line))) (if (end-of-input? line) (list) (let ((n (number-of line))) (if n (cons n (numbers)) (numbers))))))"
+0.9 r2 match fact tally.output => clause.total "(define (total ns) (if (null? ns) 0 (+ (car ns) (total (cdr ns)))))" ; clause.main "(define (main) (emit (number->string (total (numbers)))))"
+0.9 r3 match fact tally.skip => clause.number-of "(define (number-of line) (string->number line))"
+0.95 r4 match fact install.command => site.<self>.command "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
+0.9 r5 match fact witness.sum => claim.sum.feed "[ \"<value.1>\" \"<value.2>\" ]" ; claim.sum.call "(total (numbers))" ; claim.sum.equals "<value.3:int>"
+0.9 q1 demand tally.input "where do the numbers come from? say: read numbers, one per line, from standard input."
+0.9 q2 demand tally.output "what is printed, and when? say: print their total when the input ends."
+0.9 q3 demand tally.skip "what happens to a line that is not a number? say: ignore a line that is not a number."
+0.95 q4 demand install.command "what command name should the tool be installed as?"
+0.9 q5 demand witness.sum "give a worked example: given the lines A and B, print S."
+0.9 a1 expect claim.sum.equals from witness.sum#3
+0.85 g1 gap emitted-output-not-observable <<<lips
+blocked line: print their total when the input ends.
+an expression claim observes a returned value (call/equals); there is no way
+to observe what a clause wrote with emit, short of a command claim on a built
+binary. the witness is therefore stated as claim.sum.call "(total (numbers))"
+with feed, which observes the total that main prints, not the printed bytes.
+repro: feed [ "2" "3" ], call (main), and nothing can be compared.
+lips>>>
+0.95 d1 report <<<lips
+This language describes a small line-oriented adding tool. A program states
+what it reads, what it prints, what it ignores, what the command is called,
+and one worked example. All five lines are required, and each is demanded by
+name, so a program that drops one is refused with a question instead of
+building a tool with a missing piece.
+
+## The line shapes it accepts
+
+- `read numbers, one per line, from standard input.` — fixes the input: a
+  reader loop that pulls lines until input ends. No editable value here; the
+  wording is fixed vocabulary, not a hole.
+- `ignore a line that is not a number.` — fixes what a line has to be to
+  count: a line that does not read as a number contributes nothing.
+- `print their total when the input ends.` — fixes the result: sum the
+  numbers collected, print it once, at end of input.
+- `install the tool as the command <name>.` — the only editable word in the
+  setup. Change `tally` here and the installed command name changes.
+- `given the lines <a> and <b>, print <sum>.` — the worked example. All three
+  numbers are holes; edit them and the checked observation changes with them.
+
+## The mechanism
+
+The behaviour is expressed as clauses, not as a baked source file, so every
+definition is traceable to the line that asked for it:
+
+- `numbers` (from the input line) reads with `read-a-line` until
+  `end-of-input?`, keeping a line only when `number-of` gives a number.
+- `number-of` (from the ignore line) is the "is this a number" decision; a
+  non-number yields `#f` and the reader drops that line.
+- `total` and `main` (from the print line) sum the collected list and print
+  the result once with `emit`. `main` is the entry point.
+
+The clauses are built into one executable; the install line names it via
+`site.<self>.command` and puts that executable on the system PATH through
+`environment.systemPackages`. No artifact and no wrapper script is minted —
+the site is installed directly. The instance name (`tally.lips` → `tally`) is
+used only as the site's key, never as the command name: the command name is
+the program's word.
+
+## What is pinned
+
+The worked example becomes a claim, judged offline: the example's two input
+lines are fed to the reader and the total is compared with the example's
+stated result. The expect pins the third word of the example line (`5`) to
+that claim's expected value, so a later re-mint cannot quietly drop or narrow
+the author's example. Nothing else in the module holds a program value, so
+there are no other expects: the command name lives in the site emit, which
+is not an assertable module option.
+
+## What I could not express
+
+There is no way to observe the bytes a clause writes with `emit` from an
+expression claim, so the example is checked as the total that `main` prints
+rather than as the printed line itself. This is filed as a gap
+(`emitted-output-not-observable`).
+lips>>>
