@@ -28,6 +28,7 @@ module Lips.Kernel.Realize
 
 import           Data.Char       (isAlpha, isAlphaNum)
 import           Data.List       (nub, partition, sortOn)
+import           Data.Maybe      (fromMaybe)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -41,7 +42,7 @@ import Lips.Kernel.Claim        (Claim, ClauseClaim, claimRooted, claimsFromDeci
 import Lips.Kernel.Decision
 import Lips.Kernel.Sexp         (renderSexp)
 import Lips.Kernel.Source       (validMarker)
-import Lips.Kernel.Engine.Value  (Piece (..), Value (..), parseValue, renderRealized,
+import Lips.Kernel.Engine.Value  (Piece (..), Ref (..), Value (..), parseValue, renderRealized,
                                   sourceText, valueArtifactNames, valueArtifactPaths,
                                   valuePaths)
 
@@ -156,7 +157,7 @@ realizeArtifactFile modeOf assemble base =
              let body = T.unlines (
                    [ "# lips-realized artifact derivations. Generated; do not edit."
                    , "{ pkgs }:"
-                   ] ++ letBlock entries ++ ["artifact"])
+                   ] ++ letBlock Nothing entries ++ ["artifact"])
              Right (Just (body, names))
 
 -- | The claims a ground base states: the observables the author supplied,
@@ -208,11 +209,27 @@ realizeClauses modeOf assemble vocab source base =
       (SourceLoc _ n : _) -> n
       []                  -> maxBound
 
+-- | Does this value name the site, anywhere inside it? A module referencing the
+-- site needs the @let@ binding; one that does not must not import a directory
+-- compile did not write.
+referencesSite :: Value -> Bool
+referencesSite (VStr ps)  = any (== PSite) ps
+referencesSite (VList vs) = any referencesSite vs
+referencesSite (VAttr fs) = any (referencesSite . snd) fs
+referencesSite (VRef RSite) = True
+referencesSite _          = False
+
 -- | Is this path the clause vocabulary? Twin of 'Lips.Kernel.Claim.claimRooted'
 -- and 'Lips.Kernel.OptionType.reservedRoot': no head of it becomes an option.
 clauseRooted :: [Text] -> Bool
 clauseRooted ("clause" : _) = True
 clauseRooted _              = False
+
+-- | Is this path the site vocabulary? @site.name@ tells the module what to call
+-- the program's own build; like a clause, it is not an option any world declares.
+siteRooted :: [Text] -> Bool
+siteRooted ("site" : _) = True
+siteRooted _            = False
 
 clauseDecisions :: [(Subject, Decision)] -> [(Text, Decision)]
 clauseDecisions winners =
@@ -351,7 +368,8 @@ renderModule winners = do
       -- by the first live mint that emitted clauses: every gate passed and the
       -- module then failed to parse.
       opts = [ sd | sd@(Subject segs, _) <- rest
-                  , not (claimRooted segs), not (clauseRooted segs) ]
+                  , not (claimRooted segs), not (clauseRooted segs)
+                  , not (siteRooted segs) ]
       defined  = [ n | (Subject ("artifact" : n : _), _) <- arts ]
   -- Each option assertion is canonical 'Value' text (stored by 'fillValue'),
   -- so parse it once: the Value drives both artifact-reference detection
@@ -366,11 +384,19 @@ renderModule winners = do
   requireDefined defined (concatMap (valueArtifactNames . valOf) optVals ++ argRefs)
   mp <- mainPrograms winners
   entries <- artifactEntries mp arts
+  -- The site's executable name: what the program said to install it as. Absent,
+  -- the derivation is called "site", which builds and runs but installs under a
+  -- name no sentence chose.
+  let siteName
+        | not (any (referencesSite . valOf) optVals) = Nothing
+        | otherwise = Just (fromMaybe "\"site\"" (lookup ["site", "name"] statedNames))
+      statedNames = [ (segs, unAssertion (dAssertion d))
+                    | (Subject segs@("site" : _), d) <- winners ]
   Right $ T.unlines $
     [ "# lips-realized module. Generated from a ground decision base; do not edit."
     , "{ config, lib, pkgs, ... }:"
     ]
-      ++ letBlock entries
+      ++ letBlock siteName entries
       ++ ["{"]
       ++ concatMap assignment (sortOn (path . subjOf) optVals)
       ++ ["}"]
@@ -418,10 +444,23 @@ rootedAtArtifact _                          = False
 -- named @artifact@ so a stored @${artifact.<name>}@ reference resolves
 -- directly, with no rewriting. Emitted only when there are artifacts, so an
 -- artifact-free module is byte-identical to before.
-letBlock :: [Text] -> [Text]
-letBlock []      = []
-letBlock entries =
-  ["let", "  artifact = {"] ++ map ("    " <>) entries ++ ["  };", "in"]
+-- | The module's @let@: the artifact derivations, and the site derivation when
+-- the program has behaviour to build. @site@ is bound by importing the runtime's
+-- own builder from the directory compile wrote beside this module, so a module
+-- can put a program's own behaviour on PATH
+-- (@environment.systemPackages = [ site ]@) exactly as it does an artifact.
+letBlock :: Maybe Text -> [Text] -> [Text]
+letBlock Nothing []      = []
+letBlock mSite entries   =
+  ["let"] ++ arts ++ site ++ ["in"]
+  where
+    arts | null entries = []
+         | otherwise = ["  artifact = {"] ++ map ("    " <>) entries ++ ["  };"]
+    site = case mSite of
+      Nothing -> []
+      Just nm -> [ "  site = import ./site/build.nix {"
+                 , "    inherit pkgs; name = " <> nm <> "; src = ./site;"
+                 , "  };" ]
 
 -- | Render every @artifact.<name>@ group to its attrset field, in name order
 -- so output is deterministic. A group whose subject carries no @<name>@

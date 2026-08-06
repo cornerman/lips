@@ -921,6 +921,14 @@ observed end to end rather than one definition at a time. A claim states either
 a command (run/stdin/stdout/exit) or an expression (call/equals/feed), never
 both.
 
+INSTALL THE PROGRAM BY NAMING THE SITE. The clauses are built into one
+executable, and ${site} is its derivation, exactly as ${artifact.<name>} is an
+artifact's. Say what to call it with a site.name emit and put it on PATH like
+any other package:
+  site.name "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
+A program whose behaviour is clauses needs no artifact and no source block for
+this.
+
 A SOURCE BLOCK IS THE LAST RESORT, for behaviour clauses genuinely cannot
 express. Prefer clauses every time you can: a source file is traceable to no
 program line, is rewritten wholesale on the next mint, and is the one thing lips

@@ -87,7 +87,7 @@ import Lips.Kernel.Surface (stripTrailingPunct)
 -- (the program's file basename), resolved by 'bindSelfValue' at realize time,
 -- exactly as the same token in an option-path segment is. It is a name, not a
 -- program value, so it is distinct from 'PHole'.
-data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text | PSelf
+data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text | PSelf | PSite
   deriving (Eq, Show)
 
 -- | A bare reference used as a whole value (e.g. a list element), naming a
@@ -96,7 +96,7 @@ data Piece = PLit Text | PRef [Text] | PArt Text | PHole Text | PSelf
 -- model and in the canonical form (so it round-trips through 'parseValue'), but
 -- 'renderRealized' emits it bare (@pkgs.curl@, @artifact.weather@) because a
 -- Nix list holds derivations, not interpolations.
-data Ref = RPkg [Text] | RArt Text
+data Ref = RPkg [Text] | RArt Text | RSite
   deriving (Eq, Show)
 
 -- | A rhs value: the Nix value algebra minus computation. No constructor for
@@ -159,9 +159,10 @@ sourceText _          = Nothing
 -- Used by 'Lips.Generate.Minting.uncheckableExpects' as a structural guard.
 valueRefsDerivation :: Value -> Bool
 valueRefsDerivation (VStr ps)  = any isRef ps
-  where isRef (PRef _) = True
-        isRef (PArt _) = True
-        isRef _        = False
+  where isRef (PRef _)  = True
+        isRef (PArt _)  = True
+        isRef PSite     = True
+        isRef _         = False
 valueRefsDerivation (VList vs) = any valueRefsDerivation vs
 valueRefsDerivation (VAttr fs) = any (valueRefsDerivation . snd) fs
 valueRefsDerivation (VRef _)         = True
@@ -648,11 +649,13 @@ interp :: Text -> Either Text Piece
 interp inside = refPiece <$> parseRef inside
   where refPiece (RPkg r) = PRef r
         refPiece (RArt n) = PArt n
+        refPiece RSite    = PSite
 
 -- | Parse the body of a @${...}@ into a reference, shared by string pieces and
 -- whole-value references: a @${artifact.<name>}@ build ref or a @${pkgs.<path>}@
 -- package ref. Anything else (a space, an operator) is computation, rejected.
 parseRef :: Text -> Either Text Ref
+parseRef "site" = Right RSite
 parseRef inside
   | Just name <- T.stripPrefix "artifact." inside =
       -- The reserved <self> names the program's OWN artifact (its instance
@@ -703,6 +706,7 @@ pkgsRef inside =
                   -- tool's resource references), which is plain TEXT here. That
                   -- is expressible -- as an escaped literal -- so the refusal
                   -- names it, rather than reading as "lips cannot do this".
+                  <> " (${site} is the program's own behaviour, built from its clauses.)"
                   <> " If you meant the literal text ${" <> inside <> "} (another"
                   <> " tool's own reference syntax, not Nix), escape it: \\${"
                   <> inside <> "}")
@@ -731,12 +735,14 @@ renderValue (VStr ps)      = "\"" <> T.concat (map piece ps) <> "\""
     piece (PArt n)  = "${artifact." <> n <> "}"
     piece (PHole h) = "<" <> h <> ">"
     piece PSelf     = "<self>"
+    piece PSite     = "${site}"
 
 -- | The canonical @${...}@ form of a whole-value reference. Kept in @.lang@ so
 -- 'parseValue' reads it back unchanged (round-trip).
 renderRefCanon :: Ref -> Text
 renderRefCanon (RPkg r) = "${" <> T.intercalate "." r <> "}"
 renderRefCanon (RArt n) = "${artifact." <> n <> "}"
+renderRefCanon RSite    = "${site}"
 
 -- | The realized Nix form: identical to 'renderValue' everywhere except a
 -- whole-value reference, which becomes a bare attribute path (@pkgs.curl@,
@@ -745,6 +751,7 @@ renderRefCanon (RArt n) = "${artifact." <> n <> "}"
 renderRealized :: Value -> Text
 renderRealized (VRef (RPkg r)) = T.intercalate "." r
 renderRealized (VRef (RArt n)) = "artifact." <> n
+renderRealized (VRef RSite)    = "site"
 renderRealized (VList vs)      = "[ " <> T.unwords (map renderRealized vs) <> " ]"
 renderRealized (VAttr [])       = "{}"
 renderRealized (VAttr fs)       = "{ " <> T.unwords (map (\(k, v) -> k <> " = " <> renderRealized v <> ";") fs) <> " }"

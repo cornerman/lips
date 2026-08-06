@@ -3197,6 +3197,10 @@ main = hspec $ do
       p `shouldSatisfy` T.isInfixOf "claim.<id>.call"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.equals"
 
+    it "tells the model how to install a program whose behaviour is clauses" $ do
+      p `shouldSatisfy` T.isInfixOf "${site}"
+      p `shouldSatisfy` T.isInfixOf "site.name"
+
     it "makes a source block the last resort rather than the first reach" $
       p `shouldSatisfy` T.isInfixOf "A SOURCE BLOCK IS THE LAST RESORT"
 
@@ -4953,6 +4957,27 @@ main = hspec $ do
     -- Found by the first live mint that emitted clauses: every gate passed and
     -- the module then failed to parse, because a clause had been rendered as an
     -- option assignment carrying text that is not Nix.
+    -- The hole the first live mint reported as clause-program-not-installable:
+    -- a program could build its own behaviour and had no way to name it.
+    it "binds the site so a module can put a program's own behaviour on PATH" $
+      realizeReplace (fromList
+        [ (mk "o1" "packages" "[ ${site} ]" Stated)
+            { dSubject = Subject ["environment", "systemPackages"] }
+        , (mk "n1" "site" "\"logscan\"" Stated) { dSubject = Subject ["site", "name"] }
+        ])
+        `shouldSatisfy` either (const False) (\t ->
+          T.isInfixOf "site = import ./site/build.nix" t
+            && T.isInfixOf "name = \"logscan\"" t
+            && T.isInfixOf "environment.systemPackages = [ site ];" t
+            -- site.name tells the module what to call the build; it is kernel
+            -- vocabulary, so it must not also become an option.
+            && not (T.isInfixOf "site.name =" t))
+
+    it "does not import a site directory when nothing names the site" $
+      realizeReplace (fromList
+        [ (mk "o1" "services" "true" Stated) { dSubject = Subject ["services", "x", "enable"] } ])
+        `shouldSatisfy` either (const False) (not . T.isInfixOf "build.nix")
+
     it "keeps clauses out of the module: they are run, not assigned" $
       realizeReplace (fromList
         [ (mk "o1" "services" "true" Stated)
