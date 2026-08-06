@@ -6,3 +6,4 @@ editors/vscode/*.vsix
 
 # feature worktrees
 .worktrees/
+nvim.log
