@@ -73,8 +73,9 @@ import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtif
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
+import           Lips.Kernel.Clause.Catalogue  (Runtime (..), coveringRuntime, siteFile)
 import           Lips.Kernel.Grounding  (Grounding, Unvouched (..), gStaged, groundingReport)
-import           Lips.Runtime            (schemeVocabulary)
+import           Lips.Runtime            (runtimeAsset, runtimes, schemeVocabulary)
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..))
@@ -164,7 +165,7 @@ compileLoose mout mLangDir noContract file = do
   rl  <- checkLoose (not noContract) (not noContract) mLangDir file
   target  <- readRecordedTarget dir file
   let outDirPath = maybe (compiledPath file) id mout
-  (artNames, hasClaims) <- step ("write " <> T.pack outDirPath) $ do
+  (artNames, hasClaims, hasSite) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
     createDirectoryIfMissing True outDirPath
     TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
@@ -172,12 +173,11 @@ compileLoose mout mLangDir noContract file = do
     -- The committed source keeps its markers (it is the template); the COMPILED
     -- source is filled, like every other derived output.
     fillStagedTree file (outDirPath </> "artifacts") (rlFills rl)
-    -- The clause core, when the program states behaviour: one Scheme file whose
-    -- every definition names the program lines behind it. A configuration-only
-    -- program writes none, so its output stays byte-identical.
-    case rlCore rl of
-      Nothing   -> pure ()
-      Just core -> TIO.writeFile (outDirPath </> "core.scm") core
+    -- The clause core, when the program states behaviour: one site directory
+    -- holding the runtime's adapters, the minted core, the assembled entry and
+    -- the runtime's own builder. A configuration-only program writes none, so
+    -- its output stays byte-identical.
+    hasSite <- writeSite outDirPath (rlCore rl)
     artNames <- case rlArtifact rl of
       Nothing            -> pure []
       Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
@@ -186,10 +186,11 @@ compileLoose mout mLangDir noContract file = do
     hasClaims <- case claimsFile (not (null artNames)) (rlClaims rl) of
       Nothing   -> pure False
       Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
-    TIO.writeFile (outDirPath </> "flake.nix") (flakeText target (not (null artNames)) hasClaims)
-    pure (artNames, hasClaims)
+    TIO.writeFile (outDirPath </> "flake.nix")
+      (flakeText target (not (null artNames)) hasClaims hasSite)
+    pure (artNames, hasClaims, hasSite)
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
-  mapM_ note (runCommands target artNames hasClaims outDirPath)
+  mapM_ note (runCommands target artNames hasClaims hasSite outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the
@@ -430,7 +431,7 @@ claimGate dir file rl
         case claimsFile (not (null artNames)) (rlClaims rl) of
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (tmp </> "claims.nix") body
-        TIO.writeFile (tmp </> "flake.nix") (flakeText target (not (null artNames)) True)
+        TIO.writeFile (tmp </> "flake.nix") (flakeText target (not (null artNames)) True False)
         res <- try (readProcessWithExitCode "nix"
           ["build", "--no-link", "path:" <> tmp <> "#claims"] "")
         case res of
@@ -1653,6 +1654,39 @@ stageFromDisk dir file dst = do
   let src = artifactsPathIn dir file
   there <- doesDirectoryExist src
   when there (copyTree src dst)
+
+-- | Write the site: the runtime's adapters, the minted core, the assembled file
+-- that loads them in order and starts the program, and the runtime's own Nix
+-- builder. Returns whether anything was written.
+--
+-- The runtime is CHOSEN here, by covering the contracts the core reaches against
+-- what each catalogued runtime provides. No model and no flag decides it, and a
+-- program no runtime covers fails loud naming the contract nobody offers. Sites
+-- with stated properties are the next step; today a program has one site and no
+-- stated requirements, so the covering has one input.
+writeSite :: FilePath -> Maybe (Text, [Text]) -> IO Bool
+writeSite _ Nothing = pure False
+writeSite outDirPath (Just (core, contracts)) = do
+  rt <- either (die . coverFail) pure (coveringRuntime runtimes contracts [])
+  let siteDir = outDirPath </> "site"
+      files = rFiles rt <> ["core.scm"]
+  createDirectoryIfMissing True siteDir
+  TIO.writeFile (siteDir </> "core.scm") core
+  forM_ (rBuild rt : rFiles rt) $ \f -> case runtimeAsset (rName rt) f of
+    Just body -> TIO.writeFile (siteDir </> (if f == rBuild rt then "build.nix" else f)) body
+    -- A runtime declaring a file its own directory does not hold is a defect in
+    -- lips's assets, not in the program: say so in those words.
+    Nothing -> die (report
+      ("lips ships no file " <> T.pack f <> " for the " <> rName rt <> " runtime,")
+      ["although that runtime declares it."]
+      "\8594 this is a lips bug; report it.")
+  TIO.writeFile (siteDir </> "main.scm") (siteFile rt files)
+  pure True
+  where
+    coverFail why = report
+      "lips can't decide where this program's behaviour runs."
+      [why]
+      "\8594 state a requirement in the program, or add a runtime that covers it."
 
 -- | How much source each staged tree actually holds, in lines and files. The
 -- number that matters for review: an unvouched path is cheap to write and

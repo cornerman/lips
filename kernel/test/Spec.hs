@@ -3226,20 +3226,28 @@ main = hspec $ do
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do
-      let txt = flakeText Nixos True True
+      let txt = flakeText Nixos True True False
       txt `shouldSatisfy` T.isInfixOf "claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
       txt `shouldSatisfy` T.isInfixOf "import ./claims.nix { pkgs = pkgsFor system; }"
 
     it "leaves a claim-free flake free of claim vocabulary" $
-      flakeText Nixos True False `shouldNotSatisfy` T.isInfixOf "claims"
+      flakeText Nixos True False False `shouldNotSatisfy` T.isInfixOf "claims"
 
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $
-      flakeText Kubenix False True `shouldSatisfy` T.isInfixOf "claims"
+      flakeText Kubenix False True False `shouldSatisfy` T.isInfixOf "claims"
 
     it "prints the build command only when the program states claims" $ do
-      runCommands Nixos [] True "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
-      runCommands Nixos [] False "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#claims")
+      runCommands Nixos [] True False "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
+      runCommands Nixos [] False False "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#claims")
+
+    -- The site rung is the program's own behaviour, so it appears exactly when
+    -- the program states some and never otherwise.
+    it "offers the site rung, and its run command, only for a program with behaviour" $ do
+      flakeText Nixos False False True `shouldSatisfy` T.isInfixOf "./site/build.nix"
+      flakeText Nixos False False False `shouldNotSatisfy` T.isInfixOf "site"
+      runCommands Nixos [] False True "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
+      runCommands Nixos [] False False "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
 
   describe "claims.nix (the experiments, as nix)" $ do
     let vstr t = case parseValue t of
@@ -4592,36 +4600,36 @@ main = hspec $ do
     -- config, carrying that unit's environment. Derived inside nix from the
     -- same evaluation, so lips knows no unit name.
     it "nixos exposes a shell per unit the program adds, holding its env" $ do
-      let t = flakeText Nixos False False
+      let t = flakeText Nixos False False False
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "baseServices", "systemd.services", "genAttrs", "subtractLists"
         , "// b.serviceShells", "service-${u}", "env = cfg.systemd.services" ]
     it "nixos prints the per-unit shell, naming the unit as a placeholder" $ do
-      let ls = T.unlines (runCommands Nixos [] False "/tmp/out")
+      let ls = T.unlines (runCommands Nixos [] False False "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix develop path:/tmp/out#service-<unit>", "nix flake show" ]
     it "kubenix exposes the module and kubenix's own rendered outputs" $ do
-      let t = flakeText Kubenix False False
+      let t = flakeText Kubenix False False False
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "kubenixModules.default", "kubenix.evalModules", "kubenix.modules.k8s"
         , "config.kubernetes", "cfg.resultYAML", "cfg.result", "kubectl" ]
       mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
         [ "nixosModules", "run-lips-vm", "eval-config.nix" ]
     it "kubenix prints how to write, check and shell the manifests" $ do
-      let ls = T.unlines (runCommands Kubenix [] False "/tmp/out")
+      let ls = T.unlines (runCommands Kubenix [] False False "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix run", "path:/tmp/out#manifest", "manifests.yaml"
         , "nix build", "#manifest-json", "nix develop" ]
       ls `shouldNotSatisfy` T.isInfixOf "#vm"
     it "terranix exposes the module and terranix's own config.tf.json" $ do
-      let t = flakeText Terranix False False
+      let t = flakeText Terranix False False False
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "terranixModules.default", "terranix.lib.terranixConfiguration"
         , "config = ", "opentofu" ]
       mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
         [ "nixosModules", "run-lips-vm", "eval-config.nix", "kubenix" ]
     it "terranix prints how to write, check and shell the configuration" $ do
-      let ls = T.unlines (runCommands Terranix [] False "/tmp/out")
+      let ls = T.unlines (runCommands Terranix [] False False "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix run", "path:/tmp/out#config", "config.tf.json"
         , "nix build", "nix develop" ]
@@ -4924,6 +4932,12 @@ main = hspec $ do
         [ clauseDecision "c1" "sneaky" "(define (sneaky p) (system p))"
             (FromSource (SourceLoc "p.lips" 1)) ]
         `shouldSatisfy` either (const True) (const False)
+
+    it "reports the contracts the core reaches beside the core itself" $
+      realizeContractsOf
+        [ clauseDecision "c1" "shout" "(define (shout x) (emit x))"
+            (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldBe` Right (Just ["emit"])
 
     it "refuses an assertion that is not an s-expression at all" $
       realizeClausesOf
@@ -5239,4 +5253,16 @@ clauseDecision i name body prov =
     { dSubject = Subject ["clause", name], dKind = Meta, dProv = prov }
 
 realizeClausesOf :: [Decision] -> Either RealizeError (Maybe Text)
-realizeClausesOf = realizeClauses (const Replace) noAssembly schemeVocabulary . fromList
+realizeClausesOf =
+  fmap (fmap fst) . withBase (realizeClauses (const Replace) noAssembly schemeVocabulary)
+
+-- | The contracts a clause base reaches, for a test that cares about the reach
+-- rather than the text.
+realizeContractsOf :: [Decision] -> Either RealizeError (Maybe [Text])
+realizeContractsOf =
+  fmap (fmap snd) . withBase (realizeClauses (const Replace) noAssembly schemeVocabulary)
+
+-- | Hand one base in as both the source and the ground base: in a test the
+-- program's decisions and the clauses sit in the same list.
+withBase :: (Base -> Base -> a) -> [Decision] -> a
+withBase f ds = let b = fromList ds in f b b

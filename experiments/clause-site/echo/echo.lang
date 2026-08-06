@@ -1,0 +1,2 @@
+p1 meta lang.pattern.p1 stated "print each line read from standard input => fact echo.lines \"all\"" @gen:0000000000000000
+r1 meta engine.rule.r1 stated "match fact echo.lines => clause.main \"(define (main args) (scan))\" ; clause.scan \"(define (scan) (scan-line (read-a-line)))\" ; clause.scan-line \"(define (scan-line line) (cond ((end-of-input? line) 'done) (else (emit line) (scan))))\"" @gen:0000000000000000

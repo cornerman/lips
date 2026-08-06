@@ -32,8 +32,8 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve, toList)
-import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate)
-import Lips.Kernel.Clause.Vocabulary (Vocabulary)
+import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, reachedContracts)
+import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary)
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim        (Claim, claimRooted, claimsFromDecisions)
 import Lips.Kernel.Decision
@@ -181,15 +181,24 @@ realizeClaims modeOf assemble base =
 -- 'Nothing' when the program states no clauses, so a configuration-only program
 -- is untouched by the logic axis.
 realizeClauses :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-               -> Vocabulary -> Base -> Either RealizeError (Maybe Text)
-realizeClauses modeOf assemble vocab base =
+               -> Vocabulary -> Base -> Base -> Either RealizeError (Maybe (Text, [Text]))
+realizeClauses modeOf assemble vocab source base =
   case resolve modeOf assemble base of
     Left errs -> Left (resolveErr errs)
     Right winners -> do
-      clauses <- traverse (clauseOf (byId base)) (clauseDecisions (Map.toList winners))
-      case gate vocab (sortOn (locOf . clFrom) clauses) of
+      -- The index spans the SOURCE base as well as the ground one: a minted
+      -- clause is derived from the program's decision, and that decision is
+      -- refined away before realize, so the ground base alone cannot answer
+      -- which line caused the clause.
+      clauses <- traverse (clauseOf (byId source <> byId base)) (clauseDecisions (Map.toList winners))
+      let ordered = sortOn (locOf . clFrom) clauses
+      case gate vocab ordered of
         (f : _) -> Left (RBadClause (faultText f))
-        []      -> Right (renderCore (sortOn (locOf . clFrom) clauses))
+        -- The contracts travel with the core, because the caller needs both and
+        -- deriving them twice would let them disagree: what the gate grounded and
+        -- what the runtime must provide are the same set by construction.
+        []      -> Right ((\t -> (t, map cName (reachedContracts vocab ordered)))
+                            <$> renderCore ordered)
   where
     -- A clause with no provenance sorts last; the gate rejects it anyway, so the
     -- order only has to be total.

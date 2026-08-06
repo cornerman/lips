@@ -89,8 +89,9 @@ data Realization = Realization
   , rlFills    :: [(Text, Text, Text)]
     -- ^ @(artifact, marker, text)@: what the caller substitutes into the source
     -- tree it stages, so a program word reaches inside the compiled program.
-  , rlCore     :: Maybe Text
-    -- ^ The clause core: one Scheme file assembled from the @clause.\<name\>@
+  , rlCore     :: Maybe (Text, [Text])
+    -- ^ The clause core and the contracts it reaches: one Scheme file assembled
+    -- from the @clause.\<name\>@
     -- decisions, gated, each definition naming the program lines behind it.
     -- 'Nothing' for a program that states no behaviour, which is every
     -- configuration-only program.
@@ -121,7 +122,7 @@ runBase modeOf assemble vocab budget rules demands base0 = do
     <*> realizeStagedPaths modeOf assemble ground
     <*> realizeArtifactPaths modeOf assemble ground
     <*> realizeArtifactFills modeOf assemble ground
-    <*> realizeClauses modeOf assemble vocab ground
+    <*> realizeClauses modeOf assemble vocab base0 ground
     <*> pure (grounding [ (dSubject d, d) | d <- realizable ])
     <*> realizeClaims modeOf assemble ground
 
