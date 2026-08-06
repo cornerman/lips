@@ -25,10 +25,11 @@ import Lips.Kernel.Base
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
-import Lips.Kernel.Claim    (Claim)
+import Lips.Kernel.Claim    (Claim, ClauseClaim)
 import Lips.Kernel.Clause.Vocabulary (Vocabulary)
 import Lips.Kernel.Grounding    (Grounding, grounding)
-import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, realizeClauses,
+import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, realizeClauseClaims,
+                             realizeClauses,
                              realizeArtifactFills, realizeArtifactPaths,
                              realizeClaims, realizeStagedPaths)
 import Lips.Kernel.Refine
@@ -99,6 +100,10 @@ data Realization = Realization
     -- ^ What vouches for each assertion, counted. Carried beside the module so
     -- every caller can print it: an unvouched assertion nobody watches is how a
     -- five-line program acquires seventy lines of foreign code.
+  , rlClauseClaims :: [ClauseClaim]
+    -- ^ The observables over the program's own definitions, judged offline.
+    -- Projected from the same ground base as the core they observe, so what
+    -- @check@ judges and what @compile@ writes cannot disagree.
   , rlClaims   :: [Claim]
     -- ^ The observables the program states, empty for a program that states
     -- none. Projected from the same ground base as the module beside them, so
@@ -124,6 +129,7 @@ runBase modeOf assemble vocab budget rules demands base0 = do
     <*> realizeArtifactFills modeOf assemble ground
     <*> realizeClauses modeOf assemble vocab base0 ground
     <*> pure (grounding [ (dSubject d, d) | d <- realizable ])
+    <*> realizeClauseClaims modeOf assemble ground
     <*> realizeClaims modeOf assemble ground
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA

@@ -23,6 +23,7 @@ module Lips.Kernel.Clause.Catalogue
   , parseRuntime
   , coveringRuntime
   , siteFile
+  , clauseClaimsFile
   ) where
 
 import           Data.List (intercalate)
@@ -135,3 +136,19 @@ siteFile rt files = T.unlines
    ]
     <> [ "(load \"" <> T.pack f <> "\")" | f <- files ]
     <> [ rEntry rt ])
+
+-- | The claims file a runtime runs: its pure adapters, then the adapters and
+-- harness it substitutes for a claim (lists instead of stdin, a verdict printer),
+-- then the minted core, then the claim forms, then the harness's own last word.
+--
+-- Same shape as 'siteFile' and the same ignorance: lips writes @(load "x")@ and
+-- pastes the forms it was given. Which files, in which order, and how a failure
+-- becomes an exit code are the runtime's declarations.
+clauseClaimsFile :: [FilePath] -> [Text] -> Text
+clauseClaimsFile files forms = T.unlines
+  ([ "; Assembled by lips. The program's own behaviour, judged offline: no"
+   , "; derivation to build, no machine to boot, no binary to compile."
+   ]
+    <> [ "(load \"" <> T.pack f <> "\")" | f <- files ]
+    <> forms
+    <> [ "(claims-done)" ])

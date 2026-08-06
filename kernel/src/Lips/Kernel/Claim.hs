@@ -22,7 +22,10 @@
 module Lips.Kernel.Claim
   ( Claim (..)
   , ClaimPlace (..)
+  , ClauseClaim (..)
   , claimsFromDecisions
+  , clauseClaimsFromDecisions
+  , renderClauseClaim
   , claimPlace
   , comparisonPy
   , claimRooted
@@ -34,6 +37,7 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Decision
+import Lips.Kernel.Sexp         (SExp, parseSexp, renderSexp)
 import Lips.Kernel.Engine.Value (Piece (..), Value (..), parseValue, sourceText,
                                  valueArtifactNames)
 
@@ -57,6 +61,80 @@ data Claim = Claim
   , clPlace  :: ClaimPlace
   }
   deriving (Eq, Show)
+
+-- | One observable over the program's own CLAUSES, judged by evaluating them
+-- with the in-memory adapters linked: no derivation to build, no machine to
+-- boot, no binary to compile. A claim states what to call and what it must
+-- equal, and optionally the input lines the program is fed first.
+--
+-- A separate type from 'Claim', not a variant of it, because the two are
+-- observed by different machinery entirely: a 'Claim' watches a process through
+-- its stdin and stdout, and this watches an expression. Keeping them apart makes
+-- a claim that is half command and half expression unrepresentable.
+data ClauseClaim = ClauseClaim
+  { ccId     :: Text
+  , ccCall   :: SExp     -- ^ the expression to evaluate
+  , ccEquals :: SExp     -- ^ what it must equal
+  , ccFeed   :: [Text]   -- ^ input lines served to @read-a-line@ first
+  }
+  deriving (Eq, Show)
+
+-- | The sections a clause claim is made of, closed for the same reason the
+-- command sections are: a mint's typo must fail loud, never be dropped in
+-- silence and pass by observing less than the author stated.
+clauseSections :: [Text]
+clauseSections = ["call", "equals", "feed"]
+
+-- | Gather the clause claims out of a ground base. Deterministic (ordered by
+-- id). An id carrying both a command section and a clause section is a loud
+-- failure: one claim observes one thing.
+clauseClaimsFromDecisions :: [(Subject, Decision)] -> Either Text [ClauseClaim]
+clauseClaimsFromDecisions winners = traverse one (Map.toList grouped)
+  where
+    grouped = Map.fromListWith (flip (++))
+      [ (cid, [(sec, d)])
+      | (Subject ["claim", cid, sec], d) <- winners, sec `elem` clauseSections ]
+    commandIds = [ cid | (Subject ["claim", cid, sec], _) <- winners, sec `elem` sections ]
+
+    one (cid, parts)
+      | cid `elem` commandIds =
+          Left (pre <> "observes both a command and an expression; a claim observes one thing")
+      | otherwise = do
+          call <- need "call" parts
+          want <- need "equals" parts
+          feed <- case lookup "feed" parts of
+            Nothing -> Right []
+            Just d  -> case parseValue (assertionOf d) of
+              Right (VList vs) -> traverse feedLine vs
+              Right v          -> (: []) <$> feedLine v
+              Left e           -> Left (pre <> "feed is not a value: " <> e)
+          Right (ClauseClaim cid call want feed)
+      where
+        pre = "claim " <> cid <> ": "
+        need sec ps = case lookup sec ps of
+          Nothing -> Left (pre <> "no " <> sec <> ", so there is nothing to judge")
+          Just d  -> case parseSexp (assertionOf d) of
+            Right x -> Right x
+            Left e  -> Left (pre <> sec <> " is not an expression: " <> e)
+        feedLine v = case sourceText v of
+          Just t  -> Right t
+          Nothing -> Left (pre <> "a fed line must be plain text, got " <> renderish v)
+
+    assertionOf d = case dAssertion d of Assertion a -> a
+
+-- | The forms lips emits for one clause claim: the input lines, then the
+-- judgment. Everything about HOW a verdict is printed lives in the runtime's own
+-- harness, so these two forms are the whole interface.
+renderClauseClaim :: ClauseClaim -> [Text]
+renderClauseClaim cc =
+  [ "(feed-lines (list " <> T.unwords (map schemeStr (ccFeed cc)) <> "))"
+  | not (null (ccFeed cc)) ]
+    <> [ "(claim " <> schemeStr (ccId cc) <> " " <> renderSexp (ccCall cc)
+          <> " " <> renderSexp (ccEquals cc) <> ")" ]
+  where
+    -- A Scheme string literal: only a quote and a backslash need escaping, since
+    -- Scheme has no interpolation.
+    schemeStr t = "\"" <> T.replace "\"" "\\\"" (T.replace "\\" "\\\\" t) <> "\""
 
 -- | Is this path the claim vocabulary? Twin of
 -- 'Lips.Kernel.OptionType.reservedRoot': neither head becomes a target option.

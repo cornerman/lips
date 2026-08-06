@@ -4944,6 +4944,57 @@ main = hspec $ do
         [ clauseDecision "c1" "keep" "\"just a string\"" (FromSource (SourceLoc "p.lips" 1)) ]
         `shouldSatisfy` either (const True) (const False)
 
+  -- A claim over the program's own definitions: judged by evaluating them with
+  -- the in-memory adapters linked, so no derivation is built and no machine
+  -- boots. The falsifier's headline number, made official.
+  describe "clause claims (an observable judged offline)" $ do
+    let dec i sec body = ( Subject ["claim", i, sec]
+                         , (mk ("k-" <> i <> "-" <> sec) "x" body Stated) { dKind = Meta })
+
+    it "reads a call and what it must equal" $
+      clauseClaimsFromDecisions
+        [ dec "witness" "call" "(keep? r s)", dec "witness" "equals" "#t" ]
+        `shouldBe` Right [ClauseClaim "witness" (Sx.SList [Sx.SSym "keep?", Sx.SSym "r", Sx.SSym "s"])
+                                      (Sx.SBool True) []]
+
+    it "reads the lines a claim feeds the program first" $
+      fmap (map ccFeed) (clauseClaimsFromDecisions
+        [ dec "w" "call" "(emitted)", dec "w" "equals" "'()"
+        , dec "w" "feed" "[ \"{\\\"a\\\":1}\" \"x\" ]" ])
+        `shouldBe` Right [["{\"a\":1}", "x"]]
+
+    it "fails loud when there is nothing to judge against" $
+      clauseClaimsFromDecisions [ dec "w" "call" "(keep? r s)" ]
+        `shouldSatisfy` either (T.isInfixOf "no equals") (const False)
+
+    -- One claim observes one thing: half command and half expression is a mint
+    -- defect, and a claim lips cannot read must never pass as a held one.
+    it "refuses a claim that observes both a command and an expression" $
+      clauseClaimsFromDecisions
+        [ dec "w" "call" "(keep? r s)", dec "w" "equals" "#t"
+        , dec "w" "run" "\"echo hi\"" ]
+        `shouldSatisfy` either (T.isInfixOf "observes both") (const False)
+
+    it "ignores the command claims beside it" $
+      fmap (map ccId) (clauseClaimsFromDecisions
+        [ dec "cmd" "run" "\"echo hi\"", dec "expr" "call" "(f)", dec "expr" "equals" "#t" ])
+        `shouldBe` Right ["expr"]
+
+    it "emits the feed and the judgment, and nothing about how a verdict prints" $
+      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a", "b"])
+        `shouldBe` [ "(feed-lines (list \"a\" \"b\"))", "(claim \"w\" (f) #t)" ]
+
+    it "escapes a fed line so it cannot end the string it lands in" $
+      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a\"b"])
+        `shouldSatisfy` any (T.isInfixOf "\"a\\\"b\"")
+
+    it "assembles a claims file that loads, judges, then reports" $
+      clauseClaimsFile ["adapter-effects-memory.scm", "core.scm"] ["(claim \"w\" (f) #t)"]
+        `shouldSatisfy` \t ->
+          T.isInfixOf "(load \"adapter-effects-memory.scm\")" t
+            && T.isInfixOf "(claim \"w\" (f) #t)" t
+            && T.isSuffixOf "(claims-done)\n" t
+
   -- Making the status quo visible: every assertion is vouched by a schema, by
   -- the contract set, by the author, or by nothing. The last class is where
   -- seventy lines of Go arrive in a five-line program, so it is counted.

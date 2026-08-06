@@ -24,5 +24,8 @@ entry (main (cdr (command-line)))
 build site.nix
 
 # Linked in place of adapter-effects.scm when a claim runs the core offline: the
-# same four names, backed by lists instead of by stdin and stdout.
+# same four names backed by lists instead of stdin and stdout, then the harness
+# that judges a claim and turns a failure into an exit code. Order matters: the
+# harness is loaded after the adapters it may use.
 claim-file adapter-effects-memory.scm
+claim-file claim-harness.scm

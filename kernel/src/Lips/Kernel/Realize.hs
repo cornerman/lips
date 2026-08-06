@@ -22,6 +22,7 @@ module Lips.Kernel.Realize
   , realizeArtifactPaths
   , realizeArtifactFills
   , realizeClaims
+, realizeClauseClaims
 , realizeClauses
   ) where
 
@@ -35,7 +36,8 @@ import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..)
 import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, reachedContracts)
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary)
 import Lips.Kernel.Capture      (nameTokens)
-import Lips.Kernel.Claim        (Claim, claimRooted, claimsFromDecisions)
+import Lips.Kernel.Claim        (Claim, ClauseClaim, claimRooted, claimsFromDecisions,
+                                 clauseClaimsFromDecisions)
 import Lips.Kernel.Decision
 import Lips.Kernel.Sexp         (renderSexp)
 import Lips.Kernel.Source       (validMarker)
@@ -246,6 +248,17 @@ renderCore clauses = Just (T.intercalate "\n" (map one clauses))
     one cl = T.concat [ T.concat (map from (clFrom cl))
                       , renderSexp (clBody cl), "\n" ]
     from (SourceLoc f n) = ";; @from " <> f <> ":" <> T.pack (show n) <> "\n"
+
+-- | The clause claims a ground base states: observables over the program's own
+-- definitions, judged by evaluating them rather than by running a process.
+-- Projected from the same base as the module and the core beside them.
+realizeClauseClaims :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+                    -> Base -> Either RealizeError [ClauseClaim]
+realizeClauseClaims modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs     -> Left (resolveErr errs)
+    Right winners -> either (Left . RBadClaim) Right
+                            (clauseClaimsFromDecisions (Map.toList winners))
 
 -- | Every RELATIVE path the realized base names, paired with the decision that
 -- named it. Nix resolves such a path against the module directory, i.e. against
