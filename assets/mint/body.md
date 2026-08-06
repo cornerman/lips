@@ -916,10 +916,17 @@ every behaviour sentence should have one:
   claim.<id>.equals "#t"
 
 Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
-serve those lines to read-a-line first, which is how a whole program is
-observed end to end rather than one definition at a time. A claim states either
-a command (run/stdin/stdout/exit) or an expression (call/equals/feed), never
-both.
+serve those lines to read-a-line first, and claim.<id>.args the same way to set
+the command line the program sees. That is how a whole program is observed end
+to end rather than one definition at a time. A claim states either a command
+(run/stdin/stdout/exit) or an expression (call/equals/feed/args), never both.
+
+A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
+claim around it: the stop becomes an ordinary value, so state what it must be.
+  claim.<id>.call "(parse-pair \"a\")" ;
+  claim.<id>.equals "(list (quote died) \"argument is not field=value:\" \"a\")"
+So a fail-loud sentence gets a claim like any other, and there is no reason to
+leave one unobserved.
 
 INSTALL THE PROGRAM BY NAMING THE SITE. The clauses are built into one
 executable, and ${site} is its derivation, exactly as ${artifact.<name>} is an

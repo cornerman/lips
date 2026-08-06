@@ -3236,6 +3236,13 @@ main = hspec $ do
         , "(keep? (json-parse \"{}\") (parse-spec (list \"a=1\")))"
         , "[ \"line one\" \"line two\" ]", "\"<value>\"" ]
 
+    -- A third of logscan is fail-loud behaviour, so a prompt that could not claim
+    -- a stop would leave a third of that program unobserved.
+    it "tells the model that a program which stops is observable" $ do
+      p `shouldSatisfy` T.isInfixOf "A PROGRAM THAT STOPS IS OBSERVABLE"
+      parseValue "(list (quote died) \"argument is not field=value:\" \"a\")"
+        `shouldSatisfy` isRight
+
     it "tells the model how to install a program whose behaviour is clauses" $ do
       p `shouldSatisfy` T.isInfixOf "${site}"
       p `shouldSatisfy` T.isInfixOf "site.name"
