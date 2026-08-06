@@ -15,6 +15,14 @@ package guile-json
 file adapter-pure.scm
 file adapter-effects.scm
 
+# The last line of main.scm: how this runtime hands a program its arguments and
+# starts it. Data, because lips must not know that Guile spells it command-line.
+entry (main (cdr (command-line)))
+
+# The Nix file that turns the linked site into a runnable derivation. It takes
+# { pkgs, name, src } and returns one; lips copies it and calls it.
+build site.nix
+
 # Linked in place of adapter-effects.scm when a claim runs the core offline: the
 # same four names, backed by lists instead of by stdin and stdout.
 claim-file adapter-effects-memory.scm

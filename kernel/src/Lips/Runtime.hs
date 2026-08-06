@@ -16,9 +16,12 @@ module Lips.Runtime
   ( schemeVocabulary
   , guileRuntime
   , runtimes
+  , runtimeAsset
   ) where
 
-import           Data.FileEmbed (embedStringFile)
+import           Data.FileEmbed     (embedDir, embedStringFile)
+import qualified Data.ByteString    as BS
+import qualified Data.Text.Encoding as TE
 import qualified Data.Text      as T
 
 import Lips.Kernel.Clause.Catalogue  (Runtime, parseRuntime)
@@ -54,3 +57,16 @@ guileRuntime = case parseRuntime "guile" guileText of
 
 guileText :: T.Text
 guileText = T.pack $(embedStringFile "../assets/runtime/guile/runtime")
+
+-- | One file a runtime ships (an adapter, its site builder), by runtime name and
+-- file name. 'Nothing' when a runtime declares a file its directory does not
+-- hold, which is a defect in lips's own assets and fails loud at the caller.
+runtimeAsset :: T.Text -> FilePath -> Maybe T.Text
+runtimeAsset "guile" name = TE.decodeUtf8 <$> lookup name guileAssets
+runtimeAsset _ _ = Nothing
+
+-- | Every file under the guile runtime directory, embedded at build time. A file
+-- added to the directory is shipped without a code change here, which is what
+-- keeps adding a runtime a matter of data.
+guileAssets :: [(FilePath, BS.ByteString)]
+guileAssets = $(embedDir "../assets/runtime/guile")

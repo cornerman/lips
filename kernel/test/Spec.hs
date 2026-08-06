@@ -38,7 +38,7 @@ import qualified Lips.Kernel.Sexp as Sx
 import Lips.Kernel.Clause.Vocabulary
 import Lips.Kernel.Clause.Gate
 import Lips.Kernel.Clause.Catalogue
-import Lips.Runtime (guileRuntime, schemeVocabulary)
+import Lips.Runtime (guileRuntime, runtimeAsset, schemeVocabulary)
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
@@ -4987,15 +4987,34 @@ main = hspec $ do
     let guile = Runtime "guile" ["native", "fast-start"]
                         ["emit", "json-parse", "read-a-line"] ["guile", "guile-json"]
                         ["adapter-pure.scm"] ["adapter-effects-memory.scm"]
+                        "(main (cdr (command-line)))" "site.nix"
         hoot = Runtime "hoot" ["browser"] ["emit", "json-parse"] ["guile-hoot"]
-                       ["adapter-pure.scm"] []
+                       ["adapter-pure.scm"] [] "(main '())" "site.nix"
 
     it "reads a runtime declaration" $
       parseRuntime "guile" (T.unlines
         [ "property native", "provides emit json-parse", "package guile"
-        , "file adapter-pure.scm", "claim-file adapter-effects-memory.scm" ])
+        , "file adapter-pure.scm", "claim-file adapter-effects-memory.scm"
+        , "entry (main (cdr (command-line)))", "build site.nix" ])
         `shouldBe` Right (Runtime "guile" ["native"] ["emit", "json-parse"] ["guile"]
-                                  ["adapter-pure.scm"] ["adapter-effects-memory.scm"])
+                                  ["adapter-pure.scm"] ["adapter-effects-memory.scm"]
+                                  "(main (cdr (command-line)))" "site.nix")
+
+    -- The entry is one expression in the runtime's own notation, so it keeps its
+    -- spaces: splitting it on whitespace like every other line would destroy it.
+    it "keeps the entry expression whole" $
+      fmap rEntry (parseRuntime "guile" "entry (main (cdr (command-line)))")
+        `shouldBe` Right "(main (cdr (command-line)))"
+
+    it "assembles the site file: adapters, then core, then the runtime's entry" $
+      siteFile guile ["adapter-pure.scm", "core.scm"] `shouldSatisfy` \t ->
+        T.isInfixOf "(load \"adapter-pure.scm\")" t
+          && T.isInfixOf "(load \"core.scm\")" t
+          && T.isSuffixOf "(main (cdr (command-line)))\n" t
+
+    it "ships every file the guile runtime declares" $
+      map (runtimeAsset "guile") (rBuild guileRuntime : rFiles guileRuntime <> rClaimFiles guileRuntime)
+        `shouldSatisfy` all (/= Nothing)
 
     it "picks the one runtime covering the contracts and the properties" $
       coveringRuntime [guile, hoot] ["emit", "json-parse"] ["native"] `shouldBe` Right guile

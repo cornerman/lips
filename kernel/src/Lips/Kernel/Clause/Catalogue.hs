@@ -22,6 +22,7 @@ module Lips.Kernel.Clause.Catalogue
   ( Runtime (..)
   , parseRuntime
   , coveringRuntime
+  , siteFile
   ) where
 
 import           Data.List (intercalate)
@@ -38,6 +39,14 @@ data Runtime = Runtime
   , rPackages   :: [Text]
   , rFiles      :: [FilePath]
   , rClaimFiles :: [FilePath]
+  , rEntry      :: Text
+    -- ^ The last line of the assembled file: how this runtime hands a program
+    -- its arguments and starts it. Data, because lips must not know that Guile
+    -- spells it @command-line@ and something else spells it otherwise.
+  , rBuild      :: FilePath
+    -- ^ The Nix file that turns the linked site into a derivation. It takes
+    -- @{ pkgs, name, src }@ and returns one; lips copies it and calls it,
+    -- knowing nothing else about it.
   }
   deriving (Eq, Show)
 
@@ -47,16 +56,19 @@ data Runtime = Runtime
 parseRuntime :: Text -> Text -> Either Text Runtime
 parseRuntime name txt = do
   decls <- traverse parseLine (meaningfulLines txt)
-  Right (foldr add (Runtime name [] [] [] [] []) (concat decls))
+  Right (foldr add (Runtime name [] [] [] [] [] "" "") (concat decls))
   where
     add (DProperty p) r = r { rProperties = p : rProperties r }
     add (DProvides c) r = r { rProvides = c : rProvides r }
     add (DPackage p) r = r { rPackages = p : rPackages r }
     add (DFile f) r = r { rFiles = f : rFiles r }
     add (DClaimFile f) r = r { rClaimFiles = f : rClaimFiles r }
+    add (DEntry e) r = r { rEntry = e }
+    add (DBuild f) r = r { rBuild = f }
 
 data Decl
   = DProperty Text | DProvides Text | DPackage Text | DFile FilePath | DClaimFile FilePath
+  | DEntry Text | DBuild FilePath
 
 meaningfulLines :: Text -> [Text]
 meaningfulLines =
@@ -71,8 +83,12 @@ parseLine line = case T.words line of
   ("package" : ps) | not (null ps) -> Right (map DPackage ps)
   ("file" : fs) | not (null fs) -> Right (map (DFile . T.unpack) fs)
   ("claim-file" : fs) | not (null fs) -> Right (map (DClaimFile . T.unpack) fs)
-  _ -> Left ("a runtime declares property, provides, package, file or claim-file,\
-             \ but this line reads: " <> line)
+  -- The entry keeps its whole tail: it is one expression in the runtime's own
+  -- notation, and splitting it on spaces would destroy it.
+  ("entry" : _ : _) -> Right [DEntry (T.strip (T.drop 5 (T.stripStart line)))]
+  ["build", f] -> Right [DBuild (T.unpack f)]
+  _ -> Left ("a runtime declares property, provides, package, file, claim-file,\
+             \ entry or build, but this line reads: " <> line)
 
 -- | The one runtime covering these contracts and properties, or why none does.
 coveringRuntime :: [Runtime] -> [Text] -> [Text] -> Either Text Runtime
@@ -103,3 +119,19 @@ coveringRuntime runtimes needed required = case filter covers runtimes of
 
 commas :: [Text] -> Text
 commas = T.pack . intercalate ", " . map T.unpack
+
+-- | The assembled file a runtime runs: its adapters loaded in declared order,
+-- then the minted core, then the entry the runtime declares. Text, because a
+-- runtime consumes a file; the structure lives in the decisions the core was
+-- rendered from.
+--
+-- The kernel writes @(load "x")@ and nothing else, so the only thing it knows
+-- about the notation is that a file can be loaded by name. Which files, in which
+-- order, and how the program starts are all the runtime's own declarations.
+siteFile :: Runtime -> [FilePath] -> Text
+siteFile rt files = T.unlines
+  ([ "; Assembled by lips. Do not edit: edit the program, or the runtime's adapters."
+   , "; Adapters first, then the minted core, then this runtime's entry."
+   ]
+    <> [ "(load \"" <> T.pack f <> "\")" | f <- files ]
+    <> [ rEntry rt ])
