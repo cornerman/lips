@@ -291,12 +291,37 @@ tracks only what is still open.
       only clauses runs under the in-memory adapter: no derivation, no boot, no
       binary. Derived like the other two places, never declared. The experiment's
       `claims.scm` is the file to generate, and it runs in 121 ms.
-   c. **Teach the mint to emit clauses** (plan Task 9), then mint `logscan`
-      twice from one program and diff the cores. That answers falsifier check
-      (c), the one question a hand-mint could not: do two mints differ only
-      where the program differs? The baseline to beat is measured on the Go
-      axis, where two mints disagree on the exit code for a bad argument (1
-      versus 2) and on whether `{"a":1e-7}` matches `a=0.0000001`.
+   c. **DONE, and it failed: two mints disagree on the representation itself.**
+      The mint now emits clauses (`assets/mint/body.md`, contract list rendered
+      from the shipped vocabulary so prompt and gate cannot drift). Two live
+      mints of `examples/logscan.lips` produced six clauses and no source in one
+      run, and 94 lines of Go behind a shell wrapper in the other
+      (`experiments/logscan-mints/`, both engines kept). Cause identified and it
+      is not the prompt: the clause path cannot install a program or read its
+      arguments, so a model optimizing for a working engine correctly picks Go.
+      Two holes to close before re-running, and they are now item 10.
+
+      One bug the live mint found, since fixed: realize was rendering clauses
+      into the module as option assignments, which no gate caught and which made
+      the module unparseable.
+
+10. **Close the two holes the live mint found** (opened 2026-08-04 by
+    `experiments/logscan-mints/`). Until both are shut, item 8c cannot be
+    re-run, because the mint will keep choosing baked source and being right to.
+
+    a. **A clause site needs a reference form.** `${pkgs.<path>}` and
+       `${artifact.<name>}` are the value grammar's only derivation references.
+       A site is built by `site/build.nix` and exposed as `packages.site`, but
+       nothing in a module can name it, so a program cannot put its own
+       behaviour on PATH. Add `${site}` to the grammar, bind it in the module's
+       `let` beside the artifacts, and let a decision (`site.name`) carry the
+       executable name, which is also the head Task 10 needs for site
+       properties.
+    b. **A clause needs an arguments contract.** The runtime entry is
+       `(main (cdr (command-line)))`, so argv reaches a clause only as a
+       parameter. Add `effect arguments 0`, provide it in the guile adapter, let
+       the in-memory adapter serve a list so a claim can vary argv, and add a
+       `claim.<id>.args` section beside `feed`.
    d. **Sites** (plan Task 10). A program states where it runs, coverage runs
       per site over one shared core, and compile writes one directory per site.
       This is what lets a rule hold in a browser and on a server without two

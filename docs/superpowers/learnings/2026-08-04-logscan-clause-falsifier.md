@@ -63,7 +63,30 @@ The claims also reach cases the current `.expect` cannot express at all, because
 one definition: an absent field, two fields that must both hold, one field named
 twice.
 
-## Check (c): Do Two Mints Differ Only Where the Program Differs? Not Answerable Here
+## Check (c): Do Two Mints Differ Only Where the Program Differs? RUN, AND IT FAILS
+
+Answered for real once the mint could emit clauses (evidence and both engines:
+`experiments/logscan-mints/`). Same program, same model, same thinking level, and
+the two mints differ in the REPRESENTATION: mint a put the behaviour in six
+clauses and no source file, mint b put it in 94 lines of Go behind a shell
+wrapper. Both engines are fifteen lines and both pass every gate.
+
+The cause is specific, and it is not the prompt. Mint a took the clause path and
+hit two capability gaps, which it reported rather than worked around:
+`clause-program-not-installable` (a clause site has no reference form, so no
+NixOS option can put it on PATH) and `no-argv-contract` (no contract yields the
+command line). Mint b took the Go path, which has neither gap. Both were right.
+A prompt can prefer clauses; it cannot make them adequate, so until those two
+holes are closed the mint will keep choosing source.
+
+Two smaller observations from the same runs. Realize was emitting clauses INTO the
+module (`clause."keep?" = (define ...)`), which no gate caught and which made the
+module unparseable; fixed by treating a clause as kernel vocabulary like a claim
+and an artifact. And mint b needed three attempts, two of them returning "no
+usable reply" after 47s and 12m 26s, so the clause doctrine lengthens the mint
+enough that budget exhaustion is a real failure mode.
+
+## What Two Mints Looked Like on the Go Axis
 
 A hand-mint is one mint. What the run did establish is the size of the surface
 where drift can hide, and it measured the drift on the axis lips has today.

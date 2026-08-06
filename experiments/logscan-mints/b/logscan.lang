@@ -1,0 +1,15 @@
+p1 meta lang.pattern.p1 stated "filter json lines read from standard input => fact tool.pipeline \"json lines on standard input\"" @gen:ddef32e44dcb9ab6
+p2 meta lang.pattern.p2 stated "keep a line only when <quant> field named on the command line equals the value given with it => fact tool.match \"<quant>\"" @gen:ddef32e44dcb9ab6
+p3 meta lang.pattern.p3 stated "print each kept line unchanged => concept tool.output \"kept lines are printed unchanged\"" @gen:ddef32e44dcb9ab6
+p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact tool.command.<name> \"<name>\"" @gen:ddef32e44dcb9ab6
+p5 meta lang.pattern.p5 stated "given the lines <in1> and <in2> with <args>, print only <out> => fact witness.input \"<in1> <in2>\" ; fact witness.spec \"<args>\" ; fact witness.kept \"<out>\"" @gen:ddef32e44dcb9ab6
+q1 meta engine.demand.q1 stated "demand tool.command.<name> \"what command name should the tool be installed as?\"" @gen:ddef32e44dcb9ab6
+q2 meta engine.demand.q2 stated "demand tool.match \"should a line be kept when every named field matches, or when any of them does?\"" @gen:ddef32e44dcb9ab6
+q3 meta engine.demand.q3 stated "demand witness.kept \"give an example: which of the given input lines must be printed?\"" @gen:ddef32e44dcb9ab6
+q4 meta engine.demand.q4 stated "demand tool.pipeline \"what kind of lines does the tool read, and from where?\"" @gen:ddef32e44dcb9ab6
+r1 meta engine.rule.r1 stated "match fact tool.pipeline => artifact.<self>-core.builder \"\\\"buildGoModule\\\"\" ; artifact.<self>-core.args.pname \"\\\"<self>-core\\\"\" ; artifact.<self>-core.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>-core.args.src \"./artifacts/<self>-core\" ; artifact.<self>-core.args.vendorHash \"null\"" @gen:ddef32e44dcb9ab6
+r2 meta engine.rule.r2 stated "match fact tool.match => artifact.<self>-core.fill.match \"\\\"<value>\\\"\"" @gen:ddef32e44dcb9ab6
+r3 meta engine.rule.r3 stated "match fact tool.command.<name> => artifact.<name>.builder \"\\\"writeShellApplication\\\"\" ; artifact.<name>.args.name \"\\\"<value>\\\"\" ; artifact.<name>.args.text \"\\\"exec ${artifact.<self>-core}/bin/<self>-core \\\\\\\"$@\\\\\\\"\\\"\" ; environment.systemPackages \"[ ${artifact.<name>} ]\"" @gen:ddef32e44dcb9ab6
+r4 meta engine.rule.r4 stated "match fact witness.input => claim.filter.stdin \"\\\"<value.1>\\\\n<value.2>\\\"\"" @gen:ddef32e44dcb9ab6
+r5 meta engine.rule.r5 stated "match fact witness.spec => claim.filter.run \"\\\"${artifact.<self>-core}/bin/<self>-core <value>\\\"\"" @gen:ddef32e44dcb9ab6
+r6 meta engine.rule.r6 stated "match fact witness.kept => claim.filter.stdout \"\\\"<value>\\\"\" ; claim.filter.exit \"0\"" @gen:ddef32e44dcb9ab6
