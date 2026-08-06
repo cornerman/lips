@@ -31,6 +31,7 @@ module Lips.Kernel.Clause.Gate
   , GateFault (..)
   , gate
   , faultText
+  , paramCount
   , reachedContracts
   ) where
 
@@ -66,6 +67,10 @@ data GateFault
     --   every gate green; the same hole one level down accepted @(emit)@ with no
     --   argument.
     WrongArity Text Text Int Int
+  | -- | A call whose callee is a clause defining a CONSTANT: the clause, the
+    --   callee. A constant is not a procedure of no arguments, and applying one
+    --   is a runtime death the gate can see coming.
+    NotCallable Text Text
   deriving (Eq, Show)
 
 faultText :: GateFault -> Text
@@ -82,6 +87,9 @@ faultText (WrongArity c callee takes given) =
     <> ", and " <> callee <> " takes " <> count takes <> "."
   where count 1 = "1 argument"
         count n = T.pack (show n) <> " arguments"
+faultText (NotCallable c callee) =
+  "clause " <> c <> " calls " <> callee <> ", which is a constant, not a\
+  \ procedure. A constant holds a value; calling it stops the program."
 
 -- | Every fault in the clause set, in clause order.
 gate :: Vocabulary -> [Clause] -> [GateFault]
@@ -105,6 +113,12 @@ gate vocab clauses = concatMap check clauses
                     | (callee, given) <- concatMap (calls vocab bound) body
                     , Just takes <- [lookup callee arities]
                     , takes /= given ]
+                 <> [ NotCallable (clName cl) callee
+                    | (callee, _) <- concatMap (calls vocab bound) body
+                    , callee `elem` constants ]
+    -- The clauses that hold a value rather than a procedure. Calling one is the
+    -- same defect the entry check catches one level out, seen from inside.
+    constants = [ clName cl | cl <- clauses, paramCount cl == Nothing ]
 
 -- | Unpack the one shape a clause may have: @(define (name params...) body...)@
 -- or @(define name expr)@, the constant a stated number becomes. Returns the
@@ -135,7 +149,14 @@ definition definers _ other =
 wrongName :: Text -> Text
 wrongName n = "it defines " <> n <> " instead"
 
--- | How many parameters a clause's definition takes, or 'Nothing' for a constant.
+-- | How many parameters a clause's definition takes, or 'Nothing' when it
+-- defines a CONSTANT (which is what a stated number becomes).
+--
+-- The distinction is the whole reason this returns a 'Maybe': a constant is not
+-- a procedure of no arguments. Reading it as one is how a core defining @main@ as
+-- a number satisfied a runtime entry calling @(main)@ and produced a binary that
+-- died on first run with every gate green. One function answers the question, so
+-- no second copy can answer it differently.
 paramCount :: Clause -> Maybe Int
 paramCount cl = case clBody cl of
   SList (_ : SList (_ : params) : _) -> Just (length params)

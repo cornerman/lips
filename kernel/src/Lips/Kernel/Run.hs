@@ -90,9 +90,10 @@ data Realization = Realization
   , rlFills    :: [(Text, Text, Text)]
     -- ^ @(artifact, marker, text)@: what the caller substitutes into the source
     -- tree it stages, so a program word reaches inside the compiled program.
-  , rlCore     :: Maybe (Text, [Text], [(Text, Int)])
+  , rlCore     :: Maybe (Text, [Text], [(Text, Maybe Int)])
     -- ^ The clause core, the contracts it reaches, and what it defines with how
-    -- many parameters (so a caller can check the core satisfies its runtime's
+    -- many parameters -- 'Nothing' for a constant, which is not a procedure of no
+    -- arguments (so a caller can check the core satisfies its runtime's
     -- entry). One Scheme file assembled from the @clause.\<name\>@
     -- decisions, gated, each definition naming the program lines behind it.
     -- 'Nothing' for a program that states no behaviour, which is every

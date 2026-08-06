@@ -5002,6 +5002,17 @@ main = hspec $ do
       gate schemeVocabulary [clauseOf "daily-limit" "(define daily-limit 14)"]
         `shouldBe` []
 
+    -- A constant is not a procedure of no arguments, and applying one stops the
+    -- program. The gate sees it coming; the same defect at the entry shipped a
+    -- binary that died on first run with every gate green.
+    it "refuses a call whose callee is a constant" $ do
+      gate schemeVocabulary [ clauseOf "limit" "(define limit 14)"
+                            , clauseOf "f" "(define (f) (limit))" ]
+        `shouldBe` [NotCallable "f" "limit"]
+      -- and mentioning it as a value is not calling it
+      gate schemeVocabulary [ clauseOf "limit" "(define limit 14)"
+                            , clauseOf "f" "(define (f) (+ limit 1))" ] `shouldBe` []
+
     it "refuses a body that is not a definition" $
       gate schemeVocabulary [clauseOf "f" "(emit \"now\")"]
         `shouldSatisfy` any isNotADefinition
@@ -5072,6 +5083,20 @@ main = hspec $ do
         `shouldBe` Right (Just (T.concat
           [ ";; @from p.lips:1\n(define (main a) (keep a))\n"
           , "\n;; @from p.lips:2\n(define (keep x) x)\n" ]))
+
+    -- Proven against the real binary: clause.main and clause.main.extra are
+    -- different subjects, so merge sees no conflict, both passed the gate as
+    -- well-formed definitions of main, both reached core.scm, and Guile silently
+    -- took the last one.
+    it "refuses a clause subject carrying more than a name" $
+      realizeClausesOf
+        [ clauseDecision "c1" "main" "(define (main) (emit \"first\"))"
+            (FromSource (SourceLoc "p.lips" 1))
+        , (clauseDecision "c2" "main" "(define (main) (emit \"second\"))"
+            (FromSource (SourceLoc "p.lips" 1)))
+            { dSubject = Subject ["clause", "main", "extra"] }
+        ]
+        `shouldSatisfy` either (T.isInfixOf "is not a clause subject" . T.pack . show) (const False)
 
     -- Found by the first live mint that emitted clauses: every gate passed and
     -- the module then failed to parse, because a clause had been rendered as an
@@ -5247,7 +5272,7 @@ main = hspec $ do
                      "(main (arguments))" "build-toy.nix"
         assets _ f = Just ("; " <> T.pack f)
         withCore ccs = emptyRealization
-          { rlCore = Just ("(define (main a) a)\n", ["emit"], [("main", 1)])
+          { rlCore = Just ("(define (main a) a)\n", ["emit"], [("main", Just 1)])
           , rlClauseClaims = ccs }
         plan ccs = planSite assets [rt] (withCore ccs)
         names p = case p of
@@ -5286,13 +5311,26 @@ main = hspec $ do
     -- Every gate was green and both live mints produced a binary that died on
     -- first run: they defined (main) while the entry called (main (arguments)).
     it "refuses a core that does not satisfy the runtime's entry" $ do
-      let wrongArity = (withCore []) { rlCore = Just ("", ["emit"], [("main", 0)]) }
+      let wrongArity = (withCore []) { rlCore = Just ("", ["emit"], [("main", Just 0)]) }
       planSite assets [rt] wrongArity
         `shouldSatisfy` either (\(e, _) -> T.isInfixOf "1 parameter" e && T.isInfixOf "main" e)
                                (const False)
-      let noMain = (withCore []) { rlCore = Just ("", ["emit"], [("scan", 1)]) }
+      let noMain = (withCore []) { rlCore = Just ("", ["emit"], [("scan", Just 1)]) }
       planSite assets [rt] noMain
         `shouldSatisfy` either (T.isInfixOf "defines no clause of that name" . fst) (const False)
+
+    -- Proven against the real binary: a core defining main as a constant passed
+    -- every gate and died on first run with "Wrong type to apply: 5".
+    it "refuses a core whose entry name is a constant, not a procedure" $
+      planSite assets [rt] (withCore []) { rlCore = Just ("", ["emit"], [("main", Nothing)]) }
+        `shouldSatisfy` either (T.isInfixOf "defined as a constant" . fst) (const False)
+
+    -- The site directory is written only where there is a core, so a claim over
+    -- clauses a program does not state would reach nix as a missing path.
+    it "refuses observables over clauses the program does not state" $
+      planSite assets [rt] emptyRealization
+        { rlClauseClaims = [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Sx.SBool True) [] []] }
+        `shouldSatisfy` either (T.isInfixOf "states no clauses" . fst) (const False)
 
     it "refuses, with the reason, when no runtime has a required property" $
       planSite assets [rt] (withCore []) { rlSiteProps = [("browser", "typed live")] }

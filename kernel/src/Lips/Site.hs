@@ -48,6 +48,13 @@ data SitePlan = SitePlan
 planSite :: (Text -> FilePath -> Maybe Text) -> [Runtime] -> Realization
          -> Either (Text, Text) (Maybe SitePlan)
 planSite asset runtimes rl = case rlCore rl of
+  -- Claims over clauses a program does not state: the site directory would never
+  -- be written, and the claim build would then die on a missing path naming
+  -- neither lips nor a remedy.
+  Nothing | not (null (rlClauseClaims rl)) -> Left
+    ( "this setup states " <> plural' (length (rlClauseClaims rl)) "observable"
+        <> " over the program's clauses, and the program states no clauses."
+    , "\8594 rebuild the setup: lips generate <program>." )
   Nothing -> Right Nothing
   Just (core, contracts, defined) -> do
     rt <- first (\why -> (why, "\8594 state a requirement in the program, or add a\
@@ -58,11 +65,17 @@ planSite asset runtimes rl = case rlCore rl of
     (entryName, entryArgs) <- first (\why -> (why, "\8594 this is a lips bug; report it."))
                                     (entryDemand rt)
     case lookup entryName defined of
-      Just n | n == entryArgs -> Right ()
-      Just n -> engineFault (T.pack (show entryName) <> " is defined with " <> plural n
+      Just (Just n) | n == entryArgs -> Right ()
+      Just (Just n) -> engineFault (T.pack (show entryName) <> " is defined with " <> plural n
                        <> ", but the " <> rName rt <> " runtime starts a program by\
                           \ calling it with " <> plural entryArgs <> " ("
                        <> rEntry rt <> "). Define it to take " <> plural entryArgs <> ".")
+      -- A constant is not a procedure of no arguments. Reading it as one shipped a
+      -- binary that died on first run with every gate green.
+      Just Nothing -> engineFault (entryName <> " is defined as a constant, and the "
+                       <> rName rt <> " runtime starts a program by calling it ("
+                       <> rEntry rt <> "). Define it as a procedure of "
+                       <> plural entryArgs <> ".")
       Nothing -> engineFault ("the " <> rName rt <> " runtime starts a program by calling "
                         <> entryName <> " (" <> rEntry rt <> "), and this program\
                            \ defines no clause of that name.")
@@ -90,6 +103,8 @@ planSite asset runtimes rl = case rlCore rl of
     engineFault why = Left (why, "\8594 rebuild the setup: lips generate <program>.")
     plural 1 = "1 parameter"
     plural n = T.pack (show n) <> " parameters"
+    plural' 1 what = "1 " <> what
+    plural' n what = T.pack (show n) <> " " <> what <> "s"
     -- The builder is written under a fixed name, so the module and the flake can
     -- import ./site/build.nix without knowing which runtime wrote it.
     fromAsset rt f = case asset (rName rt) f of
