@@ -19,11 +19,25 @@ build), Guile 3 (first runtime), guile-json (first pure adapter package).
 
 ## Status, and Where the Plan Was Corrected in Flight
 
-Tasks 1 to 8 are landed and green (674 examples, 0 failures, `-Wall` clean across
+All ten tasks are landed and green (690 examples, 0 failures, `-Wall` clean across
 library, app and suite). Task 7 is proved end to end by
 `experiments/clause-site/`: `lips compile` writes the site and
 `printf 'a\nb\nc\n' | nix run 'path:...#site'` prints the three lines. Its engine
 is hand-written, because no mint emits clauses until Task 9.
+
+Task 10 landed as SHAPE ONLY, deliberately. A site is now named
+(`site.<name>.command`, `site.<name>.property.<p>`) and its stated properties feed
+the covering, so which runtime runs the behaviour is a computation over
+requirements exactly as intended. What is NOT built is several sites at once: two
+is a loud refusal rather than a silent choice. No committed example needs a second
+place, so building per-site directories now would be speculative machinery, and
+the refusal makes growing to several a kernel change nobody can stumble into.
+
+Task 9 also cost four bugs found by live mints and fixed with regression tests
+(clauses rendered into the module; the site binding decided from option values
+only, missing a reference from an artifact argument; `claims.nix` needing the same
+binding; every gate's temp directory needing the site staged beside the module).
+Falsifier check (c) is still unanswered: see `TODO.md` item 11.
 
 Task 8 landed as a SEPARATE type, `ClauseClaim`, rather than as variants of
 `Claim`: the two are observed by different machinery (a process through its
