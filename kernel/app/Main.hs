@@ -45,7 +45,7 @@ import           System.Exit        (ExitCode (..))
 import           GHC.IO.Encoding     (setLocaleEncoding)
 import           System.IO          (BufferMode (..), hClose, hGetContents,
                                      hIsEOF, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
-import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
+import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, removeFile,
                                      doesPathExist, getTemporaryDirectory, listDirectory,
                                      removeDirectoryRecursive, removePathForcibly,
                                      getPermissions, setPermissions, setOwnerWritable)
@@ -1726,31 +1726,47 @@ writeSite outDirPath rl = case rlCore rl of
   rt <- either (die . coverFail) pure
           (coveringRuntime runtimes contracts (rlSiteProps rl))
   let siteDir = outDirPath </> "site"
-      files = rFiles rt <> ["core.scm"]
+      -- A run links the pure adapters, the real effects, then the core; a claim
+      -- swaps the effects for the list-backed ones and the verdict harness.
+      runFiles = rFiles rt <> rEffectFiles rt <> ["core.scm"]
+      claimFiles = rFiles rt <> rClaimFiles rt <> ["core.scm"]
   createDirectoryIfMissing True siteDir
   TIO.writeFile (siteDir </> "core.scm") core
-  forM_ (rBuild rt : rFiles rt) $ \f -> case runtimeAsset (rName rt) f of
+  forM_ (rBuild rt : rFiles rt <> rEffectFiles rt) $ \f -> case runtimeAsset (rName rt) f of
     Just body -> TIO.writeFile (siteDir </> (if f == rBuild rt then "build.nix" else f)) body
     -- A runtime declaring a file its own directory does not hold is a defect in
     -- lips's assets, not in the program: say so in those words.
     Nothing -> die (missingAsset rt f)
-  TIO.writeFile (siteDir </> "main.scm") (siteFile rt files)
+  TIO.writeFile (siteDir </> "main.scm") (siteFile rt runFiles)
   -- The claims file, when the program states observables over its own
   -- definitions: the same core, with the runtime's list-backed adapters and its
   -- verdict harness linked instead of the real effects.
-  forM_ (rClaimFiles rt) $ \f -> case runtimeAsset (rName rt) f of
-    Just body -> TIO.writeFile (siteDir </> f) body
-    Nothing -> die (missingAsset rt f)
-  unless (null ccs) $
-    TIO.writeFile (siteDir </> "claims.scm")
-      (clauseClaimsFile (rFiles rt <> rClaimFiles rt <> ["core.scm"])
-                        (concatMap renderClauseClaim ccs))
+  -- Written only when the program states claims, so a site carries no file
+  -- nothing loads, and a program that DROPS its claims does not keep a stale
+  -- claims.scm from an earlier compile.
+  if null ccs
+    then mapM_ (removeIfPresent siteDir) ("claims.scm" : rClaimFiles rt)
+    else do
+      forM_ (rClaimFiles rt) $ \f -> case runtimeAsset (rName rt) f of
+        Just body -> TIO.writeFile (siteDir </> f) body
+        Nothing -> die (missingAsset rt f)
+      TIO.writeFile (siteDir </> "claims.scm")
+        (clauseClaimsFile claimFiles (concatMap renderClauseClaim ccs))
   pure True
  where
     coverFail why = report
       "lips can't decide where this program's behaviour runs."
       [why]
       "\8594 state a requirement in the program, or add a runtime that covers it."
+
+-- | Delete a derived file that should no longer be there. Compile writes into a
+-- directory it may have written before, so a file it stops producing must be
+-- removed rather than left to be loaded by a stale assembly.
+removeIfPresent :: FilePath -> FilePath -> IO ()
+removeIfPresent dir name = do
+  let path = dir </> name
+  there <- doesFileExist path
+  when there (removeFile path)
 
 -- | A runtime declaring a file its own directory does not hold is a defect in
 -- lips's assets, not in the program: say so in those words.

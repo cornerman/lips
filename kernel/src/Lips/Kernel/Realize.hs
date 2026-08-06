@@ -83,6 +83,13 @@ realize modeOf assemble base =
     Left errs -> Left (resolveErr errs)
     Right winners -> renderModule (Map.toList winners)
 
+-- | Does this base state any behaviour at all? A value may name @${site}@ only
+-- when there are clauses to build into one; otherwise the module would import a
+-- directory compile never writes, and nix would die with a bare "path does not
+-- exist" naming neither lips nor a remedy.
+statesClauses :: [(Subject, Decision)] -> Bool
+statesClauses winners = not (null (clauseDecisions winners))
+
 -- | For every artifact, the one @bin/<x>@ name the ground base itself names
 -- inside it (anywhere a value holds @${artifact.\<name\>}/bin/\<x\>@ -- an
 -- ExecStart, a wrapper's own arg naming its core). @nix run@/@nix develop@'s
@@ -466,8 +473,14 @@ renderModule winners = do
   -- Missing the second is how a live mint produced a module with an undefined
   -- variable, every gate green.
   artSitesRef <- anyArgReferencesSite arts
-  siteName <- siteNameFrom winners
-                (any (referencesSite . valOf) optVals || artSitesRef)
+  let namesSite = any (referencesSite . valOf) optVals || artSitesRef
+  if namesSite && not (statesClauses winners)
+    then Left (RBadClause
+      "a value names ${site}, the program's own behaviour, but the program states\
+      \ no clauses for it to build. Either state the behaviour, or name a package\
+      \ instead.")
+    else Right ()
+  siteName <- siteNameFrom winners namesSite
   Right $ T.unlines $
     [ "# lips-realized module. Generated from a ground decision base; do not edit."
     , "{ config, lib, pkgs, ... }:"

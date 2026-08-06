@@ -4978,6 +4978,8 @@ main = hspec $ do
             { dSubject = Subject ["environment", "systemPackages"] }
         , (mk "n1" "site" "\"logscan\"" Stated)
             { dSubject = Subject ["site", "tool", "command"] }
+        , clauseDecision "c1" "main" "(define (main args) args)"
+            (FromSource (SourceLoc "p.lips" 1))
         ])
         `shouldSatisfy` either (const False) (\t ->
           T.isInfixOf "site = import ./site/build.nix" t
@@ -5000,18 +5002,31 @@ main = hspec $ do
             { dSubject = Subject ["artifact", "w", "args", "text"] }
         , (mk "n1" "site" "\"logscan\"" Stated)
             { dSubject = Subject ["site", "tool", "command"] }
+        , clauseDecision "c1" "main" "(define (main args) args)"
+            (FromSource (SourceLoc "p.lips" 1))
         ])
         `shouldSatisfy` either (const False) (T.isInfixOf "site = import ./site/build.nix")
 
     -- A site is NAMED because a program may one day run its behaviour in several
     -- places. Two is refused loudly rather than silently choosing one, so growing
     -- to several is a kernel change nobody can stumble into.
+    -- Otherwise the module imports ./site/build.nix, which compile never writes
+    -- because there is no behaviour to build, and nix dies with a bare "path does
+    -- not exist" naming neither lips nor a remedy.
+    it "refuses a value naming the site when the program states no behaviour" $
+      realizeReplace (fromList
+        [ (mk "o1" "packages" "[ ${site} ]" Stated)
+            { dSubject = Subject ["environment", "systemPackages"] } ])
+        `shouldSatisfy` either (const True) (const False)
+
     it "refuses two sites rather than picking one" $
       realizeReplace (fromList
         [ (mk "o1" "packages" "[ ${site} ]" Stated)
             { dSubject = Subject ["environment", "systemPackages"] }
         , (mk "n1" "site" "\"a\"" Stated) { dSubject = Subject ["site", "one", "command"] }
         , (mk "n2" "site" "\"b\"" Stated) { dSubject = Subject ["site", "two", "command"] }
+        , clauseDecision "c1" "main" "(define (main args) args)"
+            (FromSource (SourceLoc "p.lips" 1))
         ])
         `shouldSatisfy` either (const True) (const False)
 
@@ -5174,35 +5189,44 @@ main = hspec $ do
   describe "runtime covering (Lips.Kernel.Clause.Catalogue)" $ do
     let guile = Runtime "guile" ["native", "fast-start"]
                         ["emit", "json-parse", "read-a-line"] ["guile", "guile-json"]
-                        ["adapter-pure.scm"] ["adapter-effects-memory.scm"]
-                        "(main (cdr (command-line)))" "site.nix"
+                        ["adapter-pure.scm"] ["adapter-effects.scm"]
+                        ["adapter-effects-memory.scm"] "(main (arguments))" "site.nix"
         hoot = Runtime "hoot" ["browser"] ["emit", "json-parse"] ["guile-hoot"]
-                       ["adapter-pure.scm"] [] "(main '())" "site.nix"
+                       ["adapter-pure.scm"] [] [] "(main '())" "site.nix"
 
     it "reads a runtime declaration" $
       parseRuntime "guile" (T.unlines
         [ "property native", "provides emit json-parse", "package guile"
         , "file adapter-pure.scm", "claim-file adapter-effects-memory.scm"
-        , "entry (main (cdr (command-line)))", "build site.nix" ])
+        , "entry (main (arguments))", "build site.nix" ])
         `shouldBe` Right (Runtime "guile" ["native"] ["emit", "json-parse"] ["guile"]
-                                  ["adapter-pure.scm"] ["adapter-effects-memory.scm"]
-                                  "(main (cdr (command-line)))" "site.nix")
+                                  ["adapter-pure.scm"] [] ["adapter-effects-memory.scm"]
+                                  "(main (arguments))" "site.nix")
 
     -- The entry is one expression in the runtime's own notation, so it keeps its
     -- spaces: splitting it on whitespace like every other line would destroy it.
     it "keeps the entry expression whole" $
-      fmap rEntry (parseRuntime "guile" "entry (main (cdr (command-line)))")
-        `shouldBe` Right "(main (cdr (command-line)))"
+      fmap rEntry (parseRuntime "guile" "entry (main (arguments))")
+        `shouldBe` Right "(main (arguments))"
 
     it "assembles the site file: adapters, then core, then the runtime's entry" $
       siteFile guile ["adapter-pure.scm", "core.scm"] `shouldSatisfy` \t ->
         T.isInfixOf "(load \"adapter-pure.scm\")" t
           && T.isInfixOf "(load \"core.scm\")" t
-          && T.isSuffixOf "(main (cdr (command-line)))\n" t
+          && T.isSuffixOf "(main (arguments))\n" t
 
     it "ships every file the guile runtime declares" $
-      map (runtimeAsset "guile") (rBuild guileRuntime : rFiles guileRuntime <> rClaimFiles guileRuntime)
+      map (runtimeAsset "guile")
+          (rBuild guileRuntime : rFiles guileRuntime <> rEffectFiles guileRuntime
+                                   <> rClaimFiles guileRuntime)
         `shouldSatisfy` all (/= Nothing)
+
+    -- The claim adapters go INSTEAD of the effect ones, not beside them: loading
+    -- the real effects and shadowing them would work only by
+    -- last-definition-wins, and any load-time effect would fire.
+    it "keeps the real effect adapters out of a claim's file" $
+      rEffectFiles guileRuntime `shouldSatisfy` \fs ->
+        not (null fs) && all (`notElem` rFiles guileRuntime) fs
 
     it "picks the one runtime covering the contracts and the properties" $
       coveringRuntime [guile, hoot] ["emit", "json-parse"] ["native"] `shouldBe` Right guile

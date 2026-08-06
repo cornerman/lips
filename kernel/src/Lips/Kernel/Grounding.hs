@@ -66,6 +66,9 @@ grounding winners = foldr add (Grounding 0 0 0 [] []) (nubBy sameSubject winners
     add (s, d) g = case segments s of
       ("clause" : _) -> g { gClauses = gClauses g + 1 }
       ("claim" : _)  -> g { gClaims = gClaims g + 1 }
+      -- Where the behaviour runs and what to call it: kernel vocabulary, so no
+      -- schema vouches for it and counting it as an option overstates what does.
+      ("site" : _)   -> g
       ["artifact", _, "args", "src"] -> g { gStaged = unvouchedOf s d : gStaged g }
       ("artifact" : _ : "args" : _)  -> g { gGlue = unvouchedOf s d : gGlue g }
       -- An artifact's builder and its fills name things; only its arguments

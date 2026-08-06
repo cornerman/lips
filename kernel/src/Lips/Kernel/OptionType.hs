@@ -179,6 +179,11 @@ reservedRoot ("claim" : _)    = True
 -- gated by 'Lips.Kernel.Clause.Gate'. No world declares it, and its type check
 -- is the gate, not an option type.
 reservedRoot ("clause" : _)   = True
+-- A site says WHERE a program's behaviour runs and what to call it. No world
+-- declares it, so grounding it against a schema would refuse every engine that
+-- installs its own behaviour -- which is exactly what the mint prompt now tells
+-- a model to emit.
+reservedRoot ("site" : _)     = True
 reservedRoot _                = False
 
 -- | The human wording of an option type (the nixpkgs 'type' string, not the

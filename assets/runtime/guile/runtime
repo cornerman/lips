@@ -12,8 +12,11 @@ provides arguments read-a-line end-of-input? emit die
 package guile
 package guile-json
 
+# The pure adapters, linked for every purpose.
 file adapter-pure.scm
-file adapter-effects.scm
+
+# The adapters that touch the world, linked for a real run only.
+effect-file adapter-effects.scm
 
 # The last line of main.scm: how this runtime hands a program its arguments and
 # starts it. Data, because lips must not know that Guile spells it command-line.
@@ -23,9 +26,9 @@ entry (main (arguments))
 # { pkgs, name, src } and returns one; lips copies it and calls it.
 build site.nix
 
-# Linked in place of adapter-effects.scm when a claim runs the core offline: the
-# same four names backed by lists instead of stdin and stdout, then the harness
-# that judges a claim and turns a failure into an exit code. Order matters: the
+# Linked INSTEAD of the effect files when a claim judges the core offline: the
+# same names backed by lists instead of stdin and stdout, then the harness that
+# judges a claim and turns a failure into an exit code. Order matters: the
 # harness is loaded after the adapters it may use.
 claim-file adapter-effects-memory.scm
 claim-file claim-harness.scm

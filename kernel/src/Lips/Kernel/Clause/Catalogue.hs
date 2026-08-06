@@ -39,7 +39,14 @@ data Runtime = Runtime
   , rProvides   :: [Text]
   , rPackages   :: [Text]
   , rFiles      :: [FilePath]
+    -- ^ The PURE adapters, linked for every purpose: a run and a claim both need
+    -- them, and neither touches the world.
+  , rEffectFiles :: [FilePath]
+    -- ^ The adapters that touch the world, linked for a real run only.
   , rClaimFiles :: [FilePath]
+    -- ^ Linked INSTEAD of 'rEffectFiles' when a claim judges the core offline.
+    -- Instead, not beside: loading the real effects and then shadowing them would
+    -- work only by last-definition-wins, and any load-time effect would fire.
   , rEntry      :: Text
     -- ^ The last line of the assembled file: how this runtime hands a program
     -- its arguments and starts it. Data, because lips must not know that Guile
@@ -57,19 +64,20 @@ data Runtime = Runtime
 parseRuntime :: Text -> Text -> Either Text Runtime
 parseRuntime name txt = do
   decls <- traverse parseLine (meaningfulLines txt)
-  Right (foldr add (Runtime name [] [] [] [] [] "" "") (concat decls))
+  Right (foldr add (Runtime name [] [] [] [] [] [] "" "") (concat decls))
   where
     add (DProperty p) r = r { rProperties = p : rProperties r }
     add (DProvides c) r = r { rProvides = c : rProvides r }
     add (DPackage p) r = r { rPackages = p : rPackages r }
     add (DFile f) r = r { rFiles = f : rFiles r }
+    add (DEffectFile f) r = r { rEffectFiles = f : rEffectFiles r }
     add (DClaimFile f) r = r { rClaimFiles = f : rClaimFiles r }
     add (DEntry e) r = r { rEntry = e }
     add (DBuild f) r = r { rBuild = f }
 
 data Decl
   = DProperty Text | DProvides Text | DPackage Text | DFile FilePath | DClaimFile FilePath
-  | DEntry Text | DBuild FilePath
+  | DEffectFile FilePath | DEntry Text | DBuild FilePath
 
 meaningfulLines :: Text -> [Text]
 meaningfulLines =
@@ -83,13 +91,14 @@ parseLine line = case T.words line of
   ("provides" : cs) | not (null cs) -> Right (map DProvides cs)
   ("package" : ps) | not (null ps) -> Right (map DPackage ps)
   ("file" : fs) | not (null fs) -> Right (map (DFile . T.unpack) fs)
+  ("effect-file" : fs) | not (null fs) -> Right (map (DEffectFile . T.unpack) fs)
   ("claim-file" : fs) | not (null fs) -> Right (map (DClaimFile . T.unpack) fs)
   -- The entry keeps its whole tail: it is one expression in the runtime's own
   -- notation, and splitting it on spaces would destroy it.
   ("entry" : _ : _) -> Right [DEntry (T.strip (T.drop 5 (T.stripStart line)))]
   ["build", f] -> Right [DBuild (T.unpack f)]
-  _ -> Left ("a runtime declares property, provides, package, file, claim-file,\
-             \ entry or build, but this line reads: " <> line)
+  _ -> Left ("a runtime declares property, provides, package, file, effect-file,\
+             \ claim-file, entry or build, but this line reads: " <> line)
 
 -- | The one runtime covering these contracts and properties, or why none does.
 coveringRuntime :: [Runtime] -> [Text] -> [Text] -> Either Text Runtime
