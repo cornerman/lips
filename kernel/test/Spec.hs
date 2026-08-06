@@ -3171,6 +3171,35 @@ main = hspec $ do
 
   -- The obligation: where an engine bakes source, the author's words are held to
   -- something observable, or nothing holds them at all.
+  -- The prompt is a reviewable asset, so the suite holds it to what the gates
+  -- actually accept. A prompt that teaches a form lips refuses costs a mint.
+  describe "the mint prompt states the clause grammar" $ do
+    let p = systemPrompt
+
+    it "tells the model to emit behaviour as clauses" $
+      p `shouldSatisfy` T.isInfixOf "clause.<name>"
+
+    -- The one wart a mint will otherwise get wrong: < is an identifier character
+    -- in Scheme, so a clause's hole marker cannot be <value>.
+    it "states the clause hole marker, and that it differs from a nix value's" $
+      p `shouldSatisfy` T.isInfixOf "#<name>, NOT <name>"
+
+    -- Rendered from the shipped vocabulary, never written into the markdown, so
+    -- the prompt cannot promise a contract the gate does not ground.
+    it "lists every contract the gate will ground, with its arity" $
+      map cName (vContracts schemeVocabulary)
+        `shouldSatisfy` all (\n -> T.isInfixOf ("  " <> n <> " (") p)
+
+    it "tells the model a missing capability is a gap, not a workaround" $
+      p `shouldSatisfy` T.isInfixOf "that is a GAP"
+
+    it "states the clause claim sections" $ do
+      p `shouldSatisfy` T.isInfixOf "claim.<id>.call"
+      p `shouldSatisfy` T.isInfixOf "claim.<id>.equals"
+
+    it "makes a source block the last resort rather than the first reach" $
+      p `shouldSatisfy` T.isInfixOf "A SOURCE BLOCK IS THE LAST RESORT"
+
   describe "the mint prompt states the claim grammar" $ do
     it "names the head and its closed section set" $ do
       let p = systemPromptFor Nixos

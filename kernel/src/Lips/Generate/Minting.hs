@@ -47,6 +47,8 @@ import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), MergeS
                                      parseDemandBody, parseMergeBody, parseRuleBody)
 import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
+import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
+import Lips.Runtime                 (schemeVocabulary)
 import Lips.Nix.Target       (Target (..))
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
@@ -163,10 +165,22 @@ directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 -- the ONLY thing that differs per world; the body's grammar (patterns, rules,
 -- typed holes, artifacts, expects) is identical.
 systemPromptFor :: Target -> Text
-systemPromptFor Nixos       = nixosDoc <> "\n" <> bodyDoc
-systemPromptFor HomeManager = homeManagerDoc <> "\n" <> bodyDoc
-systemPromptFor Kubenix     = kubenixDoc <> "\n" <> bodyDoc
-systemPromptFor Terranix    = terranixDoc <> "\n" <> bodyDoc
+systemPromptFor Nixos       = nixosDoc <> "\n" <> promptBody
+systemPromptFor HomeManager = homeManagerDoc <> "\n" <> promptBody
+systemPromptFor Kubenix     = kubenixDoc <> "\n" <> promptBody
+systemPromptFor Terranix    = terranixDoc <> "\n" <> promptBody
+
+-- | The body with the contract set substituted in. The list is rendered from the
+-- shipped vocabulary rather than written into the markdown, so the prompt cannot
+-- drift from what the gate will actually accept: a contract added to
+-- @assets\/runtime\/@ appears here, and one removed disappears.
+promptBody :: Text
+promptBody = T.replace "{{CONTRACTS}}" contractList bodyDoc
+
+contractList :: Text
+contractList = T.unlines
+  [ "  " <> cName c <> " (" <> T.pack (show (cArity c)) <> ") -- " <> cDoc c
+  | c <- vContracts schemeVocabulary ]
 
 -- | Kept for back-compat and the pinned-artifact test: the NixOS prompt.
 systemPrompt :: Text

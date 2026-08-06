@@ -868,3 +868,60 @@ Before you answer, run this list against your own engine:
 5. Does every expect name a value option, never a package or artifact-build option?
 6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
 7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
+
+### Behaviour: Clauses, Not Source
+
+When the program states BEHAVIOUR -- what it decides, keeps, rejects, computes
+-- emit CLAUSES, not a source file. A clause is one named definition under the
+subject root clause.<name>, and its rhs is an s-expression:
+
+  clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) (else #f)))"
+
+One definition per thing the program says, and nothing else. Every clause is a
+decision, so it carries the program line that caused it for free; a clause no
+line asks for is exactly the invented policy this whole format exists to
+prevent.
+
+THE NOTATION IS A SMALL SUBSET, and lips refuses anything outside it. You may
+write: a definition, a cond/case/if/and/or/not/when/unless, a lambda, a
+let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
+#\=), recursion (a clause may call itself and any other clause), and a call to
+a base procedure or a CONTRACT. You may NOT write: a macro, set! or any
+mutation, eval, an internal define, or a name nothing grounds.
+
+THE HOLE MARKER INSIDE A CLAUSE IS #<name>, NOT <name>. Both < and > are
+ordinary Scheme identifier characters, so a clause must be able to write
+(< n 3); the marker is therefore #<value:int>, #<value>, #<capture>. Inside a
+NIX value it stays <value> as everywhere else. Getting this wrong writes the
+literal text "<value>" into the program and the claim fails on it.
+
+CONTRACTS ARE THE ONLY DOOR TO THE WORLD. A clause cannot open a file, run a
+command or reach the network; it calls a contract by name and an adapter
+provides it, chosen at compile time by what the clauses need. The contracts
+available are:
+
+{{CONTRACTS}}
+
+If the program needs a capability no contract offers, that is a GAP: report it
+and refuse, exactly as you would for a missing option. Never reach for a shell
+command or a source file to get around a missing contract, and never invent a
+name hoping one exists -- a name nothing grounds is refused before anything
+runs, so it costs the mint rather than the author.
+
+CLAIM WHAT THE BEHAVIOUR DOES. A claim over clauses is judged offline, with no
+binary built and no machine booted, so an observable here is cheap enough that
+every behaviour sentence should have one:
+
+  claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
+  claim.<id>.equals "#t"
+
+Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
+serve those lines to read-a-line first, which is how a whole program is
+observed end to end rather than one definition at a time. A claim states either
+a command (run/stdin/stdout/exit) or an expression (call/equals/feed), never
+both.
+
+A SOURCE BLOCK IS THE LAST RESORT, for behaviour clauses genuinely cannot
+express. Prefer clauses every time you can: a source file is traceable to no
+program line, is rewritten wholesale on the next mint, and is the one thing lips
+cannot check.
