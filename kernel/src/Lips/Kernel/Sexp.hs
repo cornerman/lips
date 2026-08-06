@@ -273,6 +273,11 @@ renderSexp (SStr ps)    = "\"" <> T.concat (map piece ps) <> "\""
 -- a genuine backslash in the text is not mistaken for one of the escapes on the
 -- way back through 'parseSexp'. Scheme has no string interpolation, so a quote
 -- and a backslash are the whole attack surface.
+--
+-- The hole marker @#\<@ is NOT escaped, and cannot be: Guile rejects @\\#@ as an
+-- invalid escape sequence, so there is no spelling of a literal @#\<@ that both
+-- survives this parser and loads on the runtime. 'fillSexp' therefore refuses a
+-- program word carrying the marker, which is what keeps the round-trip total.
 escape :: Text -> Text
 escape = T.replace "\"" "\\\""
        . T.replace "\r" "\\r"
@@ -295,8 +300,20 @@ fillSexp pick = go
     go (SHole ht h) = pick h >>= coerce ht h
     go x            = Right x
 
-    piece (SPHole h) = SLit <$> pick h
+    piece (SPHole h) = pick h >>= literal h
     piece p          = Right p
+
+    -- A program word carrying the hole marker would render into a string that
+    -- reads back as a HOLE, so the clause stored and the clause meant would
+    -- differ. There is no escape for it (Guile refuses @\\#@), so this is a
+    -- refusal rather than a rewrite: deduce-or-fail, at the one door where a
+    -- program's own text enters a clause.
+    literal h tok
+      | "#<" `T.isInfixOf` tok = Left
+          ("the word filling <" <> h <> "> carries " <> marker <> ", which is how a\
+           \ clause writes a hole, so lips cannot put it inside one: " <> tok)
+      | otherwise = Right (SLit tok)
+    marker = T.pack ['#', '<']
 
     coerce HInt h tok = case TR.signed TR.decimal (T.strip tok) of
       Right (n, r) | T.null r -> Right (SInt n)
