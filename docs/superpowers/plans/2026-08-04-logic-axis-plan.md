@@ -19,11 +19,22 @@ build), Guile 3 (first runtime), guile-json (first pure adapter package).
 
 ## Status, and Where the Plan Was Corrected in Flight
 
-Tasks 1 to 7 are landed and green (665 examples, 0 failures, `-Wall` clean across
+Tasks 1 to 8 are landed and green (674 examples, 0 failures, `-Wall` clean across
 library, app and suite). Task 7 is proved end to end by
 `experiments/clause-site/`: `lips compile` writes the site and
 `printf 'a\nb\nc\n' | nix run 'path:...#site'` prints the three lines. Its engine
 is hand-written, because no mint emits clauses until Task 9.
+
+Task 8 landed as a SEPARATE type, `ClauseClaim`, rather than as variants of
+`Claim`: the two are observed by different machinery (a process through its
+stdin, versus an expression), so keeping them apart makes a claim that is half
+command and half expression unrepresentable. It is judged by
+`nix build ...#site-claims`, a small derivation that evaluates the core with the
+runtime's list-backed adapters and its verdict harness; a failed claim exits
+nonzero, so the build fails. `lips check` runs it in about a second, against
+minutes for a `buildGoModule` claim, and it can observe one definition rather
+than a whole process. Also landed: `Rungs`, a record replacing what had become
+four positional booleans in `flakeText`.
 
 Two things Task 7 forced, both keeping host knowledge out of the kernel: a
 runtime now declares its ENTRY expression (`entry (main (cdr (command-line)))`,
