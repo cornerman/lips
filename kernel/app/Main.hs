@@ -73,12 +73,14 @@ import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtif
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
-import           Lips.Kernel.Clause.Catalogue  (Runtime (..), coveringRuntime, siteFile)
+import           Lips.Kernel.Clause.Catalogue  (Runtime (..), clauseClaimsFile, coveringRuntime,
+                                                siteFile)
 import           Lips.Kernel.Grounding  (Grounding, Unvouched (..), gStaged, groundingReport)
 import           Lips.Runtime            (runtimeAsset, runtimes, schemeVocabulary)
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
-import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..))
+import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..), ClauseClaim,
+                                                renderClauseClaim)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), SourceSpecVerdict (..), diagnose,
                                                 sourceSpecVerdict)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
@@ -86,7 +88,7 @@ import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, unanswerable
 import           Lips.Kernel.Engine.Gate       (engineViolations, unanswerableProblem)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Claims               (claimsFile)
-import           Lips.Nix.Flake                (flakeText, runCommands)
+import           Lips.Nix.Flake                (Rungs (..), flakeText, noRungs, runCommands)
 import           Lips.Nix.Schema               (schemaFor)
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
 import           Lips.Lsp.Server               (runLsp)
@@ -165,7 +167,7 @@ compileLoose mout mLangDir noContract file = do
   rl  <- checkLoose (not noContract) (not noContract) mLangDir file
   target  <- readRecordedTarget dir file
   let outDirPath = maybe (compiledPath file) id mout
-  (artNames, hasClaims, hasSite) <- step ("write " <> T.pack outDirPath) $ do
+  (artNames, rungs) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
     createDirectoryIfMissing True outDirPath
     TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
@@ -177,20 +179,22 @@ compileLoose mout mLangDir noContract file = do
     -- holding the runtime's adapters, the minted core, the assembled entry and
     -- the runtime's own builder. A configuration-only program writes none, so
     -- its output stays byte-identical.
-    hasSite <- writeSite outDirPath (rlCore rl)
+    hasSite <- writeSite outDirPath (rlClauseClaims rl) (rlCore rl)
     artNames <- case rlArtifact rl of
       Nothing            -> pure []
       Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
     -- The experiments the program states, beside the artifacts they observe. A
     -- claim-free program writes no file and its output stays byte-identical.
-    hasClaims <- case claimsFile (not (null artNames)) (rlClaims rl) of
+    hasClaims' <- case claimsFile (not (null artNames)) (rlClaims rl) of
       Nothing   -> pure False
       Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
-    TIO.writeFile (outDirPath </> "flake.nix")
-      (flakeText target (not (null artNames)) hasClaims hasSite)
-    pure (artNames, hasClaims, hasSite)
+    let rungs = Rungs { hasArtifacts = not (null artNames), hasClaims = hasClaims'
+                      , hasSite = hasSite
+                      , hasSiteClaims = hasSite && not (null (rlClauseClaims rl)) }
+    TIO.writeFile (outDirPath </> "flake.nix") (flakeText target rungs)
+    pure (artNames, rungs)
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
-  mapM_ note (runCommands target artNames hasClaims hasSite outDirPath)
+  mapM_ note (runCommands target artNames rungs outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the
@@ -409,7 +413,35 @@ expectGate contract claims dir file eng program = do
 -- does for every other rung). A claim-free program is untouched and @check@
 -- stays nixpkgs-free for it.
 claimGate :: FilePath -> FilePath -> Realization -> IO ()
-claimGate dir file rl
+claimGate dir file rl = clauseClaimGate file rl >> commandClaimGate dir file rl
+
+-- | The clause claims, judged: one small derivation that evaluates the program's
+-- own definitions with the runtime's list-backed adapters. No machine boots and
+-- no binary is compiled, so this gate costs a fraction of the one below and can
+-- observe a single definition rather than a whole process.
+clauseClaimGate :: FilePath -> Realization -> IO ()
+clauseClaimGate file rl
+  | null (rlClauseClaims rl) = pure ()
+  | otherwise =
+      step ("clause claims: " <> plural (length (rlClauseClaims rl)) "claim") $
+        withTempDir $ \tmp -> do
+          _ <- writeSite tmp (rlClauseClaims rl) (rlCore rl)
+          TIO.writeFile (tmp </> "flake.nix")
+            (flakeText Nixos noRungs { hasSite = True, hasSiteClaims = True })
+          res <- try (readProcessWithExitCode "nix"
+            ["build", "--no-link", "path:" <> tmp <> "#site-claims"] "")
+          case res of
+            Left e -> die (nixMissing file "judge the clauses it states" "check"
+                            (tshow (e :: IOException)))
+            Right (ExitFailure _, _, err) -> die (report
+              (T.pack file <> ": what the program says its behaviour does is not what it does.")
+              (T.lines (T.pack err))
+              ("\8594 the behaviour is clauses, so the program and its claims disagree:"
+                <> " fix the sentence, or the claim that pins it."))
+            Right (ExitSuccess, _, _) -> pure ()
+
+commandClaimGate :: FilePath -> FilePath -> Realization -> IO ()
+commandClaimGate dir file rl
   | null (rlClaims rl) = pure ()
   | otherwise = do
       let machine = [ clId c | c <- rlClaims rl, clPlace c == PlaceMachine ]
@@ -431,7 +463,8 @@ claimGate dir file rl
         case claimsFile (not (null artNames)) (rlClaims rl) of
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (tmp </> "claims.nix") body
-        TIO.writeFile (tmp </> "flake.nix") (flakeText target (not (null artNames)) True False)
+        TIO.writeFile (tmp </> "flake.nix")
+          (flakeText target noRungs { hasArtifacts = not (null artNames), hasClaims = True })
         res <- try (readProcessWithExitCode "nix"
           ["build", "--no-link", "path:" <> tmp <> "#claims"] "")
         case res of
@@ -1664,9 +1697,9 @@ stageFromDisk dir file dst = do
 -- program no runtime covers fails loud naming the contract nobody offers. Sites
 -- with stated properties are the next step; today a program has one site and no
 -- stated requirements, so the covering has one input.
-writeSite :: FilePath -> Maybe (Text, [Text]) -> IO Bool
-writeSite _ Nothing = pure False
-writeSite outDirPath (Just (core, contracts)) = do
+writeSite :: FilePath -> [ClauseClaim] -> Maybe (Text, [Text]) -> IO Bool
+writeSite _ _ Nothing = pure False
+writeSite outDirPath ccs (Just (core, contracts)) = do
   rt <- either (die . coverFail) pure (coveringRuntime runtimes contracts [])
   let siteDir = outDirPath </> "site"
       files = rFiles rt <> ["core.scm"]
@@ -1676,17 +1709,32 @@ writeSite outDirPath (Just (core, contracts)) = do
     Just body -> TIO.writeFile (siteDir </> (if f == rBuild rt then "build.nix" else f)) body
     -- A runtime declaring a file its own directory does not hold is a defect in
     -- lips's assets, not in the program: say so in those words.
-    Nothing -> die (report
-      ("lips ships no file " <> T.pack f <> " for the " <> rName rt <> " runtime,")
-      ["although that runtime declares it."]
-      "\8594 this is a lips bug; report it.")
+    Nothing -> die (missingAsset rt f)
   TIO.writeFile (siteDir </> "main.scm") (siteFile rt files)
+  -- The claims file, when the program states observables over its own
+  -- definitions: the same core, with the runtime's list-backed adapters and its
+  -- verdict harness linked instead of the real effects.
+  forM_ (rClaimFiles rt) $ \f -> case runtimeAsset (rName rt) f of
+    Just body -> TIO.writeFile (siteDir </> f) body
+    Nothing -> die (missingAsset rt f)
+  unless (null ccs) $
+    TIO.writeFile (siteDir </> "claims.scm")
+      (clauseClaimsFile (rFiles rt <> rClaimFiles rt <> ["core.scm"])
+                        (concatMap renderClauseClaim ccs))
   pure True
   where
     coverFail why = report
       "lips can't decide where this program's behaviour runs."
       [why]
       "\8594 state a requirement in the program, or add a runtime that covers it."
+
+-- | A runtime declaring a file its own directory does not hold is a defect in
+-- lips's assets, not in the program: say so in those words.
+missingAsset :: Runtime -> FilePath -> Text
+missingAsset rt f = report
+  ("lips ships no file " <> T.pack f <> " for the " <> rName rt <> " runtime,")
+  ["although that runtime declares it."]
+  "\8594 this is a lips bug; report it."
 
 -- | How much source each staged tree actually holds, in lines and files. The
 -- number that matters for review: an unvouched path is cheap to write and

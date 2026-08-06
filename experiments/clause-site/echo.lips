@@ -1,1 +1,2 @@
 print each line read from standard input.
+given the lines a and b, print both.

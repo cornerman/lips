@@ -159,17 +159,24 @@ claimsFromDecisions winners
   | (bad : _) <- malformed =
       Left ("claim " <> T.intercalate "." bad <> ": a claim is claim.<id>.<section>,"
              <> " with section one of " <> T.intercalate ", " sections)
+  | (bad : _) <- unknownSections =
+      Left ("claim section " <> bad <> " is not one of "
+             <> T.intercalate ", " (sections <> clauseSections))
   | otherwise = traverse one (Map.toList grouped)
   where
     malformed = [ segs | (Subject segs@("claim" : _), _) <- winners, length segs /= 3 ]
+    -- A section outside BOTH closed sets is an engine defect: a mint's typo
+    -- (stdOut) would otherwise be dropped in silence. A section in the clause
+    -- set belongs to 'clauseClaimsFromDecisions' and is skipped here, so the two
+    -- kinds of observable coexist without either seeing the other's sections as
+    -- garbage.
+    unknownSections = nub [ sec | (Subject ["claim", _, sec], _) <- winners
+                                , sec `notElem` sections, sec `notElem` clauseSections ]
     grouped = Map.fromListWith (flip (++))
-      [ (cid, [(sec, d)]) | (Subject ["claim", cid, sec], d) <- winners ]
+      [ (cid, [(sec, d)])
+      | (Subject ["claim", cid, sec], d) <- winners, sec `elem` sections ]
 
     one (cid, parts) = do
-      case nub [ s | (s, _) <- parts, s `notElem` sections ] of
-        []   -> Right ()
-        bads -> Left (pre <> "unknown section(s) " <> T.intercalate ", " bads
-                       <> "; a claim has " <> T.intercalate ", " sections)
       vals <- traverse (\(s, d) -> (,) s <$> valueOf s d) parts
       runV <- case lookup "run" vals of
         Just v  -> Right v

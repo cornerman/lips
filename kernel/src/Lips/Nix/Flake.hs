@@ -41,7 +41,9 @@
 -- world is resolved at @nix run@ time, the same Heile-Welt softness the old
 -- @\<nixpkgs\>@-based VM boot already carried.
 module Lips.Nix.Flake
-  ( flakeText
+  ( Rungs (..)
+  , noRungs
+  , flakeText
   , runCommands
   ) where
 
@@ -53,8 +55,22 @@ import Lips.Nix.Target (Target (..))
 -- | The @flake.nix@ text for a compiled directory. @hasArtifacts@ toggles the
 -- artifact package output; the target toggles the system rung (nixos gets
 -- @apps.vm@ + @packages.vm@; home-manager gets neither, only the module).
-flakeText :: Target -> Bool -> Bool -> Bool -> Text
-flakeText target hasArtifacts hasClaims hasSite = T.unlines $
+-- | Which rungs a compiled directory offers. A record rather than four
+-- positional booleans, because at four nobody can read the call site.
+data Rungs = Rungs
+  { hasArtifacts  :: Bool
+  , hasClaims     :: Bool
+  , hasSite       :: Bool   -- ^ the program states behaviour, so there is a program to run
+  , hasSiteClaims :: Bool   -- ^ it also states observables over that behaviour
+  }
+  deriving (Eq, Show)
+
+-- | Nothing offered: the shape a configuration-only program starts from.
+noRungs :: Rungs
+noRungs = Rungs False False False False
+
+flakeText :: Target -> Rungs -> Text
+flakeText target rungs = T.unlines $
   [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
   , "{"
   , "  description = \"lips-compiled program (nixpkgs resolved ambiently)\";"
@@ -68,12 +84,12 @@ flakeText target hasArtifacts hasClaims hasSite = T.unlines $
   , "      forSystems = nixpkgs.lib.genAttrs systems;"
   , "      pkgsFor = system: import nixpkgs { inherit system; };"
   ]
-  ++ nixosBuildsLet target hasArtifacts
+  ++ nixosBuildsLet target (hasArtifacts rungs)
   ++ kubenixBuildsLet target
   ++ terranixBuildsLet target
   ++ [ "    in {" ]
   ++ moduleOutput target
-  ++ packagesOutput target hasArtifacts hasClaims hasSite
+  ++ packagesOutput target rungs
   ++ appsOutput target
   ++ devShellsOutput target
   ++ [ "    };"
@@ -207,29 +223,41 @@ nixosBuildsLet Nixos hasArtifacts =
 -- domain artifact named @vm@ never clashes with the @vm@ rung); the system
 -- rung exposes @vm@ (the boot-script derivation -- building it needs no KVM, so
 -- @nix build \<x\>#vm@ is the cheap \"does the whole system build\" check).
-packagesOutput :: Target -> Bool -> Bool -> Bool -> [Text]
-packagesOutput target hasArtifacts hasClaims hasSite
+packagesOutput :: Target -> Rungs -> [Text]
+packagesOutput target rungs
   | null body = []
   | otherwise = [ "      packages = forSystems (system: {" ] ++ body ++ [ "      });" ]
   where
-    body = artLine ++ siteLine ++ claimLine ++ sysLines
+    body = artLine ++ siteLine ++ siteClaimLine ++ claimLine ++ sysLines
     -- The program's own behaviour, built by the runtime its contracts chose. The
     -- builder is the runtime's file, copied verbatim; this flake knows only its
     -- interface.
     siteLine
-      | hasSite = [ "        site = import ./site/build.nix {"
-                  , "          pkgs = pkgsFor system; name = \"site\"; src = ./site;"
-                  , "        };" ]
+      | hasSite rungs = [ "        site = import ./site/build.nix {"
+                        , "          pkgs = pkgsFor system; name = \"site\"; src = ./site;"
+                        , "        };" ]
+      | otherwise = []
+    -- Judging the clauses is a BUILD that runs them: no machine, no compiled
+    -- binary, just the core evaluated with list-backed adapters. A failed claim
+    -- exits nonzero, so the build fails and an unheld claim can never read as
+    -- held.
+    siteClaimLine
+      | hasSiteClaims rungs =
+          [ "        site-claims = let p = pkgsFor system; in p.runCommand \"site-claims\" {} ''"
+          , "          ${import ./site/build.nix {"
+          , "            pkgs = p; name = \"site-claims\"; src = ./site; main = \"claims.scm\";"
+          , "          }}/bin/site-claims | tee $out"
+          , "        '';" ]
       | otherwise = []
     artLine
-      | hasArtifacts = [ "        artifact = import ./artifact.nix { pkgs = pkgsFor system; };" ]
+      | hasArtifacts rungs = [ "        artifact = import ./artifact.nix { pkgs = pkgsFor system; };" ]
       | otherwise    = []
     -- ONE aggregate, so `nix build <dir>#claims` runs EVERY experiment: a claim
     -- that is not built is a claim that did not run, and "not verified" must
     -- never render as verified. World-neutral, because a sandbox claim needs no
     -- machine (only a machine claim does, and those exist in the NixOS world).
     claimLine
-      | hasClaims = [ "        claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
+      | hasClaims rungs = [ "        claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
                     , "          (builtins.attrValues (import ./claims.nix { pkgs = pkgsFor system; }));" ]
       | otherwise = []
     sysLines = case target of
@@ -306,21 +334,25 @@ devShellsOutput Nixos =
 -- command is ever shown). @dir@ is the output directory; commands use
 -- @path:\<dir\>@ because the compiled dir is derived and gitignored, and
 -- @path:@ copies it verbatim, bypassing flake's git rules.
-runCommands :: Target -> [Text] -> Bool -> Bool -> FilePath -> [Text]
-runCommands target artNames hasClaims hasSite dir =
+runCommands :: Target -> [Text] -> Rungs -> FilePath -> [Text]
+runCommands target artNames rungs dir =
   concatMap artifactLines artNames ++ siteLines ++ systemLines target ++ claimLines
   where
     -- Printed first when the program states behaviour: it is the program itself,
     -- and everything else on the list is scaffolding around it.
     siteLines
-      | hasSite = [ cmd "run it" "run" (ref "site") "   (the program's own behaviour)"
-                  , cmd "build it" "build" (ref "site") "" ]
+      | hasSite rungs =
+          [ cmd "run it" "run" (ref "site") "   (the program's own behaviour)"
+          , cmd "build it" "build" (ref "site") "" ]
+            <> [ cmd "judge it" "build" (ref "site-claims")
+                     "   (runs every claim over its clauses)"
+               | hasSiteClaims rungs ]
       | otherwise = []
     -- Printed last, and only when the program states observables: it is the rung
     -- that answers "does it do what I said", which is worth reaching for after
     -- the ones that merely build.
     claimLines
-      | hasClaims = [ cmd "check what it does" "build" (ref "claims") "   (runs every claim the program states)" ]
+      | hasClaims rungs = [ cmd "check what it does" "build" (ref "claims") "   (runs every claim the program states)" ]
       | otherwise = []
     ref suffix = "path:" <> T.pack dir <> "#" <> suffix
     -- One column for the label, one for the verb, so the flake refs line up
