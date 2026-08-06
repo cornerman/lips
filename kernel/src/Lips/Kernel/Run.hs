@@ -29,7 +29,7 @@ import Lips.Kernel.Claim    (Claim, ClauseClaim)
 import Lips.Kernel.Clause.Vocabulary (Vocabulary)
 import Lips.Kernel.Grounding    (Grounding, grounding)
 import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, realizeClauseClaims,
-                             realizeClauses,
+                             realizeClauses, siteNameIn,
                              realizeArtifactFills, realizeArtifactPaths,
                              realizeClaims, realizeStagedPaths)
 import Lips.Kernel.Refine
@@ -96,6 +96,10 @@ data Realization = Realization
     -- decisions, gated, each definition naming the program lines behind it.
     -- 'Nothing' for a program that states no behaviour, which is every
     -- configuration-only program.
+  , rlSiteName :: Maybe Text
+    -- ^ What to call the site derivation, when anything names it. Carried so
+    -- every caller that must write the same binding realize does (the claims
+    -- file, the compiled flake) agrees with the module by construction.
   , rlGrounding :: Grounding
     -- ^ What vouches for each assertion, counted. Carried beside the module so
     -- every caller can print it: an unvouched assertion nobody watches is how a
@@ -128,6 +132,7 @@ runBase modeOf assemble vocab budget rules demands base0 = do
     <*> realizeArtifactPaths modeOf assemble ground
     <*> realizeArtifactFills modeOf assemble ground
     <*> realizeClauses modeOf assemble vocab base0 ground
+    <*> siteNameIn modeOf assemble ground
     <*> pure (grounding [ (dSubject d, d) | d <- realizable ])
     <*> realizeClauseClaims modeOf assemble ground
     <*> realizeClaims modeOf assemble ground

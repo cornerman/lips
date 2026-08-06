@@ -185,7 +185,7 @@ compileLoose mout mLangDir noContract file = do
       Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
     -- The experiments the program states, beside the artifacts they observe. A
     -- claim-free program writes no file and its output stays byte-identical.
-    hasClaims' <- case claimsFile (not (null artNames)) (rlClaims rl) of
+    hasClaims' <- case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
       Nothing   -> pure False
       Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
     let rungs = Rungs { hasArtifacts = not (null artNames), hasClaims = hasClaims'
@@ -460,7 +460,7 @@ commandClaimGate dir file rl
         artNames <- case rlArtifact rl of
           Nothing            -> pure []
           Just (body, names) -> TIO.writeFile (tmp </> "artifact.nix") body >> pure names
-        case claimsFile (not (null artNames)) (rlClaims rl) of
+        case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (tmp </> "claims.nix") body
         TIO.writeFile (tmp </> "flake.nix")
@@ -1503,7 +1503,7 @@ mintClaimGate nixpkgs stage file rl
         artNames <- case rlArtifact rl of
           Nothing            -> pure []
           Just (body, names) -> TIO.writeFile (dir </> "artifact.nix") body >> pure names
-        case claimsFile (not (null artNames)) (rlClaims rl) of
+        case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (dir </> "claims.nix") body
         note ("observing " <> T.intercalate ", " (map clId (rlClaims rl)))

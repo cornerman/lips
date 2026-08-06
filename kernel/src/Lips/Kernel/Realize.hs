@@ -22,8 +22,9 @@ module Lips.Kernel.Realize
   , realizeArtifactPaths
   , realizeArtifactFills
   , realizeClaims
-, realizeClauseClaims
-, realizeClauses
+  , realizeClauseClaims
+  , realizeClauses
+  , siteNameIn
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
@@ -210,6 +211,24 @@ realizeClauses modeOf assemble vocab source base =
     locOf locs = case locs of
       (SourceLoc _ n : _) -> n
       []                  -> maxBound
+
+-- | The name the site derivation is built under, for every caller that must
+-- write the same binding realize does (the claims file, the compiled flake).
+-- 'Nothing' when nothing in the base names the site, so a program without
+-- behaviour never mentions a directory compile did not write.
+siteNameIn :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
+           -> Base -> Either RealizeError (Maybe Text)
+siteNameIn modeOf assemble base =
+  case resolve modeOf assemble base of
+    Left errs -> Left (resolveErr errs)
+    Right winners -> do
+      let ws = Map.toList winners
+          (arts, rest) = partition (rootedAtArtifact . fst) ws
+      vals <- traverse (\(sub, d) -> case parseValue (unAssertion (dAssertion d)) of
+                          Right v -> Right v
+                          Left e  -> Left (RMalformed sub e)) rest
+      argSite <- anyArgReferencesSite arts
+      Right (siteNameFrom ws (any referencesSite vals || argSite))
 
 -- | The @name@ the site derivation is built under, when anything names the site
 -- at all. What the program said to install it as; absent, the derivation is

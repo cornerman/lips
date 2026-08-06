@@ -3304,10 +3304,10 @@ main = hspec $ do
                              , clExit = 0, clPlace = PlaceMachine }
 
     it "writes nothing for a program that states no claims" $
-      claimsFile True [] `shouldBe` Nothing
+      claimsFile True Nothing [] `shouldBe` Nothing
 
     it "renders a sandbox claim as a derivation that runs the command" $ do
-      let txt = maybe "" id (claimsFile True [derivClaim])
+      let txt = maybe "" id (claimsFile True Nothing [derivClaim])
       txt `shouldSatisfy` T.isInfixOf "artifact = import ./artifact.nix { inherit pkgs; };"
       txt `shouldSatisfy` T.isInfixOf "\"echo\" = pkgs.runCommand \"claim-echo\""
       -- the artifact reference stays a LIVE nix interpolation
@@ -3319,7 +3319,7 @@ main = hspec $ do
       txt `shouldNotSatisfy` T.isInfixOf "nixosTest"
 
     it "renders a machine claim as a nixosTest importing the module" $ do
-      let txt = maybe "" id (claimsFile False [machineClaim])
+      let txt = maybe "" id (claimsFile False Nothing [machineClaim])
       txt `shouldSatisfy` T.isInfixOf "pkgs.testers.nixosTest"
       txt `shouldSatisfy` T.isInfixOf "imports = [ ./default.nix ];"
       txt `shouldSatisfy` T.isInfixOf "machine.execute(cmd)"
@@ -3330,11 +3330,18 @@ main = hspec $ do
     -- rendered claim is the command's own artifact reference.
     it "escapes an interpolation a program states" $ do
       let sneaky = derivClaim { clStdout = Just "${pkgs.hello}" }
-          txt    = maybe "" id (claimsFile True [sneaky])
+          txt    = maybe "" id (claimsFile True Nothing [sneaky])
       txt `shouldSatisfy` T.isInfixOf "\\${pkgs.hello}"
 
     it "is deterministic in claim order" $
-      claimsFile True [machineClaim, derivClaim] `shouldBe` claimsFile True [derivClaim, machineClaim]
+      claimsFile True Nothing [machineClaim, derivClaim] `shouldBe` claimsFile True Nothing [derivClaim, machineClaim]
+
+    -- A claim may observe the program's own behaviour, and then the file needs
+    -- the same site binding the module carries. Found by a live mint: nix
+    -- reported an undefined variable with every lips gate green.
+    it "binds the site when a claim observes the program's own behaviour" $
+      maybe "" id (claimsFile False (Just "\"logscan\"") [machineClaim])
+        `shouldSatisfy` T.isInfixOf "site = import ./site/build.nix"
 
     -- A claim id comes from the engine, so it can be anything a subject segment
     -- can be -- including a number, which is not a nix identifier. Rendered
@@ -3342,10 +3349,10 @@ main = hspec $ do
     -- a nix trace (observed: a minted engine keyed its claims by <n:index>).
     it "quotes a claim id, which need not be a nix identifier" $ do
       let numeric = derivClaim { clId = "1" }
-          txt     = maybe "" id (claimsFile True [numeric])
+          txt     = maybe "" id (claimsFile True Nothing [numeric])
       txt `shouldSatisfy` T.isInfixOf "\"1\" = pkgs.runCommand"
       let machineNumeric = machineClaim { clId = "2" }
-          txt2           = maybe "" id (claimsFile False [machineNumeric])
+          txt2           = maybe "" id (claimsFile False Nothing [machineNumeric])
       txt2 `shouldSatisfy` T.isInfixOf "\"2\" = pkgs.testers.nixosTest"
 
   -- The advisory half of the obligation: where behaviour lives in minted source

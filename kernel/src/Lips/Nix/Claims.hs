@@ -33,13 +33,13 @@ import Lips.Kernel.Engine.Value (Piece (..), Value (..), renderRealized, renderV
 -- @hasArtifacts@ decides whether the artifact bindings are in scope: a program
 -- can state a machine claim without building anything, and importing an
 -- @artifact.nix@ that was never written would fail at evaluation.
-claimsFile :: Bool -> [Claim] -> Maybe Text
-claimsFile _ [] = Nothing
-claimsFile hasArtifacts cs = Just $ T.unlines $
+claimsFile :: Bool -> Maybe Text -> [Claim] -> Maybe Text
+claimsFile _ _ [] = Nothing
+claimsFile hasArtifacts mSite cs = Just $ T.unlines $
   [ "# lips-realized claims. Generated from a ground decision base; do not edit."
   , "{ pkgs }:"
   , "let"
-  ] ++ artifactLet ++
+  ] ++ artifactLet ++ siteLet ++
   [ "in {"
   ] ++ concatMap entry (sortOn clId cs) ++ [ "}" ]
   where
@@ -48,6 +48,15 @@ claimsFile hasArtifacts cs = Just $ T.unlines $
       -- A `let` with no bindings is legal Nix, so an artifact-free program needs
       -- no separate rendering path.
       | otherwise    = []
+    -- A claim may observe the program's own behaviour, built from its clauses, so
+    -- the same binding the module carries is needed here. Found by a live mint:
+    -- the test script interpolated ${site} and nix reported an undefined
+    -- variable, every lips gate green.
+    siteLet = case mSite of
+      Nothing -> []
+      Just nm -> [ "  site = import ./site/build.nix {"
+                 , "    inherit pkgs; name = " <> nm <> "; src = ./site;"
+                 , "  };" ]
 
 -- | A claim id as an attribute NAME. Always quoted: the id comes from the
 -- engine, so it is whatever a subject segment can be -- a bare @1@ from an
