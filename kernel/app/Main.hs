@@ -73,6 +73,8 @@ import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtif
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
+import           Lips.Kernel.Grounding  (groundingReport)
+import           Lips.Runtime            (schemeVocabulary)
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
 import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..))
@@ -170,6 +172,12 @@ compileLoose mout mLangDir noContract file = do
     -- The committed source keeps its markers (it is the template); the COMPILED
     -- source is filled, like every other derived output.
     fillStagedTree file (outDirPath </> "artifacts") (rlFills rl)
+    -- The clause core, when the program states behaviour: one Scheme file whose
+    -- every definition names the program lines behind it. A configuration-only
+    -- program writes none, so its output stays byte-identical.
+    case rlCore rl of
+      Nothing   -> pure ()
+      Just core -> TIO.writeFile (outDirPath </> "core.scm") core
     artNames <- case rlArtifact rl of
       Nothing            -> pure []
       Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
@@ -267,7 +275,13 @@ checkLoose contract claims mLangDir file = do
                    "→ answer them by stating the detail in the program.")
           uds -> die (unanswerableReport file uds)
         else pure ()
-  expectGate contract claims dir file eng program
+  rl <- expectGate contract claims dir file eng program
+  -- What vouches for each assertion, always printed. An unvouched assertion
+  -- (foreign text in an artifact argument, a staged source tree) is the one
+  -- thing lips cannot check, so the count is stated on every run rather than
+  -- discovered later by a reviewer reading generated code.
+  mapM_ note (groundingReport (rlGrounding rl))
+  pure rl
   where
     escapes Matched{} = False
     escapes _         = True
@@ -1094,7 +1108,7 @@ validate file eng program =
           -- option, so the engine states it; nothing declared means a set (two
           -- program lines naming one thing name it once).
           assembleList = assembleWith (keepsRepeats (edMerges eng))
-      in first FailRun (runBase modeOf assembleList budget rules demands base)
+      in first FailRun (runBase modeOf assembleList schemeVocabulary budget rules demands base)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable

@@ -100,11 +100,11 @@ realizeReplace = realize (const Replace) noAssembly
 
 runReplace :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
 runReplace budget rules demands =
-  fmap rlModule . run (const Replace) noAssembly budget rules demands
+  fmap rlModule . run (const Replace) noAssembly schemeVocabulary budget rules demands
 
 runBaseReplace :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
 runBaseReplace budget rules demands =
-  fmap rlModule . runBase (const Replace) noAssembly budget rules demands
+  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget rules demands
 
 noAssembly :: [Decision] -> Either Text Decision
 noAssembly _ = Left "assemble unused"
@@ -419,7 +419,7 @@ main = hspec $ do
           modeOf = mergeModeOf [installRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject 100 (map toRule [installRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [installRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" ];"
@@ -439,7 +439,7 @@ main = hspec $ do
           modeOf = mergeModeOf [tailRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject 100 (map toRule [tailRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" \"tmux\" ];"
@@ -459,7 +459,7 @@ main = hspec $ do
           modeOf = mergeModeOf [tailRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject 100 (map toRule [tailRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];"
@@ -480,7 +480,7 @@ main = hspec $ do
           modeOf = mergeModeOf [pkgRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject 100 (map toRule [pkgRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [pkgRule]) [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.npm pkgs.bun pkgs.scala ];"
@@ -2367,7 +2367,7 @@ main = hspec $ do
           prog = "button \"drück mich\" opens main\n"
       case crystallize "w" [two] prog of
         Left e -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase (mergeModeOf [rule]) assembleSubject 100 (map toRule [rule]) [] base of
+        Right base -> case runBase (mergeModeOf [rule]) assembleSubject schemeVocabulary 100 (map toRule [rule]) [] base of
           Left e   -> expectationFailure ("run failed: " <> show e)
           Right rl -> do
             rlModule rl `shouldSatisfy` T.isInfixOf "services.x.label = \"drück mich\";"
@@ -4964,11 +4964,18 @@ main = hspec $ do
     it "does not count a builder reference, which names rather than carries text" $
       length (gGlue g) + length (gStaged g) `shouldBe` 2
 
+    -- Several program lines may state the same artifact argument; that is one
+    -- assertion, not three, and reporting three would overstate the program.
+    it "counts one subject once, however many agreeing decisions carry it" $
+      let twice = base <> [ (Subject ["artifact", "greet", "args", "text"]
+                            , mk "g2" "x" "echo \"hello from lips\"" Stated) ]
+       in length (gGlue (grounding twice)) `shouldBe` 1
+
     it "reports the four classes on one line, then names the unvouched" $ do
       case groundingReport g of
         (summary : glueLine : _) -> do
           summary `shouldBe`
-            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 2 unvouched assertions (nothing)"
+            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 2 unvouched assertions (nothing), 5 words"
           glueLine `shouldSatisfy` T.isInfixOf "glue: artifact.greet.args.text"
           glueLine `shouldSatisfy` T.isInfixOf "<- greet.lips:1"
         out -> expectationFailure ("report is too short: " <> show out)

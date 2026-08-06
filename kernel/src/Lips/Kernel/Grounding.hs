@@ -24,9 +24,10 @@ module Lips.Kernel.Grounding
   , Unvouched (..)
   , grounding
   , groundingReport
+  , unvouchedWords
   ) where
 
-import           Data.List (sortOn)
+import           Data.List (nubBy, sortOn)
 import           Data.Text (Text)
 import qualified Data.Text as T
 
@@ -54,8 +55,14 @@ data Grounding = Grounding
 -- are kernel vocabulary, @artifact.\<n\>.args.@ is an argument to somebody
 -- else's builder, and everything else names an option of the target world.
 grounding :: [(Subject, Decision)] -> Grounding
-grounding winners = foldr add (Grounding 0 0 0 [] []) winners
+grounding winners = foldr add (Grounding 0 0 0 [] []) (nubBy sameSubject winners)
   where
+    -- One SUBJECT is one assertion, however many agreeing decisions carry it.
+    -- Several program lines may state the same artifact argument (three lines
+    -- naming one build), and counting those separately would report a program
+    -- as three times more unvouched than it is.
+    sameSubject (a, _) (b, _) = a == b
+
     add (s, d) g = case segments s of
       ("clause" : _) -> g { gClauses = gClauses g + 1 }
       ("claim" : _)  -> g { gClaims = gClaims g + 1 }
@@ -76,6 +83,12 @@ grounding winners = foldr add (Grounding 0 0 0 [] []) winners
 
     assertionOf d = case dAssertion d of Assertion a -> a
 
+-- | How much foreign text a program carries, in words. One monotone number, so
+-- growth is visible at a glance: a five-line program that acquires seventy lines
+-- of Go moves it by hundreds.
+unvouchedWords :: Grounding -> Int
+unvouchedWords g = sum (map uWords (gGlue g <> gStaged g))
+
 -- | The report, one line per fact, ready to print. Ordered so the two unvouched
 -- classes come last and largest-first: what a reviewer should look at, in the
 -- order they should look at it.
@@ -85,7 +98,8 @@ groundingReport g =
       [ count (gOptions g) "option assignment" <> " (schema)"
       , count (gClauses g) "clause" <> " (contracts)"
       , count (gClaims g) "claim" <> " (stated)"
-      , count (length (gGlue g) + length (gStaged g)) "unvouched assertion" <> " (nothing)"
+      , count (length (gGlue g) + length (gStaged g)) "unvouched assertion"
+          <> " (nothing), " <> count (unvouchedWords g) "word"
       ]
   ]
     <> map (line "glue") (sortOn (negate . uWords) (gGlue g))

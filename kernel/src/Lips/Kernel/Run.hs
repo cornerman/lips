@@ -26,7 +26,9 @@ import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
 import Lips.Kernel.Claim    (Claim)
-import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile,
+import Lips.Kernel.Clause.Vocabulary (Vocabulary)
+import Lips.Kernel.Grounding    (Grounding, grounding)
+import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, realizeClauses,
                              realizeArtifactFills, realizeArtifactPaths,
                              realizeClaims, realizeStagedPaths)
 import Lips.Kernel.Refine
@@ -56,10 +58,10 @@ data RunError
 -- function are injected, keeping run domain-blind. The budget bounds
 -- refinement steps.
 run :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-    -> Int -> [Rule] -> [Demand] -> Text -> Either RunError Realization
-run modeOf assemble budget rules demands src = do
+    -> Vocabulary -> Int -> [Rule] -> [Demand] -> Text -> Either RunError Realization
+run modeOf assemble vocab budget rules demands src = do
   base0 <- first ParseRejected (readBase src)
-  runBase modeOf assemble budget rules demands base0
+  runBase modeOf assemble vocab budget rules demands base0
 
 -- | Everything the pipeline projects from ONE ground base: the module, the
 -- buildable artifacts (or 'Nothing' when the program declares none), and the
@@ -87,6 +89,15 @@ data Realization = Realization
   , rlFills    :: [(Text, Text, Text)]
     -- ^ @(artifact, marker, text)@: what the caller substitutes into the source
     -- tree it stages, so a program word reaches inside the compiled program.
+  , rlCore     :: Maybe Text
+    -- ^ The clause core: one Scheme file assembled from the @clause.\<name\>@
+    -- decisions, gated, each definition naming the program lines behind it.
+    -- 'Nothing' for a program that states no behaviour, which is every
+    -- configuration-only program.
+  , rlGrounding :: Grounding
+    -- ^ What vouches for each assertion, counted. Carried beside the module so
+    -- every caller can print it: an unvouched assertion nobody watches is how a
+    -- five-line program acquires seventy lines of foreign code.
   , rlClaims   :: [Claim]
     -- ^ The observables the program states, empty for a program that states
     -- none. Projected from the same ground base as the module beside them, so
@@ -96,9 +107,12 @@ data Realization = Realization
 -- | The pipeline from a decision base onward (resolve, demands, refine,
 -- realize), shared by canonical @run@ and the loose path where @crystallize@
 -- produces the base. Pure in (base, engine). The merge config is injected.
+-- The clause vocabulary is injected for the same reason the merge config is:
+-- what grounds a name in a clause is data a tier above lips ships, and the
+-- kernel stays a reader of it.
 runBase :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-        -> Int -> [Rule] -> [Demand] -> Base -> Either RunError Realization
-runBase modeOf assemble budget rules demands base0 = do
+        -> Vocabulary -> Int -> [Rule] -> [Demand] -> Base -> Either RunError Realization
+runBase modeOf assemble vocab budget rules demands base0 = do
   realizable <- runGround budget rules demands (resolve modeOf assemble base0)
   let ground = fromList realizable
   first fromRealizeError $ Realization base0 ground
@@ -107,6 +121,8 @@ runBase modeOf assemble budget rules demands base0 = do
     <*> realizeStagedPaths modeOf assemble ground
     <*> realizeArtifactPaths modeOf assemble ground
     <*> realizeArtifactFills modeOf assemble ground
+    <*> realizeClauses modeOf assemble vocab ground
+    <*> pure (grounding [ (dSubject d, d) | d <- realizable ])
     <*> realizeClaims modeOf assemble ground
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA
