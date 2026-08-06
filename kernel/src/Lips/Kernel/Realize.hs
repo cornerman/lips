@@ -147,6 +147,7 @@ realizeArtifactFile modeOf assemble base =
            then Right Nothing
            else do
              requireDefined names =<< artifactArgRefs arts
+             argSite <- anyArgReferencesSite arts
              mp <- mainPrograms (Map.toList winners)
              entries <- artifactEntries mp arts
              -- The same @let artifact = { ... }@ shape the module uses, for the
@@ -157,7 +158,8 @@ realizeArtifactFile modeOf assemble base =
              let body = T.unlines (
                    [ "# lips-realized artifact derivations. Generated; do not edit."
                    , "{ pkgs }:"
-                   ] ++ letBlock Nothing entries ++ ["artifact"])
+                   ] ++ letBlock (siteNameFrom (Map.toList winners) argSite) entries
+                     ++ ["artifact"])
              Right (Just (body, names))
 
 -- | The claims a ground base states: the observables the author supplied,
@@ -208,6 +210,29 @@ realizeClauses modeOf assemble vocab source base =
     locOf locs = case locs of
       (SourceLoc _ n : _) -> n
       []                  -> maxBound
+
+-- | The @name@ the site derivation is built under, when anything names the site
+-- at all. What the program said to install it as; absent, the derivation is
+-- called @site@, which builds and runs but installs under a name no sentence
+-- chose.
+siteNameFrom :: [(Subject, Decision)] -> Bool -> Maybe Text
+siteNameFrom winners referenced
+  | not referenced = Nothing
+  | otherwise = Just (fromMaybe "\"site\"" (lookup ["site", "name"] stated))
+  where
+    stated = [ (segs, unAssertion (dAssertion d))
+             | (Subject segs@("site" : _), d) <- winners ]
+
+-- | Does any artifact ARGUMENT name the site? A wrapper renaming the program is
+-- exactly that shape, and its reference needs the same @let@ binding an option
+-- value's does.
+anyArgReferencesSite :: [(Subject, Decision)] -> Either RealizeError Bool
+anyArgReferencesSite arts =
+  or <$> traverse one [ sd | sd@(Subject ("artifact" : _ : "args" : _), _) <- arts ]
+  where
+    one (s, d) = case parseValue (unAssertion (dAssertion d)) of
+      Right v -> Right (referencesSite v)
+      Left e  -> Left (RMalformed s e)
 
 -- | Does this value name the site, anywhere inside it? A module referencing the
 -- site needs the @let@ binding; one that does not must not import a directory
@@ -387,11 +412,13 @@ renderModule winners = do
   -- The site's executable name: what the program said to install it as. Absent,
   -- the derivation is called "site", which builds and runs but installs under a
   -- name no sentence chose.
-  let siteName
-        | not (any (referencesSite . valOf) optVals) = Nothing
-        | otherwise = Just (fromMaybe "\"site\"" (lookup ["site", "name"] statedNames))
-      statedNames = [ (segs, unAssertion (dAssertion d))
-                    | (Subject segs@("site" : _), d) <- winners ]
+  -- The site is named from ANY value that mentions it: an option assignment or
+  -- an artifact's argument (a wrapper renaming the program is exactly that).
+  -- Missing the second is how a live mint produced a module with an undefined
+  -- variable, every gate green.
+  artSitesRef <- anyArgReferencesSite arts
+  let siteName = siteNameFrom winners
+                   (any (referencesSite . valOf) optVals || artSitesRef)
   Right $ T.unlines $
     [ "# lips-realized module. Generated from a ground decision base; do not edit."
     , "{ config, lib, pkgs, ... }:"

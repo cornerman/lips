@@ -4973,6 +4973,21 @@ main = hspec $ do
             -- vocabulary, so it must not also become an option.
             && not (T.isInfixOf "site.name =" t))
 
+    -- Found by a live mint: a wrapper renaming the program referenced ${site}
+    -- from an artifact ARGUMENT, and the module bound nothing, so nix reported an
+    -- undefined variable with every lips gate green.
+    it "binds the site when only an artifact argument names it" $
+      realizeReplace (fromList
+        [ (mk "b1" "artifact" "\"writeShellApplication\"" Stated)
+            { dSubject = Subject ["artifact", "w", "builder"] }
+        , (mk "a1" "artifact" "\"w\"" Stated)
+            { dSubject = Subject ["artifact", "w", "args", "name"] }
+        , (mk "a2" "artifact" "\"exec ${site}/bin/logscan\"" Stated)
+            { dSubject = Subject ["artifact", "w", "args", "text"] }
+        , (mk "n1" "site" "\"logscan\"" Stated) { dSubject = Subject ["site", "name"] }
+        ])
+        `shouldSatisfy` either (const False) (T.isInfixOf "site = import ./site/build.nix")
+
     it "does not import a site directory when nothing names the site" $
       realizeReplace (fromList
         [ (mk "o1" "services" "true" Stated) { dSubject = Subject ["services", "x", "enable"] } ])
