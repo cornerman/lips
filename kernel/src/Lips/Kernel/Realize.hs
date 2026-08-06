@@ -36,13 +36,13 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve, toList)
-import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, reachedContracts)
+import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, paramCount, reachedContracts)
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary)
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim        (Claim, ClauseClaim, claimRooted, claimsFromDecisions,
                                  clauseClaimsFromDecisions)
 import Lips.Kernel.Decision
-import Lips.Kernel.Sexp         (SExp (..), renderSexp)
+import Lips.Kernel.Sexp         (renderSexp)
 import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Engine.Value  (Piece (..), Ref (..), Value (..), parseValue, renderRealized,
                                   sourceText, valueArtifactNames, valueArtifactPaths,
@@ -87,8 +87,12 @@ realize modeOf assemble base =
 -- when there are clauses to build into one; otherwise the module would import a
 -- directory compile never writes, and nix would die with a bare "path does not
 -- exist" naming neither lips nor a remedy.
+--
+-- ROOTED, not well-formed: a malformed clause subject still states behaviour, and
+-- 'realizeClauses' refuses it by name. Answering "no behaviour" here would report
+-- the missing site instead of the real defect.
 statesClauses :: [(Subject, Decision)] -> Bool
-statesClauses winners = not (null (clauseDecisions winners))
+statesClauses = any (\(Subject segs, _) -> clauseRooted segs)
 
 -- | For every artifact, the one @bin/<x>@ name the ground base itself names
 -- inside it (anywhere a value holds @${artifact.\<name\>}/bin/\<x\>@ -- an
@@ -196,11 +200,16 @@ realizeClaims modeOf assemble base =
 -- is untouched by the logic axis.
 realizeClauses :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
                -> Vocabulary -> Base -> Base
-               -> Either RealizeError (Maybe (Text, [Text], [(Text, Int)]))
+               -> Either RealizeError (Maybe (Text, [Text], [(Text, Maybe Int)]))
 realizeClauses modeOf assemble vocab source base =
   case resolve modeOf assemble base of
     Left errs -> Left (resolveErr errs)
     Right winners -> do
+      case deepClauseSubjects (Map.toList winners) of
+        (bad : _) -> Left (RBadClause (bad <> " is not a clause subject: a clause is\
+          \ clause.<name>, and a deeper path collapses to the same name as the\
+          \ clause it would shadow, which the notation resolves silently."))
+        []        -> Right ()
       -- The index spans the SOURCE base as well as the ground one: a minted
       -- clause is derived from the program's decision, and that decision is
       -- refined away before realize, so the ground base alone cannot answer
@@ -214,7 +223,7 @@ realizeClauses modeOf assemble vocab source base =
         -- what the runtime must provide are the same set by construction.
         []      -> Right ((\t -> ( t
                                  , map cName (reachedContracts vocab ordered)
-                                 , [ (clName c, arityOf c) | c <- ordered ] ))
+                                 , [ (clName c, paramCount c) | c <- ordered ] ))
                             <$> renderCore ordered)
   where
     -- A clause with no provenance sorts last; the gate rejects it anyway, so the
@@ -314,14 +323,6 @@ referencesSite (VAttr fs) = any (referencesSite . snd) fs
 referencesSite (VRef RSite) = True
 referencesSite _          = False
 
--- | How many parameters a clause's definition takes. A caller checking that the
--- core satisfies its runtime's entry needs it, and the shape is already known:
--- 'Lips.Kernel.Clause.Gate.gate' has accepted the clause by the time this runs.
-arityOf :: Clause -> Int
-arityOf cl = case clBody cl of
-  SList (_ : SList (_ : params) : _) -> length params
-  _                                  -> 0
-
 -- | Is this path the clause vocabulary? Twin of 'Lips.Kernel.Claim.claimRooted'
 -- and 'Lips.Kernel.OptionType.reservedRoot': no head of it becomes an option.
 clauseRooted :: [Text] -> Bool
@@ -334,9 +335,21 @@ siteRooted :: [Text] -> Bool
 siteRooted ("site" : _) = True
 siteRooted _            = False
 
+-- | Every @clause.\<name\>@ decision. The subject is EXACTLY two segments,
+-- because a deeper one collapses to the same name: @clause.main.extra@ and
+-- @clause.main@ are different subjects, so merge sees no conflict between them,
+-- and both would pass the gate as well-formed definitions of @main@ and both
+-- would reach the core -- where the notation's last definition silently wins.
 clauseDecisions :: [(Subject, Decision)] -> [(Text, Decision)]
-clauseDecisions winners =
-  [ (name, d) | (Subject ("clause" : name : _), d) <- winners ]
+clauseDecisions winners = [ (name, d) | (Subject ["clause", name], d) <- winners ]
+
+-- | Clause subjects carrying more than a name. An engine defect, loud: the name
+-- such a subject collapses to belongs either to another clause (which it would
+-- shadow) or to nobody.
+deepClauseSubjects :: [(Subject, Decision)] -> [Text]
+deepClauseSubjects winners =
+  [ T.intercalate "." segs
+  | (Subject segs@("clause" : _), _) <- winners, length segs /= 2 ]
 
 -- | One clause from its decision: the assertion must be an s-expression, and the
 -- program lines behind it are walked out of the provenance chain.
