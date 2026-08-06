@@ -31,6 +31,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Clause.Catalogue` | logic axis | runtimes as data, and `coveringRuntime`: which runtime covers a program's contracts and stated properties, failing rather than guessing |
 | `Lips.Kernel.Grounding` | logic axis | what vouches for each assertion, counted: schema, contracts, author, or nothing. Names the unvouched so a blob cannot grow unwatched |
 | `Lips.Runtime` | logic axis | loads the shipped `assets/runtime/` data (Scheme vocabulary, guile adapters) and hands the kernel a `Vocabulary`, keeping the kernel a reader |
+| `Lips.Site` | logic axis | what a compiled site holds, decided purely: which runtime covers the clauses, which adapters link, what to assemble, what is stale. The IO shell only writes what it returns |
 | `Lips.Kernel.Engine.Aggregate` | ledger 13 | list aggregation: `Append` mode derived from the rule emits, and the assembly of N same-subject list decisions (a set by default, a list where the engine declares it) |
 | `Lips.Kernel.Engine.Overlap` | ledger 13 | static orthogonality, both layers: critical pairs over rule left-hand sides (`ruleOverlaps`, `subjectsUnify`) and a product walk over token templates (`patternOverlaps`) |
 | `Lips.Kernel.Engine.Reach` | ledger 13 | a program word the language reads and then discards (`droppedValues`) |

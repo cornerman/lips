@@ -39,6 +39,7 @@ import Lips.Kernel.Clause.Vocabulary
 import Lips.Kernel.Clause.Gate
 import Lips.Kernel.Clause.Catalogue
 import Lips.Runtime (guileRuntime, runtimeAsset, schemeVocabulary)
+import Lips.Site (SitePlan (..), planSite)
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
@@ -5180,6 +5181,59 @@ main = hspec $ do
             && T.isInfixOf "(claim \"w\" (f) #t)" t
             && T.isSuffixOf "(claims-done)\n" t
 
+  -- The site plan is a pure function from a realization to a list of files, so
+  -- what compile writes is testable with no temp directory and no nix.
+  describe "site plan (Lips.Site: decide, then write)" $ do
+    let rt = Runtime "toy" ["native"] ["emit"] ["toy"]
+                     ["pure.scm"] ["effects.scm"] ["memory.scm"]
+                     "(main (arguments))" "build-toy.nix"
+        assets _ f = Just ("; " <> T.pack f)
+        withCore ccs = emptyRealization
+          { rlCore = Just ("(define (main a) a)\n", ["emit"])
+          , rlClauseClaims = ccs }
+        plan ccs = planSite assets [rt] (withCore ccs)
+        names p = case p of
+          Right (Just sp) -> map fst (spFiles sp)
+          _               -> []
+
+    it "writes nothing for a program that states no behaviour" $
+      case planSite assets [rt] emptyRealization of
+        Right Nothing -> pure ()
+        other -> expectationFailure ("expected no plan, got " <> show (fmap (fmap (map fst . spFiles)) other))
+
+    it "links the pure adapters, the real effects, the core and the entry" $
+      names (plan []) `shouldBe`
+        ["build.nix", "pure.scm", "effects.scm", "core.scm", "main.scm"]
+
+    -- The builder lands under a fixed name so the module and the flake can import
+    -- ./site/build.nix without knowing which runtime wrote it.
+    it "writes the runtime's builder as build.nix" $
+      case plan [] of
+        Right (Just sp) -> lookup "build.nix" (spFiles sp) `shouldBe` Just "; build-toy.nix"
+        other -> expectationFailure ("expected a plan, got " <> show (fmap (fmap (map fst . spFiles)) other))
+
+    it "adds the claim adapters and a claims file only when there are claims" $ do
+      names (plan [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Sx.SBool True) [] []])
+        `shouldSatisfy` \ns -> "memory.scm" `elem` ns && "claims.scm" `elem` ns
+      names (plan []) `shouldSatisfy` \ns ->
+        "memory.scm" `notElem` ns && "claims.scm" `notElem` ns
+
+    -- A program that DROPS its claims must not keep a stale claims.scm from an
+    -- earlier compile, or the site keeps loading an assembly nobody stated.
+    it "names the stale files a claim-free plan must remove" $
+      case plan [] of
+        Right (Just sp) -> spStale sp `shouldBe` ["claims.scm", "memory.scm"]
+        other -> expectationFailure ("expected a plan, got " <> show (fmap (fmap spStale) other))
+
+    it "refuses, with the reason, when no runtime has a required property" $
+      planSite assets [rt] (withCore []) { rlSiteProps = [("browser", "typed live")] }
+        `shouldSatisfy` either (\e -> T.isInfixOf "browser" e && T.isInfixOf "typed live" e)
+                               (const False)
+
+    it "reports a runtime declaring a file lips does not ship" $
+      planSite (\_ _ -> Nothing) [rt] (withCore [])
+        `shouldSatisfy` either (T.isInfixOf "ships no file") (const False)
+
   -- Making the status quo visible: every assertion is vouched by a schema, by
   -- the contract set, by the author, or by nothing. The last class is where
   -- seventy lines of Go arrive in a five-line program, so it is counted.
@@ -5518,3 +5572,13 @@ realizeContractsOf =
 -- program's decisions and the clauses sit in the same list.
 withBase :: (Base -> Base -> a) -> [Decision] -> a
 withBase f ds = let b = fromList ds in f b b
+
+-- | A realization with nothing in it, for a test that cares about one field. The
+-- record has many, and naming them all at every call site would bury the field
+-- under test.
+emptyRealization :: Realization
+emptyRealization = Realization
+  { rlBase = empty, rlGround = empty, rlModule = "", rlArtifact = Nothing
+  , rlStaged = [], rlArtPaths = [], rlFills = [], rlCore = Nothing
+  , rlClauseClaims = [], rlSiteProps = [], rlSiteName = Nothing
+  , rlGrounding = grounding [], rlClaims = [] }

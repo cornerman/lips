@@ -73,14 +73,12 @@ import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtif
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
-import           Lips.Kernel.Clause.Catalogue  (Runtime (..), clauseClaimsFile, coveringRuntime,
-                                                siteFile)
 import           Lips.Kernel.Grounding  (Grounding, Unvouched (..), gStaged, groundingReport)
 import           Lips.Runtime            (runtimeAsset, runtimes, schemeVocabulary)
+import           Lips.Site               (SitePlan (..), planSite)
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
-import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..),
-                                                renderClauseClaim)
+import           Lips.Kernel.Claim             (Claim (..), ClaimPlace (..))
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), SourceSpecVerdict (..), diagnose,
                                                 sourceSpecVerdict)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
@@ -1743,55 +1741,23 @@ stageBeside dir file rl root = do
   stageFromDisk dir file (root </> "artifacts")
   void (writeSite root rl)
 
--- | Write the site: the runtime's adapters, the minted core, the assembled file
--- that loads them in order and starts the program, and the runtime's own Nix
--- builder. Returns whether anything was written.
---
--- The runtime is CHOSEN here, by covering the contracts the core reaches against
--- what each catalogued runtime provides. No model and no flag decides it, and a
--- program no runtime covers fails loud naming the contract nobody offers. Sites
--- with stated properties are the next step; today a program has one site and no
--- stated requirements, so the covering has one input.
+-- | Write the site a plan describes, and remove what it says is stale. The
+-- decisions (which runtime, which files, what to prune) are pure and live in
+-- 'Lips.Site'; this is the shell that touches the disk. Returns whether a site
+-- was written, which is what decides the compiled flake's rungs.
 writeSite :: FilePath -> Realization -> IO Bool
-writeSite outDirPath rl = case rlCore rl of
- Nothing -> pure False
- Just (core, contracts) -> do
-  let ccs = rlClauseClaims rl
-  rt <- either (die . coverFail) pure
-          (coveringRuntime runtimes contracts (rlSiteProps rl))
-  let siteDir = outDirPath </> "site"
-      -- A run links the pure adapters, the real effects, then the core; a claim
-      -- swaps the effects for the list-backed ones and the verdict harness.
-      runFiles = rFiles rt <> rEffectFiles rt <> ["core.scm"]
-      claimFiles = rFiles rt <> rClaimFiles rt <> ["core.scm"]
-  createDirectoryIfMissing True siteDir
-  TIO.writeFile (siteDir </> "core.scm") core
-  forM_ (rBuild rt : rFiles rt <> rEffectFiles rt) $ \f -> case runtimeAsset (rName rt) f of
-    Just body -> TIO.writeFile (siteDir </> (if f == rBuild rt then "build.nix" else f)) body
-    -- A runtime declaring a file its own directory does not hold is a defect in
-    -- lips's assets, not in the program: say so in those words.
-    Nothing -> die (missingAsset rt f)
-  TIO.writeFile (siteDir </> "main.scm") (siteFile rt runFiles)
-  -- The claims file, when the program states observables over its own
-  -- definitions: the same core, with the runtime's list-backed adapters and its
-  -- verdict harness linked instead of the real effects.
-  -- Written only when the program states claims, so a site carries no file
-  -- nothing loads, and a program that DROPS its claims does not keep a stale
-  -- claims.scm from an earlier compile.
-  if null ccs
-    then mapM_ (removeIfPresent siteDir) ("claims.scm" : rClaimFiles rt)
-    else do
-      forM_ (rClaimFiles rt) $ \f -> case runtimeAsset (rName rt) f of
-        Just body -> TIO.writeFile (siteDir </> f) body
-        Nothing -> die (missingAsset rt f)
-      TIO.writeFile (siteDir </> "claims.scm")
-        (clauseClaimsFile claimFiles (concatMap renderClauseClaim ccs))
-  pure True
- where
-    coverFail why = report
-      "lips can't decide where this program's behaviour runs."
-      [why]
-      "\8594 state a requirement in the program, or add a runtime that covers it."
+writeSite outDirPath rl = case planSite runtimeAsset runtimes rl of
+  Left why -> die (report
+    "lips can't decide where this program's behaviour runs."
+    [why]
+    "\8594 state a requirement in the program, or add a runtime that covers it.")
+  Right Nothing -> pure False
+  Right (Just plan) -> do
+    let siteDir = outDirPath </> "site"
+    createDirectoryIfMissing True siteDir
+    forM_ (spFiles plan) (\(name, body) -> TIO.writeFile (siteDir </> name) body)
+    mapM_ (removeIfPresent siteDir) (spStale plan)
+    pure True
 
 -- | Delete a derived file that should no longer be there. Compile writes into a
 -- directory it may have written before, so a file it stops producing must be
@@ -1801,14 +1767,6 @@ removeIfPresent dir name = do
   let path = dir </> name
   there <- doesFileExist path
   when there (removeFile path)
-
--- | A runtime declaring a file its own directory does not hold is a defect in
--- lips's assets, not in the program: say so in those words.
-missingAsset :: Runtime -> FilePath -> Text
-missingAsset rt f = report
-  ("lips ships no file " <> T.pack f <> " for the " <> rName rt <> " runtime,")
-  ["although that runtime declares it."]
-  "\8594 this is a lips bug; report it."
 
 -- | How much source each staged tree actually holds, in lines and files. The
 -- number that matters for review: an unvouched path is cheap to write and
