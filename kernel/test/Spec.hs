@@ -54,7 +54,7 @@ import System.FilePath ((</>))
 import Data.List (sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, clauselessClaims, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
 import Lips.Kernel.Claim
@@ -3173,6 +3173,35 @@ main = hspec $ do
   -- something observable, or nothing holds them at all.
   -- The prompt is a reviewable asset, so the suite holds it to what the gates
   -- actually accept. A prompt that teaches a form lips refuses costs a mint.
+  -- The mint owes an observable where it writes behaviour. Already true for baked
+  -- source; a clause claim is cheaper still, so it is less forgivable there.
+  describe "the mint owes an observable for its clauses" $ do
+    let rulesOf ls = edRules (engineFromLang ls)
+
+    it "says so when behaviour is minted with nothing observing it" $
+      clauselessClaims (rulesOf
+        [ "0.9 r1 match fact x.y => clause.main \"(define (main a) a)\"" ])
+        `shouldBe` True
+
+    it "is satisfied by a claim over the clauses" $
+      clauselessClaims (rulesOf
+        [ "0.9 r1 match fact x.y => clause.main \"(define (main a) a)\""
+        , "0.9 r2 match fact x.z => claim.w.call \"(main (list))\" ; claim.w.equals \"#t\"" ])
+        `shouldBe` False
+
+    -- A command claim observes a process, not a definition, so it does not
+    -- discharge the debt a clause creates.
+    it "is not satisfied by a command claim" $
+      clauselessClaims (rulesOf
+        [ "0.9 r1 match fact x.y => clause.main \"(define (main a) a)\""
+        , "0.9 r2 match fact x.z => claim.w.run \"\\\"echo hi\\\"\"" ])
+        `shouldBe` True
+
+    it "says nothing about a configuration-only engine" $
+      clauselessClaims (rulesOf
+        [ "0.9 r1 match fact x.y => services.a.enable \"true\"" ])
+        `shouldBe` False
+
   describe "the mint prompt states the clause grammar" $ do
     let p = systemPrompt
 
@@ -3196,6 +3225,15 @@ main = hspec $ do
     it "states the clause claim sections" $ do
       p `shouldSatisfy` T.isInfixOf "claim.<id>.call"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.equals"
+
+    -- Grepping the prompt proves only that words are present. These parse the
+    -- exact rhs forms it teaches through the real grammar, which is what catches
+    -- a prompt teaching something lips refuses -- as it did for equals "#t".
+    it "teaches only rhs forms the value grammar accepts" $
+      mapM_ (\rhs -> parseValue rhs `shouldSatisfy` isRight)
+        [ "#t", "#f", "(define (limit) #<value:int>)"
+        , "(keep? (json-parse \"{}\") (parse-spec (list \"a=1\")))"
+        , "[ \"line one\" \"line two\" ]", "\"<value>\"" ]
 
     it "tells the model how to install a program whose behaviour is clauses" $ do
       p `shouldSatisfy` T.isInfixOf "${site}"
@@ -4839,6 +4877,13 @@ main = hspec $ do
 
     it "has no plain text form, so it can never be written into source" $
       fmap sourceText (parseValue "(define (f x) x)") `shouldBe` Right Nothing
+
+    -- The commonest thing a claim states, and the form the mint prompt teaches.
+    -- Rejected before this: nothing in the Nix value grammar starts with #.
+    it "reads a scheme boolean and character as a whole rhs" $ do
+      fmap renderValue (parseValue "#t") `shouldBe` Right "#t"
+      fmap renderValue (parseValue "#f") `shouldBe` Right "#f"
+      fmap renderValue (parseValue "#\\=") `shouldBe` Right "#\\="
 
     it "still refuses a bare identifier as a whole rhs" $
       parseValue "pkgs.curl" `shouldSatisfy` isLeft

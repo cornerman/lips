@@ -474,9 +474,14 @@ pValue raw =
         Nothing -> Left "the right-hand side is empty"
         Just ('"', rest) -> pString rest
         -- A clause: the one rhs that is a program, not an option value. Handed
-        -- to the s-expression parser, which consumes exactly its own text.
+        -- to the s-expression parser, which consumes exactly its own text. Three
+        -- openers route here and none of them can begin a Nix value: a list, a
+        -- quoted datum, and @#@ (a boolean or a character). @#@ matters because
+        -- the commonest thing a claim states is @equals "#t"@, and without it the
+        -- grammar would reject the very form the mint prompt teaches.
         Just ('(', _)    -> fmap (\(x, r) -> (VSexp x, r)) (parseSexpPrefix t)
         Just ('\'', _)   -> fmap (\(x, r) -> (VSexp x, r)) (parseSexpPrefix t)
+        Just ('#', _)    -> fmap (\(x, r) -> (VSexp x, r)) (parseSexpPrefix t)
         Just ('[', rest) -> pList (T.stripStart rest) []
         Just ('{', rest) -> pAttr (T.stripStart rest) []
         Just ('<', more) -> pTypedHole more

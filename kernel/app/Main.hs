@@ -63,7 +63,7 @@ import           Lips.Cli.Output        (die, note, report, reportHead, say, say
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, clauselessClaims, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
@@ -301,12 +301,16 @@ checkLoose contract claims mLangDir file = do
 -- told is what lips itself would say -- there is no second, model-facing
 -- verifier to drift.
 --
--- The claim gate is deliberately NOT run, and the output says which gates were
--- skipped: a sandbox claim compiles the artifact and a machine claim boots a
--- VM, so it costs minutes per call and hard-fails without KVM, which would be a
--- false RED blocking the model from validating at all. Observational
--- verification stays where it already is, in generate's final gate. "Not
--- verified" is stated, never rendered as verified.
+-- The COMMAND claim gate is deliberately NOT run, and the output says so: a
+-- sandbox claim compiles the artifact and a machine claim boots a VM, so it costs
+-- minutes per call and hard-fails without KVM, which would be a false RED
+-- blocking the model from validating at all. "Not verified" is stated, never
+-- rendered as verified.
+--
+-- The CLAUSE claim gate IS run, for the same reason by the same rule: it costs a
+-- small derivation, needs no machine and no compiler, so the cost argument that
+-- excludes the others does not apply. That lets a model fix a failing claim
+-- inside the one call instead of spending a whole mint on it.
 --
 -- The gate that DECIDES is unchanged: generate still runs every one of these
 -- checks afterwards, so a model that skips this door is refused exactly as
@@ -341,8 +345,18 @@ checkDraft file = do
           eng <- loadLangOrDie (dtLangDir t) file
           assertOptionsAdmissible target p file eng
         _ -> pure ()
-      _ <- checkLoose True False (Just (dtLangDir t)) file
-      note "the claim gate and the artifact build were NOT run"
+      rl <- checkLoose True False (Just (dtLangDir t)) file
+      target <- draftTargetOrDefault
+      clauseClaimGate target file rl
+      note "the command claim gate and the artifact build were NOT run"
+
+-- | The draft's world where generate stated one, else the default. Used only
+-- where a wrong guess is harmless (which flake shape a throwaway directory gets);
+-- the schema gate keeps using 'draftTarget', which refuses to guess.
+draftTargetOrDefault :: IO Target
+draftTargetOrDefault = do
+  mt <- lookupEnv "LIPS_MINT_TARGET"
+  pure (maybe defaultTarget id (mt >>= parseTarget))
 
 -- | Which world a draft is grounded against. Read from the environment generate
 -- controls, never defaulted: a silent default would ground a mint against the
@@ -741,6 +755,10 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- where the program states none. A pure-configuration mint is unaffected.
       let allClaims = concatMap (rlClaims . snd) validated
           unobserved = claimlessBakedSource minted allClaims
+          -- The same defect one axis over, and less forgivable: a clause claim
+          -- needs no machine and no compiler, so the cost that makes an
+          -- unobserved artifact understandable does not apply.
+          unobservedClauses = clauselessClaims (edRules eng)
       case unplaceableClaims target allClaims of
         []  -> pure ()
         ids -> die (report
@@ -855,6 +873,12 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         say ""
         say ("lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":")
         mapM_ (\g -> note ("- " <> gapSlug g)) gaps
+      when unobservedClauses $ do
+        say ""
+        say ("this setup puts the program's behaviour in clauses, and nothing"
+               <> " observes what they do:")
+        say ("\8594 state an example in the program -- what it is given and what it"
+               <> " prints -- and mint again: lips generate " <> T.pack rep)
       when unobserved $ do
         say ""
         say ("this setup builds a program from source, but nothing observes what"

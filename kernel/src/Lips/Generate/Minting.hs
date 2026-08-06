@@ -35,6 +35,7 @@ module Lips.Generate.Minting
   , carriesEngineMeaning
   , uncheckableExpects
   , claimlessBakedSource
+  , clauselessClaims
   , unplaceableClaims
   ) where
 
@@ -332,6 +333,23 @@ uncheckableExpects rules = filter uncheckable
 -- a gap where the program offers no example.
 claimlessBakedSource :: [SourceFile] -> [Claim] -> Bool
 claimlessBakedSource sources claims = not (null sources) && null claims
+
+-- | Behaviour minted as clauses with nothing observing it. The same defect one
+-- axis over, and less forgivable: a clause claim needs no machine and no
+-- compiler, so the cost that makes an unobserved artifact understandable does not
+-- apply here. Nothing holds a re-mint to the author's words without one.
+--
+-- Takes the emitted subjects rather than the clause values: whether a rule emits
+-- to @clause.*@ and whether one emits to @claim.\<id\>.call@ is all this has to
+-- know, which keeps it a structural question.
+clauselessClaims :: [MapRule] -> Bool
+clauselessClaims rules = emitsClauses && not emitsClauseClaims
+  where
+    emitsClauses = any (rooted ["clause"]) paths
+    emitsClauseClaims =
+      any (\p -> rooted ["claim"] p && drop 2 p == ["call"]) paths
+    paths = [ emPath e | r <- rules, e <- mrEmits r ]
+    rooted pre p = take (length pre) p == pre
 
 -- | The claims a world cannot observe, by id. A machine claim boots the realized
 -- module, which only the NixOS world has; elsewhere an observable must be stated
