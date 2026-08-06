@@ -9,13 +9,6 @@ around exactly those words and gives you its compiler for free; from then on it
 turns your intent into a running system deterministically, with no AI in the
 loop.
 
-What it compiles to is Nix: a module of `path = value` assignments that some
-`evalModules` consumes. NixOS is one such world, home-manager another, kubenix
-a third (Kubernetes manifests), terranix a fourth (Terraform configuration),
-and you pick which one at mint time with `--target`. The axis is open, because
-every world emits the same module shape and differs only in the option
-vocabulary its rules name.
-
 The point is to keep what a human owns small enough to read. AI now writes code
 faster than anyone can review it, so lips shrinks the reviewed artifact to a few
 lines of meaning and makes everything the machine derives from them reproducible
@@ -33,7 +26,7 @@ You start by writing plainly what you want:
 
 That file is already a valid program. When you run `generate` once, a model
 reads your lines and mints a small **engine**: the grammar that reads sentences
-like yours, the rules that map them to real options of your target world, and tests that pin
+like yours, the rules that map them to real options of the system it configures, and tests that pin
 your values. In other words, the wording you chose defines a little language
 for your problem, and lips hands you the compiler for it.
 
@@ -91,8 +84,9 @@ assignments merged by path is the same algebra lips uses on decisions, so
 realizing is almost a translation, and the compiler's promise of bit-identical
 output rests on an evaluator that already promises it. The *world* is the
 option vocabulary a rule names, and that axis is open: NixOS, home-manager,
-kubenix, terranix, whatever ships a schema next, each of them reachable
-without touching the kernel. The *surface* is what you see, and it is your
+kubenix (Kubernetes manifests), terranix (Terraform configuration), whatever
+ships a schema next, each of them reachable without touching the kernel, since
+they all emit the same module shape. The *surface* is what you see, and it is your
 world's own artifact: a Kubernetes user gets multi-document YAML to pipe into
 `kubectl`, a Terraform user gets `config.tf.json` for `tofu plan`. Nix ran
 underneath; you never had to learn it.
@@ -153,8 +147,9 @@ model checked. The mint's own instructions are a
 reviewable artifact, not a secret: they live as plain markdown under
 `assets/mint/` in this repo, embedded into the binary at build time.
 
-`--target nixos` (the default), `--target home-manager`, `--target kubenix` or
-`--target terranix` picks the world the engine is born into. The flag steers the
+You pick the world at mint time. `--target nixos` (the default),
+`--target home-manager`, `--target kubenix` or `--target terranix` picks the
+world the engine is born into. The flag steers the
 mint into that world's option namespace (`services.*`, `boot.*`, `users.*`
 versus `programs.*`, `systemd.user.*`, `home.file.*` versus
 `kubernetes.resources.<kind>.<name>.*` versus `resource.<type>.<name>.*`) and
