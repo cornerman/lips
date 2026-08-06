@@ -1,11 +1,50 @@
 # Two Mints of One Program
 
-Falsifier check (c), run for real (2026-08-04): mint the same five-line
-`examples/logscan.lips` twice, with the same model, target and thinking level,
-and see whether the results differ only where the program differs.
+Falsifier check (c): mint the same five-line `examples/logscan.lips` twice, same
+model, target and thinking level, and see whether the results differ only where
+the program differs. Run twice, before and after the capability gaps the first
+run exposed were closed.
 
-**They differ in the representation itself, so check (c) fails.** Both engines
-are fifteen lines and both pass every gate. What they contain is not comparable:
+## Second Run (e and f): It Passes, Behaviourally
+
+Both mints chose CLAUSES. Neither wrote a line of source. Both engines are twelve
+lines, both cores are seven definitions, and every definition names the program
+line that caused it.
+
+The two cores are NOT textually identical: `e` factors the loop into `scan` plus
+`print-kept` and `filter-lines`, `f` into `scan` plus `emit-all` and `matches?`.
+So at the level of text, two mints still differ where the program does not.
+
+What matters is that they do not differ in what the program DOES. Both were
+compiled, built and run against thirteen inputs, including every case where the
+two Go mints disagreed:
+
+| input | e | f |
+|---|---|---|
+| `a=1` over `{"a":"1"}`, `{"a":"2"}` | `{"a":"1"}` | same |
+| `a=1` over `{"a":1}` | dropped (exact comparison) | same |
+| `a=1` over a non-JSON line | dropped, exit 0 | same |
+| a bad argument `a` | `argument is not field=value: a`, exit 1 | same, exit 1 |
+| `a=1 a=2` over `{"a":"1"}` | dropped ("every" holds) | same |
+| `a=1 b=y` over `{"a":"1","b":"x"}` | dropped | same |
+| empty input, empty args, blank line, missing field, empty value, empty key | | all same |
+
+Thirteen probes, byte-identical output and byte-identical exit codes. The Go axis
+diverged on two of these same probes.
+
+Two honest qualifications. Thirteen probes are evidence, not proof. And both
+mints invented the same policy for a non-JSON line (drop it silently), which the
+five sentences do not state; the invention is now visible in a traceable clause
+rather than buried in seventy lines of Go, but it is still invention.
+
+Gaps reported: none by `e`; one by `f` (`witness-line-count`, that a witness
+pattern fixes the number of example lines, so a three-line example needs a fresh
+mint). Neither reported a missing capability.
+
+## First Run (a and b): It Failed, and Why
+
+**They differed in the representation itself.** Both engines were fifteen lines
+and both passed every gate. What they contained was not comparable:
 
 | | mint a | mint b |
 |---|---|---|
@@ -14,8 +53,9 @@ are fifteen lines and both pass every gate. What they contain is not comparable:
 | staged source | none | `artifacts/logscan-core/{main.go,go.mod}` |
 | gaps reported | `clause-program-not-installable`, `no-argv-contract` | `no-argv-contract` |
 
-Both engines are kept here as evidence, with their `.expect` and the README each
-mint wrote about itself. `b/artifacts/` is its baked Go.
+All four engines are kept here as evidence, with their `.expect`, the README each
+mint wrote about itself, and (for `e` and `f`) the core they realize to.
+`b/artifacts/` is its baked Go.
 
 ## Why b Chose Go, and Why That Is Not a Prompt Problem
 
@@ -56,10 +96,22 @@ it, so a program cannot install its own behaviour.
 argv reaches a clause only as a parameter the entry passes. A clause cannot ask
 for it, and a claim cannot vary it.
 
+## What the Second Run Cost, and What It Caught
+
+Mints `e` and `f` each succeeded on the first attempt, against the first run's
+two-of-three failure rate. The difference is that the closed gaps stopped the
+model from spending its budget looking for a way around them.
+
+The run also caught a defect no gate had: both mints defined `(define (main) ...)`
+reading argv through the `arguments` contract, while the runtime entry called
+`(main (arguments))`. Every gate passed and both binaries died on first run with
+"wrong number of arguments". Fixed by deriving what the core must define from the
+entry expression itself, so one declaration states the requirement and lips
+refuses a core that does not meet it.
+
 ## Also Observed, About Mint Cost
 
 Mint a took 13m 35s. Mint b needed three attempts: two returned "no usable
 reply" after 47s and 12m 26s before the third succeeded. The clause doctrine
 lengthens the mint, and the failure mode is a model that spends its budget on
-tool calls and never emits a final answer. Worth watching, since a mint that
-fails two out of three times is expensive even when it eventually works.
+tool calls and never emits a final answer.
