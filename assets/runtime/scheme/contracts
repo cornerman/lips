@@ -13,3 +13,6 @@ effect read-a-line 0 "-> the next input line, or the end-of-input value"
 effect end-of-input? 1 "x -> whether x is the end-of-input value"
 effect emit 1 "line -> writes it to the output, followed by a newline"
 effect die 2 "message subject -> stops the program, naming the subject"
+# An OBSERVATION exists only while a claim is judging: it reports what the program
+# did, and no real run provides it. So a CLAIM may name it and a CLAUSE may not.
+observation emitted 0 "-> the lines the program printed, in order"

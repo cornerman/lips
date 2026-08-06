@@ -55,7 +55,7 @@ import System.FilePath ((</>))
 import Data.List (sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, clauselessClaims, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
 import Lips.Kernel.Claim
@@ -3176,32 +3176,58 @@ main = hspec $ do
   -- actually accept. A prompt that teaches a form lips refuses costs a mint.
   -- The mint owes an observable where it writes behaviour. Already true for baked
   -- source; a clause claim is cheaper still, so it is less forgivable there.
+  -- REACHED, not merely accompanied: requiring that some claim exist is satisfied
+  -- by a claim naming none of the program's own definitions, which observes
+  -- nothing. Proven before this was exact: a claim calling (system "echo ...")
+  -- spawned a shell, reported ok, and discharged the obligation for a clause it
+  -- never ran.
   describe "the mint owes an observable for its clauses" $ do
-    let rulesOf ls = edRules (engineFromLang ls)
+    let cls = [ clauseOf "main" "(define (main) (scan (arguments)))"
+              , clauseOf "scan" "(define (scan s) (emit (car s)))"
+              , clauseOf "spare" "(define (spare x) x)" ]
+        claimCalling t = case Sx.parseSexp t of
+          Right x -> ClauseClaim "w" x (Sx.SBool True) [] []
+          Left e  -> error (T.unpack e)
 
-    it "says so when behaviour is minted with nothing observing it" $
-      clauselessClaims (rulesOf
-        [ "0.9 r1 match fact x.y => clause.main \"(define (main a) a)\"" ])
-        `shouldBe` True
+    it "names the clauses no claim reaches, transitively" $
+      unobservedClauses cls [claimCalling "(main)"] `shouldBe` ["spare"]
 
-    it "is satisfied by a claim over the clauses" $
-      clauselessClaims (rulesOf
-        [ "0.9 r1 match fact x.y => clause.main \"(define (main a) a)\""
-        , "0.9 r2 match fact x.z => claim.w.call \"(main (list))\" ; claim.w.equals \"#t\"" ])
-        `shouldBe` False
+    it "counts a clause reached through another clause as observed" $
+      unobservedClauses (take 2 cls) [claimCalling "(main)"] `shouldBe` []
 
-    -- A command claim observes a process, not a definition, so it does not
-    -- discharge the debt a clause creates.
-    it "is not satisfied by a command claim" $
-      clauselessClaims (rulesOf
-        [ "0.9 r1 match fact x.y => clause.main \"(define (main a) a)\""
-        , "0.9 r2 match fact x.z => claim.w.run \"\\\"echo hi\\\"\"" ])
-        `shouldBe` True
+    it "names every clause when there is no claim at all" $
+      unobservedClauses cls [] `shouldBe` ["main", "scan", "spare"]
 
-    it "says nothing about a configuration-only engine" $
-      clauselessClaims (rulesOf
-        [ "0.9 r1 match fact x.y => services.a.enable \"true\"" ])
-        `shouldBe` False
+    -- A claim free to name anything can compute its own answer, so a claim that
+    -- touches none of the program's definitions discharges nothing.
+    it "is not satisfied by a claim that names no clause" $
+      unobservedClauses (take 1 cls) [claimCalling "(equal? 1 1)"] `shouldBe` ["main"]
+
+    it "says nothing about a program that states no clauses" $
+      unobservedClauses [] [claimCalling "(main)"] `shouldBe` []
+
+  -- A claim runs with the core and the adapters loaded, so it is grounded by the
+  -- same walk a clause is -- plus the observations, which exist only while a claim
+  -- is judging.
+  describe "the subset gate over a claim's own expressions" $ do
+    let cls = [clauseOf "main" "(define (main) (emit \"hi\"))"]
+
+    it "refuses a claim reaching a name no vocabulary grounds" $
+      gateClaim schemeVocabulary cls "w"
+        [either (error . T.unpack) id (Sx.parseSexp "(system \"echo pwned\")")]
+        `shouldBe` [Ungrounded "w" "system"]
+
+    it "lets a claim observe what the program printed, which a clause may not" $ do
+      let emitted = either (error . T.unpack) id (Sx.parseSexp "(begin (main) (emitted))")
+      gateClaim schemeVocabulary cls "w" [emitted] `shouldBe` []
+      -- the same name inside a CLAUSE is ungrounded: no real run provides it
+      gate schemeVocabulary [clauseOf "f" "(define (f) (emitted))"]
+        `shouldBe` [Ungrounded "f" "emitted"]
+
+    it "counts a claim's arguments like a clause's" $
+      gateClaim schemeVocabulary cls "w"
+        [either (error . T.unpack) id (Sx.parseSexp "(main 1 2)")]
+        `shouldBe` [WrongArity "w" "main" 0 2]
 
   describe "the mint prompt states the clause grammar" $ do
     let p = systemPrompt

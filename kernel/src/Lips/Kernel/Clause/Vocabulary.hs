@@ -40,7 +40,8 @@ module Lips.Kernel.Clause.Vocabulary
   , ContractKind (..)
   , parseVocabulary
   , parseContracts
-  , contractNames
+  , clauseContracts
+  , claimContracts
   , effectContracts
   ) where
 
@@ -59,7 +60,12 @@ data Binder = Binder { bForm :: Text, bShape :: BinderShape }
 -- | Whether a contract has an effect. A pure contract can be called from a
 -- claim with no adapter substitution; an effect contract is exactly what a
 -- reviewer wants listed, because it is the program's reach into the world.
-data ContractKind = Pure | Effect
+--
+-- An OBSERVATION exists only while a claim is judging: it reports what the
+-- program did (the lines it printed) and no real run provides it. So it grounds a
+-- name in a claim and not in a clause -- a clause calling one would pass the gate
+-- and then die on the real runtime with an unbound name.
+data ContractKind = Pure | Effect | Observation
   deriving (Eq, Show)
 
 data Contract = Contract
@@ -79,8 +85,14 @@ data Vocabulary = Vocabulary
   }
   deriving (Eq, Show)
 
-contractNames :: Vocabulary -> [Text]
-contractNames = map cName . vContracts
+-- | The contracts a CLAUSE may reach: every capability a real run provides.
+clauseContracts :: Vocabulary -> [Text]
+clauseContracts = map cName . filter ((/= Observation) . cKind) . vContracts
+
+-- | The contracts a CLAIM may reach: everything a clause may name, plus the
+-- observations the claim-time adapters add.
+claimContracts :: Vocabulary -> [Text]
+claimContracts = map cName . vContracts
 
 -- | The contracts that reach the world. What a human reads instead of auditing
 -- an implementation.
@@ -130,9 +142,14 @@ parseLine line = case T.words body of
     Right [DBinder (Binder form sh)]
   ("form" : fs) | not (null fs) -> Right (map DForm fs)
   ("procedure" : ps) | not (null ps) -> Right (map DProcedure ps)
-  ("pure" : name : n : _) -> contract Pure name n
-  ("effect" : name : n : _) -> contract Effect name n
-  _ -> bad "a line declares a definer, binder, form, procedure, pure or effect"
+  -- The tail must be empty: the doc string is split off before this, so a word
+  -- left over is a declaration nobody reads. Ignoring one in silence is the worst
+  -- failure this file can have.
+  ["pure", name, n] -> contract Pure name n
+  ["effect", name, n] -> contract Effect name n
+  ["observation", name, n] -> contract Observation name n
+  _ -> bad "a line declares a definer, binder, form, procedure, pure, effect or\
+           \ observation, with nothing after the arity but a quoted meaning"
   where
     -- The doc string is the quoted tail; splitting it off first keeps `words`
     -- from tearing a multi-word meaning apart.

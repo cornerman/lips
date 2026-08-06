@@ -142,7 +142,7 @@ runBase modeOf assemble vocab budget rules demands base0 = do
     <*> sitePropertiesIn modeOf assemble ground
     <*> siteNameIn modeOf assemble ground
     <*> pure (grounding [ (dSubject d, d) | d <- realizable ])
-    <*> realizeClauseClaims modeOf assemble ground
+    <*> realizeClauseClaims modeOf assemble vocab base0 ground
     <*> realizeClaims modeOf assemble ground
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA

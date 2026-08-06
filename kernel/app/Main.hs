@@ -63,7 +63,7 @@ import           Lips.Cli.Output        (die, note, report, reportHead, say, say
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, clauselessClaims, unplaceableClaims, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
@@ -762,21 +762,13 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       -- throughout. The cost of refusing is one sentence from the author, which
       -- the message names. A pure-configuration mint is unaffected, and so is an
       -- engine whose behaviour is clauses with a claim over them.
+      -- Clauses nothing observes are refused one tier down, by
+      -- 'Lips.Kernel.Realize.realizeClauseClaims', which knows the actual clause
+      -- set and can require every definition to be REACHED by a claim rather than
+      -- merely accompanied by one. So the validation above has already refused it,
+      -- for every verb, and this door only has to answer for baked source.
       let allClaims = concatMap (rlClaims . snd) validated
           unobserved = claimlessBakedSource minted allClaims
-          -- The same defect one axis over, and less forgivable: a clause claim
-          -- needs no machine and no compiler, so the cost that makes an
-          -- unobserved artifact understandable does not apply.
-          unobservedClauses = clauselessClaims (edRules eng)
-      -- Refused for the same reason and with less excuse: a claim over clauses
-      -- needs no machine, no compiler and about a second, so behaviour minted
-      -- with nothing watching it is a choice rather than a cost.
-      when unobservedClauses $ die (report
-        (T.pack rep <> " puts the program's behaviour in clauses, and nothing"
-          <> " observes what they do.")
-        []
-        ("\8594 state an example in the program -- what it is given and what it"
-          <> " prints -- and mint again: lips generate " <> T.pack rep))
       when unobserved $ die (report
         (T.pack rep <> " builds a program from source, and nothing observes what"
           <> " that program does:")

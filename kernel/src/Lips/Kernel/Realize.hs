@@ -24,6 +24,7 @@ module Lips.Kernel.Realize
   , realizeClaims
   , realizeClauseClaims
   , realizeClauses
+  , unobservedClauses
   , siteNameIn
   , sitePropertiesIn
   ) where
@@ -36,13 +37,14 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve, toList)
-import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, paramCount, reachedContracts)
+import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, gateClaim, paramCount,
+                                 reachedContracts)
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary)
 import Lips.Kernel.Capture      (nameTokens)
-import Lips.Kernel.Claim        (Claim, ClauseClaim, claimRooted, claimsFromDecisions,
+import Lips.Kernel.Claim        (Claim, ClauseClaim (..), claimRooted, claimsFromDecisions,
                                  clauseClaimsFromDecisions)
 import Lips.Kernel.Decision
-import Lips.Kernel.Sexp         (renderSexp)
+import Lips.Kernel.Sexp         (renderSexp, sexpSymbols)
 import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Engine.Value  (Piece (..), Ref (..), Value (..), parseValue, renderRealized,
                                   sourceText, valueArtifactNames, valueArtifactPaths,
@@ -205,19 +207,9 @@ realizeClauses modeOf assemble vocab source base =
   case resolve modeOf assemble base of
     Left errs -> Left (resolveErr errs)
     Right winners -> do
-      case deepClauseSubjects (Map.toList winners) of
-        (bad : _) -> Left (RBadClause (bad <> " is not a clause subject: a clause is\
-          \ clause.<name>, and a deeper path collapses to the same name as the\
-          \ clause it would shadow, which the notation resolves silently."))
-        []        -> Right ()
-      -- The index spans the SOURCE base as well as the ground one: a minted
-      -- clause is derived from the program's decision, and that decision is
-      -- refined away before realize, so the ground base alone cannot answer
-      -- which line caused the clause.
-      clauses <- traverse (clauseOf (byId source <> byId base)) (clauseDecisions (Map.toList winners))
-      let ordered = sortOn (locOf . clFrom) clauses
+      ordered <- clausesFrom (byId source <> byId base) (Map.toList winners)
       case gate vocab ordered of
-        (f : _) -> Left (RBadClause (faultText f))
+        (f : _) -> Left (RBadClause (faultText "clause" f))
         -- The contracts travel with the core, because the caller needs both and
         -- deriving them twice would let them disagree: what the gate grounded and
         -- what the runtime must provide are the same set by construction.
@@ -225,12 +217,50 @@ realizeClauses modeOf assemble vocab source base =
                                  , map cName (reachedContracts vocab ordered)
                                  , [ (clName c, paramCount c) | c <- ordered ] ))
                             <$> renderCore ordered)
+
+-- | The clause set a ground base states, in the program's own line order. Shared
+-- by the core assembly and the claim gate, so the two judge the same clauses.
+--
+-- The @index@ spans the SOURCE base as well as the ground one: a minted clause is
+-- derived from the program's decision, and that decision is refined away before
+-- realize, so the ground base alone cannot answer which line caused the clause.
+clausesFrom :: Map.Map DecisionId Decision -> [(Subject, Decision)]
+            -> Either RealizeError [Clause]
+clausesFrom index winners = do
+  case deepClauseSubjects winners of
+    (bad : _) -> Left (RBadClause (bad <> " is not a clause subject: a clause is\
+      \ clause.<name>, and a deeper path collapses to the same name as the\
+      \ clause it would shadow, which the notation resolves silently."))
+    []        -> Right ()
+  clauses <- traverse (clauseOf index) (clauseDecisions winners)
+  Right (sortOn (locOf . clFrom) clauses)
   where
     -- A clause with no provenance sorts last; the gate rejects it anyway, so the
     -- order only has to be total.
     locOf locs = case locs of
       (SourceLoc _ n : _) -> n
       []                  -> maxBound
+
+-- | The clauses no claim reaches, transitively.
+--
+-- Behaviour nothing observes is behaviour the next mint may rewrite with no gate
+-- noticing, which is the whole reason a clause must be claimed. Requiring merely
+-- that SOME claim exists does not get there: a claim naming none of the program's
+-- own definitions satisfies that and observes nothing.
+--
+-- A claim's CALL is the root, because that is what runs. Its expected value is
+-- not behaviour, so a clause reachable only from there stays unobserved.
+unobservedClauses :: [Clause] -> [ClauseClaim] -> [Text]
+unobservedClauses clauses claims =
+  [ clName c | c <- clauses, clName c `notElem` reached ]
+  where
+    reached = close (concatMap (sexpSymbols . ccCall) claims) []
+    close [] seen = seen
+    close (n : ns) seen
+      | n `elem` seen = close ns seen
+      | otherwise =
+          close (ns <> concatMap (sexpSymbols . clBody) [ c | c <- clauses, clName c == n ])
+                (n : seen)
 
 -- | The name the site derivation is built under, for every caller that must
 -- write the same binding realize does (the claims file, the compiled flake).
@@ -392,12 +422,26 @@ renderCore clauses = Just (T.intercalate "\n" (map one clauses))
 -- definitions, judged by evaluating them rather than by running a process.
 -- Projected from the same base as the module and the core beside them.
 realizeClauseClaims :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-                    -> Base -> Either RealizeError [ClauseClaim]
-realizeClauseClaims modeOf assemble base =
+                    -> Vocabulary -> Base -> Base -> Either RealizeError [ClauseClaim]
+realizeClauseClaims modeOf assemble vocab source base =
   case resolve modeOf assemble base of
     Left errs     -> Left (resolveErr errs)
-    Right winners -> either (Left . RBadClaim) Right
-                            (clauseClaimsFromDecisions (Map.toList winners))
+    Right winners -> do
+      claims  <- either (Left . RBadClaim) Right
+                        (clauseClaimsFromDecisions (Map.toList winners))
+      clauses <- clausesFrom (byId source <> byId base) (Map.toList winners)
+      -- A claim is grounded by the same walk a clause is, with the observations
+      -- added: it runs with the core and the adapters loaded, so an ungrounded
+      -- name there reaches the world exactly as one in a clause would.
+      case concat [ gateClaim vocab clauses (ccId c) [ccCall c, ccEquals c] | c <- claims ] of
+        (f : _) -> Left (RBadClause (faultText "claim" f))
+        []      -> Right ()
+      case unobservedClauses clauses claims of
+        [] -> Right claims
+        ns -> Left (RBadClause
+          ("nothing observes " <> T.intercalate ", " ns <> ": no claim reaches\
+           \ those definitions, so the next mint may rewrite them and every gate\
+           \ would stay green. State an example whose claim runs them."))
 
 -- | Every RELATIVE path the realized base names, paired with the decision that
 -- named it. Nix resolves such a path against the module directory, i.e. against

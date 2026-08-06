@@ -8,6 +8,8 @@ property fast-start
 # listed here fails loud at compile, naming the contract.
 provides json-parse string-cut field-of field-name field-value
 provides arguments read-a-line end-of-input? emit die
+# Provided while a claim is judging, by the in-memory adapter below.
+provides emitted
 
 package guile
 package guile-json

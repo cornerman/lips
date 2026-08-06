@@ -13,6 +13,7 @@ binder let* bindings 1
 binder letrec bindings 1
 
 # Special forms that bind nothing.
+form begin
 form cond
 form case
 form else

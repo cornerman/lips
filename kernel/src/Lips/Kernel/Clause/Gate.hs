@@ -30,6 +30,7 @@ module Lips.Kernel.Clause.Gate
   ( Clause (..)
   , GateFault (..)
   , gate
+  , gateClaim
   , faultText
   , paramCount
   , reachedContracts
@@ -40,8 +41,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..), Binder (..),
-                                      BinderShape (..), contractNames)
-
+                                      BinderShape (..), claimContracts, clauseContracts)
 import Lips.Kernel.Decision          (SourceLoc (..))
 import Lips.Kernel.Sexp              (SExp (..), renderSexp, sexpSymbols)
 
@@ -74,52 +74,100 @@ data GateFault
     NotCallable Text Text
   deriving (Eq, Show)
 
-faultText :: GateFault -> Text
-faultText (Ungrounded c n) =
-  "clause " <> c <> " names " <> n <> ", which no form, procedure or contract\
+-- | The fault in plain words. @kind@ is the word for the thing at fault (a
+-- clause, a claim), passed in because the WALK is shared: reporting a claim as a
+-- clause sends a reader looking in the wrong place.
+faultText :: Text -> GateFault -> Text
+faultText kind (Ungrounded c n) =
+  kind <> " " <> c <> " names " <> n <> ", which no form, procedure or contract\
   \ grounds. Behaviour reaches the world only through a declared contract."
-faultText (Unprovenanced c) =
-  "clause " <> c <> " names no program line. Every clause must be caused by\
+faultText kind (Unprovenanced c) =
+  kind <> " " <> c <> " names no program line. Every clause must be caused by\
   \ something the author wrote."
-faultText (NotADefinition c why) =
-  "clause " <> c <> " is not one definition of " <> c <> ": " <> why
-faultText (WrongArity c callee takes given) =
-  "clause " <> c <> " calls " <> callee <> " with " <> count given
+faultText kind (NotADefinition c why) =
+  kind <> " " <> c <> " is not one definition of " <> c <> ": " <> why
+faultText kind (WrongArity c callee takes given) =
+  kind <> " " <> c <> " calls " <> callee <> " with " <> count given
     <> ", and " <> callee <> " takes " <> count takes <> "."
   where count 1 = "1 argument"
         count n = T.pack (show n) <> " arguments"
-faultText (NotCallable c callee) =
-  "clause " <> c <> " calls " <> callee <> ", which is a constant, not a\
+faultText kind (NotCallable c callee) =
+  kind <> " " <> c <> " calls " <> callee <> ", which is a constant, not a\
   \ procedure. A constant holds a value; calling it stops the program."
+
+-- | What grounds a name, and what each callable takes. Built one way for a
+-- clause and another for a claim, so the WALK is shared and only the ground set
+-- differs: a claim judged by looser rules than a clause could compute its own
+-- answer and vouch for nothing.
+data Grounds = Grounds
+  { gKnown     :: [Text]          -- ^ names needing no further justification
+  , gArities   :: [(Text, Int)]   -- ^ what each callable takes, where it is known
+  , gConstants :: [Text]          -- ^ names holding a value, so not callable
+  }
+
+-- | What grounds a name in a clause: forms, base procedures, the contracts a real
+-- run provides, and the other clauses.
+clauseGrounds :: Vocabulary -> [Clause] -> Grounds
+clauseGrounds vocab = groundsWith vocab (clauseContracts vocab)
+
+-- | What grounds a name in a claim: everything a clause may name, plus the
+-- observations the claim-time adapters add.
+claimGrounds :: Vocabulary -> [Clause] -> Grounds
+claimGrounds vocab = groundsWith vocab (claimContracts vocab)
+
+groundsWith :: Vocabulary -> [Text] -> [Clause] -> Grounds
+groundsWith vocab contracts clauses = Grounds
+  { gKnown = vForms vocab <> vProcedures vocab <> contracts <> map clName clauses
+    -- What every callable name takes. Contracts declare it; a clause's is the
+    -- parameter count of its own definition. A base procedure declares none,
+    -- because many are variadic (@+@, @list@, @append@), so those calls stay
+    -- unchecked and the runtime is their judge.
+  , gArities = [ (cName c, cArity c) | c <- vContracts vocab ]
+                 <> [ (clName cl, n) | cl <- clauses, Just n <- [paramCount cl] ]
+    -- The clauses holding a value rather than a procedure. Calling one is the
+    -- same defect the entry check catches one level out, seen from inside.
+  , gConstants = [ clName cl | cl <- clauses, paramCount cl == Nothing ]
+  }
+
+-- | Every fault in one expression: an ungrounded name, a call of the wrong width,
+-- a call of something that holds a value. @who@ names the clause or claim the
+-- fault belongs to, and @bound@ is what its own head already put in scope.
+--
+-- ONE walk for a clause and a claim. They were not, and that is how a claim came
+-- to reach @(system "...")@ while a clause could not.
+faultsIn :: Vocabulary -> Grounds -> Text -> [Text] -> SExp -> [GateFault]
+faultsIn vocab gs who bound e =
+  [ Ungrounded who n | n <- nub (free vocab (gKnown gs) bound e) ]
+    <> [ WrongArity who callee takes given
+       | (callee, given) <- made
+       , Just takes <- [lookup callee (gArities gs)]
+       , takes /= given ]
+    <> [ NotCallable who callee
+       | (callee, _) <- made, callee `elem` gConstants gs ]
+  where made = calls vocab bound e
 
 -- | Every fault in the clause set, in clause order.
 gate :: Vocabulary -> [Clause] -> [GateFault]
 gate vocab clauses = concatMap check clauses
   where
-    known = vForms vocab <> vProcedures vocab <> contractNames vocab
-              <> map clName clauses
-    -- What every callable name takes. Contracts declare it; a clause's is the
-    -- parameter count of its own definition. A base procedure declares none,
-    -- because many are variadic (@+@, @list@, @append@), so those calls stay
-    -- unchecked and the runtime is their judge.
-    arities = [ (cName c, cArity c) | c <- vContracts vocab ]
-                <> [ (clName cl, n) | cl <- clauses, Just n <- [paramCount cl] ]
+    gs = clauseGrounds vocab clauses
     check cl =
       [ Unprovenanced (clName cl) | null (clFrom cl) ]
         <> case definition (vDefiners vocab) (clName cl) (clBody cl) of
              Left why           -> [NotADefinition (clName cl) why]
              Right (bound, body) ->
-               [ Ungrounded (clName cl) n | n <- nub (concatMap (free vocab known bound) body) ]
-                 <> [ WrongArity (clName cl) callee takes given
-                    | (callee, given) <- concatMap (calls vocab bound) body
-                    , Just takes <- [lookup callee arities]
-                    , takes /= given ]
-                 <> [ NotCallable (clName cl) callee
-                    | (callee, _) <- concatMap (calls vocab bound) body
-                    , callee `elem` constants ]
-    -- The clauses that hold a value rather than a procedure. Calling one is the
-    -- same defect the entry check catches one level out, seen from inside.
-    constants = [ clName cl | cl <- clauses, paramCount cl == Nothing ]
+               concatMap (faultsIn vocab gs (clName cl) bound) body
+
+-- | Every fault in the expressions of one claim, named by the claim's id.
+--
+-- A claim runs with the core and the adapters loaded, so an ungrounded name there
+-- reaches the world exactly as one in a clause would -- and a claim free to name
+-- anything can compute the answer it is supposed to be checking. Proven before
+-- this existed: a claim calling @(system "echo ...")@ spawned a shell and
+-- reported @ok@.
+gateClaim :: Vocabulary -> [Clause] -> Text -> [SExp] -> [GateFault]
+gateClaim vocab clauses cid =
+  concatMap (faultsIn vocab (claimGrounds vocab clauses) cid [])
 
 -- | Unpack the one shape a clause may have: @(define (name params...) body...)@
 -- or @(define name expr)@, the constant a stated number becomes. Returns the
