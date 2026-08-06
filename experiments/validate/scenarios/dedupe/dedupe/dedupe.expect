@@ -1,0 +1,2 @@
+a1 expect claim.dedupe.feed from example.input#1
+a2 expect claim.dedupe.equals from example.output#1

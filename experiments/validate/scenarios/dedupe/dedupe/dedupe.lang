@@ -1,0 +1,14 @@
+p1 meta lang.pattern.p1 stated "read lines from standard input and print each line the first time it appears => fact dedupe.behaviour \"print each line the first time it appears\"" @gen:2c699a061a56d31d
+p2 meta lang.pattern.p2 stated "count how many lines were dropped and print that count last, as a line reading <fmt> => fact dropped.format \"<fmt>\"" @gen:2c699a061a56d31d
+p3 meta lang.pattern.p3 stated "install the tool as the command <name> => fact tool.command \"<name>\"" @gen:2c699a061a56d31d
+p4 meta lang.pattern.p4 stated "given the lines \"<l1>\", <l2> and \"<l3>\", print <o1>, <o2> and <o3.words> => fact example.input \"<l1> <l2> <l3>\" ; fact example.output \"<o1> <o2> <o3>\"" @gen:2c699a061a56d31d
+q1 meta engine.demand.q1 stated "demand dedupe.behaviour \"what should the tool do with the lines it reads?\"" @gen:2c699a061a56d31d
+q2 meta engine.demand.q2 stated "demand dropped.format \"how should the count of dropped lines be printed, with N standing for the number?\"" @gen:2c699a061a56d31d
+q3 meta engine.demand.q3 stated "demand tool.command \"what command name should the tool be installed as?\"" @gen:2c699a061a56d31d
+q4 meta engine.demand.q4 stated "demand example.input \"which lines should the worked example feed in?\"" @gen:2c699a061a56d31d
+q5 meta engine.demand.q5 stated "demand example.output \"what should the worked example print, line by line?\"" @gen:2c699a061a56d31d
+r1 meta engine.rule.r1 stated "match fact dedupe.behaviour => clause.main \"(define (main) (let ((dropped (dedupe-loop (quote ()) 0))) (emit (summary-line dropped))))\" ; clause.dedupe-loop \"(define (dedupe-loop seen dropped) (let ((line (read-a-line))) (cond ((end-of-input? line) dropped) ((seen? line seen) (dedupe-loop seen (+ dropped 1))) (else (let ((ignored (emit line))) (dedupe-loop (cons line seen) dropped))))))\" ; clause.seen? \"(define (seen? line seen) (cond ((null? seen) #f) ((equal? (car seen) line) #t) (else (seen? line (cdr seen)))))\"" @gen:2c699a061a56d31d
+r2 meta engine.rule.r2 stated "match fact dropped.format => clause.summary-line \"(define (summary-line n) (let ((cut (string-cut \\\"#<value>\\\" #\\\\N))) (if cut (string-append (car cut) (number->string n) (cdr cut)) \\\"#<value>\\\")))\"" @gen:2c699a061a56d31d
+r3 meta engine.rule.r3 stated "match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"" @gen:2c699a061a56d31d
+r4 meta engine.rule.r4 stated "match fact example.input => claim.dedupe.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\" ]\" ; claim.dedupe.call \"(begin (main) (emitted))\"" @gen:2c699a061a56d31d
+r5 meta engine.rule.r5 stated "match fact example.output => claim.dedupe.equals \"(list \\\"#<value.1>\\\" \\\"#<value.2>\\\" \\\"#<value.3>\\\")\"" @gen:2c699a061a56d31d

@@ -1,0 +1,4 @@
+read lines from standard input and print each line the first time it appears.
+count how many lines were dropped and print that count last, as a line reading "dropped N".
+install the tool as the command roster.
+given the lines "a", "b" and "a", print a, b and dropped 1.
