@@ -4811,6 +4811,14 @@ main = hspec $ do
       fmap Sx.renderSexp (Sx.parseSexp "(string-cut arg #\\=)")
         `shouldBe` Right "(string-cut arg #\\=)"
 
+    -- Taking the first letter and dropping the rest would read #tomato as true
+    -- and #frog as false: a parser accepting garbage in silence.
+    it "refuses a hash word that is not a boolean, rather than reading its first letter" $ do
+      Sx.parseSexp "#tomato" `shouldSatisfy` isLeft
+      Sx.parseSexp "#frog" `shouldSatisfy` isLeft
+      fmap Sx.renderSexp (Sx.parseSexp "#true") `shouldBe` Right "#t"
+      fmap Sx.renderSexp (Sx.parseSexp "#false") `shouldBe` Right "#f"
+
     it "reads a quoted empty list as data" $
       Sx.parseSexp "'()" `shouldBe` Right (Sx.SQuote (Sx.SList []))
 
@@ -5218,12 +5226,12 @@ main = hspec $ do
       names (plan []) `shouldSatisfy` \ns ->
         "memory.scm" `notElem` ns && "claims.scm" `notElem` ns
 
-    -- A program that DROPS its claims must not keep a stale claims.scm from an
-    -- earlier compile, or the site keeps loading an assembly nobody stated.
-    it "names the stale files a claim-free plan must remove" $
-      case plan [] of
-        Right (Just sp) -> spStale sp `shouldBe` ["claims.scm", "memory.scm"]
-        other -> expectationFailure ("expected a plan, got " <> show (fmap (fmap spStale) other))
+    -- The plan is the WHOLE content of the site directory, so a file it does not
+    -- name is one the shell removes: a claims file for claims the program has
+    -- dropped, an adapter from a runtime the covering no longer chooses.
+    it "names every file the site should hold, and no other" $
+      names (plan []) `shouldSatisfy` \ns ->
+        "memory.scm" `notElem` ns && "claims.scm" `notElem` ns
 
     it "refuses, with the reason, when no runtime has a required property" $
       planSite assets [rt] (withCore []) { rlSiteProps = [("browser", "typed live")] }

@@ -144,15 +144,20 @@ pList raw acc =
 -- rejected, so the grammar stays the one this module documents.
 pHash :: Text -> Either Text (SExp, Text)
 pHash t = case T.uncons t of
-  Just ('t', rest) -> Right (SBool True, dropWord rest)
-  Just ('f', rest) -> Right (SBool False, dropWord rest)
   Just ('<', rest) -> pHole rest
   Just ('\\', rest) -> pChar rest
-  _ -> Left ("after # a clause may write t, f, \\ for a character, or < for a\
-             \ hole: #" <> T.take 12 t)
+  _ -> boolean
   where
-    -- #true / #false spell the same booleans; drop the tail so both read.
-    dropWord = T.dropWhile isAlpha
+    -- #t and #true are the same boolean, and so are #f and #false. The whole
+    -- word is consumed and matched: taking the first letter and dropping the
+    -- rest would read #tomato as true and #frog as false, which is a parser
+    -- accepting garbage in silence.
+    (word, rest') = T.span isAlpha t
+    boolean
+      | word `elem` ["t", "true"]  = Right (SBool True, rest')
+      | word `elem` ["f", "false"] = Right (SBool False, rest')
+      | otherwise = Left ("after # a clause may write t, true, f, false, \\ for a\
+                          \ character, or < for a hole: #" <> T.take 12 t)
 
 pChar :: Text -> Either Text (SExp, Text)
 pChar t =

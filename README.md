@@ -254,7 +254,8 @@ Then add the package to NixOS `environment.systemPackages` or home-manager
 
 Rebuild, and `lips` is a command on your PATH. That one package is everything
 `compile`, `check`, and `lsp` need; they are offline and use only `nix`
-itself. `generate` additionally expects the `pi` binary on your PATH,
+itself. (`check` reaches for an ambient nixpkgs only where a program states an
+observable, since something has to be built to observe it.) `generate` additionally expects the `pi` binary on your PATH,
 authenticated against some provider: lips deliberately keeps it out of its own
 closure, because it is your harness and carries your credentials. lips calls it hermetically, completely stripping away your ambient session,
 tools, skills, and extensions. What remains is the system prompt lips sends and

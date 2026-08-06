@@ -22,14 +22,14 @@ import Lips.Kernel.Claim            (renderClauseClaim)
 import Lips.Kernel.Clause.Catalogue (Runtime (..), clauseClaimsFile, coveringRuntime, siteFile)
 import Lips.Kernel.Run              (Realization (..))
 
--- | Everything a site directory should contain, and everything it should stop
--- containing. Both halves matter: compile writes into a directory it may have
--- written before, so a file it no longer produces must go, or a stale assembly
--- keeps being loaded.
+-- | The WHOLE content of a site directory: every file it should hold, and
+-- nothing else. Stated as a total content rather than a write list plus a delete
+-- list, because the two could disagree -- and did: a delete list naming only the
+-- claim files left a previous runtime's adapters behind when the covering chose
+-- a different one. The shell removes whatever is in the directory and not here.
 data SitePlan = SitePlan
   { spRuntime :: Runtime
   , spFiles   :: [(FilePath, Text)]  -- ^ path relative to the site dir, and its content
-  , spStale   :: [FilePath]          -- ^ files this plan does NOT write and must remove
   }
   deriving (Eq, Show)
 
@@ -67,7 +67,6 @@ planSite asset runtimes rl = case rlCore rl of
             <> [ ("claims.scm", clauseClaimsFile claimFiles
                                   (concatMap renderClauseClaim claims))
                | not (null claims) ]
-      , spStale = if null claims then "claims.scm" : rClaimFiles rt else []
       })
   where
     -- The builder is written under a fixed name, so the module and the flake can

@@ -436,6 +436,10 @@ claimGate target dir file rl =
 -- own definitions with the runtime's list-backed adapters. No machine boots and
 -- no binary is compiled, so this gate costs a fraction of the one below and can
 -- observe a single definition rather than a whole process.
+--
+-- It is still a @nix build@, so a clause-claiming program's @check@ needs an
+-- ambient nixpkgs exactly as a command-claiming one does. A program that states
+-- no observable is untouched and its @check@ stays nixpkgs-free.
 clauseClaimGate :: Target -> FilePath -> Realization -> IO ()
 clauseClaimGate target file rl
   | null (rlClauseClaims rl) = pure ()
@@ -1478,8 +1482,11 @@ stagedGate stage file rl
 -- kernel enumerates (the doctrine forbids it).
 --
 -- Why in @generate@ only: it is the one verb that is already online and already
--- builds a pinned nixpkgs, so the cost is a build it can afford. @compile@ and
--- @check@ stay offline and nixpkgs-free.
+-- builds a pinned nixpkgs, so the cost is a build it can afford. @compile@ stays
+-- offline and nixpkgs-free always; @check@ does too EXCEPT for a program that
+-- states observables, which it must build something to observe (an artifact for a
+-- command claim, a small derivation for a clause claim). Stated where the rule
+-- is, so nobody reads "offline" as a promise the claim gates cannot keep.
 artifactGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 artifactGate nixpkgs stage file rl = case rlArtifact rl of
   Nothing            -> pure ()
@@ -1755,8 +1762,14 @@ writeSite outDirPath rl = case planSite runtimeAsset runtimes rl of
   Right (Just plan) -> do
     let siteDir = outDirPath </> "site"
     createDirectoryIfMissing True siteDir
+    -- The plan is the whole content, so anything else in the directory is from a
+    -- compile that no longer applies: a claims file for claims the program has
+    -- dropped, an adapter from a runtime the covering no longer chooses. Left
+    -- there, it would keep being loaded by an assembly nobody stated.
+    present <- listDirectory siteDir
+    mapM_ (removeIfPresent siteDir)
+          (filter (`notElem` map fst (spFiles plan)) present)
     forM_ (spFiles plan) (\(name, body) -> TIO.writeFile (siteDir </> name) body)
-    mapM_ (removeIfPresent siteDir) (spStale plan)
     pure True
 
 -- | Delete a derived file that should no longer be there. Compile writes into a
