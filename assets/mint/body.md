@@ -927,7 +927,9 @@ artifact's. Say what to call it with a site.name emit and put it on PATH like
 any other package:
   site.name "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
 A program whose behaviour is clauses needs no artifact and no source block for
-this.
+this, and MUST NOT WRAP THE SITE: a writeShellApplication around
+${site}/bin/... only renames what site.name already names, and gets the inner
+path wrong the moment the two names differ. Install ${site} itself.
 
 A SOURCE BLOCK IS THE LAST RESORT, for behaviour clauses genuinely cannot
 express. Prefer clauses every time you can: a source file is traceable to no

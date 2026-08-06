@@ -3201,6 +3201,9 @@ main = hspec $ do
       p `shouldSatisfy` T.isInfixOf "${site}"
       p `shouldSatisfy` T.isInfixOf "site.name"
 
+    it "forbids wrapping the site, which only renames what site.name names" $
+      p `shouldSatisfy` T.isInfixOf "MUST NOT WRAP THE SITE"
+
     it "makes a source block the last resort rather than the first reach" $
       p `shouldSatisfy` T.isInfixOf "A SOURCE BLOCK IS THE LAST RESORT"
 

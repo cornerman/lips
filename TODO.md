@@ -305,23 +305,35 @@ tracks only what is still open.
       into the module as option assignments, which no gate caught and which made
       the module unparseable.
 
-10. **Close the two holes the live mint found** (opened 2026-08-04 by
-    `experiments/logscan-mints/`). Until both are shut, item 8c cannot be
-    re-run, because the mint will keep choosing baked source and being right to.
+10. **Both holes the live mint found are CLOSED** (opened and closed
+    2026-08-04). `${site}` is a value-grammar reference bound in the module's
+    `let` (and in `claims.nix`, and in every temp dir a gate materializes), with
+    `site.name` carrying the executable name; `arguments` is an effect contract
+    the guile adapter provides, the in-memory adapter serves from a list, and a
+    `claim.<id>.args` section varies. Verified: `experiments/clause-site` still
+    runs and its claim holds through the entry `(main (arguments))`.
 
-    a. **A clause site needs a reference form.** `${pkgs.<path>}` and
-       `${artifact.<name>}` are the value grammar's only derivation references.
-       A site is built by `site/build.nix` and exposed as `packages.site`, but
-       nothing in a module can name it, so a program cannot put its own
-       behaviour on PATH. Add `${site}` to the grammar, bind it in the module's
-       `let` beside the artifacts, and let a decision (`site.name`) carry the
-       executable name, which is also the head Task 10 needs for site
-       properties.
-    b. **A clause needs an arguments contract.** The runtime entry is
-       `(main (cdr (command-line)))`, so argv reaches a clause only as a
-       parameter. Add `effect arguments 0`, provide it in the guile adapter, let
-       the in-memory adapter serve a list so a claim can vary argv, and add a
-       `claim.<id>.args` section beside `feed`.
+    Four bugs came out of the live mints, each invisible to the suite because
+    each needed a model to write the shape that triggers it. All fixed with
+    regression tests: realize rendered clauses INTO the module as option
+    assignments; the site binding was decided from option values only, so a
+    reference from an artifact ARGUMENT produced an undefined variable; the
+    claims file needed the same binding; and every gate that materializes a
+    module into a temp directory had to stage the site beside it, not just
+    `artifacts/`.
+
+11. **Re-run falsifier check (c) with the holes closed** (blocked only on
+    patience: each mint is 13 to 15 minutes and the loop is manual). The last
+    attempt got as far as booting a VM and failing a machine claim with exit 127,
+    which is the mint wrapping the site in a `writeShellApplication` and getting
+    the inner path wrong. The prompt now forbids wrapping the site
+    (`MUST NOT WRAP THE SITE`), which should remove that failure class; the run
+    to confirm it has not happened yet.
+
+    While re-running, watch two things the first pair already showed: whether
+    both mints now choose clauses (the question check (c) actually asks), and how
+    often a mint returns "no usable reply" (two of three attempts did, after 47s
+    and 12m 26s, so budget exhaustion is a real cost of the longer prompt).
    d. **Sites** (plan Task 10). A program states where it runs, coverage runs
       per site over one shared core, and compile writes one directory per site.
       This is what lets a rule hold in a browser and on a server without two
