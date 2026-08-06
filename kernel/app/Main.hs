@@ -73,7 +73,7 @@ import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtif
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
-import           Lips.Kernel.Grounding  (groundingReport)
+import           Lips.Kernel.Grounding  (Grounding, Unvouched (..), gStaged, groundingReport)
 import           Lips.Runtime            (schemeVocabulary)
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
@@ -281,6 +281,10 @@ checkLoose contract claims mLangDir file = do
   -- thing lips cannot check, so the count is stated on every run rather than
   -- discovered later by a reviewer reading generated code.
   mapM_ note (groundingReport (rlGrounding rl))
+  -- A staged tree's size is the one thing the kernel cannot report: it is pure
+  -- and owns no filesystem, so the path counts as one word while the file behind
+  -- it may hold seventy lines nobody reviewed. The caller that stages measures.
+  mapM_ note =<< stagedSizes dir file (rlGrounding rl)
   pure rl
   where
     escapes Matched{} = False
@@ -1649,6 +1653,37 @@ stageFromDisk dir file dst = do
   let src = artifactsPathIn dir file
   there <- doesDirectoryExist src
   when there (copyTree src dst)
+
+-- | How much source each staged tree actually holds, in lines and files. The
+-- number that matters for review: an unvouched path is cheap to write and
+-- expensive to trust, and only its size says which it is.
+stagedSizes :: FilePath -> FilePath -> Grounding -> IO [Text]
+stagedSizes dir file g = mapM one (gStaged g)
+  where
+    one u = do
+      let root = artifactsPathIn dir file
+      (ls, fs) <- treeSize root
+      pure ("  staged tree: " <> subjectDots (uSubject u) <> " holds "
+             <> T.pack (show ls) <> " lines in " <> T.pack (show fs)
+             <> (if fs == 1 then " file" else " files")
+             <> ", vouched by nothing")
+    subjectDots (Subject ss) = T.intercalate "." ss
+
+-- | Total lines and file count under a directory, recursively. Zero for a path
+-- that is not there, so a program whose tree is missing reports honestly rather
+-- than failing here (the staged-source gate is the one that refuses).
+treeSize :: FilePath -> IO (Int, Int)
+treeSize root = do
+  there <- doesDirectoryExist root
+  if not there then pure (0, 0) else do
+    entries <- listDirectory root
+    sizes <- forM entries $ \e -> do
+      let path = root </> e
+      isDir <- doesDirectoryExist path
+      if isDir then treeSize path else do
+        body <- TIO.readFile path
+        pure (length (T.lines body), 1)
+    pure (sum (map fst sizes), sum (map snd sizes))
 
 -- | Copy a directory tree, creating @dst@ and mirroring files and subdirectories
 -- (the @cp -rT@ shape: contents of @src@ land directly in @dst@). Loud on any
