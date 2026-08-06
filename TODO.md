@@ -342,7 +342,25 @@ tracks only what is still open.
     run with every gate green. Fixed by deriving what the core must define from
     the entry expression itself.
 
-12. **Remaining known gaps on the clause axis** (none blocking).
+12. **The contract set reaches stdin-to-stdout text tools and nothing else**
+    (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked
+    to sweep three directories of files older than 14 days, the mint wrote 97
+    lines of Go and never considered clauses: there is no contract for a file, a
+    clock, a process or a socket, so there was nothing to name. The grounding
+    counter reported it honestly ("0 clauses, 101 lines vouched by nothing"), and
+    the fallback itself is correct -- but it is the whole clause axis stopping at
+    the edge of one program shape.
+
+    Do NOT invent `list-directory` and friends. That breaks the vocabulary
+    scaling law, which is why the configuration axis works: lips reaches as far
+    as some EXTERNAL named typed vocabulary reaches, and inventing an effect
+    interface makes lips the authority for one it must then maintain forever.
+    The named candidate is already in the 2026-08-02 decision (§10): WIT, which
+    names behaviour without naming an implementation language, with WASI's
+    filesystem and clock interfaces as the typed authority. Adopting one is a
+    design pass, not an errand.
+
+13. **Remaining known gaps on the clause axis** (none blocking).
 
     a. **RESOLVED, and it was never a grammar gap.** Four mints wrote witness
        patterns with one hole per example line, which reads a three-line program

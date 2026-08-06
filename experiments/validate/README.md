@@ -115,6 +115,38 @@ had a gap, the same class as `emitted-output-not-observable` above. Fixed by
 telling the mint never to fix a count in a template, with the block shape spelled
 out.
 
+## The Boundary, Found Precisely
+
+`rotate` is the most useful program in this directory and it has no scenario,
+because the mint did not write clauses for it at all. Asked to delete files older
+than 14 days under three directories, it produced 97 lines of Go and never
+mentioned the clause path.
+
+That is correct behaviour, and the counter says so plainly:
+
+    grounding: 11 option assignments (schema), 0 clauses (contracts), 0 claims,
+               4 unvouched assertions (nothing), 101 lines vouched by nothing
+
+The reason is the contract set. There are nine contracts and all nine serve one
+shape: standard input, standard output, arguments, stopping, JSON, and three
+string and field helpers. **The clause axis today reaches text tools that read
+stdin and write stdout, and nothing else.** A program that touches a file, a
+clock, a process or a socket has no contract to name and falls back to baked
+source, where lips has no gate worth the name.
+
+The tempting fix is to invent `list-directory`, `file-age`, `delete-file`. That
+would break the vocabulary scaling law, which is the reason the configuration
+axis works at all: lips reaches as far as some EXTERNAL, named, typed vocabulary
+reaches, and nixpkgs is that authority for options. Inventing an effect interface
+would make lips the authority for one it never designed and must maintain forever.
+
+So the principled growth path is to adopt an external vocabulary rather than mint
+one, and the 2026-08-02 decision already named the candidate: WIT, which "names
+behaviour without naming an implementation language", with WASI's own filesystem
+and clock interfaces as the typed authority. That is the open question §10 called
+the expensive one, and this round is the first evidence of exactly what it costs
+to leave it open.
+
 ## What This Does Not Prove
 
 Six programs of two to five sentences, four to seven clauses each. That measures
