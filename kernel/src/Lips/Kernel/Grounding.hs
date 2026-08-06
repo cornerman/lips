@@ -24,7 +24,6 @@ module Lips.Kernel.Grounding
   , Unvouched (..)
   , grounding
   , groundingReport
-  , unvouchedWords
   ) where
 
 import           Data.List (nubBy, sortOn)

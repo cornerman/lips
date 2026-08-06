@@ -42,7 +42,10 @@
 -- @\<nixpkgs\>@-based VM boot already carried.
 module Lips.Nix.Flake
   ( Rungs (..)
+  , SiteRung (..)
   , noRungs
+  , hasSite
+  , hasSiteClaims
   , flakeText
   , runCommands
   ) where
@@ -55,19 +58,33 @@ import Lips.Nix.Target (Target (..))
 -- | The @flake.nix@ text for a compiled directory. @hasArtifacts@ toggles the
 -- artifact package output; the target toggles the system rung (nixos gets
 -- @apps.vm@ + @packages.vm@; home-manager gets neither, only the module).
--- | Which rungs a compiled directory offers. A record rather than four
--- positional booleans, because at four nobody can read the call site.
+-- | What the site axis offers, when it offers anything. A sum rather than two
+-- booleans, so "judge the clauses of a program that has none" cannot be written.
+data SiteRung
+  = SiteOnly        -- ^ behaviour to run, with nothing stated about what it does
+  | SiteWithClaims  -- ^ behaviour, and observables over it
+  deriving (Eq, Show)
+
+-- | Which rungs a compiled directory offers. A record rather than positional
+-- booleans, because at four nobody can read the call site.
 data Rungs = Rungs
-  { hasArtifacts  :: Bool
-  , hasClaims     :: Bool
-  , hasSite       :: Bool   -- ^ the program states behaviour, so there is a program to run
-  , hasSiteClaims :: Bool   -- ^ it also states observables over that behaviour
+  { hasArtifacts :: Bool
+  , hasClaims    :: Bool
+  , siteRung     :: Maybe SiteRung
   }
   deriving (Eq, Show)
 
 -- | Nothing offered: the shape a configuration-only program starts from.
 noRungs :: Rungs
-noRungs = Rungs False False False False
+noRungs = Rungs False False Nothing
+
+-- | Is there a program to run? Derived, so it cannot disagree with the rung.
+hasSite :: Rungs -> Bool
+hasSite = (/= Nothing) . siteRung
+
+-- | Is there anything to judge? Only ever true where there is a site.
+hasSiteClaims :: Rungs -> Bool
+hasSiteClaims r = siteRung r == Just SiteWithClaims
 
 flakeText :: Target -> Rungs -> Text
 flakeText target rungs = T.unlines $

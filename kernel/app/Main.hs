@@ -88,7 +88,8 @@ import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, unanswerable
 import           Lips.Kernel.Engine.Gate       (engineViolations, unanswerableProblem)
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted, renderOptionError, renderOptionType)
 import           Lips.Nix.Claims               (claimsFile)
-import           Lips.Nix.Flake                (Rungs (..), flakeText, noRungs, runCommands)
+import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText, noRungs,
+                                                runCommands)
 import           Lips.Nix.Schema               (schemaFor)
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
 import           Lips.Lsp.Server               (runLsp)
@@ -189,8 +190,9 @@ compileLoose mout mLangDir noContract file = do
       Nothing   -> pure False
       Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
     let rungs = Rungs { hasArtifacts = not (null artNames), hasClaims = hasClaims'
-                      , hasSite = hasSite
-                      , hasSiteClaims = hasSite && not (null (rlClauseClaims rl)) }
+                      , siteRung = if not hasSite then Nothing
+                                   else if null (rlClauseClaims rl) then Just SiteOnly
+                                        else Just SiteWithClaims }
     TIO.writeFile (outDirPath </> "flake.nix") (flakeText target rungs)
     pure (artNames, rungs)
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
@@ -444,7 +446,7 @@ clauseClaimGate target file rl
         withTempDir $ \tmp -> do
           _ <- writeSite tmp rl
           TIO.writeFile (tmp </> "flake.nix")
-            (flakeText target noRungs { hasSite = True, hasSiteClaims = True })
+            (flakeText target noRungs { siteRung = Just SiteWithClaims })
           res <- try (readProcessWithExitCode "nix"
             ["build", "--no-link", "path:" <> tmp <> "#site-claims"] "")
           case res of

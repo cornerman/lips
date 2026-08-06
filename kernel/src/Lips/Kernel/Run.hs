@@ -96,11 +96,11 @@ data Realization = Realization
     -- decisions, gated, each definition naming the program lines behind it.
     -- 'Nothing' for a program that states no behaviour, which is every
     -- configuration-only program.
-  , rlSiteProps :: [Text]
+  , rlSiteProps :: [(Text, Text)]
     -- ^ The properties this program's site requires ("browser", "static-binary"),
-    -- stated by the author. Covering selects on these beside the contracts the
-    -- clauses reach, so which runtime runs the behaviour is a computation over
-    -- data rather than anyone's choice.
+    -- each with the author's reason for it. Covering selects on these beside the
+    -- contracts the clauses reach, so which runtime runs the behaviour is a
+    -- computation over requirements rather than anyone's choice.
   , rlSiteName :: Maybe Text
     -- ^ What to call the site derivation, when anything names it. Carried so
     -- every caller that must write the same binding realize does (the claims

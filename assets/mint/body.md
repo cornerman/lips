@@ -930,8 +930,10 @@ A site is NAMED (site.<self> for the one place a program runs today) because a
 program may one day run its behaviour in several places. If the program states
 WHERE it must run -- in a browser, as one static binary -- say so as a property
 and lips picks the runtime that has it:
-  site.<self>.property.browser "\"yes\""
-A property no runtime offers is refused by name, so state only what the program
+  site.<self>.property.browser "\"the form is checked as the user types\""
+STATING it is the requirement, so there is no negative form and none is needed.
+The assertion is the REASON, quoted back to the author when no runtime has the
+property, so write the sentence's own words there. State only what the program
 actually requires.
 A program whose behaviour is clauses needs no artifact and no source block for
 this, and MUST NOT WRAP THE SITE: a writeShellApplication around

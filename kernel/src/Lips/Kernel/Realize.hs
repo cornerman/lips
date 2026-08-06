@@ -29,7 +29,7 @@ module Lips.Kernel.Realize
   ) where
 
 import           Data.Char       (isAlpha, isAlphaNum)
-import           Data.List       (nub, partition, sortOn)
+import           Data.List       (nub, nubBy, partition, sortOn)
 
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -263,21 +263,32 @@ siteNameFrom winners referenced
     commands = [ (n, unAssertion (dAssertion d))
                | (Subject ["site", n, "command"], d) <- winners ]
 
--- | The properties this program's site requires, for the caller that chooses a
--- runtime. Projected from the same base as everything else.
+-- | The properties this program's site requires, each with the author's reason
+-- for it, for the caller that chooses a runtime. Projected from the same base as
+-- everything else.
 sitePropertiesIn :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-                 -> Base -> Either RealizeError [Text]
+                 -> Base -> Either RealizeError [(Text, Text)]
 sitePropertiesIn modeOf assemble base =
   case resolve modeOf assemble base of
     Left errs     -> Left (resolveErr errs)
     Right winners -> Right (siteProperties (Map.toList winners))
 
--- | The properties a site requires, which is what covering selects on beside the
--- contracts the clauses reach. Stated by the author, because "runs in a browser"
--- or "is one static binary" is intent that lives nowhere else.
-siteProperties :: [(Subject, Decision)] -> [Text]
+-- | The properties a site requires, paired with the author's reason for each.
+-- What covering selects on beside the contracts the clauses reach, stated by the
+-- author because "runs in a browser" or "is one static binary" is intent that
+-- lives nowhere else.
+--
+-- PRESENCE is the requirement: a property is stated by having a decision, so
+-- there is no negative form and none is needed (a decision that denied itself
+-- would be a contradiction, and the calculus has @Forbid@ for real denials). The
+-- assertion is therefore not a value to obey but the REASON, carried into the
+-- failure message so an author who states a property nothing offers is told why
+-- they wanted it. Nothing is ignored.
+siteProperties :: [(Subject, Decision)] -> [(Text, Text)]
 siteProperties winners =
-  nub [ p | (Subject ["site", _, "property", p], _) <- winners ]
+  nubBy (\a b -> fst a == fst b)
+    [ (p, unAssertion (dAssertion d))
+    | (Subject ["site", _, "property", p], d) <- winners ]
 
 -- | Does any artifact ARGUMENT name the site? A wrapper renaming the program is
 -- exactly that shape, and its reference needs the same @let@ binding an option

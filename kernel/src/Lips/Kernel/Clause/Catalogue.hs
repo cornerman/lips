@@ -101,8 +101,11 @@ parseLine line = case T.words line of
              \ claim-file, entry or build, but this line reads: " <> line)
 
 -- | The one runtime covering these contracts and properties, or why none does.
-coveringRuntime :: [Runtime] -> [Text] -> [Text] -> Either Text Runtime
-coveringRuntime runtimes needed required = case filter covers runtimes of
+-- A required property carries the author's reason for it, which travels into the
+-- failure: told "no runtime has the property browser", an author still has to
+-- remember why they asked, and the reason is the sentence they wrote.
+coveringRuntime :: [Runtime] -> [Text] -> [(Text, Text)] -> Either Text Runtime
+coveringRuntime runtimes needed requiredWith = case filter covers runtimes of
   [r] -> Right r
   []  -> Left noneCovers
   many -> Left ("several runtimes cover this program ("
@@ -110,6 +113,7 @@ coveringRuntime runtimes needed required = case filter covers runtimes of
                   <> "), so lips will not pick for you. State one more\
                      \ requirement, or name the runtime you mean.")
   where
+    required = map fst requiredWith
     covers r = all (`elem` rProvides r) needed && all (`elem` rProperties r) required
 
     noneCovers = case (unprovided, unmet) of
@@ -117,8 +121,9 @@ coveringRuntime runtimes needed required = case filter covers runtimes of
                       <> ", which this program's behaviour needs. Adapters known: "
                       <> commas (map rName runtimes)
       (_, p : _) -> "no runtime has the property " <> p
-                      <> ", which this program requires. Runtimes known: "
-                      <> commas (map rName runtimes)
+                      <> ", which this program requires ("
+                      <> maybe "no reason stated" id (lookup p requiredWith)
+                      <> "). Runtimes known: " <> commas (map rName runtimes)
       _ -> "no runtime covers this program, and every contract and property is\
            \ met by some runtime, so no single one meets them together. Requirements: "
              <> commas required
