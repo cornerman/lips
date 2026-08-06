@@ -455,7 +455,7 @@ commandClaimGate dir file rl
       target <- readRecordedTarget dir file
       step ("claims: " <> plural (length (rlClaims rl)) "claim") $ withTempDir $ \tmp -> do
         TIO.writeFile (tmp </> "default.nix") (rlModule rl)
-        stageFromDisk dir file (tmp </> "artifacts")
+        stageBeside dir file rl tmp
         fillStagedTree file (tmp </> "artifacts") (rlFills rl)
         artNames <- case rlArtifact rl of
           Nothing            -> pure []
@@ -796,7 +796,8 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
       when (not (null allClaims)) $ do
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
-          mintClaimGate nixpkgs (\dst -> writeSources dst minted) f rl
+          mintClaimGate nixpkgs (\root -> writeSources (root </> "artifacts") minted
+                                           >> void (writeSite root (rlClauseClaims rl) (rlCore rl))) f rl
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
@@ -1501,7 +1502,9 @@ mintClaimGate nixpkgs stage file rl
           <> " engine lips cannot vouch for, so it is not written."))
       step ("claims: " <> plural (length (rlClaims rl)) "claim") $ withTempDir $ \dir -> do
         TIO.writeFile (dir </> "default.nix") (rlModule rl)
-        stage (dir </> "artifacts")
+        -- The whole neighbourhood: the module, its claims file, or an artifact
+        -- argument may all name the site.
+        stage dir
         fillStagedTree file (dir </> "artifacts") (rlFills rl)
         artNames <- case rlArtifact rl of
           Nothing            -> pure []
