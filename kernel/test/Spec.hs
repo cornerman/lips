@@ -5005,6 +5005,31 @@ main = hspec $ do
       gate otherLisp [cl] `shouldBe` []
       gate schemeVocabulary [cl] `shouldSatisfy` any isNotADefinition
 
+    -- Declared arity was data nobody read, and that is how two mints shipped
+    -- binaries that died on first run with every gate green. The same hole one
+    -- level down accepted (emit) with no argument.
+    it "counts the arguments a call passes against what the callee takes" $ do
+      gate schemeVocabulary [clauseOf "f" "(define (f) (emit))"]
+        `shouldBe` [WrongArity "f" "emit" 1 0]
+      gate schemeVocabulary [clauseOf "f" "(define (f r) (field-of r))"]
+        `shouldBe` [WrongArity "f" "field-of" 2 1]
+      gate schemeVocabulary [clauseOf "f" "(define (f a) (f))"]
+        `shouldBe` [WrongArity "f" "f" 1 0]
+
+    -- Three shapes that look wrong and are not. A false fault here would refuse
+    -- honest clauses, which is worse than the hole it closes.
+    it "does not count a variadic lambda, a letrec's own name, or a shadowed contract" $ do
+      gate schemeVocabulary [clauseOf "f" "(define (f xs) ((lambda args args) xs))"]
+        `shouldBe` []
+      gate schemeVocabulary
+        [clauseOf "f" "(define (f n) (letrec ((g (lambda (k) (g k)))) (g n)))"] `shouldBe` []
+      gate schemeVocabulary [clauseOf "f" "(define (f emit) (emit))"] `shouldBe` []
+
+    -- A base procedure declares no arity, because many are variadic (+, list,
+    -- append), so those calls stay unchecked and the runtime is their judge.
+    it "leaves a base procedure's arity to the runtime" $
+      gate schemeVocabulary [clauseOf "f" "(define (f a b c) (list a b c))"] `shouldBe` []
+
     it "reports a clause no program line caused" $
       gate schemeVocabulary [clauseNowhere "f" "(define (f x) x)"]
         `shouldBe` [Unprovenanced "f"]

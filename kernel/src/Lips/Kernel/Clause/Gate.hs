@@ -60,6 +60,12 @@ data GateFault
     Unprovenanced Text
   | -- | The body is not the one definition the clause claims to be: the clause, why.
     NotADefinition Text Text
+  | -- | A call passes the wrong number of arguments: the clause, the callee, how
+    --   many it takes, how many were passed. Declared arity was data nobody read
+    --   until an entry mismatch shipped two binaries that died on first run with
+    --   every gate green; the same hole one level down accepted @(emit)@ with no
+    --   argument.
+    WrongArity Text Text Int Int
   deriving (Eq, Show)
 
 faultText :: GateFault -> Text
@@ -71,6 +77,11 @@ faultText (Unprovenanced c) =
   \ something the author wrote."
 faultText (NotADefinition c why) =
   "clause " <> c <> " is not one definition of " <> c <> ": " <> why
+faultText (WrongArity c callee takes given) =
+  "clause " <> c <> " calls " <> callee <> " with " <> count given
+    <> ", and " <> callee <> " takes " <> count takes <> "."
+  where count 1 = "1 argument"
+        count n = T.pack (show n) <> " arguments"
 
 -- | Every fault in the clause set, in clause order.
 gate :: Vocabulary -> [Clause] -> [GateFault]
@@ -78,12 +89,22 @@ gate vocab clauses = concatMap check clauses
   where
     known = vForms vocab <> vProcedures vocab <> contractNames vocab
               <> map clName clauses
+    -- What every callable name takes. Contracts declare it; a clause's is the
+    -- parameter count of its own definition. A base procedure declares none,
+    -- because many are variadic (@+@, @list@, @append@), so those calls stay
+    -- unchecked and the runtime is their judge.
+    arities = [ (cName c, cArity c) | c <- vContracts vocab ]
+                <> [ (clName cl, n) | cl <- clauses, Just n <- [paramCount cl] ]
     check cl =
       [ Unprovenanced (clName cl) | null (clFrom cl) ]
         <> case definition (vDefiners vocab) (clName cl) (clBody cl) of
              Left why           -> [NotADefinition (clName cl) why]
              Right (bound, body) ->
                [ Ungrounded (clName cl) n | n <- nub (concatMap (free vocab known bound) body) ]
+                 <> [ WrongArity (clName cl) callee takes given
+                    | (callee, given) <- concatMap (calls vocab bound) body
+                    , Just takes <- [lookup callee arities]
+                    , takes /= given ]
 
 -- | Unpack the one shape a clause may have: @(define (name params...) body...)@
 -- or @(define name expr)@, the constant a stated number becomes. Returns the
@@ -114,6 +135,28 @@ definition definers _ other =
 wrongName :: Text -> Text
 wrongName n = "it defines " <> n <> " instead"
 
+-- | How many parameters a clause's definition takes, or 'Nothing' for a constant.
+paramCount :: Clause -> Maybe Int
+paramCount cl = case clBody cl of
+  SList (_ : SList (_ : params) : _) -> Just (length params)
+  _                                  -> Nothing
+
+-- | Every call in an expression, as (callee, argument count). A name in the head
+-- position only: a bare mention elsewhere is not a call, and a name a binder put
+-- in scope is a parameter whose arity nothing here can know.
+calls :: Vocabulary -> [Text] -> SExp -> [(Text, Int)]
+calls vocab bound = go bound
+  where
+    go scope (SList xs@(SSym h : args))
+      | Just b <- lookupBinder h = concatMap (go (binderScope scope b xs)) (drop 1 xs)
+      | h `elem` scope = concatMap (go scope) args
+      | otherwise = (h, length args) : concatMap (go scope) args
+    go scope (SList xs) = concatMap (go scope) xs
+    go _ (SQuote _)     = []
+    go _ _              = []
+    lookupBinder h = lookup h [ (bForm b, bShape b) | b <- vBinders vocab ]
+    binderScope scope shape xs = boundBy shape xs <> scope
+
 -- | Every ungrounded symbol in an expression, given what is in scope.
 free :: Vocabulary -> [Text] -> [Text] -> SExp -> [Text]
 free vocab known bound = go bound
@@ -133,7 +176,7 @@ free vocab known bound = go bound
     -- A binder's own names enter scope for everything after its head, which
     -- includes its initializers (lenient by design, see the module header).
     binder scope shape xs =
-      let names = binderNames shape xs
+      let names = boundBy shape xs
           scope' = names <> scope
           rest = drop (1 + shapeIndex shape) xs
           inits = binderInits shape xs
@@ -141,14 +184,6 @@ free vocab known bound = go bound
 
     shapeIndex (ParamsAt i)   = i
     shapeIndex (BindingsAt i) = i
-
-    binderNames shape xs = case atIndex (shapeIndex shape) xs of
-      Just (SList items) -> case shape of
-        ParamsAt _   -> [ p | SSym p <- items ]
-        BindingsAt _ -> [ p | SList (SSym p : _) <- items ]
-      -- (lambda args body): a single name taking the whole argument list.
-      Just (SSym p) -> [p]
-      _             -> []
 
     binderInits shape xs = case (shape, atIndex (shapeIndex shape) xs) of
       (BindingsAt _, Just (SList items)) -> concat [ es | SList (SSym _ : es) <- items ]
@@ -158,6 +193,22 @@ atIndex :: Int -> [a] -> Maybe a
 atIndex i xs = case drop i xs of
   (x : _) -> Just x
   []      -> Nothing
+
+-- | The names a binder brings into scope, from its own list. Shared by the
+-- grounding walk and the arity walk, so the two cannot disagree about what is a
+-- parameter.
+boundBy :: BinderShape -> [SExp] -> [Text]
+boundBy shape xs = case atIndex (shapeIndex' shape) xs of
+  Just (SList items) -> case shape of
+    ParamsAt _   -> [ p | SSym p <- items ]
+    BindingsAt _ -> [ p | SList (SSym p : _) <- items ]
+  -- (lambda args body): a single name taking the whole argument list.
+  Just (SSym p) -> [p]
+  _             -> []
+
+shapeIndex' :: BinderShape -> Int
+shapeIndex' (ParamsAt i)   = i
+shapeIndex' (BindingsAt i) = i
 
 -- | The contracts the clause set actually reaches, by name. This is the
 -- program's reach into the world, and the covering computation
