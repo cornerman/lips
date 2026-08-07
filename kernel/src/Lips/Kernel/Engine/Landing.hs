@@ -17,6 +17,8 @@
 module Lips.Kernel.Engine.Landing
   ( Landing (..)
   , Part (..)
+  , EmitView (..)
+  , emitViews
   , wordLandings
   , wordDecorates
   ) where
@@ -44,6 +46,22 @@ data Part
     Part Int
   deriving (Eq, Show)
 
+-- | One emit of one pattern as the static gates see it: its subject with every
+-- hole bound to a marker, the family a rule unifies against, its kind, and the
+-- PARTS of its assertion (a several-part value quotes one part per hole, and
+-- 'valueTokens' takes exactly that quoting apart again).
+--
+-- Shared so the two questions asked of an emit -- where a word lands
+-- ('wordLandings') and whether a rule's part index exists
+-- ('Lips.Kernel.Engine.Parts') -- are asked of one view of it.
+data EmitView = EmitView
+  { evSubject :: [Text]
+  , evFamily  :: [Text]
+  , evKind    :: Kind
+  , evParts   :: [Text]
+  }
+  deriving (Eq, Show)
+
 -- | One landing of one word: the emit that carries it, and the rules matching
 -- that emit. A word may land several times (a dense pattern emits several
 -- decisions), and may sit in the subject AND the assertion of one of them.
@@ -65,30 +83,29 @@ data Landing = Landing
 -- output ('wordDecorates' answers for that case).
 wordLandings :: [Pattern] -> [MapRule] -> Pattern -> Text -> [Landing]
 wordLandings pats rules p h =
-  [ Landing { lgFamily = fam, lgPart = partOf a, lgSegments = idx
-            , lgRules = [ r | r <- rules, mrKind r == k, subjectsUnify fam (mrSubject r) ] }
-  | (segs, k, a) <- emitsOf pats p
-  , k /= Concept
-  , let idx = [i | (i, s) <- zip [0 :: Int ..] segs, hit h s]
-  , let fam = map (famSeg (holesInScope pats p)) segs
-  , not (null idx) || isJust (partOf a)
+  [ Landing { lgFamily = fam, lgPart = partOf ev, lgSegments = idx
+            , lgRules = [ r | r <- rules, mrKind r == evKind ev
+                            , subjectsUnify fam (mrSubject r) ] }
+  | ev <- emitViews pats p
+  , evKind ev /= Concept
+  , let idx = [i | (i, s) <- zip [0 :: Int ..] (evSubject ev), hit h s]
+  , let fam = evFamily ev
+  , not (null idx) || isJust (partOf ev)
   ]
   where
     -- A one-part assertion is the word itself; a several-part one quotes its
-    -- parts, and 'valueTokens' takes exactly that quoting apart again, so the
-    -- part index a rule reads with <value.N> is read off here the same way.
-    partOf a
-      | not (hit h a) = Nothing
-      | otherwise = case toks of
-          [_] -> Just Whole
-          _   -> fmap Part (listToMaybe [ i | (i, t) <- zip [1 ..] toks, hit h t ])
-      where toks = valueTokens a
+    -- parts, so the part index a rule reads with <value.N> is the position of
+    -- the word among them.
+    partOf ev = case evParts ev of
+      [t] | hit h t -> Just Whole
+      toks          -> fmap Part (listToMaybe [ i | (i, t) <- zip [1 ..] toks, hit h t ])
 
 -- | Does the word reach a 'Concept' emit? Decoration the mint DECLARED, so the
 -- word governing nothing is expected rather than a defect.
 wordDecorates :: [Pattern] -> Pattern -> Text -> Bool
 wordDecorates pats p h =
-  or [ any (hit h) segs || hit h a | (segs, Concept, a) <- emitsOf pats p ]
+  or [ any (hit h) (evSubject ev) || any (hit h) (evParts ev)
+     | ev <- emitViews pats p, evKind ev == Concept ]
 
 -- | The pattern's emits with every hole bound to its marker.
 --
@@ -97,9 +114,12 @@ wordDecorates pats p h =
 -- total only over the whole scope), and its @\<k:key\>@ carries the block
 -- head's WHOLE subject, which is what makes the family as long as the subjects
 -- a rule matches. One emit set per head the line may sit under.
-emitsOf :: [Pattern] -> Pattern -> [([Text], Kind, Text)]
-emitsOf pats p =
-  [ (segs, k, a)
+emitViews :: [Pattern] -> Pattern -> [EmitView]
+emitViews pats p =
+  [ EmitView { evSubject = segs
+             , evFamily = map (famSeg (holesInScope pats p)) segs
+             , evKind = k
+             , evParts = valueTokens a }
   | marks <- scopedBindings marker pats p
   , (Subject segs, k, Assertion a, _) <- applyPattern p marks
   ]

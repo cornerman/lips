@@ -819,6 +819,21 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A rule reads one part, not the value.** "Does this rule read the matched
+  assertion?" was one yes/no answer for the whole rule, so a rule reading
+  `<value.1>` of a value built from two holes counted as carrying both and the
+  second word was dropped with every gate green. A several-part value stores one
+  quoted part per hole, so part N is hole N by construction: `Engine.Value`
+  now answers `assertionUses` (whole, by position, or the tail) instead of a
+  boolean, and `Engine.Reach` asks whether the rule reads the part the word
+  sits in. Two siblings fell out of the same map, refused by a new gate
+  (`Engine.Parts`, wired as `partsExist`): an out-of-range `<value.N>`, loud at
+  realize but only once a program states such a line, and a `<value.tail>` over
+  a several-part value, which splits each part into words again and is silently
+  wrong every time. A ONE-part value is left alone, since its word count is the
+  program's, not the pattern's -- reading a word of it by position is the honest
+  way to take a many-word value apart. Proven against the real binary by
+  mutating `examples/backup`: both shapes refused, the committed engine clean.
 - **A key hole stands for a whole subject, so a nested family is as long as the
   subjects it builds.** `<k:key>` carries the subject of the block head, several
   segments, but the two static gates expanded it to a one-segment placeholder,

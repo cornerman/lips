@@ -49,19 +49,11 @@ tracks only what is still open.
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
    were re-minted honest. See DESIGN §13 for what landed getting there.)
 
-   a. **Silent concept demotion -- three cases still open** (`diagInert` and
+   a. **Silent concept demotion -- two cases still open** (`diagInert` and
       `droppedValues` cover the rest; DESIGN §13):
-      (i) a PARTIAL drop -- a rule reading `<value.1>` of a value built from two
-      holes silently drops the second. The static map this needed is now cheap:
-      a several-part value stores ONE quoted part per hole (see DESIGN §13, "A
-      several-part value"), so part N of an assertion is hole N by construction.
-      What is missing is the gate that uses it, in `Engine/Reach.dropOf`, whose
-      `carries` still counts any `<value*>` use as carrying every hole. Same
-      place would catch two siblings for free: a statically out-of-range
-      `<value.N>` (today a loud runtime Left, but only if a program reaches it),
-      and a `<value.tail>` over a several-part value, which splits the parts'
-      WORDS again (`Engine/Value.fillV` sees the joined text `pick` returns, not
-      the parts) -- no committed engine does it, and nothing refuses it.
+      (i) CLOSED 2026-08-05 (DESIGN §13, "A rule reads one part, not the value"):
+      the partial drop, the out-of-range `<value.N>` and the `<value.tail>` over
+      a several-part value are all refused statically.
       (ii) a per-hole DECORATIVE report -- a hole demoted to a `Concept` on a
       line that otherwise realizes is invisible, since `diagInert` works per
       line, not per hole. Draft validation (DESIGN §13) does NOT close this and

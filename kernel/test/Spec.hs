@@ -30,6 +30,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft)
 import Lips.Kernel.Engine.Overlap
+import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
 import Lips.Kernel.Grounding
@@ -3778,6 +3779,25 @@ main = hspec $ do
         [ rul "r4" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-<value.2> <value.1>\\\" ]\"" ]
         `shouldBe` []
 
+    -- A several-part value stores ONE quoted part per hole, so part N of the
+    -- assertion is hole N by construction: a rule reading only <value.1>
+    -- carries the first word and drops the second, which no gate saw while
+    -- "reads the assertion" was one yes/no answer for the whole rule.
+    it "reports a part of a several-part value no rule reads" $
+      droppedValues [pat "keep <count> <period> snapshots => fact backup.retention \"<count> <period>\""]
+        [ rul "r4" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-daily <value.1>\\\" ]\"" ]
+        `shouldBe` [DroppedValue "p1" "period" (IgnoredBy ["backup", "retention"] ["r4"])]
+
+    it "accepts a rule reading the whole several-part value at once" $
+      droppedValues [pat "keep <count> <period> snapshots => fact backup.retention \"<count> <period>\""]
+        [ rul "r4" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-<value>\\\" ]\"" ]
+        `shouldBe` []
+
+    it "reads a word of a ONE-part value as carrying it, since its count is the program's" $
+      droppedValues [pat "keep <spec.words> snapshots => fact backup.retention \"<spec>\""]
+        [ rul "r4" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-<value.2>\\\" ]\"" ]
+        `shouldBe` []
+
     -- The greet engine: <name> reaches output through the emit PATH, <msg>
     -- through the value. Neither is dropped, and this is the shape most CLI
     -- engines take, so a false rejection here would be expensive.
@@ -3835,6 +3855,60 @@ main = hspec $ do
         `shouldBe`
           [ "pattern p1 binds <lang>, which reaches server.language, and rule r3 \
             \emits it nowhere: editing that word changes no output" ]
+
+  -- A rule reading a part BY POSITION is only sound where the position exists.
+  -- A several-part value has one quoted part per hole, so its count is known at
+  -- mint time, and both defects below are certain failures of every program
+  -- line that states such a value -- one loud (out of range), one silent (a
+  -- tail re-splitting the parts into words).
+  describe "value parts (does a rule read parts the value has)" $ do
+    let pat body = case parsePatternBody "p1" body of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test pattern: " <> e))
+        rul i body = case parseRuleBody i body of
+          Right ok -> ok
+          Left e   -> error (T.unpack ("bad test rule: " <> e))
+        twoPart = pat "keep <count> <period> snapshots \
+                      \=> fact backup.retention \"<count> <period>\""
+        onePart = pat "keep <spec.words> snapshots => fact backup.retention \"<spec>\""
+
+    it "reports an index past the last part" $
+      partFaults [twoPart]
+        [ rul "r1" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"<value.3>\\\" ]\"" ]
+        `shouldBe` [PartFault "r1" ["backup", "retention"] 2 (OutOfRange 3)]
+
+    it "accepts every index the value has" $
+      partFaults [twoPart]
+        [ rul "r1" "match fact backup.retention => services.restic.backups.<self>.pruneOpts \"[ \\\"--keep-<value.2> <value.1>\\\" ]\"" ]
+        `shouldBe` []
+
+    it "reports a tail spread over a several-part value" $
+      partFaults [twoPart]
+        [ rul "r1" "match fact backup.retention => services.restic.backups.<self>.pruneOpts <value.tail>" ]
+        `shouldBe` [PartFault "r1" ["backup", "retention"] 2 TailOverParts]
+
+    it "says nothing about a one-part value, whose count is the program's word" $
+      partFaults [onePart]
+        [ rul "r1" "match fact backup.retention => environment.systemPackages <value.tail:pkg>"
+        , rul "r2" "match fact backup.retention => services.x.opts \"[ \\\"<value.9>\\\" ]\"" ]
+        `shouldBe` []
+
+    it "says nothing about a rule matching no emit of this language" $
+      partFaults [twoPart]
+        [ rul "r1" "match fact other.thing => services.x.opts \"[ \\\"<value.3>\\\" ]\"" ]
+        `shouldBe` []
+
+    it "names the defect in the words the rule author needs" $
+      map renderPartFault
+          (partFaults [twoPart]
+            [ rul "r1" "match fact backup.retention => services.x.opts \"[ \\\"<value.3>\\\" ]\""
+            , rul "r2" "match fact backup.retention => services.y.opts <value.tail>" ])
+        `shouldBe`
+          [ "rule r1 reads <value.3> of backup.retention, whose value has 2 parts: \
+            \no program line can fill it"
+          , "rule r2 spreads <value.tail> over backup.retention, whose value has 2 \
+            \parts: the tail splits each part into words again, so the parts are lost"
+          ]
 
   -- A demand is judged against the crystallized base, so only a subject the
   -- language's own patterns emit can ever answer one. A demand outside every

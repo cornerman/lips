@@ -20,6 +20,7 @@ import qualified Data.Text as T
 import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnanswerableDemand, unanswerableDemands)
 import           Lips.Kernel.Engine.Data       (Emit (..), MapRule (..), renderAttrPath)
 import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOverlap, renderRuleOverlap, ruleOverlaps)
+import           Lips.Kernel.Engine.Parts      (partFaults, renderPartFault)
 import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
 import           Lips.Kernel.Engine.Value      (valuePathHoles)
 import           Lips.Kernel.Lang.Store        (EngineData (..))
@@ -38,6 +39,7 @@ engineViolations eng = mapMaybe ($ eng)
   [ patternsOrthogonal
   , rulesOrthogonal
   , valuesReach
+  , partsExist
   , noPathHoles
   , demandsAnswerable
   ]
@@ -85,6 +87,23 @@ valuesReach eng = case droppedValues (edPatterns eng) (edRules eng) of
       <> "it as a literal token of the template, so editing it stops the line\n"
       <> "matching and asks for a fresh language instead of governing nothing; or,\n"
       <> "if the line truly carries no value, read it as a concept.")
+
+-- | A rule may only read a part the value it matches has. The count is fixed by
+-- the pattern (one quoted part per hole), so both shapes this refuses are wrong
+-- for every program line in the language, not for one program: an index past
+-- the last part fails loud but only once someone states such a line, and a tail
+-- over separate parts is silently wrong every time
+-- ('Lips.Kernel.Engine.Parts').
+partsExist :: EngineData -> Maybe Text
+partsExist eng = case partFaults (edPatterns eng) (edRules eng) of
+  []  -> Nothing
+  pfs -> Just
+    ("it reads parts of a program value that are not there:\n"
+      <> T.unlines (map (("  - " <>) . renderPartFault) pfs)
+      <> "\nA value written from several holes has one part per hole, counted from\n"
+      <> "1: read them by position (<value.1>, <value.2>), or read the whole value\n"
+      <> "at once (<value>). Keep <value.tail> for a value made of ONE hole, whose\n"
+      <> "word count is the program's.")
 
 -- | A program word must never be coerced into a bare Nix path. A Nix path means
 -- "copy this location into the store", so an absolute one is refused outright by

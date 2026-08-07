@@ -37,14 +37,13 @@ module Lips.Kernel.Engine.Reach
   , renderDroppedValue
   ) where
 
-import           Data.Maybe      (isJust)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Capture        (captureName, nameTokens)
 import Lips.Kernel.Engine.Data    (Emit (..), MapRule (..), renderAttrPath)
-import Lips.Kernel.Engine.Landing (Landing (..), wordDecorates, wordLandings)
-import Lips.Kernel.Engine.Value   (valueCaptures, valueUsesAssertion)
+import Lips.Kernel.Engine.Landing (Landing (..), Part (..), wordDecorates, wordLandings)
+import Lips.Kernel.Engine.Value   (AssertionUse (..), assertionUses, valueCaptures)
 import Lips.Kernel.Lang.Pattern   (Pattern (..), holesOf)
 
 -- | Why a word reaches no output.
@@ -89,15 +88,31 @@ dropOf pats rules p h
   where
     landings = wordLandings pats rules p h
     carriedBy l = any (carries l) (lgRules l)
-    -- The rule carries the word if it reads the decision's value, or if it names
-    -- the capture standing where the word lands. A LITERAL there means the rule
-    -- only fires for that word, so the word already governs the choice of rule.
+    -- The rule carries the word if it reads the part of the value the word sits
+    -- in, or if it names the capture standing where the word lands. A LITERAL
+    -- there means the rule only fires for that word, so the word already
+    -- governs the choice of rule.
     carries l r =
-      (isJust (lgPart l) && any (valueUsesAssertion . emRhs) (mrEmits r))
+      readsWord (lgPart l) (concatMap (assertionUses . emRhs) (mrEmits r))
         || or [ maybe True (usesCapture r) (captureName s)
               | (i, s) <- zip [0 :: Int ..] (mrSubject r)
               , i `elem` lgSegments l
               ]
+
+-- | Does a rule reading the assertion these ways carry the word sitting at this
+-- position in it? A one-part value IS the word, so any read of the assertion
+-- carries it. A several-part value quotes one part per hole, so only a read of
+-- THAT part does -- plus the two reads that take the value entire (@\<value\>@
+-- joins the parts, @\<value.tail\>@ spreads them). Without the position, a rule
+-- reading @\<value.1\>@ of a two-word value counted as carrying both, and the
+-- second word was dropped with every gate green.
+readsWord :: Maybe Part -> [AssertionUse] -> Bool
+readsWord Nothing         _    = False
+readsWord (Just Whole)    uses = not (null uses)
+readsWord (Just (Part n)) uses = any entire uses
+  where
+    entire (UsePart m) = m == n
+    entire _           = True   -- <value> and <value.tail> take every part
 
 -- | Does the rule name this capture anywhere its output can see: an emit path
 -- segment (whole or embedded, hence 'nameTokens') or an emit value (a string

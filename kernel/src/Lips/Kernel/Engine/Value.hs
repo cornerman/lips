@@ -51,6 +51,8 @@ module Lips.Kernel.Engine.Value
   , bindCaptureValue
   , valueCaptures
   , valuePathHoles
+  , AssertionUse (..)
+  , assertionUses
   , valueUsesAssertion
   , WordType (..)
   , valueHoleTypes
@@ -400,30 +402,49 @@ valuePathHoles = go
     go (VTail (Just HPath) h) = [h]
     go _               = []
 
--- | Does this rhs read the MATCHED decision's assertion? True for a
--- @\<value\>@ or @\<value.N\>@ hole anywhere inside it (a string piece, a bare
--- typed hole, a tail hole), recursing into lists and attrsets. The dual of
--- 'valueCaptures', which reports the capture names and deliberately skips
--- these two.
+-- | How a rhs reads the MATCHED decision's assertion: as a whole
+-- (@\<value\>@), by position (@\<value.N\>@), or as its tail
+-- (@\<value.tail\>@, every whitespace token of it).
+--
+-- The distinction is what makes a PARTIAL read visible: a several-part value
+-- carries one quoted part per hole, so a rule reading only @\<value.1\>@ drops
+-- the second word, and a rule reading @\<value.3\>@ of a two-part value can
+-- never run ('Lips.Kernel.Engine.Reach', 'Lips.Kernel.Engine.Parts').
+data AssertionUse = UseWhole | UsePart Int | UseTail
+  deriving (Eq, Show)
+
+-- | Every way this rhs reads the matched decision's assertion, in no
+-- particular order (a string piece, a bare typed hole, a tail hole), recursing
+-- into lists and attrsets. The dual of 'valueCaptures', which reports the
+-- capture names and deliberately skips these.
 --
 -- A 'VPath' is not scanned: 'fillValue' leaves a path untouched (only
 -- 'bindCaptureValue' and 'bindSelfValue' rewrite one), so a @\<value\>@ written
--- inside a path never receives the matched assertion. Answering False there
+-- inside a path never receives the matched assertion. Answering nothing there
 -- keeps the answer honest -- a caller asking "does the program's word reach
 -- this option" must not be told yes by a hole nothing fills.
-valueUsesAssertion :: Value -> Bool
-valueUsesAssertion = go
+assertionUses :: Value -> [AssertionUse]
+assertionUses = go
   where
-    go (VSexp x)    = any assertionHole (sexpHoles x)
-    go (VStr ps)    = any piece ps
-    go (VList vs)   = any go vs
-    go (VAttr fs)   = any (go . snd) fs
-    go (VHole _ h)  = assertionHole h
-    go (VTail _ h)  = assertionHole h
-    go _            = False
-    piece (PHole h) = assertionHole h
-    piece _         = False
-    assertionHole h = h == "value" || isJust (holeIndex h)
+    go (VSexp x)    = concatMap named (sexpHoles x)
+    go (VStr ps)    = concatMap piece ps
+    go (VList vs)   = concatMap go vs
+    go (VAttr fs)   = concatMap (go . snd) fs
+    go (VHole _ h)  = named h
+    -- A tail hole is always the whole program value, re-split into tokens.
+    go (VTail _ _)  = [UseTail]
+    go _            = []
+    piece (PHole h) = named h
+    piece _         = []
+    named h
+      | h == "value"          = [UseWhole]
+      | Just n <- holeIndex h = [UsePart n]
+      | otherwise             = []
+
+-- | Does this rhs read the matched decision's assertion at all? The yes\/no
+-- half of 'assertionUses'.
+valueUsesAssertion :: Value -> Bool
+valueUsesAssertion = not . null . assertionUses
 
 -- | @value.N@ -> N (1-based); @value@ -> Nothing (not indexed). Shared with the
 -- rule executor and the typed-hole parser.
