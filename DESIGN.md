@@ -836,8 +836,39 @@ but the loop around it is incomplete; "missing" means specced, not built.
   several runtimes, and a claim links an in-memory adapter to run a whole program
   offline (8 claims, 121 ms, no build, no VM). Runtime choice is arithmetic over
   data (`coveringRuntime`), never a model's decision, and it fails rather than
-  guesses in both directions. Not yet built: the compiled site, clause claims
-  inside `check`, the mint, several sites per program.
+  guesses in both directions. All ten tasks landed; several sites per program is
+  shape only, and two is a loud refusal rather than a silent choice.
+- **A claim is grounded like a clause, and must reach every clause.** The gate
+  ran over clauses alone, so a claim could name anything: a minted
+  `(system "echo ...")` spawned a shell inside the claim build and reported `ok`.
+  One walk now judges both (`gateClaim`), differing only in ground set -- a claim
+  may also name an OBSERVATION (`emitted`), which exists while a claim is judging
+  and which no real run provides, so a clause naming it is still refused.
+  Reachability is the other half: requiring that *some* claim exist is satisfied
+  by a claim naming none of the program's own definitions, so
+  `unobservedClauses` follows calls from each claim into the clauses it reaches
+  and refuses an engine leaving any definition outside that set. It found three
+  of the six validation scenarios claiming only pure helpers, with the entry --
+  the actual program -- unobserved; all three were re-minted against a prompt
+  that now teaches claiming the entry, and two fresh programs (`redact`,
+  `chunk`) chose that shape unprompted on the first try.
+- **What a clause defines is one answer.** `paramCount` returns `Nothing` for a
+  constant, because a constant is not a procedure of no arguments: a second copy
+  of the question said `0`, so a core defining `main` as a number satisfied the
+  runtime's entry and produced a binary that died on first run (`Wrong type to
+  apply: 5`) with every gate green. The gate refuses calling a constant from
+  inside the core for the same reason.
+- **A clause subject is exactly `clause.<name>`.** `clause.main` and
+  `clause.main.extra` are different subjects, so merge saw no conflict, both
+  passed the gate as definitions of `main`, and the notation silently took the
+  last -- proven against the real binary. A deeper path is now refused by name.
+- **The runtime owns its own words.** The defining word left the gate earlier;
+  the claim protocol has now followed it. `load`, `feed-args`, `feed-lines`,
+  `claim`, `claims-done` and the list constructor are declared per runtime
+  (`harness-*`), so the kernel keeps the SHAPES -- a file is loaded by name, a
+  claim is judged by id, expression and expected value -- and holds no word of
+  any notation. A runtime is a DIRECTORY under `assets/runtime/` holding a
+  `runtime` file, discovered rather than listed, so adding one needs no code.
 - **Grounding is counted and the unvouched is named, on every check.** Every
   assertion is vouched by the target schema, by the contract set, by the author
   who stated an observable, or by nothing. `Lips.Kernel.Grounding` counts the four

@@ -276,22 +276,25 @@ tracks only what is still open.
    enough, and item 1's claims falsify the same defect by observation rather
    than by counting. Revisit after the re-mints above supply more datapoints.
 
-8. **The logic axis: finish the plan** (falsifier opened 2026-08-02, run and
-   PASSED 2026-08-04). The refutation is spent: `docs/superpowers/learnings/2026-08-04-logscan-clause-falsifier.md`
-   holds the numbers, `docs/superpowers/plans/2026-08-04-logic-axis-plan.md` the
-   ten tasks, and DESIGN §13 what landed. Six tasks are done and green; four
-   remain, in this order.
+8. **The logic axis: DONE, reviewed, and repaired** (falsifier opened
+   2026-08-02, run and PASSED 2026-08-04; full review 2026-08-05). All ten plan
+   tasks landed. The review of the finished branch found five defects and three
+   grammar gaps, all fixed and pinned:
+   `docs/superpowers/learnings/2026-08-05-logic-axis-review-and-repair.md`.
 
-   a. **Compile emits a runnable site** (plan Task 7). `compile` already writes
-      `core.scm`; it must also link the runtime's adapters, write the entry
-      point, and wrap them in a derivation naming the runtime's packages, so
-      `nix run` over a clause program works. Mirror
-      `experiments/logscan-clauses/logscan.scm`, which is exactly the assembly.
-   b. **Clause claims inside `check`** (plan Task 8). A claim whose call names
-      only clauses runs under the in-memory adapter: no derivation, no boot, no
-      binary. Derived like the other two places, never declared. The experiment's
-      `claims.scm` is the file to generate, and it runs in 121 ms.
-   c. **DONE, and it failed: two mints disagree on the representation itself.**
+   The three that mattered, each proven against the real binary before being
+   fixed: a claim could name anything (a minted `(system "...")` spawned a shell
+   and reported `ok`, and "every clause is observed" was satisfied by a claim
+   observing nothing); `clause.main.extra` silently shadowed `clause.main`; and a
+   constant `main` satisfied the runtime's entry, producing a binary that died on
+   first run with every gate green.
+
+   State: suite 732 examples, corpus 21 programs clean, `nix flake check` and
+   `check-expect` green, validation 8 scenarios / 41 cases / 0 failures.
+
+   a. **Compile emits a runnable site** (plan Task 7). DONE.
+   b. **Clause claims inside `check`** (plan Task 8). DONE.
+   c. **DONE, and it failed at first: two mints disagreed on the representation.**
       The mint now emits clauses (`assets/mint/body.md`, contract list rendered
       from the shipped vocabulary so prompt and gate cannot drift). Two live
       mints of `examples/logscan.lips` produced six clauses and no source in one
