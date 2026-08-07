@@ -224,11 +224,60 @@ well-defined semantics (Baeten/Bergstra/Klop 1987), is answered by the
 phase-separation invariant above. The correctness claim is therefore not
 "we tested it": every mechanism either coincides with a result the
 literature proved, or the deviation is recorded in §11 with the reason.
-The remaining formal debts are recorded the same way: termination of
-refinement is enforced by a step budget (fail fast), not proved, and the
-IC-postulate audit is open (`TODO.md`, survey-F section). A
+The remaining formal debt is recorded the same way: termination of
+refinement is enforced by a step budget (fail fast), not proved. A
 critique-resistant calculus is one whose gaps are named, not one that
 claims none.
+
+**The IC-postulate audit.** Konieczny and Pino Pérez's postulates for merging
+under integrity constraints (IC0-IC8, *Merging Information under Constraints: A
+Logical Framework*, Journal of Logic and Computation 12, 2002; summarised in the
+Stanford Encyclopedia entry "Belief Merging and Judgment Aggregation") are
+stated for a profile of EQUALLY RELIABLE propositional bases. lips is a
+different animal in three stated ways, and the audit is the honest mapping
+rather than a claim of membership.
+
+First, the reading. A lips base is not a profile of agents: each decision
+carries a STRENGTH (system default < engine default < program), so `resolve` is
+a *prioritized* merge, and the strength order is the whole point. Second, there
+are no integrity constraints: `IC` is the tautology, since what a target world
+permits is checked by option grounding at `generate`, not by merge. Third, the
+"language" has no connectives -- an assertion is opaque text under a subject, so
+two decisions interact only when their subjects are equal, and assertions are
+compared as TEXT.
+
+Under that reading: IC0, IC7 and IC8 are vacuous (they constrain the behaviour
+under a non-trivial `IC`). IC1 holds in a stronger form than stated -- `resolve`
+returns one winner per subject, so its result is consistent by construction --
+but with a deliberate difference in the failure case: an IC operator always
+returns something consistent, while `resolve` REFUSES an equal-strength
+disagreement and names both provenances, because arbitrating it would be the
+silent choice lips exists to prevent. IC2 holds: a profile with no
+disagreement resolves to exactly itself. IC3 (irrelevance of syntax) holds only
+SYNTACTICALLY -- two assertions that mean the same and read differently count as
+dissent, which is the price of a domain-blind kernel that cannot know what a
+value means. IC4, the fairness postulate, is deliberately violated, and this is
+what "prioritized" means: strength gives one decision priority over another, so
+lips is neither an IC majority operator nor an IC arbitration operator in their
+sense. (Maj) is violated for the same reason and on purpose -- repeating a
+decision changes nothing, since a base is a SET and authority is not a vote
+count.
+
+IC5 and IC6 hold for `Replace` subjects, the scalar default: when the winners of
+two bases agree, merging the bases keeps exactly those winners. IC6 FAILS for an
+`Append` subject, and that is the stated exception -- laying two bases together
+assembles `[x, y]` where each alone assembled `[x]` and `[y]`, so the merged
+result does not entail either. Aggregation is a list-building operation, not a
+selection among alternatives, which is precisely why it is a separate merge mode
+derived from the engine rather than the default reading.
+
+What the suite pins, over arbitrary generated bases rather than worked examples,
+is the property the calculus actually rests on: *merge is a set operation*.
+`resolve` is invariant under permutation of the base (commutativity), under how
+the base is split before being laid together (associativity), and under laying a
+base over itself (idempotence); the `Append` mode obeys the same laws, since it
+sorts its contributors by id rather than taking them as they arrive
+(`kernel/test/Spec.hs`, "merge algebra").
 
 **Completeness, by definition.** For any decision base the kernel produces
 exactly one of three outcomes: a settled base (every subject has one
@@ -819,6 +868,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **The IC-postulate audit is written, and the set law is a theorem.** DESIGN §2
+  now maps Konieczny and Pino Pérez's IC0-IC8 onto `Base.resolve` postulate by
+  postulate, under a stated reading (strength makes it a PRIORITIZED merge, `IC`
+  is the tautology, assertions are opaque text under a subject). The verdicts
+  worth remembering: IC4 (fairness) is violated on purpose, since that is what
+  priority means; IC3 holds only syntactically, the price of a domain-blind
+  kernel; and IC6 fails for `Append`, the stated exception, because aggregation
+  builds a list rather than selecting among alternatives. Four properties over
+  arbitrary generated bases now pin what the calculus rests on -- permutation,
+  splitting and self-union leave every winner unchanged, in both merge modes --
+  so "merge is a set operation" stopped being a promise.
 - **A word read as decoration is now said out loud.** `diagInert` works per
   LINE, so a hole demoted to a `Concept` on a line that otherwise realizes was
   invisible: the line is not inert (its other words reach options), and the drop

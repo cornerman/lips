@@ -475,16 +475,6 @@ cost. Sequencing note: the sharpest critique this list used to rank behind --
 that invariant 6 was verified by nothing -- is answered (DESIGN §13, "Invariant
 6 held all along"), so these are now the outstanding theory gaps.
 
-- **IC postulate audit** (~1 day; prose plus property tests). Record which
-  of Konieczny & Pino Pérez's merging postulates (IC0–IC8) `Base.resolve`
-  satisfies, which it violates and why (arbitration over majority, with
-  `Append` as the stated exception; strength structural, never authored).
-  Pin the order-independence claim with property tests in
-  `kernel/test/Spec.hs`: commutativity, associativity and idempotence of
-  `resolve` (today only two tests touch these properties). Done when the
-  audit lives in DESIGN.md and the properties run in the suite. Until then
-  "merge is a set operation" is a promise, not a theorem.
-
 - **Lex specialis: decide or refuse** (one paragraph in DESIGN.md §11).
   Strength is *lex superior* only (higher authority wins). Defeasible
   deontic logic also has *lex specialis* (the more specific subject wins),

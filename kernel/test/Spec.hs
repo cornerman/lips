@@ -53,7 +53,7 @@ import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, 
 import Options.Applicative.Types (Completer (..))
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, getTemporaryDirectory)
 import System.FilePath ((</>))
-import Data.List (sort, sortOn)
+import Data.List (nubBy, sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
@@ -97,6 +97,27 @@ resolveReplace :: Base -> Either [Conflict] (Map.Map Subject Decision)
 resolveReplace base = case resolve (const Replace) noAssembly base of
   Left errs -> Left [ c | REConflict c <- errs ]
   Right m   -> Right m
+
+-- | Resolve with every subject AGGREGATING, and an assemble that simply joins
+-- the contributors' assertions in the order it is handed them -- so if resolve
+-- leaked the input order into that list, the property over permutations would
+-- see it.
+resolveAppend :: Base -> Either [ResolveErr] (Map.Map Subject Decision)
+resolveAppend = resolve (const Append) joinAll
+  where
+    joinAll []             = Left "assemble: no contributors"
+    joinAll ds@(first : _) = Right first
+      { dAssertion = Assertion (T.intercalate " " [ a | Decision{dAssertion = Assertion a} <- ds ]) }
+
+-- | Three generated lists as bases with pairwise DISJOINT ids, so laying one
+-- over another cannot be an overwrite ('union' is right-biased on an id clash,
+-- deliberately: a Solution laid over defaults must win).
+disjointTriple :: [Decision] -> [Decision] -> [Decision] -> (Base, Base, Base)
+disjointTriple xs ys zs = (tagged 0 xs, tagged 1 ys, tagged 2 zs)
+  where
+    tagged n ds = fromList
+      [ d { dId = DecisionId (T.pack (show (n :: Int)) <> ":" <> i) }
+      | d <- ds, let DecisionId i = dId d ]
 
 realizeReplace :: Base -> Either RealizeError Text
 realizeReplace = realize (const Replace) noAssembly
@@ -3727,6 +3748,37 @@ main = hspec $ do
           Right winners ->
             let subjects = Map.keys (Map.fromList [ (dSubject d, ()) | d <- toList (fromList ds) ])
              in Map.keys winners === subjects
+
+    -- "Merge is a set operation" is the claim the whole calculus rests on: the
+    -- outcome depends on WHICH decisions are in the base, never on the order
+    -- they arrived in. Three algebraic laws say exactly that, over arbitrary
+    -- bases rather than the worked examples (DESIGN §2, IC-postulate audit).
+    -- Ids are made distinct first, because a repeated id is not a repeated
+    -- DECISION -- 'fromList' keeps the last, so a collision is an overwrite and
+    -- would test the wrong thing.
+    let distinctIds = nubBy (\a b -> dId a == dId b)
+
+    it "resolve is invariant under permutation (commutativity, over the whole base)" $
+      property $ \ds -> forAll (shuffle (distinctIds ds)) $ \perm ->
+        resolveReplace (fromList perm) === resolveReplace (fromList (distinctIds ds))
+
+    it "resolve is invariant under how the base is split (associativity)" $
+      property $ \xs ys zs ->
+        let (a, b, c) = disjointTriple xs ys zs
+         in resolveReplace (union a (union b c))
+              === resolveReplace (union (union a b) c)
+
+    it "resolve is idempotent: adding a base to itself changes no winner" $
+      property $ \ds ->
+        let b = fromList ds in resolveReplace (union b b) === resolveReplace b
+
+    -- The aggregating mode obeys the same law, and it is the one where order
+    -- could plausibly leak: the assembled list is built from several
+    -- contributors, so 'resolveGroup' sorts them by id rather than taking them
+    -- as they came.
+    it "an Append subject assembles the same list whatever the order" $
+      property $ \ds -> forAll (shuffle (distinctIds ds)) $ \perm ->
+        resolveAppend (fromList perm) === resolveAppend (fromList (distinctIds ds))
 
   -- Orthogonality (at most one rule fires per decision) makes rewriting a
   -- function, hence confluent: the ground result cannot depend on rule order.
