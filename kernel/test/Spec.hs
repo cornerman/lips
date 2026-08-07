@@ -3405,18 +3405,18 @@ main = hspec $ do
     -- The site rung is the program's own behaviour, so it appears exactly when
     -- the program states some and never otherwise.
     it "offers the site rung, and its run command, only for a program with behaviour" $ do
-      flakeText Nixos noRungs { siteRung = Just SiteOnly } `shouldSatisfy` T.isInfixOf "./site/build.nix"
+      flakeText Nixos noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
       flakeText Nixos noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
-      runCommands Nixos [] noRungs { siteRung = Just SiteOnly } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
+      runCommands Nixos [] noRungs { siteRung = Just (SiteRung "\"tool\"" False) } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
       runCommands Nixos [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
 
     -- Judging the clauses is offered only when there is something to judge: a
     -- site with no observables states none, and a rung that runs nothing must
     -- never be printed as if it verified something.
     it "offers the judging rung only when the program states claims over its clauses" $ do
-      let withClaims = noRungs { siteRung = Just SiteWithClaims }
+      let withClaims = noRungs { siteRung = Just (SiteRung "\"tool\"" True) }
       flakeText Nixos withClaims `shouldSatisfy` T.isInfixOf "site-claims"
-      flakeText Nixos noRungs { siteRung = Just SiteOnly } `shouldNotSatisfy` T.isInfixOf "site-claims"
+      flakeText Nixos noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
       runCommands Nixos [] withClaims "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site-claims")
 
   describe "claims.nix (the experiments, as nix)" $ do
@@ -5453,7 +5453,18 @@ main = hspec $ do
 
     it "counts clauses and claims separately, since different things vouch" $ do
       gClauses g `shouldBe` 1
-      gClaims g `shouldBe` 1
+      claimCount g `shouldBe` 1
+
+    -- One claim is stated in several sections, and counting those reported
+    -- logscan's single claim as four: a report that exists to make numbers
+    -- trustworthy must not print a wrong one.
+    it "counts one claim once, however many sections state it" $
+      claimCount (grounding
+        [ (Subject ["claim", "w", "call"], mk "a" "x" "(f)" Stated)
+        , (Subject ["claim", "w", "equals"], mk "b" "x" "#t" Stated)
+        , (Subject ["claim", "w", "feed"], mk "c" "x" "[ \"l\" ]" Stated)
+        , (Subject ["claim", "other", "run"], mk "d" "x" "\"echo\"" Stated)
+        ]) `shouldBe` 2
 
     it "names an artifact argument as glue, because no schema declares one" $
       map (uSubject) (gGlue g) `shouldBe` [Subject ["artifact", "greet", "args", "text"]]

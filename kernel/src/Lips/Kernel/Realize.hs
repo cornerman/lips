@@ -25,6 +25,7 @@ module Lips.Kernel.Realize
   , realizeClauseClaims
   , realizeClauses
   , unobservedClauses
+  , defaultSiteName
   , siteNameIn
   , sitePropertiesIn
   ) where
@@ -294,16 +295,34 @@ siteNameFrom :: [(Subject, Decision)] -> Bool -> Either RealizeError (Maybe Text
 siteNameFrom winners referenced
   | not referenced = Right Nothing
   | otherwise = case commands of
-      []      -> Right (Just "\"site\"")
-      [(_, c)] -> Right (Just c)
-      several -> Left (RBadClause
+      []       -> Right (Just defaultSiteName)
+      [(_, d)] -> Just <$> nameOf d
+      several  -> Left (RBadClause
         ("this program states " <> T.pack (show (length several))
           <> " sites (" <> T.intercalate ", " (map fst several)
           <> "), and lips builds one. Several places for one clause core is\
              \ physics lips does not have yet."))
   where
-    commands = [ (n, unAssertion (dAssertion d))
-               | (Subject ["site", n, "command"], d) <- winners ]
+    commands = [ (n, d) | (Subject ["site", n, "command"], d) <- winners ]
+    -- PARSED, then rendered, like every other value that reaches Nix. Splicing
+    -- the assertion text raw put whatever the engine wrote straight into
+    -- @name = ...;@, so a value that is not plain text (a list, a package
+    -- reference) reached nix as a syntax or type error naming neither lips nor a
+    -- remedy.
+    nameOf d = case parseValue (unAssertion (dAssertion d)) of
+      Right v@(VStr _) -> Right (renderRealized v)
+      Right _ -> Left (RBadClause
+        ("a site's command must be plain text, because it is the name the\
+         \ program is installed under: " <> unAssertion (dAssertion d)))
+      Left e -> Left (RMalformed (dSubject d) e)
+
+-- | What the site derivation is called when no sentence chose a name. ONE
+-- definition, because the module, the claims file and the compiled flake must
+-- all name the same derivation -- and did not: the flake hardcoded @site@ while
+-- the module used the program's own name, so @nix run .#site@ built a
+-- derivation the module never installs.
+defaultSiteName :: Text
+defaultSiteName = "\"site\""
 
 -- | The properties this program's site requires, each with the author's reason
 -- for it, for the caller that chooses a runtime. Projected from the same base as

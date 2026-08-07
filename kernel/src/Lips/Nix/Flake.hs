@@ -60,9 +60,14 @@ import Lips.Nix.Target (Target (..))
 -- @apps.vm@ + @packages.vm@; home-manager gets neither, only the module).
 -- | What the site axis offers, when it offers anything. A sum rather than two
 -- booleans, so "judge the clauses of a program that has none" cannot be written.
-data SiteRung
-  = SiteOnly        -- ^ behaviour to run, with nothing stated about what it does
-  | SiteWithClaims  -- ^ behaviour, and observables over it
+data SiteRung = SiteRung
+  { srName   :: Text
+    -- ^ What the program is installed as. The SAME name the realized module
+    -- binds, passed in rather than defaulted here: the flake hardcoded @site@
+    -- while the module used the program's own name, so @nix run .#site@ built a
+    -- derivation the module never installs.
+  , srClaims :: Bool  -- ^ whether there are observables over the behaviour
+  }
   deriving (Eq, Show)
 
 -- | Which rungs a compiled directory offers. A record rather than positional
@@ -84,7 +89,7 @@ hasSite = (/= Nothing) . siteRung
 
 -- | Is there anything to judge? Only ever true where there is a site.
 hasSiteClaims :: Rungs -> Bool
-hasSiteClaims r = siteRung r == Just SiteWithClaims
+hasSiteClaims r = maybe False srClaims (siteRung r)
 
 flakeText :: Target -> Rungs -> Text
 flakeText target rungs = T.unlines $
@@ -249,11 +254,11 @@ packagesOutput target rungs
     -- The program's own behaviour, built by the runtime its contracts chose. The
     -- builder is the runtime's file, copied verbatim; this flake knows only its
     -- interface.
-    siteLine
-      | hasSite rungs = [ "        site = import ./site/build.nix {"
-                        , "          pkgs = pkgsFor system; name = \"site\"; src = ./site;"
-                        , "        };" ]
-      | otherwise = []
+    siteLine = case siteRung rungs of
+      Nothing -> []
+      Just sr -> [ "        site = import ./site/build.nix {"
+                 , "          pkgs = pkgsFor system; name = " <> srName sr <> "; src = ./site;"
+                 , "        };" ]
     -- Judging the clauses is a BUILD that runs them: no machine, no compiled
     -- binary, just the core evaluated with list-backed adapters. A failed claim
     -- exits nonzero, so the build fails and an unheld claim can never read as

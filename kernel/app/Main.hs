@@ -75,6 +75,7 @@ import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
 import           Lips.Kernel.Grounding  (Grounding, Unvouched (..), gStaged, groundingReport)
 import           Lips.Runtime            (runtimeAsset, runtimes, schemeVocabulary)
+import           Lips.Kernel.Realize     (defaultSiteName)
 import           Lips.Site               (SitePlan (..), planSite)
 import           Lips.Kernel.Source     (fillTree)
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..), crystallize)
@@ -188,9 +189,11 @@ compileLoose mout mLangDir noContract file = do
       Nothing   -> pure False
       Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
     let rungs = Rungs { hasArtifacts = not (null artNames), hasClaims = hasClaims'
+                        -- The name the module binds, so every rung of the
+                        -- compiled directory builds the same derivation.
                       , siteRung = if not hasSite then Nothing
-                                   else if null (rlClauseClaims rl) then Just SiteOnly
-                                        else Just SiteWithClaims }
+                                   else Just (SiteRung (siteNameOf rl)
+                                                       (not (null (rlClauseClaims rl)))) }
     TIO.writeFile (outDirPath </> "flake.nix") (flakeText target rungs)
     pure (artNames, rungs)
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
@@ -448,7 +451,7 @@ clauseClaimGate target file rl
         withTempDir $ \tmp -> do
           _ <- writeSite tmp rl
           TIO.writeFile (tmp </> "flake.nix")
-            (flakeText target noRungs { siteRung = Just SiteWithClaims })
+            (flakeText target noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
           res <- try (readProcessWithExitCode "nix"
             ["build", "--no-link", "path:" <> tmp <> "#site-claims"] "")
           case res of
@@ -1747,6 +1750,13 @@ stageBeside :: FilePath -> FilePath -> Realization -> FilePath -> IO ()
 stageBeside dir file rl root = do
   stageFromDisk dir file (root </> "artifacts")
   void (writeSite root rl)
+
+-- | What the program is installed as. A realization names the site only where
+-- something REFERENCES it, so a program whose module never mentions @${site}@
+-- still needs a name for the flake's own rung -- and it must be the name the
+-- module would have used, from the one definition of the default.
+siteNameOf :: Realization -> Text
+siteNameOf rl = fromMaybe defaultSiteName (rlSiteName rl)
 
 -- | Write the site a plan describes, and remove what it says is stale. The
 -- decisions (which runtime, which files, what to prune) are pure and live in
