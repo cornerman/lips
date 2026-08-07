@@ -1,0 +1,4 @@
+p1 meta lang.pattern.p1 stated "install packages => concept packages \"packages to install into the user profile\"" @gen:ccb0893adad2bc1c
+p2 meta lang.pattern.p2.under.p1 stated "<name> => fact pkg.<name> \"<name>\"" @gen:ccb0893adad2bc1c
+q1 meta engine.demand.q1 stated "demand pkg.<name> \"which packages should be installed? list one package name per line under 'install packages:'\"" @gen:ccb0893adad2bc1c
+r1 meta engine.rule.r1 stated "match fact pkg.<name> => home.packages \"[ <value:pkg> ]\"" @gen:ccb0893adad2bc1c
