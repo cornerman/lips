@@ -35,14 +35,19 @@ module Lips.Kernel.Engine.Reach
   , DropWhy (..)
   , droppedValues
   , renderDroppedValue
+  , DecorativeValue (..)
+  , decorativeValues
+  , renderDecorativeValue
   ) where
 
+import           Data.Maybe      (isNothing)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Capture        (captureName, nameTokens)
 import Lips.Kernel.Engine.Data    (Emit (..), MapRule (..), renderAttrPath)
 import Lips.Kernel.Engine.Landing (Landing (..), Part (..), wordDecorates, wordLandings)
+import Lips.Kernel.Lang.Nest      (ancestorsOf)
 import Lips.Kernel.Engine.Value   (AssertionUse (..), assertionUses, valueCaptures)
 import Lips.Kernel.Lang.Pattern   (Pattern (..), holesOf)
 
@@ -53,6 +58,14 @@ data DropWhy
   | -- | It reaches this subject family, and these rules match it and carry it
     -- nowhere.
     IgnoredBy [Text] [Text]
+  deriving (Eq, Show)
+
+-- | One word whose only landing is a concept: the pattern that binds it and the
+-- hole that names it.
+data DecorativeValue = DecorativeValue
+  { dcPattern :: Text
+  , dcHole    :: Text
+  }
   deriving (Eq, Show)
 
 -- | One word the language binds and the engine discards: the pattern that binds
@@ -87,17 +100,62 @@ dropOf pats rules p h
       (l : _) -> Just (IgnoredBy (lgFamily l) (map mrId (lgRules l)))
   where
     landings = wordLandings pats rules p h
-    carriedBy l = any (carries l) (lgRules l)
-    -- The rule carries the word if it reads the part of the value the word sits
-    -- in, or if it names the capture standing where the word lands. A LITERAL
-    -- there means the rule only fires for that word, so the word already
-    -- governs the choice of rule.
-    carries l r =
+
+-- | Does any rule matching this landing carry the word onward? The rule does if
+-- it reads the part of the value the word sits in, or if it names the capture
+-- standing where the word lands. A LITERAL there means the rule only fires for
+-- that word, so the word already governs the choice of rule.
+carriedBy :: Landing -> Bool
+carriedBy l = any carries (lgRules l)
+  where
+    carries r =
       readsWord (lgPart l) (concatMap (assertionUses . emRhs) (mrEmits r))
         || or [ maybe True (usesCapture r) (captureName s)
               | (i, s) <- zip [0 :: Int ..] (mrSubject r)
               , i `elem` lgSegments l
               ]
+
+-- | Every word whose only reading is DECORATIVE: it reaches a 'Concept' the
+-- mint declared, and nothing else carries it, so realize drops it and editing
+-- that word changes no output.
+--
+-- Reported rather than refused, and separate from 'droppedValues': a concept is
+-- a legitimate reading the mint chose deliberately (a heading, a specification
+-- for baked source), so this is an author-facing observation, not an engine
+-- defect. It is invisible everywhere else -- the whole LINE is not inert
+-- ('Lips.Kernel.Lang.Diagnose.diagInert' works per line, and such a line
+-- usually realizes something through its other holes), and the drop gate
+-- deliberately excuses a hole reaching a concept.
+decorativeValues :: [Pattern] -> [MapRule] -> [DecorativeValue]
+decorativeValues pats rules =
+  [ DecorativeValue (pId p) h
+  | p <- pats
+  , h <- holesOf p
+  , wordDecorates pats p h
+  -- Not already named by the drop gate, and carried by no rule anywhere.
+  , isNothing (dropOf pats rules p h)
+  , not (any carriedBy (landingsBelow pats rules p h))
+  ]
+
+-- | Every landing of a word, in the pattern that binds it AND in every pattern
+-- nested under that one. A block HEAD's word is in scope inside the block, so a
+-- child keys its own subject by it (@host.\<domain\>.location.\<path\>.proxy@,
+-- or @\<k:key\>@ carrying the head's whole subject): the head may emit nothing
+-- but a concept and the word still governs every line inside it. Judging the
+-- head alone called three correct @examples\/vhost@ lines decoration.
+landingsBelow :: [Pattern] -> [MapRule] -> Pattern -> Text -> [Landing]
+landingsBelow pats rules p h =
+  concat [ wordLandings pats rules q h | q <- p : inside ]
+  where
+    inside = [ q | q <- pats, pId p `elem` map pId (ancestorsOf pats q) ]
+
+-- | One decorative word in the words its author needs: which pattern binds it
+-- and which hole names it. The caller joins it onto the program LINE, which is
+-- what an author can act on ('Lips.Kernel.Lang.Diagnose').
+renderDecorativeValue :: DecorativeValue -> Text
+renderDecorativeValue dc =
+  "pattern " <> dcPattern dc <> " binds <" <> dcHole dc
+    <> "> into a concept only: the word is read and then dropped by realize"
 
 -- | Does a rule reading the assertion these ways carry the word sitting at this
 -- position in it? A one-part value IS the word, so any read of the assertion

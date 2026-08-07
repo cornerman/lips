@@ -513,7 +513,7 @@ renderDiagnosis :: FilePath -> Diagnosis -> Text
 renderDiagnosis file d =
   T.intercalate "\n" (headline : map row (diagLines d)
                         ++ headBlock ++ inertBlock ++ restatedBlock ++ droppedBlock
-                        ++ unfitBlock ++ openBlock)
+                        ++ decorativeBlock ++ unfitBlock ++ openBlock)
   where
     headline = T.pack file <> ": " <> tshow (diagMatched d) <> " of "
                  <> tshow (diagTotal d) <> " lines crystallize."
@@ -572,6 +572,17 @@ renderDiagnosis file d =
               : [ "  line " <> tshow n <> "  \"" <> t <> "\"  <"
                     <> T.intercalate "> <" hs <> ">"
                 | (n, t, hs) <- diagDropped d ]
+    -- A word that reaches a concept and nothing else: the mint declared it
+    -- decoration, so nothing is wrong with the engine -- but the author who
+    -- edits that word gets no effect, and only this says so.
+    decorativeBlock
+      | null (diagDecorative d) = []
+      | otherwise =
+          "" : ("read as decoration (" <> tshow (length (diagDecorative d))
+                  <> ") -- these words reach a concept only:")
+              : [ "  line " <> tshow n <> "  \"" <> t <> "\"  <"
+                    <> T.intercalate "> <" hs <> ">"
+                | (n, t, hs) <- diagDecorative d ]
     -- A word the rule spending it cannot take. Refine refuses it a phase later
     -- naming a decision id; here it is named on the line the author wrote, which
     -- is the only place they can fix it.

@@ -30,6 +30,12 @@
 -- the gate existed -- and the report is per LINE, since that is what the author
 -- can act on.
 --
+-- Plus the DECORATIVE words: a word whose only landing is a 'Concept'. The line
+-- around it usually realizes something through its other holes, so it is not
+-- inert and nothing else says the word governs nothing. Never refused -- the
+-- mint DECLARED the concept, and a heading is a legitimate reading -- but an
+-- author who edits that word and sees no effect deserves to have been told.
+--
 -- Plus the UNFIT values: a word the rule spending it cannot take (a word where
 -- an option wants an int, a name where it wants a package). Refine catches that
 -- too, but only once every line has been read, and it names a decision id
@@ -51,7 +57,8 @@ import Lips.Kernel.Decision        (Decision (..), Kind (..))
 import Lips.Kernel.Demand          (Demand (..), openQuestions)
 import Lips.Kernel.Engine.Data     (MapRule, bindSelf, toDemand, toRule)
 import Lips.Kernel.Refine          (Rule (..))
-import Lips.Kernel.Engine.Reach    (DroppedValue (..), droppedValues)
+import Lips.Kernel.Engine.Reach    (DecorativeValue (..), DroppedValue (..), decorativeValues,
+                                    droppedValues)
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..), classifyLines, restatements)
 import Lips.Kernel.Lang.Store       (EngineData (..))
 
@@ -63,6 +70,7 @@ data Diagnosis = Diagnosis
   , diagMatched :: Int           -- ^ how many lines crystallized (one line may yield several decisions)
   , diagInert   :: [(Int, Text)] -- ^ lines that realize nothing: line no and source text
   , diagDropped :: [(Int, Text, [Text])] -- ^ lines whose bound words reach no output: line no, source text, hole names
+  , diagDecorative :: [(Int, Text, [Text])] -- ^ lines whose bound words reach a concept only: line no, source text, hole names
   , diagRestated :: [(Int, Int, Text)]   -- ^ lines absorbed by an earlier one: line no, that earlier line, the shared subject
   , diagHeads    :: [(Int, Text, Int)]   -- ^ lines that open a block: line no, source text, how many lines sit in it
   , diagUnfit    :: [(Int, Text, [Text])] -- ^ lines whose value no rule can take: line no, source text, the complaints
@@ -85,6 +93,9 @@ diagnose file eng src =
         , diagMatched = length [() | Matched{} <- outcomes]
         , diagInert   = inertLines outcomes
         , diagDropped = droppedLines (droppedValues (edPatterns eng) (edRules eng)) outcomes
+        , diagDecorative = wordLines [ (dcPattern dc, dcHole dc)
+                                     | dc <- decorativeValues (edPatterns eng) (edRules eng) ]
+                                     outcomes
         , diagRestated = restatements outcomes
         , diagHeads    = blockHeads outcomes
         , diagUnfit    = unfitLines (edRules eng) outcomes
@@ -142,10 +153,17 @@ blockHeads outcomes =
 -- wrote, so the report is keyed by line and lists the holes whose word governs
 -- nothing. A line whose pattern drops no word never appears.
 droppedLines :: [DroppedValue] -> [LineOutcome] -> [(Int, Text, [Text])]
-droppedLines dvs outcomes =
+droppedLines dvs = wordLines [(dvPattern dv, dvHole dv) | dv <- dvs]
+
+-- | Join per-PATTERN word findings onto the program lines that produced them.
+-- The engine names a defect by pattern id; the author needs the line they
+-- wrote. Shared by the dropped and the decorative report, so the two cannot
+-- drift in how they are anchored.
+wordLines :: [(Text, Text)] -> [LineOutcome] -> [(Int, Text, [Text])]
+wordLines found outcomes =
   [ (n, txt, hs)
   | Matched n txt pid _ _ <- outcomes
-  , let hs = [dvHole dv | dv <- dvs, dvPattern dv == pid]
+  , let hs = [h | (p, h) <- found, p == pid]
   , not (null hs)
   ]
 

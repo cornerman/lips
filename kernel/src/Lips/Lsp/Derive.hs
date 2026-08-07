@@ -246,8 +246,19 @@ data Diag = Diag
 -- whole-program warning (surfaced on the first line, since it belongs to no
 -- single line). A cleanly matched line yields nothing.
 diagsOf :: Diagnosis -> [Diag]
-diagsOf d = concatMap lineDiag (diagLines d) ++ unfitDiags ++ map openDiag (diagOpen d)
+diagsOf d = concatMap lineDiag (diagLines d) ++ unfitDiags ++ decorativeDiags
+              ++ map openDiag (diagOpen d)
   where
+    -- A word that reaches a concept and nothing else. A WARNING, never an
+    -- error: the mint declared the concept, so the engine is sound and the
+    -- author is simply told that editing this word moves nothing.
+    decorativeDiags =
+      [ Diag (n - 1) 0 (T.length t) 2
+          ("Read as decoration: <" <> T.intercalate "> <" hs
+            <> "> reaches a concept only, so editing "
+            <> (if length hs == 1 then "that word" else "those words")
+            <> " changes no output.")
+      | (n, t, hs) <- diagDecorative d ]
     -- A word no rule can take: an error, since the build refuses it too (the
     -- same fill runs there). Stated on the line that wrote the word, which is
     -- the whole reason it is checked here and not left to refine.

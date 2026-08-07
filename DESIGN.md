@@ -819,6 +819,24 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A word read as decoration is now said out loud.** `diagInert` works per
+  LINE, so a hole demoted to a `Concept` on a line that otherwise realizes was
+  invisible: the line is not inert (its other words reach options), and the drop
+  gate deliberately excuses a hole reaching a concept the mint DECLARED. Nothing
+  said the word governs nothing, which is exactly the silent concept demotion the
+  ledger has listed as open since the reach gate landed.
+  `Engine.Reach.decorativeValues` names it, `Diagnosis.diagDecorative` anchors it
+  on the program line, and `check` prints it beside the inert and discarded
+  blocks; the LSP paints it as a warning, never an error, since a heading is a
+  legitimate reading and the remedy is the author's. Measured on the corpus at
+  once: `board`'s two specification sentences (correct -- they specify baked
+  source), and `function`'s declaration line, whose `<fname> <param> <ptype>` all
+  land in a concept, which is the demotion the ledger recorded as a sonnet-5
+  regression and could not see afterwards. The first draft also called three
+  correct `vhost` lines decoration, because a block HEAD may emit nothing but a
+  concept while every line inside keys its subject by the head's word -- so the
+  judgment reads the landings of the pattern AND of every pattern nested under
+  it.
 - **Invariant 6 held all along, and is now checked.** The sixth invariant says
   every minted line is stamped `@gen:<id>` and the id must re-hash from the
   committed `.generation`; no code re-hashed anything, and the ledger recorded a

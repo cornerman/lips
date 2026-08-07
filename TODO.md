@@ -54,16 +54,11 @@ tracks only what is still open.
       (i) CLOSED 2026-08-05 (DESIGN §13, "A rule reads one part, not the value"):
       the partial drop, the out-of-range `<value.N>` and the `<value.tail>` over
       a several-part value are all refused statically.
-      (ii) a per-hole DECORATIVE report -- a hole demoted to a `Concept` on a
-      line that otherwise realizes is invisible, since `diagInert` works per
-      line, not per hole. Draft validation (DESIGN §13) does NOT close this and
-      never claimed to: a demotion passes every gate, so nothing reports it. One
-      datapoint sideways, from the live A/B mint: the draft tool caught the
-      neighbouring defect (a hole reaching no decision at all) and the model
-      promoted its `concept` back to a `fact` in-turn, so making demotion loud
-      would now be actionable inside the mint's own turn rather than only after
-      it. Call sites exist: `board`, `habit`, `logscan` each
-      emit several `Concept`s.
+      (ii) CLOSED 2026-08-05 (DESIGN §13, "A word read as decoration is now
+      said out loud"): `Engine.Reach.decorativeValues` names a hole whose only
+      landing is a concept, per HOLE rather than per line, and `check` and the
+      LSP report it. It found `function`'s demoted declaration on the corpus
+      immediately.
       (iii) a compiled artifact records no dependency on the program lines its
       baked source came from. PARTLY CLOSED: a claim now holds the built source
       to the author's stated observable, so an edit that changes what the program

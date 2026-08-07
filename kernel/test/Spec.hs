@@ -2892,6 +2892,66 @@ main = hspec $ do
       diagDropped (diagnose "f" engD "write the server in go")
         `shouldBe` [(1, "write the server in go", ["lang"])]
 
+    -- The invisible case: the LINE realizes (its other hole reaches an option),
+    -- so it is not inert, and the drop gate excuses a hole that reaches a
+    -- concept the mint declared. Nothing said the word governs nothing.
+    it "names a word whose only landing is a concept" $ do
+      let engC = EngineData
+            { edPatterns =
+                [ Pattern "p3" []
+                    [TLit "serve", THole "port", TLit "for", THole "who"]
+                    [ PatEmit Fact [SLit "http.port"] [SHole "port"]
+                    , PatEmit Concept [SLit "http.audience"] [SHole "who"] ] ]
+            , edRules = [ MapRule "r3" Fact ["http", "port"]
+                            [ Emit ["services", "x", "port"] (VHole HInt "value") ] ]
+            , edDemands = []
+            , edMerges = []
+            }
+          d = diagnose "f" engC "serve 8080 for admins"
+      -- the line is NOT inert (its other word reaches an option) ...
+      diagInert d `shouldBe` []
+      -- ... and the drop gate stays silent, since a concept is declared ...
+      diagDropped d `shouldBe` []
+      -- ... so this is the only report that names the word.
+      diagDecorative d `shouldBe` [(1, "serve 8080 for admins", ["who"])]
+
+    -- examples/vhost, verbatim in shape: the block head emits a concept only,
+    -- and its word keys every subject inside the block. Judging the head alone
+    -- called three correct lines decoration.
+    it "calls no block-head word decorative when the lines inside key on it" $ do
+      let engH = EngineData
+            { edPatterns =
+                [ Pattern "p2" [] [TLit "host", THole "domain"]
+                    [ PatEmit Concept [SLit "host.", SHole "domain"] [SHole "domain"] ]
+                , Pattern "p3" ["p2"] [TLit "-", THole "path", TLit "proxies", TLit "to", THole "url"]
+                    [ PatEmit Fact [SLit "host.", SHole "domain", SLit ".location.", SHole "path", SLit ".proxy"]
+                              [SHole "url"] ] ]
+            , edRules = [ MapRule "r3" Fact ["host", "<d>", "location", "<p>", "proxy"]
+                            [ Emit ["services", "nginx", "virtualHosts", "<d>", "locations", "<p>", "proxyPass"]
+                                   (VStr [PHole "value"]) ] ]
+            , edDemands = []
+            , edMerges = []
+            }
+      diagDecorative (diagnose "f" engH "host shop.example.com\n- /api proxies to http://x")
+        `shouldBe` []
+
+    it "calls no word decorative when a rule carries it" $ do
+      let engK = EngineData
+            { edPatterns =
+                [ Pattern "p3" []
+                    [TLit "serve", THole "port", TLit "for", THole "who"]
+                    [ PatEmit Fact [SLit "http.port"] [SHole "port"]
+                    , PatEmit Concept [SLit "http.audience"] [SHole "who"]
+                    , PatEmit Fact [SLit "http.owner"] [SHole "who"] ] ]
+            , edRules = [ MapRule "r3" Fact ["http", "port"]
+                            [ Emit ["services", "x", "port"] (VHole HInt "value") ]
+                        , MapRule "r4" Fact ["http", "owner"]
+                            [ Emit ["services", "x", "user"] (VStr [PHole "value"]) ] ]
+            , edDemands = []
+            , edMerges = []
+            }
+      diagDecorative (diagnose "f" engK "serve 8080 for admins") `shouldBe` []
+
     it "reports no dropped word when the rule reads the value" $ do
       let engK = EngineData
             { edPatterns =
