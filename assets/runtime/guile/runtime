@@ -37,3 +37,13 @@ build site.nix
 # harness is loaded after the adapters it may use.
 claim-file adapter-effects-memory.scm
 claim-file claim-harness.scm
+
+# The words this runtime's harness answers to. lips owns the SHAPES -- a file is
+# loaded by name, a claim is judged by id, expression and expected value -- and
+# never the words, exactly as with `entry` above.
+harness-load load
+harness-feed-args feed-args
+harness-feed-lines feed-lines
+harness-judge claim
+harness-done claims-done
+harness-list list

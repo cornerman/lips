@@ -20,8 +20,8 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import Lips.Kernel.Claim            (renderClauseClaim)
-import Lips.Kernel.Clause.Catalogue (Runtime (..), clauseClaimsFile, coveringRuntime,
-                                     entryDemand, siteFile)
+import Lips.Kernel.Clause.Catalogue (Harness (..), Runtime (..), clauseClaimsFile,
+                                     coveringRuntime, entryDemand, siteFile)
 import Lips.Kernel.Run              (Realization (..))
 
 -- | The WHOLE content of a site directory: every file it should hold, and
@@ -94,8 +94,8 @@ planSite asset runtimes rl = case rlCore rl of
           shipped
             <> [ ("core.scm", core)
                , ("main.scm", siteFile rt runFiles) ]
-            <> [ ("claims.scm", clauseClaimsFile claimFiles
-                                  (concatMap renderClauseClaim claims))
+            <> [ ("claims.scm", clauseClaimsFile rt claimFiles
+                                  (concatMap (renderClauseClaim (harnessWords rt)) claims))
                | not (null claims) ]
       })
   where
@@ -112,3 +112,11 @@ planSite asset runtimes rl = case rlCore rl of
       Nothing -> Left ("lips ships no file " <> T.pack f <> " for the " <> rName rt
                         <> " runtime, although that runtime declares it."
                        , "\8594 this is a lips bug; report it.")
+
+-- | The four words a claim form is written with, in the order 'renderClauseClaim'
+-- takes them. Pulled from the runtime so the kernel keeps the shapes and the
+-- runtime keeps the vocabulary.
+harnessWords :: Runtime -> (Text, Text, Text, Text)
+harnessWords rt =
+  ( hFeedArgs g, hFeedLines g, hJudge g, hList g )
+  where g = rHarness rt

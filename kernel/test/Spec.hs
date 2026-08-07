@@ -5332,22 +5332,22 @@ main = hspec $ do
         `shouldBe` Right ["expr"]
 
     it "emits the feed and the judgment, and nothing about how a verdict prints" $
-      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a", "b"] [])
+      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a", "b"] [])
         `shouldBe` [ "(feed-lines (list \"a\" \"b\"))", "(claim \"w\" (f) #t)" ]
 
     -- A claim may vary the command line the program sees, which is the only way
     -- to observe a program whose behaviour depends on its arguments.
     it "serves a stated command line before the input lines" $
-      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["l"] ["a=1"])
+      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["l"] ["a=1"])
         `shouldBe` [ "(feed-args (list \"a=1\"))", "(feed-lines (list \"l\"))"
                    , "(claim \"w\" (f) #t)" ]
 
     it "escapes a fed line so it cannot end the string it lands in" $
-      renderClauseClaim (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a\"b"] [])
+      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a\"b"] [])
         `shouldSatisfy` any (T.isInfixOf "\"a\\\"b\"")
 
     it "assembles a claims file that loads, judges, then reports" $
-      clauseClaimsFile ["adapter-effects-memory.scm", "core.scm"] ["(claim \"w\" (f) #t)"]
+      clauseClaimsFile guileRuntime ["adapter-effects-memory.scm", "core.scm"] ["(claim \"w\" (f) #t)"]
         `shouldSatisfy` \t ->
           T.isInfixOf "(load \"adapter-effects-memory.scm\")" t
             && T.isInfixOf "(claim \"w\" (f) #t)" t
@@ -5359,6 +5359,7 @@ main = hspec $ do
     let rt = Runtime "toy" ["native"] ["emit"] ["toy"]
                      ["pure.scm"] ["effects.scm"] ["memory.scm"]
                      "(main (arguments))" "build-toy.nix"
+                     (Harness "load" "feed-args" "feed-lines" "claim" "claims-done" "list")
         assets _ f = Just ("; " <> T.pack f)
         withCore ccs = emptyRealization
           { rlCore = Just ("(define (main a) a)\n", ["emit"], [("main", Just 1)])
@@ -5511,34 +5512,50 @@ main = hspec $ do
   -- choice a model makes: the contracts are derived from the clauses, the
   -- properties are stated by the author, and the catalogue says who covers both.
   describe "runtime covering (Lips.Kernel.Clause.Catalogue)" $ do
-    let guile = Runtime "guile" ["native", "fast-start"]
+    let hn = Harness "load" "feed-args" "feed-lines" "claim" "claims-done" "list"
+        -- Every runtime must declare these, so a fixture omitting one is not a
+        -- runtime at all; each test below varies only what it is about.
+        required = [ "build site.nix", "harness-load load", "harness-feed-args feed-args"
+                   , "harness-feed-lines feed-lines", "harness-judge claim"
+                   , "harness-done claims-done", "harness-list list" ]
+        declOf ls = T.unlines (ls ++ required)
+        guile = Runtime "guile" ["native", "fast-start"]
                         ["emit", "json-parse", "read-a-line"] ["guile", "guile-json"]
                         ["adapter-pure.scm"] ["adapter-effects.scm"]
-                        ["adapter-effects-memory.scm"] "(main)" "site.nix"
+                        ["adapter-effects-memory.scm"] "(main)" "site.nix" hn
         hoot = Runtime "hoot" ["browser"] ["emit", "json-parse"] ["guile-hoot"]
-                       ["adapter-pure.scm"] [] [] "(main '())" "site.nix"
+                       ["adapter-pure.scm"] [] [] "(main '())" "site.nix" hn
 
     it "reads a runtime declaration" $
-      parseRuntime "guile" (T.unlines
+      parseRuntime "guile" (declOf
         [ "property native", "provides emit json-parse", "package guile"
         , "file adapter-pure.scm", "claim-file adapter-effects-memory.scm"
-        , "entry (main (arguments))", "build site.nix" ])
+        , "entry (main (arguments))" ])
         `shouldBe` Right (Runtime "guile" ["native"] ["emit", "json-parse"] ["guile"]
                                   ["adapter-pure.scm"] [] ["adapter-effects-memory.scm"]
-                                  "(main (arguments))" "site.nix")
+                                  "(main (arguments))" "site.nix" hn)
+
+    -- A runtime missing one of these fails HERE, naming it, rather than at the
+    -- door that needed it: an empty entry reads as "not a call" and an empty
+    -- builder as "lips ships no file", neither of which names the cause.
+    it "refuses a runtime that leaves a required declaration out" $ do
+      parseRuntime "r" "entry (main)"
+        `shouldSatisfy` either (T.isInfixOf "declares no build") (const False)
+      parseRuntime "r" (T.unlines ["entry (main)", "build site.nix"])
+        `shouldSatisfy` either (T.isInfixOf "declares no harness-load") (const False)
 
     -- The entry is one expression in the runtime's own notation, so it keeps its
     -- spaces: splitting it on whitespace like every other line would destroy it.
     it "keeps the entry expression whole" $
-      fmap rEntry (parseRuntime "guile" "entry (main (arguments))")
+      fmap rEntry (parseRuntime "guile" (declOf ["entry (main (arguments))"]))
         `shouldBe` Right "(main (arguments))"
 
     -- One declaration, so the requirement cannot drift from the call: what the
     -- core must define is read out of the entry expression itself.
     it "derives what the core must define from the entry it calls" $ do
-      fmap entryDemand (parseRuntime "r" "entry (main)")
+      fmap entryDemand (parseRuntime "r" (declOf ["entry (main)"]))
         `shouldBe` Right (Right ("main", 0))
-      fmap entryDemand (parseRuntime "r" "entry (main (arguments))")
+      fmap entryDemand (parseRuntime "r" (declOf ["entry (main (arguments))"]))
         `shouldBe` Right (Right ("main", 1))
 
     it "assembles the site file: adapters, then core, then the runtime's entry" $
@@ -5756,6 +5773,13 @@ isSexpValue _         = False
 -- | The logscan core exactly as the falsifier ran it
 -- (experiments/logscan-clauses/clauses.scm), stated here so the suite pins the
 -- corpus rather than a paraphrase of it.
+-- | The guile harness's own words, in the order 'renderClauseClaim' takes them.
+-- Read from the shipped runtime rather than written here, so a test cannot pin a
+-- word the runtime has stopped using.
+guileWords :: (Text, Text, Text, Text)
+guileWords = ( hFeedArgs g, hFeedLines g, hJudge g, hList g )
+  where g = rHarness guileRuntime
+
 logscanClauses :: [Clause]
 logscanClauses = zipWith line [1 :: Int ..]
   [ ("main",          "(define (main args) (scan (parse-spec args)))")

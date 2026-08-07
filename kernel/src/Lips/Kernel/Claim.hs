@@ -130,16 +130,21 @@ clauseClaimsFromDecisions winners = traverse one (Map.toList grouped)
 
 -- | The forms lips emits for one clause claim: the input lines, then the
 -- judgment. Everything about HOW a verdict is printed lives in the runtime's own
--- harness, so these two forms are the whole interface.
-renderClauseClaim :: ClauseClaim -> [Text]
-renderClauseClaim cc =
-  [ "(feed-args (list " <> T.unwords (map schemeStr (ccArgs cc)) <> "))"
-  | not (null (ccArgs cc)) ]
-    <> [ "(feed-lines (list " <> T.unwords (map schemeStr (ccFeed cc)) <> "))"
-       | not (null (ccFeed cc)) ]
-    <> [ "(claim " <> schemeStr (ccId cc) <> " " <> renderSexp (ccCall cc)
-          <> " " <> renderSexp (ccEquals cc) <> ")" ]
+-- harness, so these forms are the whole interface.
+--
+-- The WORDS come from the runtime ('Lips.Kernel.Clause.Catalogue.Harness'), never
+-- from here: that a claim is judged by id, expression and expected value is a
+-- fact about claims, while @claim@ and @feed-lines@ are facts about one runtime's
+-- harness -- the same split that keeps the defining word out of the gate.
+renderClauseClaim :: (Text, Text, Text, Text) -> ClauseClaim -> [Text]
+renderClauseClaim (feedArgs, feedLines, judge, mkList) cc =
+  [ call feedArgs [list (ccArgs cc)] | not (null (ccArgs cc)) ]
+    <> [ call feedLines [list (ccFeed cc)] | not (null (ccFeed cc)) ]
+    <> [ call judge [ schemeStr (ccId cc), renderSexp (ccCall cc)
+                    , renderSexp (ccEquals cc) ] ]
   where
+    call w as = "(" <> T.unwords (w : as) <> ")"
+    list xs = "(" <> T.unwords (mkList : map schemeStr xs) <> ")"
     -- A Scheme string literal: only a quote and a backslash need escaping, since
     -- Scheme has no interpolation.
     schemeStr t = "\"" <> T.replace "\"" "\\\"" (T.replace "\\" "\\\\" t) <> "\""

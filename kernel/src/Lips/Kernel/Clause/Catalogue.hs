@@ -20,6 +20,7 @@
 -- adding one requirement is cheaper than lips picking silently.
 module Lips.Kernel.Clause.Catalogue
   ( Runtime (..)
+  , Harness (..)
   , parseRuntime
   , coveringRuntime
   , siteFile
@@ -58,8 +59,30 @@ data Runtime = Runtime
     -- ^ The Nix file that turns the linked site into a derivation. It takes
     -- @{ pkgs, name, src }@ and returns one; lips copies it and calls it,
     -- knowing nothing else about it.
+  , rHarness    :: Harness
+    -- ^ The words this runtime's harness answers to. lips owns the SHAPES (a file
+    -- is loaded by name; a claim is judged by id, expression and expected value)
+    -- and never the words, exactly as with 'rEntry'.
   }
   deriving (Eq, Show)
+
+-- | The four words lips writes into a claims file, and the one it writes to load
+-- a file. Declared per runtime for the same reason the DEFINING word is declared
+-- per notation: @claims-done@ and @load@ are facts about Scheme, and the kernel
+-- must not hold one. What the kernel owns is that a file is loaded by name and a
+-- claim is judged by id, expression and expected value.
+data Harness = Harness
+  { hLoad      :: Text  -- ^ @(\<load\> "file")@
+  , hFeedArgs  :: Text  -- ^ @(\<feed-args\> (list ...))@: the command line to serve
+  , hFeedLines :: Text  -- ^ @(\<feed-lines\> (list ...))@: the input to serve
+  , hJudge     :: Text  -- ^ @(\<claim\> "id" \<expr\> \<want\>)@
+  , hDone      :: Text  -- ^ @(\<claims-done\>)@: the last form, which sets the status
+  , hList      :: Text  -- ^ how this notation builds the list a feed is given
+  }
+  deriving (Eq, Show)
+
+noHarness :: Harness
+noHarness = Harness "" "" "" "" "" ""
 
 -- | Parse a runtime declaration. The name comes from the caller (the directory
 -- the file sits in), so the filesystem stays the index and a file cannot claim a
@@ -67,8 +90,20 @@ data Runtime = Runtime
 parseRuntime :: Text -> Text -> Either Text Runtime
 parseRuntime name txt = do
   decls <- traverse parseLine (meaningfulLines txt)
-  Right (foldr add (Runtime name [] [] [] [] [] [] "" "") (concat decls))
+  let rt = foldr add (Runtime name [] [] [] [] [] [] "" "" noHarness) (concat decls)
+  -- A runtime missing one of these fails HERE, naming the declaration, rather
+  -- than at the door that needed it: an empty entry reads as "not a call" and an
+  -- empty builder as "lips ships no file", neither of which names the cause.
+  mapM_ (require rt)
+    [ ("entry", rEntry), ("build", T.pack . rBuild)
+    , ("harness-load", hLoad . rHarness), ("harness-feed-args", hFeedArgs . rHarness)
+    , ("harness-feed-lines", hFeedLines . rHarness), ("harness-judge", hJudge . rHarness)
+    , ("harness-done", hDone . rHarness), ("harness-list", hList . rHarness) ]
+  Right rt
   where
+    require rt (what, f)
+      | T.null (f rt) = Left ("the " <> name <> " runtime declares no " <> what)
+      | otherwise     = Right ()
     add (DProperty p) r = r { rProperties = p : rProperties r }
     add (DProvides c) r = r { rProvides = c : rProvides r }
     add (DPackage p) r = r { rPackages = p : rPackages r }
@@ -77,10 +112,12 @@ parseRuntime name txt = do
     add (DClaimFile f) r = r { rClaimFiles = f : rClaimFiles r }
     add (DEntry e) r = r { rEntry = e }
     add (DBuild f) r = r { rBuild = f }
+    add (DHarness g) r = r { rHarness = g (rHarness r) }
 
 data Decl
   = DProperty Text | DProvides Text | DPackage Text | DFile FilePath | DClaimFile FilePath
   | DEffectFile FilePath | DEntry Text | DBuild FilePath
+  | DHarness (Harness -> Harness)
 
 meaningfulLines :: Text -> [Text]
 meaningfulLines =
@@ -100,8 +137,15 @@ parseLine line = case T.words line of
   -- notation, and splitting it on spaces would destroy it.
   ("entry" : _ : _) -> Right [DEntry (T.strip (T.drop 5 (T.stripStart line)))]
   ["build", f] -> Right [DBuild (T.unpack f)]
+  ["harness-load", w] -> harness (\g -> g { hLoad = w })
+  ["harness-feed-args", w] -> harness (\g -> g { hFeedArgs = w })
+  ["harness-feed-lines", w] -> harness (\g -> g { hFeedLines = w })
+  ["harness-judge", w] -> harness (\g -> g { hJudge = w })
+  ["harness-done", w] -> harness (\g -> g { hDone = w })
+  ["harness-list", w] -> harness (\g -> g { hList = w })
   _ -> Left ("a runtime declares property, provides, package, file, effect-file,\
-             \ claim-file, entry or build, but this line reads: " <> line)
+             \ claim-file, entry, build or harness-*, but this line reads: " <> line)
+  where harness f = Right [DHarness f]
 
 -- | The one runtime covering these contracts and properties, or why none does.
 -- A required property carries the author's reason for it, which travels into the
@@ -151,8 +195,12 @@ siteFile rt files = T.unlines
   ([ "; Assembled by lips. Do not edit: edit the program, or the runtime's adapters."
    , "; Adapters first, then the minted core, then this runtime's entry."
    ]
-    <> [ "(load \"" <> T.pack f <> "\")" | f <- files ]
+    <> map (loadForm rt) files
     <> [ rEntry rt ])
+
+-- | @(\<load\> "file")@ in the runtime's own word for loading.
+loadForm :: Runtime -> FilePath -> Text
+loadForm rt f = "(" <> hLoad (rHarness rt) <> " \"" <> T.pack f <> "\")"
 
 -- | The claims file a runtime runs: its pure adapters, then the adapters and
 -- harness it substitutes for a claim (lists instead of stdin, a verdict printer),
@@ -161,14 +209,14 @@ siteFile rt files = T.unlines
 -- Same shape as 'siteFile' and the same ignorance: lips writes @(load "x")@ and
 -- pastes the forms it was given. Which files, in which order, and how a failure
 -- becomes an exit code are the runtime's declarations.
-clauseClaimsFile :: [FilePath] -> [Text] -> Text
-clauseClaimsFile files forms = T.unlines
+clauseClaimsFile :: Runtime -> [FilePath] -> [Text] -> Text
+clauseClaimsFile rt files forms = T.unlines
   ([ "; Assembled by lips. The program's own behaviour, judged offline: no"
    , "; derivation to build, no machine to boot, no binary to compile."
    ]
-    <> [ "(load \"" <> T.pack f <> "\")" | f <- files ]
+    <> map (loadForm rt) files
     <> forms
-    <> [ "(claims-done)" ])
+    <> [ "(" <> hDone (rHarness rt) <> ")" ])
 
 -- | What the runtime's entry demands of the minted core: the definition it calls
 -- and how many arguments it passes. Derived from the entry expression itself, so
