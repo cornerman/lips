@@ -819,6 +819,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A key hole stands for a whole subject, so a nested family is as long as the
+  subjects it builds.** `<k:key>` carries the subject of the block head, several
+  segments, but the two static gates expanded it to a one-segment placeholder,
+  so a pattern emitting `<k:key>.target` under a head emitting `button.<n:index>`
+  had the TWO-segment family `<k>.target`. Subject comparison is length-sensitive
+  (`subjectsUnify`), which made the mint gate refuse `demand button.<n>.target` --
+  the only demand an author can state, and one the pattern answers -- while the
+  reach gate found no rule at all for a word under a keyed block, so a rule
+  replacing that word with a constant passed. Two of five `examples/website`
+  mints died on the first half, which by invariant 4 makes it physics rather
+  than a prompt problem. `Lang.Nest.scopedBindings` now expands a key hole to the
+  head's own emitted subject, recursively and per parent, and both
+  `Engine.Answerable` and `Engine.Landing` (hence `Engine.Reach` and
+  `Engine.Typing`) read their bindings from it. Two limits stated rather than
+  guessed: a pattern nested under itself has one family per depth, so only the
+  shallowest is named, and a key that can reach no head yields no family, since
+  no line can scope to such a pattern anyway.
 - **The logic axis, physics half: behaviour is clauses, and a clause is a
   decision.** The falsifier ran first and passed
   (`docs/superpowers/learnings/2026-08-04-logscan-clause-falsifier.md`): 24 lines

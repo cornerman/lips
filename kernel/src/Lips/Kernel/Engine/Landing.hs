@@ -21,7 +21,6 @@ module Lips.Kernel.Engine.Landing
   , wordDecorates
   ) where
 
-import qualified Data.Map.Strict as Map
 import           Data.Maybe      (isJust, listToMaybe)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -29,7 +28,7 @@ import qualified Data.Text       as T
 import Lips.Kernel.Decision       (Assertion (..), Kind (Concept), Subject (..))
 import Lips.Kernel.Engine.Data    (MapRule (..))
 import Lips.Kernel.Engine.Overlap (subjectsUnify)
-import Lips.Kernel.Lang.Nest      (holesInScope)
+import Lips.Kernel.Lang.Nest      (holesInScope, scopedBindings)
 import Lips.Kernel.Lang.Pattern   (Pattern (..), applyPattern)
 import Lips.Kernel.Surface        (valueTokens)
 
@@ -92,14 +91,18 @@ wordDecorates pats p h =
   or [ any (hit h) segs || hit h a | (segs, Concept, a) <- emitsOf pats p ]
 
 -- | The pattern's emits with every hole bound to its marker.
+--
+-- The bindings come from 'scopedBindings', not from this template alone: a
+-- nested pattern's emits may name an ancestor's capture (so applyPattern is
+-- total only over the whole scope), and its @\<k:key\>@ carries the block
+-- head's WHOLE subject, which is what makes the family as long as the subjects
+-- a rule matches. One emit set per head the line may sit under.
 emitsOf :: [Pattern] -> Pattern -> [([Text], Kind, Text)]
 emitsOf pats p =
-  [ (segs, k, a) | (Subject segs, k, Assertion a, _) <- applyPattern p marks ]
-  where
-    -- Every hole IN SCOPE, not just this template's: a nested pattern's emits
-    -- may name an ancestor's capture, and applyPattern is total only over a
-    -- complete binding map.
-    marks = Map.fromList [(x, marker x) | x <- holesInScope pats p]
+  [ (segs, k, a)
+  | marks <- scopedBindings marker pats p
+  , (Subject segs, k, Assertion a, _) <- applyPattern p marks
+  ]
 
 -- | A segment holding any marker becomes a capture named after the holes in it,
 -- so the rule side unifies against a variable -- and a hole repeated in two

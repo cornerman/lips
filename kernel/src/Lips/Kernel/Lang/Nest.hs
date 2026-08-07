@@ -42,6 +42,7 @@ module Lips.Kernel.Lang.Nest
   , checkNesting
   , ancestorsOf
   , holesInScope
+  , scopedBindings
   , Frame (..)
   , Frames
   , noFrames
@@ -55,8 +56,11 @@ import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
+import Lips.Kernel.Decision     (Subject (..))
 import Lips.Kernel.Lang.Pattern (PatEmit (..), Pattern (..), StrPart (..),
-                                 StructType (..), holesOf, refName, structHoles)
+                                 StructType (..), applyPattern, holesOf,
+                                 refName, structHoles)
+import Lips.Kernel.Reader       (joinSubject)
 
 -- | An engine whose nesting does not close. Every case is refused at the one
 -- door that reads a @.lang@ ('Lips.Kernel.Lang.Store.readLang'), so @generate@,
@@ -129,6 +133,47 @@ holesInScope pats = nub . go []
         []       -> []
         (s : ss) -> foldl' intersect' s ss
     intersect' a b = [x | x <- a, x `elem` b]
+
+-- | The bindings a pattern's emits can be read under STATICALLY: every hole in
+-- scope stands for itself (spelled by @mark@, so one caller can use a marker
+-- and another a @\<name\>@ placeholder), except @\<k:key\>@, which stands for
+-- the SUBJECT of the block head it nests under -- a whole dotted path, not one
+-- segment, since that is what crystallize fills it with (a block's key is the
+-- subject of its head's first emit, 'Lips.Kernel.Lang.Crystallize').
+--
+-- One map per parent the line may attach to, because each head keys its block
+-- differently. Without this a nested pattern emitting @\<k:key\>.target@ had a
+-- TWO-segment family, while every subject it can ever build has as many
+-- segments as the head's plus one: subject comparison is length-sensitive
+-- ('Lips.Kernel.Engine.Overlap.subjectsUnify'), so the demand gate refused
+-- @demand button.\<n\>.target@ although the pattern answers exactly it (two of
+-- five @examples\/website@ mints died on that), and the reach gate found no
+-- rule at all for a word under a keyed block.
+--
+-- Two limits, both honest. A pattern nested under ITSELF has one family per
+-- depth, infinitely many, so only the shallowest (through its foreign parents)
+-- is named. A pattern whose key can reach no head at all -- a missing parent,
+-- or a self-reference as the only parent -- yields NO bindings, since no line
+-- can ever scope to it and therefore no subject exists to name.
+scopedBindings :: (Text -> Text) -> [Pattern] -> Pattern -> [Map Text Text]
+scopedBindings mark pats = go []
+  where
+    go seen p = case [n | (n, SKey) <- structHoles p] of
+      []   -> [plain p]
+      keys -> [ Map.union (Map.fromList [(k, fam) | k <- keys]) (plain p)
+              | fam <- keyFamilies seen p ]
+    plain p = Map.fromList [(h, mark h) | h <- holesInScope pats p]
+    -- The head's own subject, built by the head's own substitution, so this
+    -- sees exactly the key crystallize will record.
+    keyFamilies seen p
+      | pId p `elem` seen = []
+      | otherwise = nub
+          [ joinSubject segs
+          | q <- [x | x <- pParents p, x /= pId p]
+          , Just a <- [find ((== q) . pId) pats]
+          , binds <- go (pId p : seen) a
+          , (Subject segs, _, _, _) : _ <- [applyPattern a binds]
+          ]
 
 -- | Every way an engine's nesting fails to close, in pattern-id order so the
 -- report is deterministic. Empty means every child has a parent, no cycle

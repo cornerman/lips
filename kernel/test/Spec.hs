@@ -3746,9 +3746,10 @@ main = hspec $ do
   -- steer and emits the literal buildGoModule, so it works only because nobody
   -- edits that word). Static, domain-blind, checked at the mint gate.
   describe "dropped program values (does every word the language reads reach output)" $ do
-    let pat body = case parsePatternBody "p1" body of
+    let pat' i body = case parsePatternBody i body of
           Right ok -> ok
           Left e   -> error (T.unpack ("bad test pattern: " <> e))
+        pat = pat' "p1"
         rul i body = case parseRuleBody i body of
           Right ok -> ok
           Left e   -> error (T.unpack ("bad test rule: " <> e))
@@ -3808,6 +3809,26 @@ main = hspec $ do
 
     it "stays silent when no rule matches the decision at all" $
       droppedValues [langPat] [] `shouldBe` []
+
+    -- examples/website: a block head keyed by <n:index>, and an item whose
+    -- subject starts at <k:key>. The key stands for the head's WHOLE family
+    -- (button.<n>), so a rule matching button.<i>.target must be found here --
+    -- before the fix the family was one segment and no rule ever unified, so
+    -- every word under a keyed block was judged against no rule at all.
+    let buttonPat = pat' "p4" "button <label> => fact button.<n:index> \"<label>\""
+        clickPat  = pat' "p5.under.p4"
+          "on click: erase everything in canvas <target> \
+          \=> fact <k:key>.action \"clear\" ; fact <k:key>.target \"<target>\""
+
+    it "reports a word under a keyed block that its rule replaces" $
+      droppedValues [buttonPat, clickPat]
+        [ rul "r6" "match fact button.<i>.target => systemd.services.s.environment.T \"\\\"x\\\"\"" ]
+        `shouldBe` [DroppedValue "p5" "target" (IgnoredBy ["button", "<n>", "target"] ["r6"])]
+
+    it "accepts the same rule once it reads the value" $
+      droppedValues [buttonPat, clickPat]
+        [ rul "r6" "match fact button.<i>.target => systemd.services.s.environment.T \"\\\"<value>\\\"\"" ]
+        `shouldBe` []
 
     it "names the defect in the words the rule author needs" $
       map renderDroppedValue (droppedValues [langPat] [constRule])
@@ -3884,12 +3905,32 @@ main = hspec $ do
         `shouldBe` []
 
   describe "unanswerable demands (can a program ever meet it)" $ do
-    let pat body = case parsePatternBody "p1" body of
+    let pat' i body = case parsePatternBody i body of
           Right ok -> ok
           Left e   -> error (T.unpack ("bad test pattern: " <> e))
+        pat = pat' "p1"
         dem i subj = DemandSpec i subj "q?"
         namePat = pat "install the tool as the command <name> \
                       \=> fact command.<name> \"<name>\""
+        -- examples/website (2026-07-31): two of five mints died on this. A
+        -- nested pattern emits <k:key>.target, and <k> stands for the whole
+        -- subject of the block head (button.<n>), so the only demand an author
+        -- can write is the three-segment button.<n>.target.
+        buttonPat = pat' "p4" "button <label> => fact button.<n:index> \"<label>\""
+        clickPat  = pat' "p5.under.p4"
+          "on click: erase everything in canvas <target> \
+          \=> fact <k:key>.action \"clear\" ; fact <k:key>.target \"<target>\""
+
+    it "accepts a demand on a nested family rooted at the block head" $
+      unanswerableDemands [buttonPat, clickPat] [dem "q2" ["button", "<n>", "target"]]
+        `shouldBe` []
+
+    it "expands a key hole to the head's family in the report" $
+      map renderUnanswerableDemand
+          (unanswerableDemands [buttonPat, clickPat] [dem "q2" ["button", "<n>", "colour"]])
+        `shouldBe` ["demand q2 asks for button.<n>.colour, which no pattern emits; \
+                    \the patterns emit button.<n>, button.<n>.action, \
+                    \button.<n>.target"]
 
     -- The examples/habit mint (2026-07-29), verbatim in shape: two mints in a
     -- row demanded `command` beside a pattern emitting `command.<name>`, and

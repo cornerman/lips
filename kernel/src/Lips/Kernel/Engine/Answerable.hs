@@ -28,14 +28,13 @@ module Lips.Kernel.Engine.Answerable
   , renderUnanswerableDemand
   ) where
 
-import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Decision       (Subject (..))
 import Lips.Kernel.Engine.Data    (DemandSpec (..), renderAttrPath)
 import Lips.Kernel.Engine.Overlap (subjectsUnify)
-import Lips.Kernel.Lang.Nest      (holesInScope)
+import Lips.Kernel.Lang.Nest      (scopedBindings)
 import Lips.Kernel.Lang.Pattern   (Pattern (..), applyPattern)
 
 -- | A demand no program can answer: the demand, and every subject family the
@@ -59,16 +58,18 @@ unanswerableDemands pats demands =
   where families = concatMap (emittedFamilies pats) pats
 
 -- | The subject families one pattern emits, with each hole standing as its own
--- capture. Derived by running the pattern's own substitution ('applyPattern'),
--- so the families are exactly the subjects crystallize will build -- the same
--- move 'Lips.Kernel.Engine.Reach' makes, rather than re-deriving how a subject
--- splits into segments.
+-- capture. Derived by running the pattern's own substitution ('applyPattern')
+-- over the bindings its scope allows ('scopedBindings'), so the families are
+-- exactly the subjects crystallize will build -- the same move
+-- 'Lips.Kernel.Engine.Reach' makes, rather than re-deriving how a subject
+-- splits into segments. A nested pattern has one family per block head it may
+-- sit under, since its @\<k:key\>@ carries that head's whole subject.
 emittedFamilies :: [Pattern] -> Pattern -> [[Text]]
 emittedFamilies pats p =
-  [ segs | (Subject segs, _, _, _) <- applyPattern p bound ]
-  -- Every hole IN SCOPE: a nested pattern's subject may carry an ancestor's
-  -- capture, and that segment is a capture in the family too.
-  where bound = Map.fromList [(h, "<" <> h <> ">") | h <- holesInScope pats p]
+  [ segs
+  | bound <- scopedBindings (\h -> "<" <> h <> ">") pats p
+  , (Subject segs, _, _, _) <- applyPattern p bound
+  ]
 
 -- | One unanswerable demand in the words its author (the model, at the mint
 -- gate) needs: which demand, the subject nothing emits, and what is on offer.

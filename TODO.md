@@ -222,29 +222,6 @@ tracks only what is still open.
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
 
-6. **A demand cannot name a subject rooted at `<k:key>`, so the mint gate
-   refuses engines that are correct** (found 2026-07-31 while re-minting
-   `examples/website` for the punctuation physics; two of five opus mints died
-   on it, which by invariant 4 makes it kernel physics, not a prompt problem).
-
-   `Engine/Answerable.emittedFamilies` builds a nested pattern's family by
-   substituting every hole in scope with itself, so a pattern emitting
-   `fact <k:key>.target` yields the family `<k>.target`, TWO segments. But `<k>`
-   binds the whole SUBJECT of the block's heading, which is itself several
-   segments (`button.<n>`), so the only demand that can ever be met is the
-   literal `<k>.target`, which no author can state and no honest mint writes.
-   The mint writes `demand button.<n>.target`, three segments,
-   `subjectsUnify` says no, and the refusal blames the mint for a demand its own
-   patterns do answer -- the same wrong-side blame the module's habit story
-   documents.
-
-   Remedy, domain-blind and static: expand `<k>` to the emitted families of the
-   pattern's PARENTS (`Lang.Nest` already knows them) instead of to a one-segment
-   placeholder, so a nested family is `parent-family ++ rest`. Then
-   `demand button.<n>.target` unifies. Same expansion belongs anywhere else a
-   `<k>`-rooted family is compared segment for segment; check `Engine/Reach` and
-   `Engine/Overlap` for the same assumption before fixing one call site.
-
 7. **The corpus is minted from singleton programs, so its engines understand
    one instance each** (found 2026-08-02 by the website plurality experiment;
    DESIGN §13 "Plurality is what makes a baked-source hole mean anything" and
@@ -266,7 +243,7 @@ tracks only what is still open.
    singleton behaviour sentences), `http` (24), `function` (23, and note the
    reverse experiment: cutting its three calls to one should demote the call to a
    constant). Each is one program edit plus one `generate --renew`, so this is
-   cheap and does not wait on items 1-6.
+   cheap and does not wait on items 1-5.
 
    Not decided: whether to make it a GATE. A baked-source hole binding only one
    distinct value across the program is statically visible and domain-blind, so
