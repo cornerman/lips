@@ -721,9 +721,15 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       -- conjured. `logscan` spent months as the counter-example: 76 lines of Go,
       -- roughly fifteen traceable, a silent `continue` against fail-loud doctrine,
       -- two mints disagreeing about what the program did, and every gate green
-      -- throughout. The cost of refusing is one sentence from the author, which
-      -- the message names. A pure-configuration mint is unaffected, and so is an
-      -- engine whose behaviour is clauses with a claim over them.
+      -- throughout. The cost of refusing is a re-mint, which the message names.
+      -- A pure-configuration mint is unaffected, and so is an engine whose
+      -- behaviour is clauses with a claim over them.
+      --
+      -- Addressed to the MINT, not to the author (measured 2026-08-06): opus-5
+      -- minted `examples/function.lips` unmodified, with no witness sentence in
+      -- it, and deduced four claims from the program's own words. Deducing the
+      -- observable is the mint's job; the author states one only where the mint
+      -- reports it cannot.
       -- Clauses nothing observes are refused one tier down, by
       -- 'Lips.Kernel.Realize.realizeClauseClaims', which knows the actual clause
       -- set and can require every definition to be REACHED by a claim rather than
@@ -735,8 +741,11 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
         (T.pack rep <> " builds a program from source, and nothing observes what"
           <> " that program does:")
         [ sfArtifact sf <> "/" <> sfPath sf | sf <- minted ]
-        ("\8594 state an example in the program -- what it is given and what it"
-          <> " prints -- and mint again: lips generate " <> T.pack rep))
+        ("\8594 the mint must deduce an example from the program's own words --"
+          <> " what it is given and what it prints -- and file a claim over it;"
+          <> " mint again: lips generate " <> T.pack rep
+          <> ". State the example in the program only where the mint reports it"
+          <> " cannot deduce one."))
       case unplaceableClaims target allClaims of
         []  -> pure ()
         ids -> die (report
