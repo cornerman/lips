@@ -877,6 +877,39 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A clause takes contributions from several program lines.** A program whose
+  lines are STATEMENTS (`examples/function`: a declaration and three calls) had
+  no way to reach one entry point: a clause rhs is one s-expression per subject,
+  so a second statement line was a merge conflict. The first live clause mint of
+  `function` filed exactly that as the gap `clause-sequence` -- and worked around
+  it by demoting the three calls to CLAIMS and minting `(define (main) (run-all
+  (arguments)))`, a command printing its own argv. Every gate stayed green,
+  because the rule that every word must reach output was satisfied by an
+  observation rather than by behaviour. The remedy is the dual of list
+  aggregation on a list-typed option, and reuses all of it: a rule writes a
+  one-element LIST holding the whole definition (`clause.main "[ (define (main)
+  (print-line \"#<value>\")) ]"`), `mergeModeOf` already reads a list rhs as
+  `Append`, `assembleWith` already orders contributors by program line and links
+  every one into the provenance, and the only new physics is
+  `Clause.Gate.mergeDefinitions`, folding contributors into one definition whose
+  body is theirs in order. Contributors must define the same name with the same
+  parameters, or the fold is refused. A clause keeps its repeats whatever the
+  engine declared, decided by the kernel rather than by the mint (`clauseRooted`
+  in `assembleWith`): printing twice is not printing once, and collapsing a
+  repeated statement would delete behaviour with every gate green. `function`
+  re-minted to two clauses, no baked source, `(define (main) (print-line
+  "hallo") (print-line "du") (print-line "!"))` carrying all three lines'
+  provenance, and the built binary prints those three lines.
+- **A mint deduces the observable; the author need not state one.** The
+  obligation to observe baked source (`claimlessBakedSource`) counts claims in
+  the ENGINE, and its refusal read as if the burden were the author's ("state an
+  example in the program"). Measured against `examples/function.lips`
+  unmodified -- four lines, no witness sentence -- opus-5 deduced four claims
+  from the program's own words on the first try. So a witness sentence is not a
+  precondition for re-minting a baked-source example, and a deduced claim is
+  strictly stronger than a written one: it is keyed to the program's values
+  (`expect claim.<f>-<n>.equals from call.<f>.<n>.text`), so editing a line moves
+  the claim with it, where a prose example can drift out of sync.
 - **A re-mint says when it re-grounds.** The schema pin is deliberately not
   sticky: a re-mint grounds against the pin the running binary carries (or
   `--schema`), never the one the committed record names, because fresh grounding

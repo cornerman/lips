@@ -15,8 +15,14 @@ tracks only what is still open.
    gate on `generate` -- neither can be re-minted until this is settled. That
    makes it a PREREQUISITE for every re-mint item 5 wants.
 
-   a. `function` and `website` bake source and state no witness; both are plain
-      enough that an example should be cheap. Check when item 5 touches them.
+   a. `website` bakes source and states no witness. CLOSED for `function`, and
+      the precondition it stood for is gone: measured 2026-08-06, opus-5 minted
+      `examples/function.lips` UNMODIFIED (no witness sentence) and deduced four
+      claims from the program's own words. A witness sentence is not a
+      precondition for re-minting a baked-source example; the mint's job is to
+      deduce the observable, and it only asks when it cannot. What is still worth
+      fixing is the REFUSAL WORDING (`kernel/app/Main.hs:735`), which tells the
+      author to state an example rather than telling the mint to deduce one.
    b. Not decided: whether a machine claim should RETRY its observation until it
       holds, bounded. A booted system converges (a unit may not be listening the
       instant `multi-user.target` is reached), so a single shot can be flaky, and
@@ -34,9 +40,22 @@ tracks only what is still open.
       `witness-entry-count`), since the grammar repeats a sub-match only in a
       BULLETED block, never inside one prose line. The engine is honest (a
       program with two or four entries simply fails to crystallize, loud), so
-      this is a completeness question, not a soundness one. Cheapest honest
-      answer if it recurs: write the witness as a bulleted block, which the
-      grammar already repeats -- try that before touching the kernel.
+      this is a completeness question, not a soundness one.
+      The bulleted block is NOT the answer, measured 2026-08-06: it aggregates
+      into a Nix list, and only `claim.<id>.feed` and `.args` are Nix lists.
+      `ccEquals` and `ccCall` are `parseSexp` of ONE assertion, and a command
+      claim's `stdin`/`stdout` are single strings with embedded newlines (which
+      is how `board` freezes at five input and three output lines). So a block
+      fixes a witness's INPUT side and cannot reach its OUTPUT side.
+      The `function` re-mint filed this independently as `per-line-expected-
+      output`, adding a second reason one claim per statement is unusable: the
+      claim adapters share their output list, so the second claim's `(emitted)`
+      still holds the first claim's lines. It worked around both by carrying the
+      stated lines in `claim.args` and asserting `(equal? (emitted) (arguments))`
+      -- honest and exact, but a detour that reads as if the program consumed its
+      argv. The candidate remedy is now named: an aggregating expected-output
+      section, the dual of `feed`, so an author's example stops freezing its item
+      count. Deferred until a third program wants it.
 
 2. **CLI-tool physics -- the record behind item 1** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
@@ -159,11 +178,13 @@ tracks only what is still open.
    `board` and `habit` were treated this way on 2026-08-03 (three columns, one of
    them empty; two contrasted mark characters), together with the feedability
    they needed, and `logscan` stopped baking source altogether when it was
-   re-minted as clauses. Remaining candidates, in order of how much they bake:
-   `http` (24 lines of source) and `function` (23, and note the reverse
-   experiment: cutting its three calls to one should demote the call to a
-   constant). Each is one program edit plus one `generate --compat none`, so
-   this is cheap and does not wait on items 1-4.
+   re-minted as clauses. `function` stopped baking source on 2026-08-06 with no
+   program edit at all, once clause sequencing let its three calls compose into
+   one entry point (DESIGN §13). Its plurality was already right, and the reverse
+   experiment is still untried: cutting its three calls to one should demote the
+   call to a constant. Remaining candidate, in order of how much it bakes:
+   `http` (24 lines of source). One program edit plus one `generate --compat
+   none`, so this is cheap and does not wait on items 1-4.
 
    Not decided: whether to make it a GATE. A baked-source hole binding only one
    distinct value across the program is statically visible and domain-blind, so
@@ -211,10 +232,18 @@ tracks only what is still open.
    What exists: the counting (`Lips.Kernel.Grounding`, printed on every check).
    What is missing: the `Glue` kind is declared in `Decision.hs` and used
    nowhere, so glue is counted structurally rather than marked as such; and no
-   gate refuses a new staged tree. Five committed programs still carry one
-   (`website` 220 lines, `habit` 78, `http` 62, `board` 40, `function` 21), so a
-   gate landing today would refuse the corpus it ships with: the trees move to
-   clauses first, then the gate closes the door behind them.
+   gate refuses a new staged tree. Four committed programs still carry one
+   (`website` 220 lines, `habit` 78, `http` 62, `board` 40; `function` shed its
+   21 on 2026-08-06), so a gate landing today would refuse the corpus it ships
+   with: the trees move to clauses first, then the gate closes the door behind
+   them.
+
+   Watch for the loophole the `function` re-mint found before clause sequencing
+   existed: told that every word it reads must reach output, a mint satisfied it
+   by landing the program's words in CLAIMS and minting behaviour that ignored
+   them. A claim is an observation, not a realization. The guard, if this
+   recurs, is the twin of `diagInert`: a word whose only landing is a claim is
+   inert in the same sense and should be named.
 
 8. **Remaining known gaps on the clause axis** (none blocking).
 
@@ -230,6 +259,18 @@ tracks only what is still open.
    b. **Several sites at once is refused, not built** (plan Task 10 landed as
       shape only). No committed example needs a second place; the refusal makes
       growing to several a kernel change nobody can stumble into.
+   c. **A program value cannot become a clause's own identifier** (filed by the
+      `function` re-mint as `identifier-from-program`, 2026-08-06). A hole
+      outside a Scheme string must be typed (int/float/bool), and a capture
+      fills an emit PATH but is not substituted into an s-expression, so
+      `function println_to_stdout(x: String)` realizes the fixed clause
+      `(define (print-line line) ...)` and the declared name reaches only
+      `site.<self>.command`. Renaming the parameter costs a fresh mint. Honest
+      today (the name still governs the installed command, so no word is
+      inert), and the fix is not obvious: a program word becoming a defined
+      NAME has to survive the gate's grounding walk, which resolves names
+      before any program is seen. Revisit if a program wants two differently
+      named functions.
 
 ## Backlog (larger / deferred by design)
 
