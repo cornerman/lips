@@ -1,0 +1,9 @@
+p1 meta lang.pattern.p1 stated "sage <text> auf dem terminal => fact say.gruss \"<text>\"" @gen:a78d016daa665101
+p2 meta lang.pattern.p2 stated "warte auf input für den <var> => fact input.<var> \"<var>\"" @gen:a78d016daa665101
+p3 meta lang.pattern.p3 stated "sage <text> mit dem <var> => fact say.abschied.<var> \"<text>\"" @gen:a78d016daa665101
+q1 meta engine.demand.q1 stated "demand say.gruss \"was soll beim Start auf dem Terminal ausgegeben werden?\"" @gen:a78d016daa665101
+q2 meta engine.demand.q2 stated "demand input.<var> \"welchen Wert soll das Programm einlesen?\"" @gen:a78d016daa665101
+q3 meta engine.demand.q3 stated "demand say.abschied.<var> \"was soll zusammen mit dem eingelesenen Wert ausgegeben werden?\"" @gen:a78d016daa665101
+r1 meta engine.rule.r1 stated "match fact say.gruss => clause.gruss \"(define (gruss) (emit \\\"#<value>\\\"))\" ; claim.gruss.call \"(begin (gruss) (emitted))\" ; claim.gruss.equals \"(list \\\"#<value>\\\")\" ; site.<self>.command \"\\\"<self>\\\"\" ; environment.systemPackages \"[ ${site} ]\"" @gen:a78d016daa665101
+r2 meta engine.rule.r2 stated "match fact input.<var> => clause.frage \"(define (frage) (let ((zeile (read-a-line))) (if (end-of-input? zeile) (die \\\"kein wert eingegeben:\\\" \\\"#<var>\\\") zeile)))\" ; claim.frage.feed \"[ \\\"Welt\\\" ]\" ; claim.frage.call \"(frage)\" ; claim.frage.equals \"\\\"Welt\\\"\"" @gen:a78d016daa665101
+r3 meta engine.rule.r3 stated "match fact say.abschied.<var> => clause.abschied \"(define (abschied name) (emit (string-append \\\"#<value>\\\" \\\" \\\" name)))\" ; clause.main \"(define (main) (gruss) (abschied (frage)))\" ; claim.abschied-<var>.feed \"[ \\\"Welt\\\" ]\" ; claim.abschied-<var>.call \"(begin (main) (cdr (emitted)))\" ; claim.abschied-<var>.equals \"(list \\\"#<value> Welt\\\")\"" @gen:a78d016daa665101

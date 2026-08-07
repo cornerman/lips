@@ -1,0 +1,2 @@
+a1 expect claim.gruss.equals from say.gruss
+a2 expect claim.abschied-<var>.equals from say.abschied.<var>
