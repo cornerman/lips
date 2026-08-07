@@ -19,6 +19,7 @@ module Lips.Cli
   , checkOpts
   , optionsOpts
   , programCompleter
+  , defaultThinking
   ) where
 
 import Control.Monad      (filterM)
@@ -49,10 +50,17 @@ data GenerateOpts = GenerateOpts
 -- the model (omitted, so pi's own default applies and is read back), an
 -- unstated thinking level would be an ambient input steering the mint without
 -- entering the record, the same hole @-nc@ closed for ambient context files.
--- Default @high@: a mint acts once, emits a whole engine against an exacting
--- grammar, and a refused mint costs a full round, so reasoning is cheap here.
+--
+-- Default @medium@, measured rather than guessed. A mint's cost is turns times
+-- per-turn latency, and lips itself is under 1% of it (one @check_draft@ is
+-- ~0.95s inside a six-minute mint). Reasoning level moves the second factor:
+-- the same program minted in 6m22s at @high@ and 4m17s at @medium@, with the
+-- same number of drafts and a behaviourally identical engine. What actually
+-- costs a mint is a REFUSED draft, and that is bought with a clearer prompt, not
+-- with a higher reasoning level. Raise it per run with @--thinking@ when a
+-- program is genuinely hard; the level is recorded either way.
 defaultThinking :: String
-defaultThinking = "high"
+defaultThinking = "medium"
 
 -- | Everything @compile@ needs. Exactly one program -- unlike @generate@'s
 -- @some@, no forced symmetry: compile realizes into a single output
@@ -215,7 +223,7 @@ generateOpts defConf = GenerateOpts
   <*> strOption
         (long "thinking" <> value defaultThinking
           <> metavar "off|minimal|low|medium|high|xhigh|max"
-          <> help "How hard the model should think (default: high). Recorded in .generation.")
+          <> help "How hard the model should think (default: medium). Recorded in .generation.")
   <*> some (strArgument (metavar "PROGRAM..." <> completer programCompleter))
 
 -- | @--lang@: read the committed language files (.lang/.expect/

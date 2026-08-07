@@ -1458,15 +1458,24 @@ but the loop around it is incomplete; "missing" means specced, not built.
   turned the report from a formality into the loudest open question in the
   repo (see "Verified breakages", concept escape).
 
-- **The reasoning level is pinned (`--thinking`, default `high`).** `generate`
+- **The reasoning level is pinned (`--thinking`, default `medium`).** `generate`
   passed no thinking flag, so pi's default applied, inherited from the caller's
   environment, steering the mint without entering `.generation` or `genId` -- the
   same hole `-nc` closed for ambient context files. It is now always passed
   explicitly and recorded as a `thinking:` line, so it enters the id. Unlike the
   model (deliberately not baked in: omitted, then read back), an omitted
   thinking level cannot be read back reliably, so explicit-always is the fix.
-  Default `high` because a mint acts once against an exacting grammar and a
-  refusal costs a whole round.
+
+  The default was `high` on the reasoning that a refused mint costs a whole
+  round. Measurement (2026-08-05) moved it. A mint's cost is turns times
+  per-turn latency, and lips is under 1% of it: one `check_draft` takes ~0.95s
+  inside a six-minute mint, so the model is over 99%. Reasoning level moves
+  per-turn latency, and the same program minted in 6m22s at `high` against
+  4m17s at `medium` -- same number of drafts, behaviourally identical engine,
+  a third of the time saved. Turn COUNT is the larger factor (one program took
+  23 drafts before the prompt was corrected and 3 after), and it is bought with
+  a clearer prompt rather than with more reasoning. Raise it per run when a
+  program is genuinely hard; the level is recorded either way.
 
 - **Captures are first-class: a capture keys a build and fills a value.** A
   `<name>` capture reached the emit PATH only, so a rule could key an nginx

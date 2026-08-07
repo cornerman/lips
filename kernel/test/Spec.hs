@@ -47,7 +47,7 @@ import Lips.Nix.Schema (schemaFor)
 import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
 import Lips.Nix.Target
-import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter)
+import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, getTemporaryDirectory)
@@ -116,39 +116,42 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
     it "defaults target to nixos, confidence to the default, renew/verbose off" $
       parseArgs ["ledger.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False Nothing "high" ["ledger.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False Nothing defaultThinking ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseArgs ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.7 False False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.7 False False Nothing defaultThinking ["a.backup.lips"])
     it "rejects an unknown target" $
       parseArgs ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
     it "reads an explicit --model alongside multiple programs" $
       parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") "high" ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.9 False False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.9 False False Nothing defaultThinking ["a.backup.lips"])
     it "rejects an out-of-range confidence" $
       parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
     it "reads --renew in any position" $ do
       parseArgs ["--renew", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "--renew"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing defaultThinking ["a.backup.lips"])
     it "reads -v/--verbose in any position" $ do
       parseArgs ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "-v"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing defaultThinking ["a.backup.lips"])
     it "reads -m as the short alias for --model" $
       parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") "high" ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     -- The thinking level is always passed to pi and always recorded, so an
     -- ambient reasoning setting cannot steer a mint unrecorded (invariant 6).
-    it "defaults --thinking to high and reads an override" $ do
-      goThinking <$> parseArgs ["a.backup.lips"] `shouldBe` Just "high"
+    -- Measured, not guessed: the same program minted in 6m22s at high and 4m17s
+    -- at medium, same number of drafts, behaviourally identical engine. What
+    -- costs a mint is a refused draft, bought back with a clearer prompt.
+    it "defaults --thinking to medium and reads an override" $ do
+      goThinking <$> parseArgs ["a.backup.lips"] `shouldBe` Just defaultThinking
       goThinking <$> parseArgs ["--thinking", "max", "a.backup.lips"] `shouldBe` Just "max"
     -- The grounding schema defaults to the pin baked into this binary, so nobody
     -- has to author one; --schema is how a caller whose own world differs (a
