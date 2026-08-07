@@ -3772,6 +3772,18 @@ main = hspec $ do
       property $ \ds ->
         let b = fromList ds in resolveReplace (union b b) === resolveReplace b
 
+    -- Lex specialis is REFUSED (DESIGN §11): a longer subject path is a
+    -- different subject, not a narrower statement of the same one, so it
+    -- neither shadows nor is shadowed. Pinned because the opposite reading is
+    -- what let clause.main.extra silently take over clause.main.
+    it "a longer subject does not shadow a shorter one: they are two subjects" $ do
+      let general  = (mk "g" "x" "one" Stated) { dSubject = Subject ["clause", "main"] }
+          specific = (mk "s" "x" "two" Stated)
+                       { dSubject = Subject ["clause", "main", "extra"] }
+      fmap Map.toList (resolveReplace (fromList [general, specific]))
+        `shouldBe` Right [ (Subject ["clause", "main"], general)
+                         , (Subject ["clause", "main", "extra"], specific) ]
+
     -- The aggregating mode obeys the same law, and it is the one where order
     -- could plausibly leak: the assembled list is built from several
     -- contributors, so 'resolveGroup' sorts them by id rather than taking them

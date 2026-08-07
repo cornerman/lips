@@ -834,12 +834,21 @@ omission.
   `Fact`), so building override-surviving obligations now would be
   speculative. Recorded so the first engine that emits an obligation is
   recognized as the moment to decide. Survey F, seam 2.
-- **Does specificity beat generality?** Strength is *lex superior* only (a
-  higher authority wins). Defeasible deontic logic also has *lex specialis*
-  (the more specific norm wins), which is what an author may expect when a
-  per-instance decision meets a language-wide default. Either adopt it as
-  physics or record the refusal; leaving it undecided invites surprise.
-  Survey F, seam 4.
+- ~~**Does specificity beat generality?**~~ RESOLVED 2026-08-05, as a refusal.
+  Strength stays *lex superior* only (a higher authority wins); *lex specialis*
+  (the more specific norm wins) is not adopted, for three reasons. It has no
+  meaning here except "a longer subject path shadows a shorter one", which is
+  the defect refused by name five days earlier (§13, "A clause subject is
+  exactly `clause.<name>`"): `clause.main.extra` silently took over
+  `clause.main`, and both passed every gate. What an author actually means by
+  specificity in a configuration -- a per-instance decision beating a
+  language-wide default -- is already lex superior, since a program's decision
+  is `Stated` and a default is not, so the expectation is served without a
+  second rule. And it would cost the set law: under lex specialis the winner
+  for one subject would depend on which OTHER subjects the base holds, so
+  `resolve` would stop being a per-subject function of the set (§2, the IC
+  audit). Subjects that differ are independent, and a base that wants a
+  narrower rule states it under the narrower subject. Survey F, seam 4.
 - ~~Naming~~: resolved. The project is **lips**: Lisp rearranged (same
   letters, one level up) and the organ where intent leaves the human as
   speech. Branded `lips-lang` where the bare word is taken.

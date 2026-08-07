@@ -475,14 +475,6 @@ cost. Sequencing note: the sharpest critique this list used to rank behind --
 that invariant 6 was verified by nothing -- is answered (DESIGN §13, "Invariant
 6 held all along"), so these are now the outstanding theory gaps.
 
-- **Lex specialis: decide or refuse** (one paragraph in DESIGN.md §11).
-  Strength is *lex superior* only (higher authority wins). Defeasible
-  deontic logic also has *lex specialis* (the more specific subject wins),
-  which is what an author may expect when a per-instance decision meets a
-  language-wide default. Adopt it as physics or record the refusal with the
-  reason; refusal is a valid answer, an undecided question is not. Done
-  when §11 no longer lists it as open.
-
 - **Minimal conflict explanation (QuickXplain)** (~1 week; code,
   deterministic, domain-blind, offline). A conflict names two competing
   decisions today. When the contradiction is derived several refinement
