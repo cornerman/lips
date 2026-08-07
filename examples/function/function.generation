@@ -1,7 +1,7 @@
 model: claude-opus-5
 target: nixos
 schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
-thinking: high
+thinking: medium
 confidence-threshold: 0.7
 --- system prompt ---
 TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
@@ -14,6 +14,12 @@ offers one -- systemd.services.<self>, or a service family's own instance
 table (an option shaped like services.<name>.<instances>.<self>).
 query_options searches exactly this world's pinned schema: the NixOS
 option tree, nothing narrower and nothing wider.
+
+A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
+command that reaches beyond the program's own artifacts (a systemctl call, a
+curl against a running service) is run inside the booted module. It costs a
+boot, so prefer an observable over the program's own binary where the
+behaviour lives in a binary.
 
 ## Where You Are
 
@@ -96,16 +102,25 @@ yourself: crystallizing programs you were never shown, realizing a module,
 evaluating your own expects. Verify beforehand everything you can, since
 nothing you get wrong here is caught before it costs the human a fresh mint.
 
-The one thing you CAN verify is an option. YOUR ONE TOOL, query_options(query),
-searches the pinned option schema of the target world named above. A dotted
+YOU HAVE TWO TOOLS, and using both is how a mint survives its own gates.
+
+query_options(query) searches the pinned option schema of the target world
+named above. A dotted
 prefix browses a namespace and lists its options with their types; a plain
 domain word finds the namespace in the first place. A broad query answers
 with the namespaces holding the matches, the one with the most matches first
 -- ask again by that name to see its options. Every option path and type you
 are not certain of, look it up instead of recalling it: a rule naming an
 option that does not exist, or filling one with the wrong type, is rejected
-outright and the whole mint fails. There is no tool that judges your engine,
-and none that runs anything.
+outright and the whole mint fails.
+
+check_draft(draft) runs lips' own gates over the lines you are about to answer
+with, and reports the first gate that rejects them, in the exact words the
+refusal would use. Call it before you answer, and again after every fix.
+It does not run the claim gate or the artifact build, and it says so: a clean
+answer is not a guarantee of acceptance, while a dirty one is a guarantee of
+refusal. Nothing here judges FOR you and nothing runs your program: the gate
+that decides is still lips', after you are done.
 
 State the limit of the tool in the same breath: it grounds NAMES, never VALUES.
 Being told an option exists is not permission to invent what fills
@@ -536,7 +551,10 @@ BOTH pname and version, where the version is yours to choose (see MECHANISM
 above: a constant, never a demand). A pname with no version cannot build:
 nixpkgs derives the name from pname and version together, and nix fails with
 'attribute name missing'. Give every other argument the builder requires
-too (a Go module needs vendorHash, a Rust one cargoHash).
+too (a Go module needs vendorHash, a Rust one cargoHash). An argument whose
+value is a Nix null is written bare -- vendorHash "null", never
+vendorHash "\"null\"": the quoted form is the STRING "null", and nix refuses it
+with 'hash null does not include a type'.
 A name may COMPOSE literal text with <self> or a <capture>, in the path, in
 args.src and in a reference: artifact.<self>-core is a SECOND build beside
 artifact.<self>, so a program needing a wrapper around a compiled core puts
@@ -596,6 +614,74 @@ execs the first. Source still holds STRUCTURE: the algorithm, the file
 format, the protocol. A REPEATING structure inside source (one code block per
 route, per mount) has no hole form -- a fill replaces a marker, it cannot
 repeat a block -- so that is a gap to file, not something to fake.
+
+### Claims
+
+CLAIMS (ids c1, c2, ...): what the program says it DOES, as something that
+can be run and compared. Every other check reads the configuration text; a
+claim runs the thing and looks. That is the only way a program's words can
+govern SOURCE you bake: the module text says nothing about what your code
+does, so without a claim nothing holds it -- or any later re-mint -- to the
+sentences it was written from.
+
+A claim is a reserved emit root, like artifact.<name>. Four sections, and no
+others:
+
+  claim.<id>.run    the command, a string; may hold ${artifact.<name>}
+  claim.<id>.stdin  what it is fed, a string (optional)
+  claim.<id>.stdout what it must print, a string (optional)
+  claim.<id>.exit   the status it must exit with (optional, default 0)
+
+The author writes the example as an ordinary sentence, and you read it with
+an ordinary pattern, exactly as you read any other line. There is no special
+syntax in the program. A witness line like
+  given {"a":1} with --a 1, print it unchanged
+becomes a pattern whose holes capture the input, the arguments and the
+expected output, plus a rule emitting the three sections from them:
+
+  0.9 p5 pattern given <in> with <args>, print <out>
+        => fact witness.<args>.out "<out>"
+  0.9 r5 match fact witness.<args>.out
+        => claim.echo.run "\"${artifact.<name>}/bin/<name> <args>\"" ;
+           claim.echo.stdin "\"<in>\"" ;
+           claim.echo.stdout "\"<value>\""
+
+NEVER INVENT A WITNESS. An example is intent, so it comes from the program
+and nowhere else. If a program bakes source and states no example, file a
+GAP saying an observable is missing -- do not make one up, and do not guess
+what the program would print.
+
+COMPARISON IS EXACT, byte for byte, not containment. Exactly one trailing
+newline is stripped from what the command printed, so state the printed LINE
+without its newline. A program printing two lines states them with a \n
+between: "200\n404".
+
+WHERE A CLAIM RUNS is derived from the command, never declared. A command
+naming only ${artifact.<name>} and literal text runs in the build sandbox --
+fast, no machine. Any other command (a bare name, a ${pkgs...} reference)
+runs inside a booted machine, and not every world HAS one to boot: the world
+section above says whether this one does, and a claim the world cannot
+observe is refused. So prefer an observable over the program's OWN binary --
+it needs no machine and reads the same in every world.
+
+A claim cannot compute: its sections take the same closed value grammar as
+any other rhs. No shell pipeline assembled from holes, no arithmetic.
+
+DO EXPECT A CLAIM SECTION, exactly as you expect an artifact arg:
+  0.95 a2 expect claim.echo.stdout from witness.<args>.out
+so a later mint that drops the author's example is refused instead of
+quietly narrowing what is observed.
+
+IF YOU BAKE SOURCE, STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE. This
+is where a claim earns the most: nothing else holds minted code to the
+sentences it was written from. Read every line for an example -- an input
+and what it prints, an exit status, a usage error -- and turn it into a
+claim rather than into prose. Where the program truly states no example,
+file a GAP saying the observable is missing and mint the rest; lips says the
+same thing in its report. Never invent one to fill the hole.
+
+A pure-configuration language needs no claim: its behaviour IS its option
+assignments, which the expects pin.
 
 ### List Aggregation
 
@@ -764,7 +850,7 @@ say "hello, friend" when someone runs greet.
 The full engine:
 ```lips-engine
 0.95 p1 pattern say "<msg>" when someone runs greet. => fact cmd.greet.msg "<msg>"
-0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "\"null\"" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
+0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "null" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
 0.9 a1 expect artifact.greet.fill.msg from cmd.greet.msg
 0.9 s1 source greet go.mod <<<lips
 module greet
@@ -806,6 +892,158 @@ Before you answer, run this list against your own engine:
 6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
 7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
 
+### Behaviour: Clauses, Not Source
+
+When the program states BEHAVIOUR -- what it decides, keeps, rejects, computes
+-- emit CLAUSES, not a source file. A clause is one named definition under the
+subject root clause.<name>, and its rhs is an s-expression:
+
+  clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) (else #f)))"
+
+One definition per thing the program says, and nothing else. Every clause is a
+decision, so it carries the program line that caused it for free; a clause no
+line asks for is exactly the invented policy this whole format exists to
+prevent.
+
+SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE, which is how a program whose lines
+are STATEMENTS gets an entry point. Write the rhs as a one-element LIST holding
+the whole definition, exactly as a list-typed option takes one element per line:
+
+  clause.main "[ (define (main) (println \"#<value>\")) ]"
+
+Every line that rule matches contributes its own definition, and lips folds them
+into one whose body is theirs in the program's own order:
+
+  (define (main) (println "hallo") (println "du") (println "!"))
+
+Every contributor must define the same name with the same parameters, or lips
+refuses the engine. A repeat is kept -- two lines saying the same thing are two
+statements, and printing twice is not printing once -- so no merge declaration is
+needed here or read. Write the bare s-expression, with no list around it, for the
+ordinary clause one rule states whole.
+
+THE NOTATION IS A SMALL SUBSET, and lips refuses anything outside it. You may
+write: a definition, a cond/case/if/and/or/not/when/unless, a lambda, a
+let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
+#\=), recursion (a clause may call itself and any other clause), and a call to
+a base procedure or a CONTRACT. You may NOT write: a macro, set! or any
+mutation, eval, an internal define, or a name nothing grounds.
+
+THE HOLE MARKER INSIDE A CLAUSE IS #<name>, NOT <name>. Both < and > are
+ordinary Scheme identifier characters, so a clause must be able to write
+(< n 3); the marker is therefore #<value:int>, #<value>, #<capture>. Inside a
+NIX value it stays <value> as everywhere else. Getting this wrong writes the
+literal text "<value>" into the program and the claim fails on it.
+
+CONTRACTS ARE THE ONLY DOOR TO THE WORLD. A clause cannot open a file, run a
+command or reach the network; it calls a contract by name and an adapter
+provides it, chosen at compile time by what the clauses need. The contracts
+available are:
+
+  json-parse (1) -- text -> record, or #f when the text is not JSON
+  string-cut (2) -- text char -> (before . after) at the first occurrence, or #f
+  field-of (2) -- record name -> the field's value, or #f when absent
+  field-name (1) -- pair -> its name
+  field-value (1) -- pair -> its value
+  arguments (0) -- -> the words after the command name, as a list of strings
+  read-a-line (0) -- -> the next input line, or the end-of-input value
+  end-of-input? (1) -- x -> whether x is the end-of-input value
+  emit (1) -- line -> writes it to the output, followed by a newline
+  die (2) -- message subject -> stops the program, naming the subject
+  emitted (0) -- -> the lines the program printed, in order
+
+
+If the program needs a capability no contract offers, that is a GAP: report it
+and refuse, exactly as you would for a missing option. Never reach for a shell
+command or a source file to get around a missing contract, and never invent a
+name hoping one exists -- a name nothing grounds is refused before anything
+runs, so it costs the mint rather than the author.
+
+CLAIM WHAT THE BEHAVIOUR DOES. A claim over clauses is judged offline, with no
+binary built and no machine booted, so an observable here is cheap enough that
+every behaviour sentence should have one:
+
+  claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
+  claim.<id>.equals "#t"
+
+EVERY CLAUSE MUST BE REACHED BY A CLAIM, following calls from the claim's own
+expression through the clauses it calls. lips computes that set and REFUSES an
+engine leaving any definition outside it, naming the ones nothing runs -- a
+clause no claim reaches is behaviour the next mint may rewrite with every gate
+still green. So claim the ENTRY, not only the helpers: one claim of the shape
+
+  claim.whole.feed "[ \"first line\" \"second line\" ]" ;
+  claim.whole.call "(begin (main) (emitted))" ;
+  claim.whole.equals "(list \"what it prints\")"
+
+reaches main and everything main calls, which is usually the whole program.
+Claims over single definitions are good beside it, never instead of it.
+
+Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
+serve those lines to read-a-line first, and claim.<id>.args the same way to set
+the command line the program sees. That is how a whole program is observed end
+to end rather than one definition at a time. A claim states either a command
+(run/stdin/stdout/exit) or an expression (call/equals/feed/args), never both.
+
+WHAT THE PROGRAM PRINTED IS OBSERVABLE. Inside a claim (never inside a clause)
+three more names exist, provided by the same list-backed adapters that replace
+the real effects: (emitted) is the lines the program printed, in order, and
+feed-lines / feed-args are what claim.<id>.feed and claim.<id>.args compile to.
+So a program whose whole job is to print is claimed end to end:
+  claim.<id>.feed "[ \"2\" \"3\" ]" ;
+  claim.<id>.call "(begin (main) (emitted))" ;
+  claim.<id>.equals "(list \"5\")"
+A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
+
+NEVER FIX A COUNT IN A TEMPLATE. A sentence carrying a list of items --
+"given the lines A, B and C" -- must NOT become a template with one hole per
+item (<l1>, <l2>, <l3>): that pattern reads a three-item program and refuses a
+four-item one, so adding an example costs the author a fresh mint. Every such
+sentence is a BLOCK: a header pattern, a child pattern nested under it, and one
+decision per item keyed by its position.
+
+  p3 pattern given these lines => concept witness.given "the example input follows"
+  p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
+  r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
+
+The author then writes the items on their own lines under the header, however
+many there are, and Append assembles the one-element lists into one list in
+source order. The same shape carries any list a sentence states: paths to back
+up, packages to install, ports to open. The kernel dictates no collection
+syntax, so the words that open a block are yours to choose in the header
+pattern.
+
+A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
+claim around it: the stop becomes an ordinary value, so state what it must be.
+  claim.<id>.call "(parse-pair \"a\")" ;
+  claim.<id>.equals "(list (quote died) \"argument is not field=value:\" \"a\")"
+So a fail-loud sentence gets a claim like any other, and there is no reason to
+leave one unobserved.
+
+INSTALL THE PROGRAM BY NAMING THE SITE. The clauses are built into one
+executable, and ${site} is its derivation, exactly as ${artifact.<name>} is an
+artifact's. Say what to call it with a site.name emit and put it on PATH like
+any other package:
+  site.<self>.command "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
+A site is NAMED (site.<self> for the one place a program runs today) because a
+program may one day run its behaviour in several places. If the program states
+WHERE it must run -- in a browser, as one static binary -- say so as a property
+and lips picks the runtime that has it:
+  site.<self>.property.browser "\"the form is checked as the user types\""
+STATING it is the requirement, so there is no negative form and none is needed.
+The assertion is the REASON, quoted back to the author when no runtime has the
+property, so write the sentence's own words there. State only what the program
+actually requires.
+A program whose behaviour is clauses needs no artifact and no source block for
+this, and MUST NOT WRAP THE SITE: a writeShellApplication around
+${site}/bin/... only renames what site.name already names, and gets the inner
+path wrong the moment the two names differ. Install ${site} itself.
+
+A SOURCE BLOCK IS THE LAST RESORT, for behaviour clauses genuinely cannot
+express. Prefer clauses every time you can: a source file is traceable to no
+program line, is rewritten wholesale on the next mint, and is the one thing lips
+cannot check.
+
 --- program (input) ---
 === program function.lips ===
 function println_to_stdout(x: String)
@@ -815,195 +1053,338 @@ println_to_stdout("du")
 println_to_stdout("!")
 
 --- tool transcript ---
--> query_options "systemd.services.&lt;name&gt;.serviceConfig"
--> query_options "systemd.services.&lt;name&gt;.environment"
+-> query_options "environment.systemPackages"
+-> check_draft "0.9 p1 pattern function <fname>(<param>: String) => fact func.<fname>.name \"<fname>\" ; fact func.<fname>.param \"<param>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<n:index>.print \"<fname> <text>\"\n0.9 r1 match fact func.<fname>.param => clause.<fname> \"(define (#<fname> #<value>) (emit #<value>))\"\n0.85 r2 match fact func.<fname>.name => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.whole.call \"(begin (main) #t)\" ; claim.whole.equals \"#t\"\n0.9 r3 match fact stmt.<n>.print => clause.main \"[ (define (main) (#<value.1> \\\"#<value.2>\\\")) ]\" ; claim.stmt<n>.call \"(begin (#<value.1> \\\"#<value.2>\\\") (emitted))\" ; claim.stmt<n>.equals \"(list \\\"#<value.2>\\\")\"\n0.9 a1 expect site.<self>.command from func.<fname>.name\n0.9 d1 report <<<lips\ntest\nlips>>>"
 <- query_options
-systemd.services.&lt;name&gt;.serviceConfig is below systemd.services : attribute set of (submodule)
-That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.&lt;name&gt;.serviceConfig.
-Emit it only from documentation you actually have; otherwise refuse.
+environment.systemPackages : list of package
 
-<- query_options
-systemd.services.&lt;name&gt;.environment is below systemd.services : attribute set of (submodule)
-That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.&lt;name&gt;.environment.
-Emit it only from documentation you actually have; otherwise refuse.
+<- check_draft
+lips built a setup for examples/function.lips, but it didn't hold up:
 
--> query_options "systemd.services"
--> query_options "environment.etc"
-<- query_options
-systemd.services.* (47 options)
-systemd.services (1 option)
-Ask again with one of these paths to see its options.
+the draft cannot be read as an engine:
+  - rule r1: a hole outside a string must carry a type, like #<value:int>, #<value:float> or #<value:bool>: #<fname> (item r1)
+      as written: 0.9 r1 match fact func.<fname>.param => clause.<fname> "(define (#<fname> #<value>) (emit #<value>))"
+  - rule r3: a hole outside a string must carry a type, like #<value:int>, #<value:float> or #<value:bool>: #<value.1> (item r3)
+      as written: 0.9 r3 match fact stmt.<n>.print => clause.main "[ (define (main) (#<value.1> \"#<value.2>\")) ]" ; claim.stmt<n>.call "(begin (#<value.1> \"#<value.2>\") (emitted))" ; claim.stmt<n>.equals "(list \"#<value.2>\")"
 
-<- query_options
-environment.etc : attribute set of (submodule)
-environment.etc.*.enable : boolean
-environment.etc.*.gid : integer
-environment.etc.*.group : string
-environment.etc.*.mode : string
-environment.etc.*.source : path
-environment.etc.*.target : string
-environment.etc.*.text : null or strings concatenated with "\n"
-environment.etc.*.uid : integer
-environment.etc.*.user : string
 
--> query_options "systemd.services.*"
-<- query_options
-systemd.services.*.confinement (5 options)
-systemd.services.*.after (1 option)
-systemd.services.*.aliases (1 option)
-systemd.services.*.before (1 option)
-systemd.services.*.bindsTo (1 option)
-systemd.services.*.conflicts (1 option)
-systemd.services.*.description (1 option)
-systemd.services.*.documentation (1 option)
-systemd.services.*.enable (1 option)
-systemd.services.*.enableDefaultPath (1 option)
-systemd.services.*.enableStrictShellChecks (1 option)
-systemd.services.*.environment (1 option)
-systemd.services.*.name (1 option)
-systemd.services.*.notSocketActivated (1 option)
-systemd.services.*.onFailure (1 option)
-systemd.services.*.onSuccess (1 option)
-systemd.services.*.overrideStrategy (1 option)
-systemd.services.*.partOf (1 option)
-systemd.services.*.path (1 option)
-systemd.services.*.postStart (1 option)
-systemd.services.*.postStop (1 option)
-systemd.services.*.preStart (1 option)
-systemd.services.*.preStop (1 option)
-systemd.services.*.reload (1 option)
-systemd.services.*.reloadIfChanged (1 option)
-systemd.services.*.reloadTriggers (1 option)
-systemd.services.*.requiredBy (1 option)
-systemd.services.*.requires (1 option)
-systemd.services.*.requisite (1 option)
-systemd.services.*.restartIfChanged (1 option)
-systemd.services.*.restartTriggers (1 option)
-systemd.services.*.script (1 option)
-systemd.services.*.scriptArgs (1 option)
-systemd.services.*.serviceConfig (1 option)
-systemd.services.*.startAt (1 option)
-systemd.services.*.startLimitBurst (1 option)
-systemd.services.*.startLimitIntervalSec (1 option)
-systemd.services.*.stopIfChanged (1 option)
-systemd.services.*.unitConfig (1 option)
-systemd.services.*.upheldBy (1 option)
-… and 3 more namespaces.
-Ask again with one of these paths to see its options.
+→ run generate again. If it keeps failing the same way, it's a lips bug;
+  please report it with the text above.
 
--> query_options "systemd.services.*.wantedBy"
--> query_options "systemd.services.*.description"
-<- query_options
-systemd.services.*.wantedBy : list of string
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.whole.call \"(begin (main) #t)\" ; claim.whole.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>-<n>.call \"(begin (print-line \\\"#<value>\\\") (emitted))\" ; claim.<fname>-<n>.equals \"(list \\\"#<value>\\\")\"\n0.9 a1 expect site.<self>.command from func.<fname>.name\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
 
-<- query_options
-systemd.services.*.description : (optionally newline-terminated) single-line string
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
 
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+· contract: 1 check
+✗ contract: 1 check  (0.0s)
+examples/function.lips no longer produces what it promised:
+
+  site.function.command: should contain println_to_stdout, but is null
+
+→ if you changed the program on purpose, rebuild: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.name \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.whole.call \"(begin (main) #t)\" ; claim.whole.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>-<n>.call \"(begin (print-line \\\"#<value>\\\") (emitted))\" ; claim.<fname>-<n>.equals \"(list \\\"#<value>\\\")\"\n0.9 a1 expect site.<self>.name from func.<fname>.name\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+· contract: 1 check
+✗ contract: 1 check  (0.0s)
+examples/function.lips no longer produces what it promised:
+
+  site.function.name: should contain println_to_stdout, but is null
+
+→ if you changed the program on purpose, rebuild: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.whole.call \"(begin (main) #t)\" ; claim.whole.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>-<n>.call \"(begin (print-line \\\"#<value>\\\") (emitted))\" ; claim.<fname>-<n>.equals \"(list \\\"#<value>\\\")\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+· contract: 0 checks
+✓ contract: 0 checks  (0.0s)
+  grounding: 1 option assignment (schema), 2 clauses (contracts), 4 claims (stated), 0 unvouched assertions (nothing), 0 words, 0 mint-written words inside option strings
+· clause claims: 4 claims
+✗ clause claims: 4 claims  (3.2s)
+examples/function.lips: what the program says its behaviour does is not what it does.
+
+  warning: creating lock file "/tmp/lips-8Q8tQd/flake.lock": 
+  • Added input 'nixpkgs':
+      'https://releases.nixos.org/nixpkgs/nixpkgs-26.11pre1046984.104240a77242/nixexprs.tar.xz?narHash=sha256-NqaCaIITVSDaBYdcWcfCyEu1erL7paTPEQbISQp9xwQ%3D' (2026-08-03)
+  these 2 derivations will be built:
+    /nix/store/lpwf5cfixrwdjkp9ywfkrwjd61b0lygn-site-claims.drv
+    /nix/store/6af8hpi1bv5i0j4qxsxm6zxh24qr8z90-site-claims.drv
+  building '/nix/store/lpwf5cfixrwdjkp9ywfkrwjd61b0lygn-site-claims.drv'...
+  building '/nix/store/6af8hpi1bv5i0j4qxsxm6zxh24qr8z90-site-claims.drv'...
+  error: Cannot build '/nix/store/6af8hpi1bv5i0j4qxsxm6zxh24qr8z90-site-claims.drv'.
+         Reason: builder failed with exit code 1.
+         Output paths:
+           /nix/store/s1fdpfddq8hic7j5zpmjhwq9hplss2pk-site-claims
+         Last 4 log lines:
+         > ok   println_to_stdout-1
+         > FAIL println_to_stdout-2 got=("hallo" "du") want=("du")
+         > FAIL println_to_stdout-3 got=("hallo" "du" "!") want=("!")
+         > ok   whole
+         For full logs, run:
+           nix log /nix/store/6af8hpi1bv5i0j4qxsxm6zxh24qr8z90-site-claims.drv
+
+→ the behaviour is clauses, so the program and its claims disagree: fix the sentence, or the claim that pins it.
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.whole.call \"(begin (main) (emitted))\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.whole.equals \"(list \\\"#<value>\\\")\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+· crystallize examples/function.lips
+✗ crystallize examples/function.lips  (0.0s)
+lips built a setup for examples/function.lips, but it didn't hold up:
+
+it reads words from the program and then discards them:
+  - pattern p2 binds <fname>, which reaches stmt.<fname>.<n>.text, and rule r2 emits it nowhere: editing that word changes no output
+
+Each one wants one of three fixes: use the word (a <value>/<value.N>
+hole, or the capture aligned with the subject segment it fills); or, if
+it SELECTS a mechanism no value can carry (a builder, a service), spell
+it as a literal token of the template, so editing it stops the line
+matching and asks for a fresh language instead of governing nothing; or,
+if the line truly carries no value, read it as a concept.
+
+→ run generate again. If it keeps failing the same way, it's a lips bug;
+  please report it with the text above.
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.call \"(begin (main) (emitted))\" ; claim.<fname>.equals \"(list \\\"#<value>\\\")\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+examples/function.lips sets the same thing two ways:
+
+  claim println_to_stdout equals: (computed by the setup) and (computed by the setup)
+  claim println_to_stdout equals: (computed by the setup) and (computed by the setup)
+
+→ keep only one of those lines in examples/function.lips, then run again.
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.call \"(begin (main) #t)\" ; claim.<fname>.equals \"#t\"\n0.9 a1 expect clause.main from stmt.<fname>.<n>.text\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+· contract: 1 check
+✗ contract: 1 check  (0.0s)
+examples/function.lips no longer produces what it promised:
+
+  clause.main: should contain hallo, but is null
+  clause.main: should contain du, but is null
+  clause.main: should contain !, but is null
+
+→ if you changed the program on purpose, rebuild: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.whole.call \"(begin (main) #t)\" ; claim.whole.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.line-<n> \"(define (line-#<n:int>) \\\"#<value>\\\")\" ; clause.main \"[ (define (main) (print-line (line-#<n:int>))) ]\" ; claim.<fname>-<n>.call \"(line-#<n:int>)\" ; claim.<fname>-<n>.equals \"\\\"#<value>\\\"\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+the setup lips built for examples/function.lips can't be turned into a module:
+
+  clause line-1 is not one definition of line-1: it defines line-#<n:int> instead
+
+→ rebuild the setup: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.whole.call \"(begin (main) (emitted))\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.equals \"[ \\\"#<value>\\\" ]\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+the setup lips built for examples/function.lips can't be turned into a module:
+
+  claim println_to_stdout: no call, so there is nothing to judge
+
+→ rebuild the setup: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.<fname>.call \"(begin (main) (emitted))\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.equals \"[ \\\"#<value>\\\" ]\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+the setup lips built for examples/function.lips can't be turned into a module:
+
+  claim println_to_stdout: equals is not an expression: text is left over after the expression; a clause is one expression, not a sequence: "#hallo" "#du" "#!" ]
+
+→ rebuild the setup: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.<fname>.call \"(begin (main) (equal? (emitted) feed-lines))\" ; claim.<fname>.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.feed \"[ \\\"<value>\\\" ]\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+the setup lips built for examples/function.lips can't be turned into a module:
+
+  claim println_to_stdout names feed-lines, which no form, procedure or contract grounds. Behaviour reaches the world only through a declared contract.
+
+→ rebuild the setup: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.<fname>.call \"(begin (main) (equal? (emitted) (feed-lines)))\" ; claim.<fname>.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.feed \"[ \\\"<value>\\\" ]\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+examples/function.lips: 4 of 4 lines crystallize.
+  line 1  ok        p1  func.println_to_stdout.name
+  line 3  ok        p2  stmt.println_to_stdout.1.text  in the block at line 1
+  line 4  ok        p2  stmt.println_to_stdout.2.text  in the block at line 1
+  line 5  ok        p2  stmt.println_to_stdout.3.text  in the block at line 1
+
+opens a block (1) -- realizes nothing itself; the lines inside it do:
+  line 1  "function println_to_stdout(x: String)"  (3 lines inside)
+
+· crystallize examples/function.lips
+✓ crystallize examples/function.lips  (0.0s)
+the setup lips built for examples/function.lips can't be turned into a module:
+
+  claim println_to_stdout names feed-lines, which no form, procedure or contract grounds. Behaviour reaches the world only through a declared contract.
+
+→ rebuild the setup: lips generate examples/function.lips
+
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.<fname>.call \"(begin (main) (equal? (emitted) (arguments)))\" ; claim.<fname>.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.args \"[ \\\"<value>\\\" ]\"\n0.9 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
+-> check_draft "0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name \"<fname>\"\n0.9 p2.under.p1 pattern <fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"\n0.85 r1 match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.<fname>.call \"(begin (main) (equal? (emitted) (arguments)))\" ; claim.<fname>.equals \"#t\"\n0.9 r2 match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.args \"[ \\\"<value>\\\" ]\"\n0.9 g1 gap identifier-from-program <<<lips\nblocked line: function println_to_stdout(x: String)\na clause name and a clause's parameter name cannot come from the program: a\nhole outside a Scheme string must be typed (int/float/bool), and a capture is\nsubstituted into an emit PATH but not into the s-expression. So the declared\nfunction is realized as a fixed clause (print-line line), and the parameter\nname has to be a literal token of the template (\"x\"), which means renaming the\nparameter costs a fresh mint.\nlips>>>\n0.9 g2 gap per-line-expected-output <<<lips\nblocked line: println_to_stdout(\"hallo\")\none claim per statement is unusable, because the claim adapters share state:\nthe second claim's (emitted) still holds the first claim's lines. One claim for\nthe whole program would need its expected output assembled from every statement\nline, and claim.<id>.equals takes a single s-expression, not a per-line\naggregate -- only feed/args aggregate as lists. The engine therefore carries\nthe stated lines in claim.args and asserts (equal? (emitted) (arguments)).\nAn aggregating expected-output section would remove the detour.\nlips>>>\n0.9 d1 report <<<lips\nThis language is a tiny print program: one function declaration, then the\ncalls to it, and it compiles to a real executable installed on the machine.\n\nLine shapes it accepts:\n\n- `function <name>(x: String)` -- declares the printing function. The NAME is\n  a hole: it is what the installed command is called (`site.<self>.command`),\n  so renaming it in the program renames the binary. The parameter `x` and the\n  type `String` are fixed words of the shape, not holes: the parameter name\n  cannot reach the generated code (see the filed gap `identifier-from-program`),\n  and `String` selects the mechanism -- printing a string line as-is.\n  This line also opens the block that the call lines below it belong to.\n- `<name>(\"<text>\")` -- a call, one statement, written under the declaration.\n  The TEXT is a hole; the function name is a hole too and keys the program's\n  decisions and its claim.\n\nMechanism: the behaviour is clauses, not a source file. The declaration\nrealizes one clause, `(define (print-line line) (emit line))`, which is the\n`emit` contract -- the only door to standard output. Each call line\ncontributes one statement to `main`, in program order, so the three calls\nbecome `(define (main) (print-line \"hallo\") (print-line \"du\")\n(print-line \"!\"))`. The clauses are built into one executable (`${site}`),\nnamed after the declared function and put on the system PATH via\n`environment.systemPackages`.\n\nWhat is observed: one claim runs the whole program end to end -- it calls\n`main` and compares everything the program printed, in order, with the stated\nlines. The stated lines are handed to the claim through `claim.args`, because\nthat is the only claim section that can be assembled line by line; the check\nitself is exact and byte-for-byte. Editing, adding or removing a call line\ntherefore changes both what the program prints and what the claim demands, and\nthe two must agree. Two claims cannot be used here (the claim adapters share\ntheir output list), which is why there is one whole-program claim rather than\none claim per line -- see the gap `per-line-expected-output`.\n\nNo `expect` lines: the behavioural contract file can only assert values that\nland in ordinary NixOS options, and everything this program says lands in\nclauses, in the site's command name, or in a package reference -- none of them\nassertable there. The claim is the contract instead.\n\nNothing was invented: the only choices I made are mechanism choices (the emit\ncontract for printing, one `main` in program order, installing the binary\nunder the declared function's name).\nlips>>>"
+<- check_draft
+the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
 
 --- raw reply ---
-0.9 p1 pattern function <fname>(<param>: <ptype>) => concept func.<fname> "<param> <ptype>"
-0.9 p2.under.p1 pattern <callee>("<text>") => fact call.<callee>.<n:index>.text "<text>"
-0.9 r1 match fact call.<callee>.<n>.text => artifact.<callee>.builder "\"buildGoModule\"" ; artifact.<callee>.args.pname "\"<callee>\"" ; artifact.<callee>.args.version "\"0.1.0\"" ; artifact.<callee>.args.src "./artifacts/<callee>" ; artifact.<callee>.args.vendorHash "null" ; artifact.<callee>.fill.fname "\"<callee>\"" ; systemd.services.<callee>.description "\"<callee> writes its program calls to stdout\"" ; systemd.services.<callee>.serviceConfig.Type "\"oneshot\"" ; systemd.services.<callee>.serviceConfig.ExecStart "\"${artifact.<callee>}/bin/<callee>\"" ; systemd.services.<callee>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<callee>.environment.CALL_<n> "\"<value>\""
-0.9 q1 demand call.<callee>.<n>.text "which strings should the function be called with, one call per line?"
-0.9 a1 expect systemd.services.<callee>.environment.CALL_<n> from call.<callee>.<n>.text
-0.9 s1 source println_to_stdout go.mod <<<lips
-module @fname@
-
-go 1.21
+0.85 p1 pattern function <fname>(x: String) => fact func.<fname>.name "<fname>"
+0.9 p2.under.p1 pattern <fname>("<text>") => fact stmt.<fname>.<n:index>.text "<text>"
+0.85 r1 match fact func.<fname>.name => clause.print-line "(define (print-line line) (emit line))" ; site.<self>.command "\"<value>\"" ; environment.systemPackages "[ ${site} ]" ; claim.<fname>.call "(begin (main) (equal? (emitted) (arguments)))" ; claim.<fname>.equals "#t"
+0.9 r2 match fact stmt.<fname>.<n>.text => clause.main "[ (define (main) (print-line \"#<value>\")) ]" ; claim.<fname>.args "[ \"<value>\" ]"
+0.9 g1 gap identifier-from-program <<<lips
+blocked line: function println_to_stdout(x: String)
+a clause name and a clause's parameter name cannot come from the program: a
+hole outside a Scheme string must be typed (int/float/bool), and a capture is
+substituted into an emit PATH but not into the s-expression. So the declared
+function is realized as a fixed clause (print-line line), and the parameter
+name has to be a literal token of the template ("x"), which means renaming the
+parameter costs a fresh mint.
 lips>>>
-0.9 s2 source println_to_stdout main.go <<<lips
-package main
-
-import (
-	"fmt"
-	"os"
-	"strconv"
-)
-
-// @fname@ takes one string and writes it to stdout, as the program declares.
-func @fname@(x string) {
-	fmt.Println(x)
-}
-
-// The program's calls are handed to this binary in order, as the environment
-// variables CALL_1, CALL_2, ... set on the systemd unit that runs it.
-func main() {
-	for i := 1; i <= 1024; i++ {
-		if v, ok := os.LookupEnv("CALL_" + strconv.Itoa(i)); ok {
-			@fname@(v)
-		}
-	}
-}
+0.9 g2 gap per-line-expected-output <<<lips
+blocked line: println_to_stdout("hallo")
+one claim per statement is unusable, because the claim adapters share state:
+the second claim's (emitted) still holds the first claim's lines. One claim for
+the whole program would need its expected output assembled from every statement
+line, and claim.<id>.equals takes a single s-expression, not a per-line
+aggregate -- only feed/args aggregate as lists. The engine therefore carries
+the stated lines in claim.args and asserts (equal? (emitted) (arguments)).
+An aggregating expected-output section would remove the detour.
 lips>>>
-0.95 d1 report <<<lips
-## What a program in this language says
+0.9 d1 report <<<lips
+This language is a tiny print program: one function declaration, then the
+calls to it, and it compiles to a real executable installed on the machine.
 
-Two line shapes, and the second only ever appears under the first:
+Line shapes it accepts:
 
-```
-function println_to_stdout(x: String)
+- `function <name>(x: String)` -- declares the printing function. The NAME is
+  a hole: it is what the installed command is called (`site.<self>.command`),
+  so renaming it in the program renames the binary. The parameter `x` and the
+  type `String` are fixed words of the shape, not holes: the parameter name
+  cannot reach the generated code (see the filed gap `identifier-from-program`),
+  and `String` selects the mechanism -- printing a string line as-is.
+  This line also opens the block that the call lines below it belong to.
+- `<name>("<text>")` -- a call, one statement, written under the declaration.
+  The TEXT is a hole; the function name is a hole too and keys the program's
+  decisions and its claim.
 
-println_to_stdout("hallo")
-println_to_stdout("du")
-println_to_stdout("!")
-```
+Mechanism: the behaviour is clauses, not a source file. The declaration
+realizes one clause, `(define (print-line line) (emit line))`, which is the
+`emit` contract -- the only door to standard output. Each call line
+contributes one statement to `main`, in program order, so the three calls
+become `(define (main) (print-line "hallo") (print-line "du")
+(print-line "!"))`. The clauses are built into one executable (`${site}`),
+named after the declared function and put on the system PATH via
+`environment.systemPackages`.
 
-1. **A declaration** — `function <name>(<param>: <type>)`. It names the function
-   and opens a block; the call lines that follow belong to it. The function's
-   *name* is a real value: it names the binary that gets built and the systemd
-   unit that runs it, so renaming the function renames both. The parameter's
-   name and type are read but govern nothing on the machine — the printer takes
-   one string — so this line is recorded as a decorative heading (`concept
-   func.<name>`) and nothing is realized from `x` or `String`. If you later want
-   the type to *mean* something (an integer argument, a different printer), that
-   is a new mint, not an edit.
-2. **A call** — `<name>("<text>")`. The quoted text is the value; each call line
-   becomes one item of the block, numbered by its position (1, 2, 3, ...), so
-   two identical calls stay two calls and the order of the file is the order of
-   the output. The subject vocabulary is `call.<name>.<n>.text`.
+What is observed: one claim runs the whole program end to end -- it calls
+`main` and compares everything the program printed, in order, with the stated
+lines. The stated lines are handed to the claim through `claim.args`, because
+that is the only claim section that can be assembled line by line; the check
+itself is exact and byte-for-byte. Editing, adding or removing a call line
+therefore changes both what the program prints and what the claim demands, and
+the two must agree. Two claims cannot be used here (the claim adapters share
+their output list), which is why there is one whole-program claim rather than
+one claim per line -- see the gap `per-line-expected-output`.
 
-Anything else — an unquoted argument, a call before any declaration, a second
-statement kind — will not crystallize, and `compile` says so loudly.
+No `expect` lines: the behavioural contract file can only assert values that
+land in ordinary NixOS options, and everything this program says lands in
+clauses, in the site's command name, or in a package reference -- none of them
+assertable there. The claim is the contract instead.
 
-## What is built, and why
-
-"Print to stdout" on a whole machine means: a program that runs and whose output
-lands in the journal. So each declared function becomes:
-
-* **A Go binary**, built with `buildGoModule` from the source staged beside the
-  engine (`artifacts/println_to_stdout/`). The source holds only the *structure*:
-  a function that prints one string, and a loop that walks its arguments in
-  order. The function's name reaches the source through a fill (`@fname@` in
-  `main.go` and `go.mod`), which is also why the module name, the produced
-  `/bin/<name>` and the unit's `ExecStart` all agree.
-* **A oneshot systemd service of the same name**, wanted by
-  `multi-user.target`, so the program runs once as the machine comes up and its
-  stdout is the journal (`journalctl -u println_to_stdout`).
-* **One environment variable per call** on that unit: `CALL_1`, `CALL_2`, ... The
-  call texts deliberately do *not* go into the Go source: a fill replaces a
-  marker, it cannot repeat a statement per call, so the calls travel as unit
-  environment and the binary reads them at start. That is what keeps adding a
-  fourth call a one-line edit instead of a regeneration. (Practical limit: 1024
-  calls per function.)
-
-I chose the arguments the builder needs myself, as mechanism, not from the
-program: `version = "0.1.0"` and `vendorHash = null` (the source fetches
-nothing). The function name must be a legal Go identifier and a legal unit name,
-which `println_to_stdout` is.
-
-## The contract
-
-`function.expect` pins the one thing the program actually states: every call's
-text appears as `CALL_<n>` on the unit named after the function. The build
-reference in `ExecStart` holds no checkable value, so nothing is asserted about
-it — the rule is its own contract there.
-
-## If a program is silent
-
-A declaration with no calls is refused with a question: which strings should the
-function be called with? A function that prints nothing is almost certainly a
-half-written program, so it fails at compile time rather than shipping a silent
-service.
+Nothing was invented: the only choices I made are mechanism choices (the emit
+contract for printing, one `main` in program order, installing the binary
+under the declared function's name).
 lips>>>

@@ -2,71 +2,70 @@
 
 # The `function` language
 
-## What a program in this language says
+This language is a tiny print program: one function declaration, then the
+calls to it, and it compiles to a real executable installed on the machine.
 
-Two line shapes, and the second only ever appears under the first:
+Line shapes it accepts:
 
-```
-function println_to_stdout(x: String)
+- `function <name>(x: String)` -- declares the printing function. The NAME is
+  a hole: it is what the installed command is called (`site.<self>.command`),
+  so renaming it in the program renames the binary. The parameter `x` and the
+  type `String` are fixed words of the shape, not holes: the parameter name
+  cannot reach the generated code (see the filed gap `identifier-from-program`),
+  and `String` selects the mechanism -- printing a string line as-is.
+  This line also opens the block that the call lines below it belong to.
+- `<name>("<text>")` -- a call, one statement, written under the declaration.
+  The TEXT is a hole; the function name is a hole too and keys the program's
+  decisions and its claim.
 
-println_to_stdout("hallo")
-println_to_stdout("du")
-println_to_stdout("!")
-```
+Mechanism: the behaviour is clauses, not a source file. The declaration
+realizes one clause, `(define (print-line line) (emit line))`, which is the
+`emit` contract -- the only door to standard output. Each call line
+contributes one statement to `main`, in program order, so the three calls
+become `(define (main) (print-line "hallo") (print-line "du")
+(print-line "!"))`. The clauses are built into one executable (`${site}`),
+named after the declared function and put on the system PATH via
+`environment.systemPackages`.
 
-1. **A declaration** — `function <name>(<param>: <type>)`. It names the function
-   and opens a block; the call lines that follow belong to it. The function's
-   *name* is a real value: it names the binary that gets built and the systemd
-   unit that runs it, so renaming the function renames both. The parameter's
-   name and type are read but govern nothing on the machine — the printer takes
-   one string — so this line is recorded as a decorative heading (`concept
-   func.<name>`) and nothing is realized from `x` or `String`. If you later want
-   the type to *mean* something (an integer argument, a different printer), that
-   is a new mint, not an edit.
-2. **A call** — `<name>("<text>")`. The quoted text is the value; each call line
-   becomes one item of the block, numbered by its position (1, 2, 3, ...), so
-   two identical calls stay two calls and the order of the file is the order of
-   the output. The subject vocabulary is `call.<name>.<n>.text`.
+What is observed: one claim runs the whole program end to end -- it calls
+`main` and compares everything the program printed, in order, with the stated
+lines. The stated lines are handed to the claim through `claim.args`, because
+that is the only claim section that can be assembled line by line; the check
+itself is exact and byte-for-byte. Editing, adding or removing a call line
+therefore changes both what the program prints and what the claim demands, and
+the two must agree. Two claims cannot be used here (the claim adapters share
+their output list), which is why there is one whole-program claim rather than
+one claim per line -- see the gap `per-line-expected-output`.
 
-Anything else — an unquoted argument, a call before any declaration, a second
-statement kind — will not crystallize, and `compile` says so loudly.
+No `expect` lines: the behavioural contract file can only assert values that
+land in ordinary NixOS options, and everything this program says lands in
+clauses, in the site's command name, or in a package reference -- none of them
+assertable there. The claim is the contract instead.
 
-## What is built, and why
+Nothing was invented: the only choices I made are mechanism choices (the emit
+contract for printing, one `main` in program order, installing the binary
+under the declared function's name).
 
-"Print to stdout" on a whole machine means: a program that runs and whose output
-lands in the journal. So each declared function becomes:
+## Known Gaps
 
-* **A Go binary**, built with `buildGoModule` from the source staged beside the
-  engine (`artifacts/println_to_stdout/`). The source holds only the *structure*:
-  a function that prints one string, and a loop that walks its arguments in
-  order. The function's name reaches the source through a fill (`@fname@` in
-  `main.go` and `go.mod`), which is also why the module name, the produced
-  `/bin/<name>` and the unit's `ExecStart` all agree.
-* **A oneshot systemd service of the same name**, wanted by
-  `multi-user.target`, so the program runs once as the machine comes up and its
-  stdout is the journal (`journalctl -u println_to_stdout`).
-* **One environment variable per call** on that unit: `CALL_1`, `CALL_2`, ... The
-  call texts deliberately do *not* go into the Go source: a fill replaces a
-  marker, it cannot repeat a statement per call, so the calls travel as unit
-  environment and the binary reads them at start. That is what keeps adding a
-  fourth call a one-line edit instead of a regeneration. (Practical limit: 1024
-  calls per function.)
+### identifier-from-program
 
-I chose the arguments the builder needs myself, as mechanism, not from the
-program: `version = "0.1.0"` and `vendorHash = null` (the source fetches
-nothing). The function name must be a legal Go identifier and a legal unit name,
-which `println_to_stdout` is.
+blocked line: function println_to_stdout(x: String)
+a clause name and a clause's parameter name cannot come from the program: a
+hole outside a Scheme string must be typed (int/float/bool), and a capture is
+substituted into an emit PATH but not into the s-expression. So the declared
+function is realized as a fixed clause (print-line line), and the parameter
+name has to be a literal token of the template ("x"), which means renaming the
+parameter costs a fresh mint.
 
-## The contract
+### per-line-expected-output
 
-`function.expect` pins the one thing the program actually states: every call's
-text appears as `CALL_<n>` on the unit named after the function. The build
-reference in `ExecStart` holds no checkable value, so nothing is asserted about
-it — the rule is its own contract there.
+blocked line: println_to_stdout("hallo")
+one claim per statement is unusable, because the claim adapters share state:
+the second claim's (emitted) still holds the first claim's lines. One claim for
+the whole program would need its expected output assembled from every statement
+line, and claim.<id>.equals takes a single s-expression, not a per-line
+aggregate -- only feed/args aggregate as lists. The engine therefore carries
+the stated lines in claim.args and asserts (equal? (emitted) (arguments)).
+An aggregating expected-output section would remove the detour.
 
-## If a program is silent
-
-A declaration with no calls is refused with a question: which strings should the
-function be called with? A function that prints nothing is almost certainly a
-half-written program, so it fails at compile time rather than shipping a silent
-service.
