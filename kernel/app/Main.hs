@@ -67,7 +67,7 @@ import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidat
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms,
-                                         renderStampFault, stampFaults)
+                                         recordedSchema, renderStampFault, stampFaults)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), bindSelfExpect, checkArtifactValues, checkValues, compatSlug, evalExpr, expandExpects, expectedValue, isGroundExpect, readExpect, rebless, renderExpect, smallestCompat)
@@ -693,6 +693,18 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
   -- generation event (it decides which rules are admissible), it is recorded as
   -- such, and a schema that cannot be built must not cost an AI call first.
   (schemaPath, schemaPin) <- ensureOptionSchema target mschema ("generate " <> T.pack rep)
+  -- A re-mint grounds against the pin this binary carries (or --schema), NOT
+  -- against the one the committed record names: fresh grounding is the point of
+  -- re-minting, and replaying an old one is impossible anyway. The only hole
+  -- that leaves is silence, so say it -- a re-ground engine is a different
+  -- engine, and the reader deserves to learn that here rather than from the
+  -- .generation diff afterwards.
+  oldPin <- (>>= recordedSchema) <$> tryRead (generationPath rep)
+  case oldPin of
+    Just p | p /= schemaPin -> do
+      note ("re-grounding: the committed engine was minted against " <> p)
+      note ("this run grounds against " <> schemaPin)
+    _ -> pure ()
   -- The mint's validation tool judges a draft against the contract that will
   -- actually gate it: the committed .expect on a regeneration, the draft's own
   -- minted expects on a first mint or under --compat none. That rule is

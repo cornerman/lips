@@ -877,6 +877,15 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A re-mint says when it re-grounds.** The schema pin is deliberately not
+  sticky: a re-mint grounds against the pin the running binary carries (or
+  `--schema`), never the one the committed record names, because fresh grounding
+  is the point of re-minting and replaying an old event is impossible anyway
+  (the model is nondeterministic). What that left was silence -- a newer lips
+  re-grounded an engine and only the `.generation` diff said so, afterwards.
+  `generate` now prints both pins when they differ, read back with
+  `Generate.Record.recordedSchema`. One line of prose, no new state, and the
+  record stays an audit trail rather than a lock.
 - **The IC-postulate audit is written, and the set law is a theorem.** DESIGN §2
   now maps Konieczny and Pino Pérez's IC0-IC8 onto `Base.resolve` postulate by
   postulate, under a stated reading (strength makes it a PRIORITIZED merge, `IC`

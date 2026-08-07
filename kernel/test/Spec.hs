@@ -62,7 +62,7 @@ import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elap
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
 import Lips.Generate.Record (StampFault (..), corpusText, genId, record, recordedProgram,
-                             recordedPrograms, renderStampFault, stampFaults)
+                             recordedPrograms, recordedSchema, renderStampFault, stampFaults)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
@@ -2668,6 +2668,17 @@ main = hspec $ do
             , "line 9 is stamped @gen:0123456789abcdef, and there is no \
               \generation record beside it to name"
             ]
+
+    -- The pin is not sticky: a re-mint grounds against the running binary's pin
+    -- (or --schema), so the one thing a reader needs is to be TOLD when the two
+    -- differ. That needs the committed pin read back out.
+    it "reads the schema pin back out of a committed record" $ do
+      recordedSchema (record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply")
+        `shouldBe` Just "github:o/r/aaa"
+      recordedSchema (record "m" Nixos "options-json:cafe0123" "high" 0.7 "sp" "p" "t" "r")
+        `shouldBe` Just "options-json:cafe0123"
+      -- a record written before the pin existed simply has none
+      recordedSchema "model: m\ntarget: nixos\n" `shouldBe` Nothing
 
     it "names the option schema the mint was grounded against" $
       -- A reader (and the re-mint that wants the same grounding) must be able to

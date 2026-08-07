@@ -156,14 +156,12 @@ tracks only what is still open.
       flake helper (`lib.modulesFromDir`, which already has a `pkgs`) instead.
       Decide where before building anything.
 
-   b. THE PIN IS NOT STICKY, BY DECISION. A re-mint defaults to the pin baked
-      into the running binary, not the one the committed record names: a re-mint
-      is the moment you want fresh grounding, and replay is impossible anyway
-      (the model is nondeterministic), so the record is an audit trail, not a
-      lock to obey. Consequence nobody is warned about: re-minting with a newer
-      lips silently re-grounds, and the `schema:` line only shows it afterwards.
-      Candidate if that ever bites: `generate` prints the old and new pin when
-      they differ, which is one line of prose and no new knob.
+   b. CLOSED 2026-08-05 (DESIGN §13, "A re-mint says when it re-grounds"). The
+      pin stays non-sticky by decision -- a re-mint is the moment you want fresh
+      grounding, and replay is impossible anyway since the model is
+      nondeterministic -- and `generate` now prints the committed pin beside the
+      one this run uses whenever they differ, so re-grounding is stated rather
+      than discovered in the `.generation` diff afterwards.
 
    c. `--schema` IS PER INVOCATION AND REMEMBERED NOWHERE. A caller on a stable
       channel must pass it on every mint of every language, and forgetting it

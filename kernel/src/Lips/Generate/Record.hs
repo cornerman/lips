@@ -19,6 +19,7 @@ module Lips.Generate.Record
   , corpusText
   , recordedProgram
   , recordedPrograms
+  , recordedSchema
   , StampFault (..)
   , stampFaults
   , renderStampFault
@@ -169,6 +170,20 @@ corpusText progs = T.intercalate "\n"
 
 header :: FilePath -> Text
 header f = "=== program " <> T.pack (takeFileName f) <> " ==="
+
+-- | The option schema a committed record was minted against: the locked
+-- flakeref, or @options-json:\<hash\>@ for a supplied document. 'Nothing' for a
+-- record written before the pin existed, which is a fact about that record and
+-- not a failure.
+--
+-- Read so a re-mint can SAY when it re-grounds. The pin is deliberately not
+-- sticky (a re-mint is the moment you want fresh grounding, and replay is
+-- impossible anyway, since the model is nondeterministic), which leaves exactly
+-- one hole: nobody was told. Printing the two pins closes it without new state.
+recordedSchema :: Text -> Maybe Text
+recordedSchema rec = case [ T.strip rest | l <- T.lines rec, Just rest <- [T.stripPrefix "schema:" l] ] of
+  (p : _) | not (T.null p) -> Just p
+  _                        -> Nothing
 
 -- | Read one program's text back out of a committed record: the inverse of
 -- 'corpusText' over the record's program block. 'Nothing' when this record holds
