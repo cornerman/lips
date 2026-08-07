@@ -66,7 +66,8 @@ import           Lips.Generate.Draft    (DraftTree (..), materializeDraft)
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
-import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms)
+import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, recordedPrograms,
+                                         renderStampFault, stampFaults)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isGroundExpect, readExpect, renderExpect)
@@ -253,6 +254,10 @@ checkLoose contract claims mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
   eng     <- loadLangOrDie dir file
+  -- Provenance before content: an engine whose lines do not name the record
+  -- beside them is not the engine that record produced, so every later verdict
+  -- would be about an unidentified file (invariant 6).
+  assertStamps dir file
   step ("crystallize " <> T.pack file) $ do
     -- An engine unsound on its own terms makes every later verdict meaningless
     -- (an ambiguous line reads as the author's problem when it is the engine's),
@@ -597,6 +602,36 @@ loadLangOrDie dir file = do
     Just src -> case readLang src of
       Left es  -> die (unreadable file ".lang" es)
       Right eng -> pure eng
+
+-- | Invariant 6, enforced at the door every committed engine passes: re-hash
+-- the @.generation@ beside the engine and refuse a @\@gen:@ stamp that
+-- disagrees with it. Deterministic and offline, so @check@ stays nixpkgs-free.
+--
+-- Without it the invariant was a promise: a change to what the record CONTAINS
+-- would silently invalidate every committed engine's stamps while all gates
+-- stayed green, and only a reader re-hashing by hand would ever notice.
+--
+-- An engine with no record at all is judged the other way round ('stampFaults'):
+-- it may claim no generation. A record that EXISTS and cannot be read is a loud
+-- failure rather than the no-record reading, exactly as 'readRecordedTarget'
+-- treats it -- guessing there would turn a broken repository into a green check.
+assertStamps :: FilePath -> FilePath -> IO ()
+assertStamps dir file = do
+  let recPath = generationPathIn dir file
+  there <- doesPathExist recPath
+  mrec  <- tryRead recPath
+  when (there && mrec == Nothing) $ die (report
+    ("lips can't read the generation record at " <> T.pack recPath <> ",")
+    ["so it cannot tell which generation wrote this engine."]
+    "\8594 restore the file, or re-mint: lips generate <program>.")
+  msrc <- tryRead (langPathIn dir file)
+  case stampFaults mrec <$> msrc of
+    Just fs@(_ : _) -> die (report
+      (T.pack (langPathIn dir file) <> " does not name the generation that wrote it:")
+      (map renderStampFault fs)
+      ("\8594 re-mint it: lips generate " <> T.pack file
+        <> " (a .lang is never hand-edited)."))
+    _ -> pure ()
 
 -- | Read the program file, or fail with a plain message instead of a raw
 -- exception when the path is wrong (a common typo at the shell).

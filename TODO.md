@@ -14,7 +14,7 @@ tracks only what is still open.
    `habit`). Two baked-source programs still state no observable, so nothing holds
    their minted source to their sentences, and -- since the obligation is a gate on
    `generate` -- neither can be re-minted until this is settled. That makes this a
-   PREREQUISITE for item 3's sweep.
+   PREREQUISITE for every re-mint item 7 wants.
 
    a. CLOSED 2026-08-03 (DESIGN §13, "A program that can be FED can be
       observed"): `board` and `habit` read their input from a named file or
@@ -117,60 +117,37 @@ tracks only what is still open.
       a path is executable. A file under `bin/` that exists but cannot run has
       not been observed; add the check when it is, not before.
 
-3. **The 18 committed engines predate the recorded schema pin, so their stamps
-   no longer re-hash.** The generation record gained a `schema:` line (the locked
-   flakeref, or `options-json:<hash>`, that grounded the mint -- DESIGN §13
-   "Option-schema grounding"), which changes every record's `genId`. Every
-   committed `.lang` is stamped `@gen:<id>` from a record written before that
-   line existed, so re-hashing a committed `.generation` today yields a different
-   id than its engine carries: invariant 6 is broken for every language in
-   `examples/`, and item 4 is why nothing says so. The remedy is a re-mint sweep
-   of all 18 languages, so each record and its stamps agree again. Open question
-   to settle first: mint the sweep with sonnet-5 rather than opus (cheaper, and
-   the gates rather than the model's taste decide what is admitted); the risk is
-   a weaker engine on the harder languages, so compare `.expect` survival per
-   language and keep opus for any that regress. First datapoint, from the
-   punctuation re-mint of `examples/function` (DESIGN §13): sonnet-5 regressed it
-   twice, dropping the built artifact for `echo` ExecStart lines and demoting the
-   declaration to a concept, while opus-5 kept the Go build and generalized
-   further -- so budget opus for the artifact-bearing languages at least. Second
-   datapoint (2026-07-31, the claims re-mints): opus-4-5 twice prefixed its reply
-   with reasoning prose, which the strict item parser refuses; opus-5 minted both
-   `logscan` and `http` cleanly, including a block-nested witness pattern. Budget
-   opus-5.
-   Order matters: sweep first, then
-   land item 4 -- a verifier landed first would turn the whole repo red.
-   NEW LEVER (2026-08-02): the mint can now check a draft against lips' own
-   gates before answering (`check_draft`, DESIGN §13), which is what makes a
-   sonnet-5 sweep worth attempting: in the one measured A/B it turned a failing
-   artifact-bearing mint into a passing one. Re-measure per language rather than
-   assuming it: the arm sizes were one run each.
-   NEW PRECONDITION (2026-07-31): `generate` now refuses an engine that bakes
-   source and states no observable, so every baked-source language in the sweep
-   needs a witness in its program FIRST (item 1). `logscan` and `http` already
-   have one; `board`, `habit`, `function`, `website` do not, and cannot be
-   re-minted until they do.
-   Four of the eighteen are already re-minted under the current binary
-   (`logscan`, `http`, `board`, `habit`), so their stamps re-hash and the sweep is
-   fourteen. Third model datapoint (2026-08-03, DESIGN §13): sonnet-5 minted
-   `board` cleanly, calling `check_draft` three times, but on `habit` its passing
-   attempt installed the built script twice so the claim's path would exist, and
-   one earlier attempt shipped source that the claim caught printing the wrong
-   row; opus-5 minted `habit` clean on the first attempt. Artifact-bearing
-   language, opus-5 again.
+3. **Which model to budget for a re-mint** (the record left over from the
+   sweep that turned out to be unnecessary; see DESIGN §13, "Invariant 6 held
+   all along"). Any re-mint (item 7's plurality edits, item 1b's witnesses)
+   faces the same choice, so the datapoints are kept here rather than lost with
+   the sweep:
 
-4. **Invariant 6 is verified by nothing.** DESIGN's sixth invariant says every
-   minted line is stamped `@gen:<id>` and the id must re-hash from the
-   committed `.generation` record, but no code re-hashes anything: `check`
-   reads the stamps as text. So a change to what the record contains silently
-   invalidates every committed engine's stamps while all gates stay green.
-   This is not hypothetical -- the schema pin added a `schema:` line to the
-   record, which changed every generation hash, and no gate noticed (item 3).
-   Remedy: `check` recomputes `genId` from the `.generation` beside the engine
-   and refuses when a `@gen:` stamp disagrees, which makes a re-mint sweep
-   verifiable instead of a matter of remembering. Deterministic, offline,
-   domain-blind. Do it after item 3's sweep, or every committed engine fails
-   the new gate at once.
+   - `examples/function` (artifact-bearing): sonnet-5 regressed it twice,
+     dropping the built artifact for `echo` ExecStart lines and demoting the
+     declaration to a concept; opus-5 kept the Go build and generalized further.
+   - The claims re-mints (2026-07-31): opus-4-5 twice prefixed its reply with
+     reasoning prose, which the strict item parser refuses; opus-5 minted
+     `logscan` and `http` cleanly, including a block-nested witness pattern.
+   - `board`/`habit` (2026-08-03): sonnet-5 minted `board` cleanly with three
+     `check_draft` calls, but on `habit` its passing attempt installed the built
+     script twice so the claim's path would exist; opus-5 minted `habit` clean
+     first try.
+
+   Budget opus-5 for anything artifact-bearing. `check_draft` (DESIGN §13) is
+   what makes sonnet-5 worth trying elsewhere: in the one measured A/B it turned
+   a failing artifact-bearing mint into a passing one, but both arms were one
+   run.
+
+   PRECONDITION for any baked-source re-mint (2026-07-31): `generate` refuses an
+   engine that bakes source and states no observable, so `function` and
+   `website` need a witness in their program FIRST (item 1b).
+
+4. CLOSED 2026-08-05 (DESIGN §13, "Invariant 6 held all along"): `check`
+   re-hashes the `.generation` beside the engine and refuses a `@gen:` stamp
+   that disagrees. The premise this item and the sweep rested on was FALSE --
+   every one of the 20 committed engines, and all 8 validation scenarios, passed
+   the new gate unchanged.
 
 5. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
@@ -543,10 +520,9 @@ tracks only what is still open.
 Trace to `docs/superpowers/survey/f-decision-calculus-theory.md`. The
 correctness/completeness argument these items back is now written out in
 DESIGN.md §2 ("Correctness, by theory" and following). Ranked by payoff over
-cost. Sequencing note: items 3 and 4 in "Next up" (the stale `@gen` stamps
-and the unverified invariant 6) outrank everything here -- a critic who
-re-hashes a committed `.generation` today falsifies invariant 6 for every
-example, which is a sharper critique than any missing audit below.
+cost. Sequencing note: the sharpest critique this list used to rank behind --
+that invariant 6 was verified by nothing -- is answered (item 4, closed
+2026-08-05), so these are now the outstanding theory gaps.
 
 - **IC postulate audit** (~1 day; prose plus property tests). Record which
   of Konieczny & Pino Pérez's merging postulates (IC0–IC8) `Base.resolve`

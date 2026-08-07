@@ -819,6 +819,25 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Invariant 6 held all along, and is now checked.** The sixth invariant says
+  every minted line is stamped `@gen:<id>` and the id must re-hash from the
+  committed `.generation`; no code re-hashed anything, and the ledger recorded a
+  belief that the schema pin had broken every stamp, which would have cost a
+  fourteen-language re-mint sweep to repair. Measuring first refuted it: the
+  stamp is `genId` over the record TEXT AS WRITTEN, and adding a field to
+  `record` changes what future mints write, never the bytes already on disk. All
+  20 committed engines and all 8 validation scenarios re-hash exactly, including
+  the three whose records predate the `schema:` line entirely (`bucket`,
+  `vhost`, `site`). The schema-pin entry below had said so at the time
+  ("existing records still re-hash, since `genId` reads the committed file");
+  the belief in a repo-wide breakage was written into the backlog anyway, and
+  survived there for four days because nothing could answer it mechanically. So the gate landed green instead of after a sweep:
+  `Generate.Record.stampFaults` re-hashes the record beside an engine and
+  `check` refuses a stamp that disagrees, a line carrying none, or -- the
+  inverse case, which needs no special rule for drafts -- a stamp with no record
+  to name. `experiments/clause-site` lost the zeros it used to carry, since a
+  placeholder id is exactly the lie the gate exists to catch. The lesson is the
+  cheaper one: measure the claimed breakage before paying for the repair.
 - **A rule reads one part, not the value.** "Does this rule read the matched
   assertion?" was one yes/no answer for the whole rule, so a rule reading
   `<value.1>` of a value built from two holes counted as carrying both and the
@@ -2269,7 +2288,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Generation-event provenance.** Every minted engine line is stamped
   `@gen:<id>`, the content id of its `.generation` record; records are
   committed beside the engine (no longer gitignored) and the stamp is
-  mechanically checkable by re-hashing the record. Regenerating the examples
+  mechanically CHECKED by re-hashing the record (`check`, since 2026-08-05). Regenerating the examples
   under this scheme surfaced live drift (the model switched to the stock
   restic module and exposed two decisions the old engine had smuggled:
   credentials location and a literal schedule), which moved into the program

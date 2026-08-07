@@ -85,10 +85,10 @@ test-draft:
     mkdir -p "$tmp/watch"
     printf 'watch 30 seconds\n' > "$tmp/one.watch.lips"
     cat > "$tmp/watch/watch.lang" <<'EOF'
-    p1 meta lang.pattern.p1 stated "watch <secs> seconds => fact watch.a \"<secs>\"" @gen:0000000000000000
-    p2 meta lang.pattern.p2 stated "watch <n> seconds => fact watch.b \"<n>\"" @gen:0000000000000000
-    r1 meta engine.rule.r1 stated "match fact watch.a => systemd.services.w.environment.A \"<value:int>\"" @gen:0000000000000000
-    r2 meta engine.rule.r2 stated "match fact watch.b => systemd.services.w.environment.B \"<value:int>\"" @gen:0000000000000000
+    p1 meta lang.pattern.p1 stated "watch <secs> seconds => fact watch.a \"<secs>\""
+    p2 meta lang.pattern.p2 stated "watch <n> seconds => fact watch.b \"<n>\""
+    r1 meta engine.rule.r1 stated "match fact watch.a => systemd.services.w.environment.A \"<value:int>\""
+    r2 meta engine.rule.r2 stated "match fact watch.b => systemd.services.w.environment.B \"<value:int>\""
     EOF
     sed -i 's/^    //' "$tmp/watch/watch.lang"
     # A committed engine unsound on its own terms must be refused, not diagnosed.

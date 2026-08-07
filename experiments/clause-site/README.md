@@ -8,8 +8,10 @@ The smallest program whose behaviour is clauses, used to prove plan Task 7:
     lips check experiments/clause-site/echo.lips     # judges the claim over its clauses
 
 The engine is HAND-WRITTEN, which is the only thing here that a real program
-would not have: no mint emits clauses yet (plan Task 9). Its `@gen:` stamps are
-zeros for the same reason. Everything downstream of the engine is the real path.
+would not have: no mint emits clauses yet (plan Task 9). It therefore carries no
+`@gen:` stamp at all -- `check` re-hashes the record beside an engine and refuses
+a stamp naming a generation that never happened, so a placeholder id would be a
+lie the gate now catches. Everything downstream of the engine is the real path.
 
 What `compile` writes into `out/echo/site/`:
 

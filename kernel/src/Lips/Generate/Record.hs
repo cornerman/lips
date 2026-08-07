@@ -19,6 +19,9 @@ module Lips.Generate.Record
   , corpusText
   , recordedProgram
   , recordedPrograms
+  , StampFault (..)
+  , stampFaults
+  , renderStampFault
   ) where
 
 import           Data.Bits          (shiftR, xor)
@@ -32,7 +35,9 @@ import           Data.Word          (Word64)
 
 import           System.FilePath    (takeFileName)
 
-import           Lips.Nix.Target    (Target, targetSlug)
+import           Lips.Kernel.Decision (Decision (..), Provenance (..))
+import           Lips.Kernel.Reader   (readDecision)
+import           Lips.Nix.Target      (Target, targetSlug)
 
 -- | The auditable record of a generation event: everything the model saw and
 -- said, self-contained (the system prompt is embedded, not referenced, so the
@@ -97,6 +102,61 @@ hashBytes = hex . BS.foldl' step offset
         go 0 acc _ = acc
         go n acc w = go (n - 1) (digit (fromIntegral (w `mod` 16)) : acc) (w `shiftR` 4)
         digit d = if d < 10 then toEnum (fromEnum '0' + d) else toEnum (fromEnum 'a' + d - 10)
+
+-- | One engine line whose stamp does not name the generation record beside it.
+-- The line number is the @.lang@'s own, so a report points where the fix goes.
+data StampFault
+  = -- | The line names another event than the record hashes to: the stamp and
+    --   the id the record has.
+    StaleStamp Int Text Text
+  | -- | The line carries no stamp, while a record sits beside it.
+    Unstamped Int Text
+  | -- | The line names an event, and there is no record to name.
+    OrphanStamp Int Text
+  deriving (Eq, Show)
+
+-- | Invariant 6, checked: every line of an engine must be stamped with the id
+-- its own @.generation@ hashes to. Deterministic, offline and domain-blind --
+-- it re-runs 'genId' over the record's bytes and compares.
+--
+-- The record is a 'Maybe' because an engine may legitimately have none: a draft
+-- lips materializes to judge, or a hand-written one. Then the rule inverts
+-- rather than relaxing -- no line may claim a generation, since a stamp naming
+-- a record that is not there vouches for nothing, which is the state the
+-- re-hash exists to make impossible.
+--
+-- Lines that are not decisions at all (blank, comment, malformed) are skipped:
+-- 'Lips.Kernel.Lang.Store.readLang' is the door that refuses those, and one
+-- defect should be reported by one gate.
+stampFaults :: Maybe Text -> Text -> [StampFault]
+stampFaults mrec langText =
+  [ f
+  | (n, t) <- zip [1 ..] (T.lines langText)
+  , Right d <- [readDecision (T.strip t)]
+  , f <- fault n (stampOf d)
+  ]
+  where
+    stampOf d = case dProv d of
+      FromGeneration g -> Just g
+      _                -> Nothing
+    fault n found = case (mrec, found) of
+      (Just rec, Just g) | g /= genId rec -> [StaleStamp n g (genId rec)]
+      (Just rec, Nothing)                 -> [Unstamped n (genId rec)]
+      (Nothing,  Just g)                  -> [OrphanStamp n g]
+      _                                   -> []
+
+-- | One stamp fault in the words its reader needs: which line, what it claims,
+-- and what the record actually says.
+renderStampFault :: StampFault -> Text
+renderStampFault (StaleStamp n g want) =
+  "line " <> T.pack (show n) <> " is stamped @gen:" <> g
+    <> ", but the record beside it hashes to " <> want
+renderStampFault (Unstamped n want) =
+  "line " <> T.pack (show n) <> " carries no @gen: stamp, so nothing says which \
+  \generation wrote it (the record beside it hashes to " <> want <> ")"
+renderStampFault (OrphanStamp n g) =
+  "line " <> T.pack (show n) <> " is stamped @gen:" <> g
+    <> ", and there is no generation record beside it to name"
 
 -- | The corpus the mint reads: every program of one language, each framed by its
 -- file name. The mint sees them all at once so the grammar generalizes across

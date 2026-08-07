@@ -61,7 +61,8 @@ import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressE
 import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
-import Lips.Generate.Record (corpusText, genId, record, recordedProgram, recordedPrograms)
+import Lips.Generate.Record (StampFault (..), corpusText, genId, record, recordedProgram,
+                             recordedPrograms, renderStampFault, stampFaults)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
@@ -2543,6 +2544,52 @@ main = hspec $ do
       -- names it is an input of the event like every other
       genId r `shouldNotBe` genId rs
       T.length (genId r) `shouldBe` 16
+
+    -- Invariant 6: every minted line is stamped @gen:<id>, and the id must
+    -- re-hash from the committed .generation beside it. Nothing verified that
+    -- for a year, so a change to what the record CONTAINS could have
+    -- invalidated every committed engine with all gates green.
+    describe "generation stamps (does the engine name the record beside it)" $ do
+      let rec  = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+          want = genId rec
+          line i g = "p" <> T.pack (show (i :: Int)) <> " meta lang.pattern.p"
+                       <> T.pack (show i) <> " stated \"x" <> T.pack (show i)
+                       <> " => fact y \\\"z\\\"\"" <> g
+          lang gs = T.unlines ("# a comment" : "" : [line i g | (i, g) <- zip [1 ..] gs])
+
+      it "accepts an engine every line of which names the record" $
+        stampFaults (Just rec) (lang [" @gen:" <> want, " @gen:" <> want]) `shouldBe` []
+
+      it "reports a line stamped with another event" $
+        stampFaults (Just rec) (lang [" @gen:" <> want, " @gen:0123456789abcdef"])
+          `shouldBe` [StaleStamp 4 "0123456789abcdef" want]
+
+      it "reports a minted line carrying no stamp at all" $
+        stampFaults (Just rec) (lang [" @gen:" <> want, ""])
+          `shouldBe` [Unstamped 4 want]
+
+      -- A stamp naming a record that is not there vouches for nothing, which is
+      -- exactly the state a re-hash is supposed to make impossible.
+      it "reports a stamp with no record beside it" $
+        stampFaults Nothing (lang [" @gen:0123456789abcdef"])
+          `shouldBe` [OrphanStamp 3 "0123456789abcdef"]
+
+      it "accepts a hand-written engine that claims no generation" $
+        stampFaults Nothing (lang ["", ""]) `shouldBe` []
+
+      it "names the defect in the words the reader needs" $
+        map renderStampFault
+            [ StaleStamp 4 "0123456789abcdef" "cafe0123cafe0123"
+            , Unstamped 7 "cafe0123cafe0123"
+            , OrphanStamp 9 "0123456789abcdef" ]
+          `shouldBe`
+            [ "line 4 is stamped @gen:0123456789abcdef, but the record beside it \
+              \hashes to cafe0123cafe0123"
+            , "line 7 carries no @gen: stamp, so nothing says which generation \
+              \wrote it (the record beside it hashes to cafe0123cafe0123)"
+            , "line 9 is stamped @gen:0123456789abcdef, and there is no \
+              \generation record beside it to name"
+            ]
 
     it "names the option schema the mint was grounded against" $
       -- A reader (and the re-mint that wants the same grounding) must be able to
