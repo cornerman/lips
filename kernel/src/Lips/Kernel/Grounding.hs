@@ -30,10 +30,11 @@ module Lips.Kernel.Grounding
   ( Grounding (..)
   , Unvouched (..)
   , grounding
+  , claimCount
   , groundingReport
   ) where
 
-import           Data.List (nubBy, sortOn)
+import           Data.List (nub, nubBy, sortOn)
 import           Data.Text (Text)
 import qualified Data.Text as T
 
@@ -51,7 +52,10 @@ data Unvouched = Unvouched
 data Grounding = Grounding
   { gOptions  :: Int         -- ^ vouched by the target world's schema
   , gClauses  :: Int         -- ^ vouched by the contract set and the gate
-  , gClaims   :: Int         -- ^ vouched by the author, who stated the observable
+  , gClaimIds :: [Text]
+    -- ^ The observables the author stated, by id. IDS, not decisions: one claim
+    -- is stated in several sections (a call, what it equals, what it is fed), and
+    -- counting those separately reported logscan's single claim as four.
   , gGlue     :: [Unvouched] -- ^ artifact arguments: foreign text, vouched by nothing
   , gStaged   :: [Unvouched] -- ^ staged source trees: the same defect at file scale
   , gWritten  :: [Unvouched]
@@ -66,8 +70,12 @@ data Grounding = Grounding
 -- shape decides, so this is structural and domain-blind: @clause.@ and @claim.@
 -- are kernel vocabulary, @artifact.\<n\>.args.@ is an argument to somebody
 -- else's builder, and everything else names an option of the target world.
+-- | How many observables the author stated: distinct claim ids.
+claimCount :: Grounding -> Int
+claimCount = length . nub . gClaimIds
+
 grounding :: [(Subject, Decision)] -> Grounding
-grounding winners = foldr add (Grounding 0 0 0 [] [] []) (nubBy sameSubject winners)
+grounding winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy sameSubject winners)
   where
     -- One SUBJECT is one assertion, however many agreeing decisions carry it.
     -- Several program lines may state the same artifact argument (three lines
@@ -77,7 +85,7 @@ grounding winners = foldr add (Grounding 0 0 0 [] [] []) (nubBy sameSubject winn
 
     add (s, d) g = case segments s of
       ("clause" : _) -> g { gClauses = gClauses g + 1 }
-      ("claim" : _)  -> g { gClaims = gClaims g + 1 }
+      ("claim" : cid : _) -> g { gClaimIds = cid : gClaimIds g }
       -- Where the behaviour runs and what to call it: kernel vocabulary, so no
       -- schema vouches for it and counting it as an option overstates what does.
       ("site" : _)   -> g
@@ -128,7 +136,7 @@ groundingReport g =
   [ "grounding: " <> T.intercalate ", "
       [ count (gOptions g) "option assignment" <> " (schema)"
       , count (gClauses g) "clause" <> " (contracts)"
-      , count (gClaims g) "claim" <> " (stated)"
+      , count (claimCount g) "claim" <> " (stated)"
       , count (length (gGlue g) + length (gStaged g)) "unvouched assertion"
           <> " (nothing), " <> count (unvouchedWords g) "word"
       , count (sum (map uWords (gWritten g))) "mint-written word"
