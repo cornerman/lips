@@ -76,7 +76,9 @@ kernel bug; a missing domain fact is the engine's job.
 - Test fast: `just test` (or in `kernel/`:
   `ghc -Wall -isrc -itest test/Spec.hs -outputdir /tmp/b -o /tmp/spec && /tmp/spec`).
   Full: `just ci` (nix flake check: module eval, artifact eval + build, VM boot;
-  needs KVM), and `just check-expect` (every example's contract, host-side).
+  needs KVM), `just check-expect` (every example's contract, host-side), and
+  `just test-draft` (the refusal WORDINGS, which hspec cannot see -- it rotted
+  unnoticed for four days because nothing in CI runs it).
   `just test` runs the Haskell suite ONLY: no nix check, no artifact build.
 - The suite and app must stay `-Wall` clean.
 - Nix flakes see only git-tracked files: `git add` before `nix build`/`nix run`.

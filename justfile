@@ -141,7 +141,7 @@ test-draft:
     sed -i 's/^    //' "$tmp/goodopt.txt"
     "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/goodopt.txt" > "$tmp/out5" 2>&1 \
       || { echo "FAIL: a sound, grounded draft was refused"; cat "$tmp/out5"; exit 1; }
-    grep -q "checks pass" "$tmp/out5" || { echo "FAIL: the expect gate did not run on the draft"; cat "$tmp/out5"; exit 1; }
+    grep -q "contract: 1 check" "$tmp/out5" || { echo "FAIL: the expect gate did not run on the draft"; cat "$tmp/out5"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
