@@ -1,15 +1,12 @@
-p1 meta lang.pattern.p1 stated "read numbers, one per line, from standard input => fact tally.input \"one number per line from standard input\"" @gen:b7f166b666e3f535
-p2 meta lang.pattern.p2 stated "print their total when the input ends => fact tally.output \"the total of the numbers read\"" @gen:b7f166b666e3f535
-p3 meta lang.pattern.p3 stated "ignore a line that is not a number => fact tally.skip \"a line that is not a number is dropped\"" @gen:b7f166b666e3f535
-p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact install.command \"<name>\"" @gen:b7f166b666e3f535
-p5 meta lang.pattern.p5 stated "given the lines <a> and <b>, print <sum> => fact witness.sum \"<a> <b> <sum>\"" @gen:b7f166b666e3f535
-q1 meta engine.demand.q1 stated "demand tally.input \"where do the numbers come from? say: read numbers, one per line, from standard input.\"" @gen:b7f166b666e3f535
-q2 meta engine.demand.q2 stated "demand tally.output \"what is printed, and when? say: print their total when the input ends.\"" @gen:b7f166b666e3f535
-q3 meta engine.demand.q3 stated "demand tally.skip \"what happens to a line that is not a number? say: ignore a line that is not a number.\"" @gen:b7f166b666e3f535
-q4 meta engine.demand.q4 stated "demand install.command \"what command name should the tool be installed as?\"" @gen:b7f166b666e3f535
-q5 meta engine.demand.q5 stated "demand witness.sum \"give a worked example: given the lines A and B, print S.\"" @gen:b7f166b666e3f535
-r1 meta engine.rule.r1 stated "match fact tally.input => clause.numbers \"(define (numbers) (let ((line (read-a-line))) (if (end-of-input? line) (list) (let ((n (number-of line))) (if n (cons n (numbers)) (numbers))))))\"" @gen:b7f166b666e3f535
-r2 meta engine.rule.r2 stated "match fact tally.output => clause.total \"(define (total ns) (if (null? ns) 0 (+ (car ns) (total (cdr ns)))))\" ; clause.main \"(define (main) (emit (number->string (total (numbers)))))\"" @gen:b7f166b666e3f535
-r3 meta engine.rule.r3 stated "match fact tally.skip => clause.number-of \"(define (number-of line) (string->number line))\"" @gen:b7f166b666e3f535
-r4 meta engine.rule.r4 stated "match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"" @gen:b7f166b666e3f535
-r5 meta engine.rule.r5 stated "match fact witness.sum => claim.sum.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.sum.call \"(total (numbers))\" ; claim.sum.equals \"<value.3:int>\"" @gen:b7f166b666e3f535
+p1 meta lang.pattern.p1 stated "read numbers, one per line, from standard input => fact behavior.read_loop \"read_loop\"" @gen:d0c9add75a1e7404
+p2 meta lang.pattern.p2 stated "print their total when the input ends => fact behavior.print_total \"print_total\"" @gen:d0c9add75a1e7404
+p3 meta lang.pattern.p3 stated "ignore a line that is not a number => fact behavior.ignore_invalid \"ignore_invalid\"" @gen:d0c9add75a1e7404
+p4 meta lang.pattern.p4 stated "install the tool as the command <cmd> => fact site.command \"<cmd>\"" @gen:d0c9add75a1e7404
+p5 meta lang.pattern.p5 stated "given the lines <a> and <b>, print <total> => fact witness.numbers \"<a> <b>\" ; fact witness.total \"<total>\"" @gen:d0c9add75a1e7404
+q1 meta engine.demand.q1 stated "demand site.command \"what command should the tool be installed as?\"" @gen:d0c9add75a1e7404
+r1 meta engine.rule.r1 stated "match fact behavior.read_loop => clause.sum-loop \"(define (sum-loop total) (let ((line (read-a-line))) (if (end-of-input? line) total (let ((n (parse-line line))) (sum-loop (if n (+ total n) total))))))\"" @gen:d0c9add75a1e7404
+r2 meta engine.rule.r2 stated "match fact behavior.print_total => clause.main \"(define (main) (emit (number->string (sum-loop 0))))\"" @gen:d0c9add75a1e7404
+r3 meta engine.rule.r3 stated "match fact behavior.ignore_invalid => clause.parse-line \"(define (parse-line line) (string->number line))\"" @gen:d0c9add75a1e7404
+r4 meta engine.rule.r4 stated "match fact site.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"" @gen:d0c9add75a1e7404
+r5 meta engine.rule.r5 stated "match fact witness.numbers => claim.<self>.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.<self>.call \"(begin (main) (car (emitted)))\"" @gen:d0c9add75a1e7404
+r6 meta engine.rule.r6 stated "match fact witness.total => claim.<self>.equals \"\\\"<value>\\\"\"" @gen:d0c9add75a1e7404

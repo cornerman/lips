@@ -1,1 +1,3 @@
-a1 expect claim.sum.equals from witness.sum#3
+a2 expect claim.<self>.feed from witness.numbers#1
+a3 expect claim.<self>.feed from witness.numbers#2
+a4 expect claim.<self>.equals from witness.total

@@ -211,6 +211,10 @@ promptWithDirection md t = case md of
 parseEngineCandidates :: Text -> ([Text], [ItemCandidate])
 parseEngineCandidates reply = go (T.lines reply) [] []
   where
+    -- A reply carrying no item at all is a failure, never an empty engine: with
+    -- prose ignored, a model that answered in sentences alone would otherwise
+    -- materialize as a language that reads nothing and refuses every program.
+    go [] [] [] = (["the reply carried no engine lines at all"], [])
     go [] errs cands = (reverse errs, reverse cands)
     go (l : ls) errs cands
       | Just prefix <- blockHeader l =
@@ -221,6 +225,7 @@ parseEngineCandidates reply = go (T.lines reply) [] []
                   Left e  -> go rest' (e : errs) cands
                   Right c -> go rest' errs (c : cands)
       | ignorable (T.strip l) = go ls errs cands
+      | prose (T.strip l) = go ls errs cands
       | otherwise = case parseLine (T.strip l) of
           -- Echo the raw line the model wrote, so a refusal naming an item by
           -- id ("...(item p1)") also shows what p1 actually was. Without it the
@@ -228,6 +233,28 @@ parseEngineCandidates reply = go (T.lines reply) [] []
           Left e  -> go ls ((e <> "\n      as written: " <> T.strip l) : errs) cands
           Right c -> go ls errs (c : cands)
     ignorable t = T.null t || "#" `T.isPrefixOf` t || "```" `T.isPrefixOf` t
+
+-- | Is this line a sentence the model wrapped its answer in, rather than an item
+-- it meant? The prompt says to write items and nothing else, and a model still
+-- closes with "I now have a fully verified engine." -- which cost two mints of
+-- twenty minutes each, refused for a line carrying no engine meaning at all.
+--
+-- The rule is stated, not sensed, and it is deliberately reluctant: prose is a
+-- line whose first token is not a confidence AND whose first three tokens hold no
+-- item keyword. So a MANGLED item (@O.9 p1 pattern ...@) still fails loud, because
+-- @pattern@ is right there -- the reading that drops something the model meant is
+-- the one this must never take. A sentence that merely mentions a keyword
+-- ("I expect this to work") is refused too, which is the safe direction.
+prose :: Text -> Bool
+prose l = not (isConfidence firstTok) && not (any (`elem` keywords) (take 3 toks))
+  where
+    toks = T.words l
+    firstTok = case toks of { (w : _) -> w; [] -> "" }
+    isConfidence t = case TR.double t of
+      Right (_, rest) -> T.null rest
+      Left _          -> False
+    keywords :: [Text]
+    keywords = ["pattern", "match", "merge", "demand", "expect", "because"]
 
 closeMarker :: Text
 closeMarker = "lips>>>"

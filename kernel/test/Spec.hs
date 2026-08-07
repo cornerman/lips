@@ -1016,6 +1016,28 @@ main = hspec $ do
         [VStr [PHole "value.1", PLit "\n", PHole "value.2"]] -> pure ()
         other -> expectationFailure ("expected a newline between the two holes, got " ++ show other)
 
+    -- Two live mints of twenty minutes each were refused for a closing sentence
+    -- the model wrapped its answer in, though the prompt says to write items and
+    -- nothing else. Prose is ignored; anything that could be a mangled item is
+    -- still refused, because dropping something the model meant is the reading
+    -- this must never take.
+    it "ignores the sentence a model wraps its answer in" $ do
+      let reply = T.unlines
+            [ "I now have a fully verified engine. Here is the final answer."
+            , "0.9 p1 pattern serve <n> => fact svc.name \"<n>\""
+            , "Now that the draft passes every gate, I'll give the final answer."
+            ]
+          (errs, cs) = parseEngineCandidates reply
+      errs `shouldBe` []
+      length cs `shouldBe` 1
+
+    it "still refuses a line that could be an item with a mangled confidence" $ do
+      -- 'pattern' is right there in the third token, so this is an item the model
+      -- meant, not a sentence: it must fail loud rather than vanish.
+      let (errs, cs) = parseEngineCandidates "O.9 p1 pattern serve <n> => fact svc.name \"<n>\""
+      cs `shouldBe` []
+      errs `shouldSatisfy` any (T.isInfixOf "bad confidence")
+
     it "a pattern template may begin with a dispatch keyword (no collision)" $ do
       -- Regression (kernel review): a loose line starting with a domain word
       -- like "match" must mint as a pattern, not be misrouted to the rule
