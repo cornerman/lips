@@ -388,31 +388,37 @@
 
         # The artifacts proof (artifacts plan; ledger section 13): a Solution
         # whose realization BUILDS a program from generated source and runs it.
-        # The committed hello-server example realizes to a module that
-        # let-binds a buildGoModule derivation over the committed Go source and
-        # wires ${artifact.httpserver} into a systemd service. This pins the
-        # whole chain -- generated source -> Nix build -> service -> booted and
-        # answering -- as a permanent check. No AI in this derivation.
+        # The committed website example realizes to a module that let-binds a
+        # buildGoModule derivation over the committed Go source and wires
+        # ${artifact.website} into a systemd service. This pins the whole chain
+        # -- generated source -> Nix build -> service -> booted and answering --
+        # as a permanent check. No AI in this derivation.
+        #
+        # It watches `website` rather than `hello.http` because the http
+        # language stopped baking source on 2026-08-06 (its re-mint over three
+        # contrasted routes realizes to nginx). `website` is now the largest
+        # baked-source example, so it is the one this check must follow; when it
+        # too sheds its tree, the next artifact-bearing example inherits this.
         artifact-vm =
           let
             lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
             # Realize into a DIRECTORY: the module plus its source tree, so the
             # module's relative `src = ./artifacts/<name>` resolves at import.
-            realized = pkgs.runCommand "lips-hello-module" { } ''
-              mkdir -p http
-              cp ${./examples/hello.http.lips} hello.http.lips
-              cp ${./examples/http/http.lang} http/http.lang
-              cp -r ${./examples/http/artifacts} http/artifacts
+            realized = pkgs.runCommand "lips-website-module" { } ''
+              mkdir -p website
+              cp ${./examples/website.lips} website.lips
+              cp ${./examples/website/website.lang} website/website.lang
+              cp -r ${./examples/website/artifacts} website/artifacts
               # The generation record travels with the language, exactly as it
               # does in a real language folder: where a language BAKES source,
               # compile reads it to check the program still states the
               # specification that source was written from, and refuses rather
               # than skip when it cannot.
-              cp ${./examples/http/http.generation} http/http.generation
+              cp ${./examples/website/website.generation} website/website.generation
               # --no-contract: the gate needs nix to evaluate the module, which
               # a compile inside a nix build has not got; `lips check` gates in
               # the repo (see just check-expect).
-              ${lips}/bin/lips compile --no-contract --out "$out" hello.http.lips
+              ${lips}/bin/lips compile --no-contract --out "$out" website.lips
             '';
           in
           pkgs.testers.runNixOSTest {
@@ -424,10 +430,48 @@
             testScript = ''
               machine.wait_for_unit("multi-user.target")
               # The service built from generated Go source is up and listening.
+              machine.wait_for_unit("website.service")
+              machine.wait_for_open_port(8081)
+              # It answers with a word the program states (the built artifact
+              # runs, and the button labels reach it through the unit's
+              # environment).
+              machine.succeed("curl -s http://localhost:8081/ | grep -F 'leeren'")
+            '';
+          };
+
+        # The configuration proof for text a MINT wrote: the http language
+        # spends each route line into an nginx `extraConfig` snippet, foreign
+        # text no expect can read (an expect compares the option's string, not
+        # what nginx does with it). Booting it and asking for every route is
+        # what holds those words to the program's sentences, the way a claim
+        # holds baked source. No AI in this derivation.
+        nginx-vm =
+          let
+            lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+            realized = pkgs.runCommand "lips-hello-module" { } ''
+              mkdir -p http
+              cp ${./examples/hello.http.lips} hello.http.lips
+              cp ${./examples/http/http.lang} http/http.lang
+              cp ${./examples/http/http.generation} http/http.generation
+              ${lips}/bin/lips compile --no-contract --out "$out" hello.http.lips
+            '';
+          in
+          pkgs.testers.runNixOSTest {
+            name = "lips-nginx-routes-answer";
+            nodes.machine = { pkgs, ... }: {
+              imports = [ "${realized}/default.nix" ];
+              environment.systemPackages = [ pkgs.curl ];
+            };
+            testScript = ''
+              machine.wait_for_unit("multi-user.target")
+              # The program names the serving unit, and the name is realized as
+              # a systemd alias on nginx, so the author's word works verbatim.
               machine.wait_for_unit("hello.service")
               machine.wait_for_open_port(8080)
-              # It answers with the program's text (the built artifact runs).
+              # Every route answers with the text its own line states.
               machine.succeed("curl -s http://localhost:8080/ | grep -F 'hello from lips'")
+              machine.succeed("curl -s http://localhost:8080/health | grep -F 'ok'")
+              machine.succeed("curl -s http://localhost:8080/version | grep -F 'lips 0.1'")
             '';
           };
       });
