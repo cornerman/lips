@@ -2983,6 +2983,35 @@ but the loop around it is incomplete; "missing" means specced, not built.
   sentence listing N items has no repeating hole form, so the pattern is frozen
   at the arity the example happens to use.
 
+- **Plurality dissolved the largest remaining blob: `http` stopped baking
+  source** (2026-08-06, `examples/hello.http.lips`). The program was enriched
+  from one blanket response to three contrasted routes (`/`, `/health`,
+  `/version`, each with its own text) under a `routes:` heading, its witness
+  sentence was dropped, and it was re-minted with opus-5 at `--compat none`.
+  The 62 lines of Go are gone: the engine is nginx, one `location` per route,
+  and the body rides `extraConfig` (`locations.*.return` is typed integer in
+  this schema, so the text cannot ride there). The route pattern nests under the
+  SERVICE-NAME line (`p4.under.p2`), not under the `routes:` heading, which
+  answers the previous mint's own gap `cross-line-instance-key` with no kernel
+  change: an item borrows the key its block head bound, so a route knows which
+  server it belongs to. Its second gap, `per-item-claim-key`, dissolved with the
+  source -- a pure-configuration language mints no claim, and the two expects
+  pin the port and every route body. The witness sentence was unnecessary, as
+  the `function` re-mint had already suggested: nothing asked for one and
+  nothing refused its absence.
+  The unit name is realized as `systemd.services.nginx.aliases =
+  [ "hello.service" ]`, so `systemctl` reaches the author's word verbatim --
+  a POSITIVE instance of the shape TODO 2b complains about, where the option
+  the mint chose means what the sentence says, unlike postgres's
+  `ensureDBOwnership` or web's `serverName`.
+  Grounding after the re-mint: 7 option assignments, 0 unvouched assertions,
+  19 mint-written words inside option strings (the three nginx snippets). Those
+  words are MINT glue and no expect can read them -- an expect compares the
+  option's string, never what nginx does with it -- so the flake gained
+  `nginx-vm`, which boots the realized module and asks all three routes. The
+  `artifact-vm` check, which watched this example precisely because it baked
+  source, now follows `examples/website`, the largest baked tree left.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and

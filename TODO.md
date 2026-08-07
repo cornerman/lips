@@ -9,33 +9,29 @@ tracks only what is still open.
 1. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
    by the meaning-dimension work, DESIGN §13).
 
-   Claims landed and four programs carry one (`logscan`, `hello.http`, `board`,
-   `habit`). Two baked-source programs still state no observable, so nothing
-   holds their minted source to their sentences, and -- since the obligation is a
-   gate on `generate` -- neither can be re-minted until this is settled. That
-   makes it a PREREQUISITE for every re-mint item 5 wants.
+   Claims landed and three programs carry one (`logscan`, `board`, `habit`;
+   `hello.http` shed its claim with its source on 2026-08-06). `website` bakes
+   source and states no witness, which is no longer a blocker: measured
+   2026-08-06, the mint deduces the observable from the program's own words
+   (opus-5 minted `examples/function.lips` unmodified and deduced four claims;
+   the `http` re-mint needed no witness sentence at all), and the refusal wording
+   now says so.
 
-   a. `website` bakes source and states no witness. CLOSED for `function`, and
-      the precondition it stood for is gone: measured 2026-08-06, opus-5 minted
-      `examples/function.lips` UNMODIFIED (no witness sentence) and deduced four
-      claims from the program's own words. A witness sentence is not a
-      precondition for re-minting a baked-source example; the mint's job is to
-      deduce the observable, and it only asks when it cannot. What is still worth
-      fixing is the REFUSAL WORDING (`kernel/app/Main.hs:735`), which tells the
-      author to state an example rather than telling the mint to deduce one.
-   b. Not decided: whether a machine claim should RETRY its observation until it
+   a. Not decided: whether a machine claim should RETRY its observation until it
       holds, bounded. A booted system converges (a unit may not be listening the
       instant `multi-user.target` is reached), so a single shot can be flaky, and
       flaky verification is worse than none. Retry-until-deadline is domain-blind
       and would be uniform for every claim. Deferred until a real claim actually
       flakes -- the one machine claim exercised so far did not.
-   c. Watch the narrowing the `http` re-mint showed: told to prefer an observable
-      over the program's own binary, the mint added a `-check` mode to its source
-      and observed the handler in the sandbox instead of the booted service, so
-      the port and unit wiring stay unobserved. Honest but narrower than it
-      reads. If this recurs, the preamble should say when the booted machine is
-      the only faithful place.
-   d. A witness sentence listing N items freezes its pattern at that arity: both
+   b. Watch the narrowing the first `http` claims mint showed (2026-07-31): told
+      to prefer an observable over the program's own binary, the mint added a
+      `-check` mode to its source and observed the handler in the sandbox instead
+      of the booted service, so the port and unit wiring stayed unobserved.
+      Honest but narrower than it reads. That engine is gone (the 2026-08-06
+      re-mint bakes no source), so this is a warning, not a live defect: if it
+      recurs, the preamble should say when the booted machine is the only
+      faithful place.
+   c. A witness sentence listing N items freezes its pattern at that arity: both
       models minting `habit` filed the same gap (`fixed-arity-witness`,
       `witness-entry-count`), since the grammar repeats a sub-match only in a
       BULLETED block, never inside one prose line. The engine is honest (a
@@ -124,9 +120,12 @@ tracks only what is still open.
    a failing artifact-bearing mint into a passing one, but both arms were one
    run.
 
-   PRECONDITION for any baked-source re-mint (2026-07-31): `generate` refuses an
-   engine that bakes source and states no observable, so `function` and
-   `website` need a witness in their program FIRST (item 1a).
+   The `http` re-mint (2026-08-06) adds one: opus-5, `--compat none`, one program
+   edit, and the whole Go tree became nginx options in a single attempt.
+
+   The old PRECONDITION here (a baked-source program needs a witness sentence
+   before it can be re-minted) is void: the mint deduces the observable, and
+   where the re-mint bakes no source it needs none (item 1).
 
 4. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
@@ -182,9 +181,16 @@ tracks only what is still open.
    program edit at all, once clause sequencing let its three calls compose into
    one entry point (DESIGN §13). Its plurality was already right, and the reverse
    experiment is still untried: cutting its three calls to one should demote the
-   call to a constant. Remaining candidate, in order of how much it bakes:
-   `http` (24 lines of source). One program edit plus one `generate --compat
-   none`, so this is cheap and does not wait on items 1-4.
+   call to a constant.
+
+   `http` was treated on 2026-08-06 and is the sharpest datapoint so far: three
+   contrasted routes instead of one blanket response, and the mint dropped 62
+   lines of Go for nginx locations (DESIGN §13). Plurality did not just harden a
+   hole, it removed the reason to write source at all.
+
+   No plurality candidate is left in the corpus. What still bakes source
+   (`website` 220 lines, `habit` 78, `board` 40) is already plural, so those
+   trees wait on the clause axis (item 6), not on a program edit.
 
    Not decided: whether to make it a GATE. A baked-source hole binding only one
    distinct value across the program is statically visible and domain-blind, so
@@ -232,11 +238,18 @@ tracks only what is still open.
    What exists: the counting (`Lips.Kernel.Grounding`, printed on every check).
    What is missing: the `Glue` kind is declared in `Decision.hs` and used
    nowhere, so glue is counted structurally rather than marked as such; and no
-   gate refuses a new staged tree. Four committed programs still carry one
-   (`website` 220 lines, `habit` 78, `http` 62, `board` 40; `function` shed its
-   21 on 2026-08-06), so a gate landing today would refuse the corpus it ships
-   with: the trees move to clauses first, then the gate closes the door behind
-   them.
+   gate refuses a new staged tree. Three committed programs still carry one
+   (`website` 220 lines, `habit` 78, `board` 40; `function` shed its 21 and
+   `http` its 62 on 2026-08-06), so a gate landing today would refuse the corpus
+   it ships with: the trees move to clauses first, then the gate closes the door
+   behind them.
+
+   The `http` re-mint also showed the second grade in the open: with the Go tree
+   gone, its route bodies became 19 mint-written words of nginx configuration
+   inside option strings, each bounded by one program line, which is the
+   admissible VALUE form. Nothing static can read them (an expect compares the
+   option's string, not what nginx does with it), so the flake's `nginx-vm` boots
+   the module and asks every route. A booted check is what MINT glue costs.
 
    Watch for the loophole the `function` re-mint found before clause sequencing
    existed: told that every word it reads must reach output, a mint satisfied it
