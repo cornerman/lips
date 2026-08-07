@@ -308,15 +308,15 @@ tracks only what is still open.
        hand-written engine over three and five items, no model. Fixed in the mint
        prompt ("NEVER FIX A COUNT IN A TEMPLATE"), not in the kernel. Watch the
        next mints to confirm they use a block.
-    b. **`app/Main.hs` is 1560 lines** (2135 before 2026-08-05). Two seams
-       moved out: every message it printed is now `Lips.Report` (pure, one voice
-       per defect, readable without the control flow around it), and the option
-       schema plumbing is `Lips.Schema` (locking a flakeref, building the option
-       JSON, the `options` verb and the mint's admissibility gate). What is left
-       and would factor the same way: the GATES (`expectGate`, `artifactGate`,
-       `mintClaimGate`, `sourceSpecGate`, `runExpects` and the staging they
-       need, ~450 lines). A move plus an import list, verified by the suite and
-       one corpus run.
+    b. **`app/Main.hs` is 1390 lines** (2135 before 2026-08-05). Three seams
+       moved out: `Lips.Report` (every message it prints, pure -- one voice per
+       defect, readable without the control flow around it), `Lips.Schema`
+       (locking a flakeref, building the option JSON, the `options` verb and the
+       mint's admissibility gate) and `Lips.Stage` (staging a language's trees
+       into a temp dir, filling markers, writing the site). What is left and
+       would factor the same way: the GATES themselves (`expectGate`,
+       `artifactGate`, `mintClaimGate`, `sourceSpecGate`, `runExpects`, ~330
+       lines), which now sit on top of `Lips.Stage` rather than mixed into it.
     c. **Several sites at once is refused, not built** (plan Task 10 landed as
        shape only). No committed example needs a second place; the refusal makes
        growing to several a kernel change nobody can stumble into.
