@@ -7,36 +7,29 @@ tracks only what is still open.
 ## Next up (priority order)
 
 1. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
-   by the meaning-dimension work, DESIGN §13; the closed half of what used to be
-   item 1).
+   by the meaning-dimension work, DESIGN §13).
 
    Claims landed and four programs carry one (`logscan`, `hello.http`, `board`,
-   `habit`). Two baked-source programs still state no observable, so nothing holds
-   their minted source to their sentences, and -- since the obligation is a gate on
-   `generate` -- neither can be re-minted until this is settled. That makes this a
-   PREREQUISITE for every re-mint item 7 wants.
+   `habit`). Two baked-source programs still state no observable, so nothing
+   holds their minted source to their sentences, and -- since the obligation is a
+   gate on `generate` -- neither can be re-minted until this is settled. That
+   makes it a PREREQUISITE for every re-mint item 5 wants.
 
-   a. CLOSED 2026-08-03 (DESIGN §13, "A program that can be FED can be
-      observed"): `board` and `habit` read their input from a named file or
-      standard input instead of an absolute host path, `habit`'s row spans the
-      log's own dates rather than today's, and both were re-minted with a witness
-      that generate observed in the sandbox.
-   b. `function` and `website` bake source and state no witness either; both are
-      plain enough that an example should be cheap. Check when item 7 touches
-      them.
-   c. Not decided: whether a machine claim should RETRY its observation until it
+   a. `function` and `website` bake source and state no witness; both are plain
+      enough that an example should be cheap. Check when item 5 touches them.
+   b. Not decided: whether a machine claim should RETRY its observation until it
       holds, bounded. A booted system converges (a unit may not be listening the
       instant `multi-user.target` is reached), so a single shot can be flaky, and
       flaky verification is worse than none. Retry-until-deadline is domain-blind
       and would be uniform for every claim. Deferred until a real claim actually
       flakes -- the one machine claim exercised so far did not.
-   d. Watch the narrowing the `http` re-mint showed: told to prefer an observable
+   c. Watch the narrowing the `http` re-mint showed: told to prefer an observable
       over the program's own binary, the mint added a `-check` mode to its source
       and observed the handler in the sandbox instead of the booted service, so
       the port and unit wiring stay unobserved. Honest but narrower than it
       reads. If this recurs, the preamble should say when the booted machine is
       the only faithful place.
-   e. A witness sentence listing N items freezes its pattern at that arity: both
+   d. A witness sentence listing N items freezes its pattern at that arity: both
       models minting `habit` filed the same gap (`fixed-arity-witness`,
       `witness-entry-count`), since the grammar repeats a sub-match only in a
       BULLETED block, never inside one prose line. The engine is honest (a
@@ -49,17 +42,9 @@ tracks only what is still open.
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
    were re-minted honest. See DESIGN §13 for what landed getting there.)
 
-   a. **Silent concept demotion -- two cases still open** (`diagInert` and
-      `droppedValues` cover the rest; DESIGN §13):
-      (i) CLOSED 2026-08-05 (DESIGN §13, "A rule reads one part, not the value"):
-      the partial drop, the out-of-range `<value.N>` and the `<value.tail>` over
-      a several-part value are all refused statically.
-      (ii) CLOSED 2026-08-05 (DESIGN §13, "A word read as decoration is now
-      said out loud"): `Engine.Reach.decorativeValues` names a hole whose only
-      landing is a concept, per HOLE rather than per line, and `check` and the
-      LSP report it. It found `function`'s demoted declaration on the corpus
-      immediately.
-      (iii) a compiled artifact records no dependency on the program lines its
+   a. **Silent concept demotion -- two cases still open** (`diagInert`,
+      `droppedValues` and `decorativeValues` cover the rest; DESIGN §13):
+      (i) a compiled artifact records no dependency on the program lines its
       baked source came from. PARTLY CLOSED: a claim now holds the built source
       to the author's stated observable, so an edit that changes what the program
       DOES is caught by running it. An edit that changes a specification sentence
@@ -67,19 +52,15 @@ tracks only what is still open.
       concept (the source-spec gate); a value edit that the source hard-codes
       independently of its fill remains invisible to both, and no static gate can
       see it.
-      (iv) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
+      (ii) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
       source") puts the algorithm, the format and the protocol in baked source,
       so a behavior sentence is a specification for the mint and correctly not a
-      decision -- `logscan` says "keep a line only when every field ... equals
-      the value given with it" and reaches output through hand-written source
-      only. Reword `equals` to `differs` without re-minting and every gate stays
-      green (the V6 source-specification gate catches DELETION only). No trace
-      can fix this: the words never appear in the code. DECIDED (item 1): the
-      reword is caught by source-line provenance (2a); claims cannot catch it,
-      since an example written for `equals` still passes. The behavioral
-      assertion (2b) is built anyway, for the other reason: it holds the
-      implementation and every re-mint to stated observables.
-      Related, and cheaper where it applies: item 7 (plurality). A singleton
+      decision. Reword a behaviour sentence without re-minting and every gate
+      stays green (the V6 source-specification gate catches DELETION only). No
+      trace can fix this: the words never appear in the code. DECIDED: the reword
+      is caught by source-line provenance (i); claims cannot catch it, since an
+      example written for the old wording still passes.
+      Related, and cheaper where it applies: item 5 (plurality). A singleton
       behaviour sentence gives the mint no reason to build the dispatch a claim
       would then verify, so enriching the program removes the defect where a
       claim would only have detected it.
@@ -90,12 +71,12 @@ tracks only what is still open.
       name, so a program naming a user and a database differently would
       realize a silently wrong config. The words are spent (the dropped-value
       guard is satisfied), so lips sees nothing wrong, and the kernel cannot
-      know option semantics either. DECIDED (item 1b, OBLIGATION): a system
-      claim falsifies both shapes when the author states one (`systemctl
-      is-active api` fails, since nginx runs under the unit `nginx`), so the
-      remedy exists but stays advisory, plus an LSP diagnostic. No static
-      remedy: teaching the target layer what each option MEANS is an open list
-      the kernel would have to enumerate, which the doctrine forbids.
+      know option semantics either. DECIDED (OBLIGATION): a system claim
+      falsifies both shapes when the author states one (`systemctl is-active
+      api` fails, since nginx runs under the unit `nginx`), so the remedy exists
+      but stays advisory, plus an LSP diagnostic. No static remedy: teaching the
+      target layer what each option MEANS is an open list the kernel would have
+      to enumerate, which the doctrine forbids.
       Second instance (2026-07-30, `examples/web` re-mint): the program line
       "run it as a systemd service named api" is spent into
       `services.nginx.virtualHosts.api.serverName`, but nginx runs under the
@@ -103,20 +84,10 @@ tracks only what is still open.
       an option that means something else. Every gate is green. Same shape as
       postgres, same absent remedy.
 
-   c. **`generate` accepts an engine whose binary does not exist.** CLOSED
-      2026-08-01 (DESIGN §13, "The artifact build gate"): `generate` builds each
-      `artifact.<name>` against the pinned nixpkgs and requires every path the
-      output names inside one to be there, so the defect that shipped twice (a
-      unit naming `/bin/hello` beside `module server` in `go.mod`) is refused
-      before anything is written. What is deliberately NOT checked: whether such
-      a path is executable. A file under `bin/` that exists but cannot run has
-      not been observed; add the check when it is, not before.
-
-3. **Which model to budget for a re-mint** (the record left over from the
-   sweep that turned out to be unnecessary; see DESIGN §13, "Invariant 6 held
-   all along"). Any re-mint (item 7's plurality edits, item 1b's witnesses)
-   faces the same choice, so the datapoints are kept here rather than lost with
-   the sweep:
+3. **Which model to budget for a re-mint** (the record left over from the sweep
+   that turned out to be unnecessary; see DESIGN §13, "Invariant 6 held all
+   along"). Any re-mint (item 5's plurality edits, item 1a's witnesses) faces the
+   same choice, so the datapoints are kept:
 
    - `examples/function` (artifact-bearing): sonnet-5 regressed it twice,
      dropping the built artifact for `echo` ExecStart lines and demoting the
@@ -136,11 +107,11 @@ tracks only what is still open.
 
    PRECONDITION for any baked-source re-mint (2026-07-31): `generate` refuses an
    engine that bakes source and states no observable, so `function` and
-   `website` need a witness in their program FIRST (item 1b).
+   `website` need a witness in their program FIRST (item 1a).
 
-5. **The schema pin is recorded, but nothing relates it to the nixpkgs the
+4. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
-   "Option-schema grounding"; the mechanism landed cbd3f1f). Four separate
+   "Option-schema grounding"; the mechanism landed cbd3f1f). Three separate
    questions, in the order they hurt:
 
    a. TWO NIXPKGS, NO RELATION. A mint is grounded against the `schema:` pin,
@@ -156,29 +127,22 @@ tracks only what is still open.
       flake helper (`lib.modulesFromDir`, which already has a `pkgs`) instead.
       Decide where before building anything.
 
-   b. CLOSED 2026-08-05 (DESIGN §13, "A re-mint says when it re-grounds"). The
-      pin stays non-sticky by decision -- a re-mint is the moment you want fresh
-      grounding, and replay is impossible anyway since the model is
-      nondeterministic -- and `generate` now prints the committed pin beside the
-      one this run uses whenever they differ, so re-grounding is stated rather
-      than discovered in the `.generation` diff afterwards.
-
-   c. `--schema` IS PER INVOCATION AND REMEMBERED NOWHERE. A caller on a stable
+   b. `--schema` IS PER INVOCATION AND REMEMBERED NOWHERE. A caller on a stable
       channel must pass it on every mint of every language, and forgetting it
-      silently reverts to the baked pin (the record shows which, after the fact).
-      Deliberate for now -- a per-directory default would be the lock file this
-      design rejected, since the engine and its pin already travel together in
-      `.generation`. Revisit only with a real user who mints often enough to be
-      hurt; the honest cheap fix is (b)'s printed diff, not new state.
+      silently reverts to the baked pin (the record shows which, after the fact,
+      and generate now prints both pins when they differ). Deliberate for now --
+      a per-directory default would be the lock file this design rejected, since
+      the engine and its pin already travel together in `.generation`. Revisit
+      only with a real user who mints often enough to be hurt.
 
-   d. `LIPS_OPTIONS_JSON` PINS BY CONTENT, NOT BY ORIGIN. A supplied document is
+   c. `LIPS_OPTIONS_JSON` PINS BY CONTENT, NOT BY ORIGIN. A supplied document is
       recorded as `options-json:<hash>` of its bytes, which is checkable but
       says nothing about which nixpkgs produced it. Fine for the suite's offline
       fixture (its whole point is to be nixpkgs-free); a real caller who builds
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
 
-7. **The corpus is minted from singleton programs, so its engines understand
+5. **The corpus is minted from singleton programs, so its engines understand
    one instance each** (found 2026-08-02 by the website plurality experiment;
    DESIGN §13 "Plurality is what makes a baked-source hole mean anything" and
    the doctrine entry beside it).
@@ -193,13 +157,13 @@ tracks only what is still open.
    a real dispatch, and a loud refusal of an unsupported action.
 
    `board` and `habit` were treated this way on 2026-08-03 (three columns, one of
-   them empty; two contrasted mark characters), together with the feedability item
-   1a needed. Remaining candidates, in order of how much they bake:
-   `logscan` (55 lines of source, 4 of 5 program lines are `Concept`, all
-   singleton behaviour sentences), `http` (24), `function` (23, and note the
-   reverse experiment: cutting its three calls to one should demote the call to a
-   constant). Each is one program edit plus one `generate --renew`, so this is
-   cheap and does not wait on items 1-5.
+   them empty; two contrasted mark characters), together with the feedability
+   they needed, and `logscan` stopped baking source altogether when it was
+   re-minted as clauses. Remaining candidates, in order of how much they bake:
+   `http` (24 lines of source) and `function` (23, and note the reverse
+   experiment: cutting its three calls to one should demote the call to a
+   constant). Each is one program edit plus one `generate --compat none`, so
+   this is cheap and does not wait on items 1-4.
 
    Not decided: whether to make it a GATE. A baked-source hole binding only one
    distinct value across the program is statically visible and domain-blind, so
@@ -209,124 +173,27 @@ tracks only what is still open.
    enough, and item 1's claims falsify the same defect by observation rather
    than by counting. Revisit after the re-mints above supply more datapoints.
 
-8. **The logic axis: DONE, reviewed, and repaired** (falsifier opened
-   2026-08-02, run and PASSED 2026-08-04; full review 2026-08-05). All ten plan
-   tasks landed. The review of the finished branch found five defects and three
-   grammar gaps, all fixed and pinned:
-   `docs/superpowers/learnings/2026-08-05-logic-axis-review-and-repair.md`.
+6. **The contract set reaches stdin-to-stdout text tools and nothing else**
+   (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked
+   to sweep three directories of files older than 14 days, the mint wrote 97
+   lines of Go and never considered clauses: there is no contract for a file, a
+   clock, a process or a socket, so there was nothing to name. The grounding
+   counter reported it honestly ("0 clauses, 101 lines vouched by nothing"), and
+   the fallback itself is correct -- but it is the whole clause axis stopping at
+   the edge of one program shape.
 
-   The three that mattered, each proven against the real binary before being
-   fixed: a claim could name anything (a minted `(system "...")` spawned a shell
-   and reported `ok`, and "every clause is observed" was satisfied by a claim
-   observing nothing); `clause.main.extra` silently shadowed `clause.main`; and a
-   constant `main` satisfied the runtime's entry, producing a binary that died on
-   first run with every gate green.
+   Do NOT invent `list-directory` and friends. That breaks the vocabulary
+   scaling law, which is why the configuration axis works: lips reaches as far
+   as some EXTERNAL named typed vocabulary reaches, and inventing an effect
+   interface makes lips the authority for one it must then maintain forever.
+   The named candidate is already in the 2026-08-02 decision (§10): WIT, which
+   names behaviour without naming an implementation language, with WASI's
+   filesystem and clock interfaces as the typed authority. Adopting one is a
+   design pass, not an errand.
 
-   State: suite 732 examples, corpus 21 programs clean, `nix flake check` and
-   `check-expect` green, validation 8 scenarios / 41 cases / 0 failures.
-
-   a. **Compile emits a runnable site** (plan Task 7). DONE.
-   b. **Clause claims inside `check`** (plan Task 8). DONE.
-   c. **DONE, and it failed at first: two mints disagreed on the representation.**
-      The mint now emits clauses (`assets/mint/body.md`, contract list rendered
-      from the shipped vocabulary so prompt and gate cannot drift). Two live
-      mints of `examples/logscan.lips` produced six clauses and no source in one
-      run, and 94 lines of Go behind a shell wrapper in the other
-      (`experiments/logscan-mints/`, both engines kept). Cause identified and it
-      is not the prompt: the clause path cannot install a program or read its
-      arguments, so a model optimizing for a working engine correctly picks Go.
-      Two holes to close before re-running, and they are now item 10.
-
-      One bug the live mint found, since fixed: realize was rendering clauses
-      into the module as option assignments, which no gate caught and which made
-      the module unparseable.
-
-10. **Both holes the live mint found are CLOSED** (opened and closed
-    2026-08-04). `${site}` is a value-grammar reference bound in the module's
-    `let` (and in `claims.nix`, and in every temp dir a gate materializes), with
-    `site.name` carrying the executable name; `arguments` is an effect contract
-    the guile adapter provides, the in-memory adapter serves from a list, and a
-    `claim.<id>.args` section varies. Verified: `experiments/clause-site` still
-    runs and its claim holds through the entry `(main (arguments))`.
-
-    Four bugs came out of the live mints, each invisible to the suite because
-    each needed a model to write the shape that triggers it. All fixed with
-    regression tests: realize rendered clauses INTO the module as option
-    assignments; the site binding was decided from option values only, so a
-    reference from an artifact ARGUMENT produced an undefined variable; the
-    claims file needed the same binding; and every gate that materializes a
-    module into a temp directory had to stage the site beside it, not just
-    `artifacts/`.
-
-11. **Falsifier check (c) is ANSWERED, and it passes behaviourally**
-    (2026-08-04, `experiments/logscan-mints/`, mints `e` and `f`). Both mints of
-    the same five-line program chose clauses, neither wrote a line of source,
-    both cores are seven traceable definitions, and the two binaries agree
-    byte-for-byte on thirteen probes including every case where the two Go mints
-    diverged. They do NOT agree textually: the two cores factor the loop
-    differently. So the honest verdict is that two mints differ where the program
-    does not in TEXT, and not at all in BEHAVIOUR.
-
-    Two qualifications kept in the open: thirteen probes are evidence, not proof;
-    and both mints invented the same unstated policy for a non-JSON line (drop
-    it), which is now visible in a traceable clause instead of buried in Go, but
-    is still invention. Closing that is the author's job (state the line) or a
-    demand's (ask for it), not a gate's.
-
-    The run caught one defect no gate had: both mints defined `(define (main) ...)`
-    against an entry calling `(main (arguments))`, so both binaries died on first
-    run with every gate green. Fixed by deriving what the core must define from
-    the entry expression itself.
-
-12. **The contract set reaches stdin-to-stdout text tools and nothing else**
-    (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked
-    to sweep three directories of files older than 14 days, the mint wrote 97
-    lines of Go and never considered clauses: there is no contract for a file, a
-    clock, a process or a socket, so there was nothing to name. The grounding
-    counter reported it honestly ("0 clauses, 101 lines vouched by nothing"), and
-    the fallback itself is correct -- but it is the whole clause axis stopping at
-    the edge of one program shape.
-
-    Do NOT invent `list-directory` and friends. That breaks the vocabulary
-    scaling law, which is why the configuration axis works: lips reaches as far
-    as some EXTERNAL named typed vocabulary reaches, and inventing an effect
-    interface makes lips the authority for one it must then maintain forever.
-    The named candidate is already in the 2026-08-02 decision (§10): WIT, which
-    names behaviour without naming an implementation language, with WASI's
-    filesystem and clock interfaces as the typed authority. Adopting one is a
-    design pass, not an errand.
-
-13. **Remaining known gaps on the clause axis** (none blocking).
-
-    a. **RESOLVED, and it was never a grammar gap.** Four mints wrote witness
-       patterns with one hole per example line, which reads a three-line program
-       and refuses a four-line one. `Lang/Nest.hs` already carries the case, and
-       its header says why the kernel must not carry it any other way ("the
-       kernel would otherwise be dictating a collection syntax"): a block is a
-       header pattern plus a child under it keyed by `<n:index>`, and `Append`
-       assembles one list from the N contributors. Demonstrated with one
-       hand-written engine over three and five items, no model. Fixed in the mint
-       prompt ("NEVER FIX A COUNT IN A TEMPLATE"), not in the kernel. Watch the
-       next mints to confirm they use a block.
-    b. **`app/Main.hs` is 1390 lines** (2135 before 2026-08-05). Three seams
-       moved out: `Lips.Report` (every message it prints, pure -- one voice per
-       defect, readable without the control flow around it), `Lips.Schema`
-       (locking a flakeref, building the option JSON, the `options` verb and the
-       mint's admissibility gate) and `Lips.Stage` (staging a language's trees
-       into a temp dir, filling markers, writing the site). What is left and
-       would factor the same way: the GATES themselves (`expectGate`,
-       `artifactGate`, `mintClaimGate`, `sourceSpecGate`, `runExpects`, ~330
-       lines), which now sit on top of `Lips.Stage` rather than mixed into it.
-    c. **Several sites at once is refused, not built** (plan Task 10 landed as
-       shape only). No committed example needs a second place; the refusal makes
-       growing to several a kernel change nobody can stumble into.
-   d. **Sites** (plan Task 10). A program states where it runs, coverage runs
-      per site over one shared core, and compile writes one directory per site.
-      This is what lets a rule hold in a browser and on a server without two
-      implementations that drift.
-
-14. **The no-blob doctrine, with its gate** (agreed 2026-08-04, deliberately
-   deferred until item 8c lands so doctrine and enforcement arrive together).
+7. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
+   landed 2026-08-04, when the mint began emitting clauses and `logscan` moved
+   from "80 lines vouched by nothing" to 5 clauses and 0 unvouched assertions).
 
    The rule: **no per-program source written by a model.** A blob is admissible
    only when it is not per program and reviewed once (an adapter under
@@ -344,8 +211,25 @@ tracks only what is still open.
    What exists: the counting (`Lips.Kernel.Grounding`, printed on every check).
    What is missing: the `Glue` kind is declared in `Decision.hs` and used
    nowhere, so glue is counted structurally rather than marked as such; and no
-   gate refuses a new staged tree. Both land with 8c, when `logscan`'s line moves
-   from "80 lines vouched by nothing" to "8 clauses (contracts)".
+   gate refuses a new staged tree. Five committed programs still carry one
+   (`website` 220 lines, `habit` 78, `http` 62, `board` 40, `function` 21), so a
+   gate landing today would refuse the corpus it ships with: the trees move to
+   clauses first, then the gate closes the door behind them.
+
+8. **Remaining known gaps on the clause axis** (none blocking).
+
+   a. **`app/Main.hs` is 1390 lines** (2135 before 2026-08-05). Three seams moved
+      out: `Lips.Report` (every message it prints, pure -- one voice per defect,
+      readable without the control flow around it), `Lips.Schema` (locking a
+      flakeref, building the option JSON, the `options` verb and the mint's
+      admissibility gate) and `Lips.Stage` (staging a language's trees into a
+      temp dir, filling markers, writing the site). What is left and would factor
+      the same way: the GATES themselves (`expectGate`, `artifactGate`,
+      `mintClaimGate`, `sourceSpecGate`, `runExpects`, ~330 lines), which now sit
+      on top of `Lips.Stage` rather than mixed into it.
+   b. **Several sites at once is refused, not built** (plan Task 10 landed as
+      shape only). No committed example needs a second place; the refusal makes
+      growing to several a kernel change nobody can stumble into.
 
 ## Backlog (larger / deferred by design)
 

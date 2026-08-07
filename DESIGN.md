@@ -1588,8 +1588,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   embedded, `<self>` only whole, an artifact name neither -- and by "a
   capability is complete only when it works everywhere the grammar admits it"
   that is kernel physics, not a prompt problem (invariant 4). Extends
-  `TODO.md` item 1d; the prompt now offers the composed name, since a
-  capability the model is told nothing about is dead capability.
+  the witness work in `TODO.md`; the prompt now offers the composed name, since
+  a capability the model is told nothing about is dead capability.
 
 - **Inert lines are reported (`diagInert`).** A line the language reads and then
   drops realizes nothing, so editing it changes no output and nothing said so.
@@ -1731,10 +1731,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   emits it nowhere, while its rule asserts the constant `ensureDBOwnership =
   true` (which in NixOS means "the database named after the user"), so a program
   naming a different database would realize wrongly and silently. All three are
-  now open capability questions instead of silent engine bugs, tracked in
-  `TODO.md` item 3a; two deliberate non-goals are recorded there too (a partial
-  drop, where a rule reads `<value.1>` of a value built from two holes, and a
-  per-hole decorative report).
+  now open capability questions instead of silent engine bugs, tracked under
+  "CLI-tool physics" in `TODO.md`. The two that were deliberate non-goals there
+  have since become gates: a partial drop, where a rule reads `<value.1>` of a
+  value built from two holes, and the per-hole decorative report.
 
 - **A mechanism-selecting word is a template literal (TODO 1c closed).** The
   prompt told the mint to "replace EVERY program value with a hole", which is
@@ -2796,7 +2796,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `realizeArtifactPaths`, structurally from each parsed `Value` (the flake check
   regexes module text instead), so `Realization` carries `rlArtPaths` beside
   `rlStaged`: the twin one level in -- a staged path must exist BESIDE the
-  module, an artifact path INSIDE the build.
+  module, an artifact path INSIDE the build. What the gate deliberately does NOT
+  check is whether such a path can RUN: a file under `bin/` that exists but is
+  not executable has never been observed, so the check waits for the first one
+  rather than being written against a guess.
 
   The nixpkgs it builds against is lips's own baked pin, one authority for every
   world, because builders live in nixpkgs while a world's schema pin may name
@@ -2985,8 +2988,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
 ### Verified Breakages (Broken Promises, Review of 2026-07-29)
 
 Each item was reproduced against `main` at 95e80f7 and states the promise it
-breaks. They are tracked as work in `TODO.md` ("Verified breakages"); listed
-here because a ledger that only records wins is a map of a different territory.
+breaks; listed here because a ledger that only records wins is a map of a
+different territory. The two still open are open BY DECISION, stated with each
+entry, so neither is carried in `TODO.md` as work waiting to be done.
 
 Seven of the nine are FIXED (2026-07-29, branch `breakages`), each with the test
 that was missing; the entries stay, since the promise each one broke is what the
@@ -3356,7 +3360,8 @@ from small points and is recorded here as such.
   for the emitted module, whose every path is grounded in nixpkgs. A re-mint
   rewrites baked source outright, so on the artifact axis only claims hold
   behavior in place, and claims are two, single-shot, with three of five
-  baked-source programs stating no observable at all (`TODO.md`, item 1).
+  baked-source programs stating no observable at all (`TODO.md`, the witness
+  item).
   Growing artifact size before claim density therefore reproduces the
   untrusted-artifact problem lips exists to abolish.
 - **Minting is whole-engine.** Engine size multiplies the cost and the blast
