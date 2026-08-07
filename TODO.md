@@ -308,9 +308,15 @@ tracks only what is still open.
        hand-written engine over three and five items, no model. Fixed in the mint
        prompt ("NEVER FIX A COUNT IN A TEMPLATE"), not in the kernel. Watch the
        next mints to confirm they use a block.
-    b. **`app/Main.hs` is 2000 lines.** `writeSite` was extracted to `Lips.Site`
-       when it grew four jobs; the gates around it deserve the same treatment,
-       and that is real work with real regression risk, not a logic-axis errand.
+    b. **`app/Main.hs` is 1800 lines.** Every message it printed moved to
+       `Lips.Report` (2026-08-05), a pure module the CLI calls -- one voice per
+       defect, readable without the control flow around it. What is still in
+       `Main` and would factor the same way: the GATES (`expectGate`,
+       `artifactGate`, `mintClaimGate`, `sourceSpecGate`, `runExpects` and the
+       staging they need, ~450 lines) and the SCHEMA plumbing
+       (`ensureOptionSchema`, `buildOptionSchema`, `lockFlakeRef`, ~220 lines).
+       Both are IO-shaped, so each is a move plus an import list, verified by the
+       suite and one corpus run.
     c. **Several sites at once is refused, not built** (plan Task 10 landed as
        shape only). No committed example needs a second place; the refusal makes
        growing to several a kernel change nobody can stumble into.

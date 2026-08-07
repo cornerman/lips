@@ -28,6 +28,7 @@ module Lips.Cli.Output
     -- * The message skeleton
   , report
   , reportHead
+  , tshow
     -- * Pure rendering (tested directly)
   , Style (..)
   , Verdict (..)
@@ -262,3 +263,9 @@ startTicker Fancy = Just <$> forkIO (forever (redraw >> threadDelay 100000))
 stopTicker :: Style -> Maybe ThreadId -> IO ()
 stopTicker _ Nothing    = pure ()
 stopTicker _ (Just tid) = killThread tid >> clear
+
+-- | @show@ into 'Text'. Every message naming a line number or a count goes
+-- through it, so it sits with the printing instead of being redefined wherever
+-- a message is built.
+tshow :: Show a => a -> Text
+tshow = T.pack . show
