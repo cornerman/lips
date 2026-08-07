@@ -203,8 +203,10 @@ You then edit freely. Value and wording changes covered by your language run
 straight through `compile`. You return to `generate` only when you say something
 genuinely new that the language cannot yet read, and even then regeneration is
 gated: a fresh engine is accepted only if the committed tests still hold. To
-change behavior on purpose you pass `--renew` to `generate`, and
-that diff is your semantic changelog.
+change behavior on purpose you say how far the contract may move --
+`generate --compat backwards` lets this run's new checks join, `forwards` lets a
+check leave once the engine stops filling that option, `none` rewrites the
+contract from this run -- and that diff is your semantic changelog.
 
 **Steer the mint (optional).** To express taste about *how* the engine gets
 built, put a plain-text `backup.direction` file beside your programs (you write

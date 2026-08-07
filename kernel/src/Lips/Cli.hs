@@ -30,6 +30,7 @@ import System.Directory    (doesDirectoryExist, listDirectory)
 import System.FilePath     (splitFileName, (</>))
 import Text.Read          (readMaybe)
 
+import Lips.Kernel.Expect (Compat (..), compatSlug, parseCompat)
 import Lips.Nix.Target (Target (..), defaultTarget, parseTarget, targetSlug)
 
 -- | Everything @generate@ needs. @-m\/--model@ is the ONLY way to name a
@@ -39,7 +40,7 @@ data GenerateOpts = GenerateOpts
   { goTarget     :: Target
   , goSchema     :: Maybe String
   , goConfidence :: Double
-  , goRenew      :: Bool
+  , goCompat     :: Compat
   , goVerbose    :: Bool
   , goModel      :: Maybe String
   , goThinking   :: String
@@ -184,6 +185,18 @@ targetReader = eitherReader $ \s -> case parseTarget s of
 targetMetavar :: String
 targetMetavar = intercalate "|" [ T.unpack (targetSlug t) | t <- [minBound .. maxBound] ]
 
+-- | Every re-bless mode, listed from the type, so a mode added later cannot
+-- leave the help text naming less than the whole set.
+compatMetavar :: String
+compatMetavar = intercalate "|" [ T.unpack (compatSlug c) | c <- [minBound .. maxBound] ]
+
+-- | @--compat@'s reader. An unknown word fails at the door, naming the set,
+-- rather than defaulting to a mode the caller did not ask for.
+compatReader :: ReadM Compat
+compatReader = eitherReader $ \s -> case parseCompat (T.pack s) of
+  Just c  -> Right c
+  Nothing -> Left (s <> " is not one of " <> compatMetavar)
+
 -- | @--confidence@'s reader: a Double in [0,1], the same range check
 -- @Lips.Generate.Args.parseGenerate@ did inline, now in the reader so an
 -- out-of-range value fails the same way an unknown @--target@ does.
@@ -215,7 +228,12 @@ generateOpts defConf = GenerateOpts
   <*> option confidenceReader
         (long "confidence" <> value defConf
           <> metavar "0..1" <> help "How sure the model must be of every line it writes (default: 0.7). Anything less is refused.")
-  <*> switch (long "renew" <> help "Accept this run's behaviour as the new contract, replacing the committed .expect.")
+  <*> option compatReader
+        (long "compat" <> value Both <> metavar compatMetavar
+          <> help ("How much of the committed .expect a re-mint may move: both "
+                    <> "(keep it, the default), backwards (minted extras may join), "
+                    <> "forwards (an assertion the engine stopped filling may leave), "
+                    <> "none (rewrite it from this run)."))
   <*> switch (long "verbose" <> short 'v' <> help "Show everything sent to the model and everything it says, as it happens.")
   <*> optional (strOption
         (long "model" <> short 'm' <> metavar "ID"
@@ -230,7 +248,7 @@ generateOpts defConf = GenerateOpts
 -- .generation/artifacts) from this directory instead of the program's sibling
 -- folder. Never affects where derived output (out/) is written -- that stays
 -- under the program's own directory. No short alias: a deliberate, occasional
--- override, not a fast-typed everyday flag (the same judgment as --renew).
+-- override, not a fast-typed everyday flag (the same judgment as --compat).
 -- The folder must be named after the program's own declared language;
 -- 'Lips.Identity.resolveLangDir' enforces that and fails loud on mismatch.
 langDirOpt :: Parser (Maybe FilePath)

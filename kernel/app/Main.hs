@@ -55,7 +55,7 @@ import           System.Process     (CreateProcess (..), StdStream (..), createP
                                      readProcessWithExitCode, waitForProcess)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
-import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, toDemand, toRule)
+import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
@@ -70,7 +70,7 @@ import           Lips.Generate.Record   (corpusText, genId, hashBytes, record, r
                                          renderStampFault, stampFaults)
 import           Lips.Kernel.Base       (Conflict (..))
 import           Lips.Kernel.Decision
-import           Lips.Kernel.Expect     (Expect (..), bindSelfExpect, checkArtifactValues, checkValues, evalExpr, expandExpects, expectedValue, isGroundExpect, readExpect, renderExpect)
+import           Lips.Kernel.Expect     (Compat (..), Expect (..), bindSelfExpect, checkArtifactValues, checkValues, compatSlug, evalExpr, expandExpects, expectedValue, isGroundExpect, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Refine     (RefineError (..))
 import           Lips.Kernel.Run
@@ -128,7 +128,7 @@ main = do
   setLocaleEncoding utf8
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
-    Generate go -> generate (goTarget go) (goSchema go) (goConfidence go) (goRenew go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+    Generate go -> generate (goTarget go) (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
@@ -411,7 +411,7 @@ expectGate contract claims dir file eng program = do
             Right () -> pure ()
             Left (ToolMissing e) -> die (nixMissing file "check the program" "check" e)
             Left (EvalFailed e)  -> die (nixEvalFailed file "check" e)
-            Left (Violations fs) -> die (report
+            Left (Violations fs _) -> die (report
               (T.pack file <> " no longer produces what it promised:")
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
@@ -655,11 +655,11 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Target -> Maybe String -> Double -> Bool -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
+generate :: Target -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
 generate _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate target mschema confidence renew verbose mmodel thinking files@(rep : _) = do
+generate target mschema confidence compat verbose mmodel thinking files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -684,10 +684,11 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
   (schemaPath, schemaPin) <- ensureOptionSchema target mschema ("generate " <> T.pack rep)
   -- The mint's validation tool judges a draft against the contract that will
   -- actually gate it: the committed .expect on a regeneration, the draft's own
-  -- minted expects on a first mint or under --renew. That rule is generate's
-  -- (it is read again below, where the gate itself uses it), so the tool is
-  -- told the answer instead of re-deriving it and drifting into a false green.
-  committedExpectPath <- if renew
+  -- minted expects on a first mint or under --compat none. That rule is
+  -- generate's (it is read again below, where the gate itself uses it), so the
+  -- tool is told the answer instead of re-deriving it and drifting into a false
+  -- green.
+  committedExpectPath <- if compat == None
     then pure Nothing
     else do
       there <- doesFileExist (expectPath rep)
@@ -822,17 +823,25 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
           ids
           ("\8594 state the observable over the program's own binary, which needs no"
             <> " machine, and mint again: lips generate " <> T.pack rep))
-      -- --renew re-blesses the behavioral contract: ignore the committed
-      -- .expect (do not even read it) so the minted assertions bootstrap it
-      -- afresh and overwrite the file below. Every correctness gate above and
-      -- the behavioral gate below still run, so a bad mint still writes nothing.
-      committed <- if renew then pure Nothing else tryRead (expectPath rep)
-      expects <- case maybe (Right mintedExpects) readExpect committed of
+      -- Which contract governs is one word from the human (--compat), applied
+      -- to the committed set and this run's minted one. Every correctness gate
+      -- above and the behavioral gate below still run whatever the word, so a
+      -- bad mint still writes nothing.
+      committed <- tryRead (expectPath rep)
+      committedExpects <- case maybe (Right []) readExpect committed of
         Left es -> die (report
           (T.pack (expectPath rep) <> " is unreadable, so lips can't verify against it:")
           [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
           ("→ fix or delete " <> T.pack (expectPath rep) <> ", then run generate again."))
         Right xs -> pure xs
+      expects <- case rebless compat (edRules eng) committedExpects mintedExpects of
+        Right xs  -> pure xs
+        Left kept -> die (report
+          (T.pack rep <> ": this run drops " <> plural (length kept) "check"
+            <> " the engine still fills, which --compat forwards does not permit:")
+          [ renderAttrPath (exPath e) | e <- kept ]
+          ("→ keep them (drop --compat forwards), or accept the loss deliberately: "
+            <> "lips generate --compat none " <> T.pack rep))
       case uncheckableExpects (edRules eng) expects of
         bad@(_ : _) -> die (uncheckableReport rep bad)
         []          -> pure ()
@@ -850,11 +859,16 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         case gate of
           Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
           Left (EvalFailed e)  -> die (nixEvalFailed f "generate" e)
-          Left (Violations fs) -> die (report
+          Left (Violations fs broken) -> die (report
             ("lips built a setup for " <> T.pack f <> ", but it doesn't produce what the program promises:")
             fs
+            -- Name the SMALLEST mode that would admit this change: an assertion
+            -- on an option the engine stopped filling may simply leave
+            -- (forwards), while one the engine still fills is a real behaviour
+            -- change and takes the whole word (none).
             ("→ run generate again. If you changed the program on purpose, accept "
-              <> "the new behavior: lips generate --renew " <> T.pack rep
+              <> "the new behavior: lips generate --compat "
+              <> compatSlug (smallestCompat (edRules eng) broken) <> " " <> T.pack rep
               <> " (rewrites " <> T.pack (expectPath rep) <> ")."))
           Right () -> pure ()
       -- Last gate, and the only one that observes rather than reads: build each
@@ -903,10 +917,12 @@ generate target mschema confidence renew verbose mmodel thinking files@(rep : _)
         forM_ validated $ \(f, rl) -> do
           ensureDerived f
           TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
-        -- Bootstrap the contract on first generation only; keep the committed
-        -- spec stable across regenerations.
-        maybe (TIO.writeFile (expectPath rep) (renderExpect mintedExpects))
-              (const (pure ())) committed
+        -- Write the contract the mode settled on, and only when it differs from
+        -- what is committed: --compat both writes nothing (the default keeps the
+        -- committed spec byte-identical), a first mint bootstraps, and the two
+        -- relaxing modes leave the .expect diff as the semantic changelog.
+        let contract = renderExpect expects
+        when (committed /= Just contract) $ TIO.writeFile (expectPath rep) contract
         mapM_ note $
           [ T.pack (langPath rep) <> "  the language, " <> plural (length (edPatterns eng)) "pattern"
               <> ", " <> plural (length (edRules eng)) "rule"
@@ -1397,7 +1413,16 @@ showEvent verbose prose (Just ev) = case ev of
 -- | Three outcomes of the behavioral check, kept apart so the CLI gives the
 -- right action: install nix (tool missing), fix the environment (eval failed),
 -- or the config doesn't carry the promised values (violations).
-data ExpectFail = ToolMissing Text | EvalFailed Text | Violations [Text]
+-- 'Violations' carries the messages AND the assertions that failed (empty for a
+-- message no assertion owns, like a mismatched eval arity), so a caller can ask
+-- which re-bless mode would admit the change ('smallestCompat') instead of
+-- naming the biggest one.
+data ExpectFail = ToolMissing Text | EvalFailed Text | Violations [Text] [Expect]
+
+-- | One failure list as both readings: the messages a human reads, and the
+-- assertions a caller asks about a re-bless mode.
+violations :: [(Expect, Text)] -> ExpectFail
+violations fs = Violations (map snd fs) (map fst fs)
 
 runExpects :: (FilePath -> IO ()) -> [Expect] -> Realization -> IO (Either ExpectFail ())
 runExpects _     []       _  = pure (Right ())
@@ -1406,7 +1431,7 @@ runExpects stage expects0 rl =
   -- so a shared contract (route.<path>.status) checks every concrete route.
   case expandExpects base expects0 >>= \expects ->
          (,) expects <$> traverse (expectedValue base) expects of
-    Left e            -> pure (Left (Violations ["lips can't match a check to the program: " <> e]))
+    Left e            -> pure (Left (Violations ["lips can't match a check to the program: " <> e] []))
     Right (expects, pvs) -> do
       -- Two kinds of assertion, judged where their value actually lives: a
       -- module option is read by evaluating the module, an artifact arg is a
@@ -1417,8 +1442,8 @@ runExpects stage expects0 rl =
       optRes <- evalOptionExpects stage (rlModule rl) optExpects
       pure $ case (artFails, optRes) of
         ([], r)      -> r
-        (fs, Right ()) -> Left (Violations fs)
-        (fs, Left (Violations more)) -> Left (Violations (fs ++ more))
+        (fs, Right ()) -> Left (violations fs)
+        (fs, Left (Violations more es)) -> Left (Violations (map snd fs ++ more) (map fst fs ++ es))
         (_,  Left other) -> Left other
   where
     base = rlBase rl
@@ -1446,10 +1471,10 @@ evalOptionExpects stage nixModule pairs = withTempDir $ \dir -> do
           let evaled = T.splitOn "\n" (T.pack out)
            in if length evaled /= length expects
                 then Left (Violations ["nix returned " <> tshow (length evaled)
-                           <> " values for " <> tshow (length expects) <> " checks"])
+                           <> " values for " <> tshow (length expects) <> " checks"] [])
                 else case checkValues expects (zip pvs evaled) of
                        [] -> Right ()
-                       fs -> Left (Violations fs)
+                       fs -> Left (violations fs)
         Right (ExitFailure _, _, err) -> Left (EvalFailed (T.pack err))
 
 -- | A fresh temporary directory. lips writes a module and its staged

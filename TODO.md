@@ -143,12 +143,6 @@ tracks only what is still open.
    engine that bakes source and states no observable, so `function` and
    `website` need a witness in their program FIRST (item 1b).
 
-4. CLOSED 2026-08-05 (DESIGN §13, "Invariant 6 held all along"): `check`
-   re-hashes the `.generation` beside the engine and refuses a `@gen:` stamp
-   that disagrees. The premise this item and the sweep rested on was FALSE --
-   every one of the 20 committed engines, and all 8 validation scenarios, passed
-   the new gate unchanged.
-
 5. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
    "Option-schema grounding"; the mechanism landed cbd3f1f). Four separate
@@ -332,7 +326,7 @@ tracks only what is still open.
       This is what lets a rule hold in a browser and on a server without two
       implementations that drift.
 
-9. **The no-blob doctrine, with its gate** (agreed 2026-08-04, deliberately
+14. **The no-blob doctrine, with its gate** (agreed 2026-08-04, deliberately
    deferred until item 8c lands so doctrine and enforcement arrive together).
 
    The rule: **no per-program source written by a model.** A blob is admissible
@@ -353,44 +347,6 @@ tracks only what is still open.
    nowhere, so glue is counted structurally rather than marked as such; and no
    gate refuses a new staged tree. Both land with 8c, when `logscan`'s line moves
    from "80 lines vouched by nothing" to "8 clauses (contracts)".
-
-9. **The `.expect` gate is a two-position switch, so re-blessing is
-   all-or-nothing** (specified 2026-08-04, not implemented). Today the committed
-   contract C governs a re-mint, or `--renew` discards C wholesale and blesses
-   the freshly minted set M. That single word hides two independent permissions:
-   may a committed assertion VANISH (drop), and may a minted one JOIN (add).
-   Name both and the switch becomes a four-point lattice, spelled
-   `lips generate --compat both|backwards|forwards|none` (default `both`;
-   `--renew` is dropped, since `none` is exactly it):
-
-   - `both` grants neither: contract stays C, minted extras ignored, only a real
-     violation of C refuses. Byte-identical to today, so no committed example
-     churns and a differently-worded re-mint still passes.
-   - `backwards` grants add: all of C must hold and M's extras join, so the
-     written contract is C ∪ M and can only grow.
-   - `forwards` grants drop: M governs, a committed entry M no longer mentions
-     may leave, no extras join, so the contract can only shrink within C.
-   - `none` grants both: rewrite from M (today's `--renew`).
-
-   Two assertions are THE SAME when option path and subject-plus-token agree;
-   the `a1`/`a2` ids are minted fresh every run and carry no identity.
-
-   The guard that keeps `forwards` from letting the model choose which checks to
-   skip: a drop is admissible only when NO rule in the new engine assigns that
-   option path (the engine genuinely stopped filling it); a path still filled but
-   no longer asserted stays gated and refuses. Structural and kernel-checkable,
-   the same shape as `uncheckableExpects` (invariant 2: structural guards beat
-   prompt pleas), and invariant 5 survives -- every relaxation is one explicit
-   human word and the `.expect` diff stays the semantic changelog.
-
-   The mode gates, it does not mint: it stays out of `.generation` and `genId`,
-   and the mint's validation tool keeps seeing C except under `none`.
-
-   Work: `Lips.Cli` (flag, replacing `--renew`), the set algebra plus the
-   drop guard in `Kernel/Expect.hs`, wiring in `Main.generate`, `Spec.hs`
-   parse + algebra cases, refusal text naming the SMALLEST sufficient mode
-   (all violations are unassigned paths -> `forwards`, otherwise `none`),
-   DESIGN §13 entry replacing the `--renew` one.
 
 ## Backlog (larger / deferred by design)
 
@@ -521,8 +477,8 @@ Trace to `docs/superpowers/survey/f-decision-calculus-theory.md`. The
 correctness/completeness argument these items back is now written out in
 DESIGN.md §2 ("Correctness, by theory" and following). Ranked by payoff over
 cost. Sequencing note: the sharpest critique this list used to rank behind --
-that invariant 6 was verified by nothing -- is answered (item 4, closed
-2026-08-05), so these are now the outstanding theory gaps.
+that invariant 6 was verified by nothing -- is answered (DESIGN §13, "Invariant
+6 held all along"), so these are now the outstanding theory gaps.
 
 - **IC postulate audit** (~1 day; prose plus property tests). Record which
   of Konieczny & Pino Pérez's merging postulates (IC0–IC8) `Base.resolve`

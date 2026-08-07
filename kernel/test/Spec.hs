@@ -116,35 +116,39 @@ main :: IO ()
 main = hspec $ do
   describe "generate argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
-    it "defaults target to nixos, confidence to the default, renew/verbose off" $
+    it "defaults target to nixos, confidence to the default, compat both, verbose off" $
       parseArgs ["ledger.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False Nothing defaultThinking ["ledger.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Both False Nothing defaultThinking ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseArgs ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.7 False False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.7 Both False Nothing defaultThinking ["a.backup.lips"])
     it "rejects an unknown target" $
       parseArgs ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
     it "reads an explicit --model alongside multiple programs" $
       parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Both False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.9 False False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.9 Both False Nothing defaultThinking ["a.backup.lips"])
     it "rejects an out-of-range confidence" $
       parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
-    it "reads --renew in any position" $ do
-      parseArgs ["--renew", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing defaultThinking ["a.backup.lips"])
-      parseArgs ["a.backup.lips", "--renew"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 True False Nothing defaultThinking ["a.backup.lips"])
+    it "reads --compat in any position, and refuses a word that is not a mode" $ do
+      parseArgs ["--compat", "none", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 None False Nothing defaultThinking ["a.backup.lips"])
+      parseArgs ["a.backup.lips", "--compat", "forwards"]
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Forwards False Nothing defaultThinking ["a.backup.lips"])
+      -- the flag it replaces is gone, so an old invocation fails loud rather
+      -- than silently keeping the committed contract
+      parseArgs ["--renew", "a.backup.lips"] `shouldBe` Nothing
+      parseArgs ["--compat", "renew", "a.backup.lips"] `shouldBe` Nothing
     it "reads -v/--verbose in any position" $ do
       parseArgs ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Both True Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "-v"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Both True Nothing defaultThinking ["a.backup.lips"])
     it "reads -m as the short alias for --model" $
       parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 False False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Both False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     -- The thinking level is always passed to pi and always recorded, so an
@@ -1157,6 +1161,59 @@ main = hspec $ do
         let e = Expect "a" ["services","nginx",seg,"proxyPass"] (Subject ["proxy","upstream"]) Nothing
         in readExpect (renderExpect [e]) === Right [e]
 
+    -- Re-blessing used to be one word (--renew): keep the committed contract, or
+    -- throw it away. Two independent permissions hide in that word -- may a
+    -- committed assertion VANISH, may a minted one JOIN -- so the switch is a
+    -- four-point lattice, and every relaxation stays one explicit human word.
+    describe "compat (how much of the contract a re-mint may move)" $ do
+      let e i p from = Expect i (T.splitOn "." p) (Subject (T.splitOn "." from)) Nothing
+          port  = e "a1" "services.x.port" "http.port"
+          host  = e "a2" "services.x.host" "http.host"
+          fresh = e "a1" "services.x.tls" "http.tls"   -- minted with a colliding id
+          rul i body = case parseRuleBody i body of
+            Right ok -> ok
+            Left err -> error (T.unpack ("bad test rule: " <> err))
+          -- The engine still fills services.x.host, so dropping its assertion
+          -- would be the model choosing which check to skip.
+          fillsHost = [ rul "r1" "match fact http.host => services.x.host \"\\\"<value>\\\"\"" ]
+
+      it "both keeps the committed contract and ignores the minted extras" $
+        rebless Both [] [port, host] [port, fresh] `shouldBe` Right [port, host]
+
+      it "backwards joins the extras, keeping every committed id" $
+        rebless Backwards [] [port, host] [port, fresh]
+          `shouldBe` Right [port, host, fresh { exId = "a3" }]
+
+      it "forwards lets an assertion leave when no rule fills its option" $
+        rebless Forwards [] [port, host] [port] `shouldBe` Right [port]
+
+      it "forwards refuses a drop the engine still fills" $
+        rebless Forwards fillsHost [port, host] [port] `shouldBe` Left [host]
+
+      it "forwards joins nothing, so the contract can only shrink" $
+        rebless Forwards [] [port, host] [port, fresh] `shouldBe` Right [port]
+
+      it "none rewrites the contract from the mint" $
+        rebless None fillsHost [port, host] [fresh] `shouldBe` Right [fresh]
+
+      -- Ids are minted fresh every run and carry no identity, so sameness is
+      -- the option path plus the source it draws from.
+      it "reads two assertions as the same when path and source agree" $ do
+        rebless Both [] [port] [port { exId = "zz" }] `shouldBe` Right [port]
+        rebless Forwards [] [port] [port { exId = "zz" }] `shouldBe` Right [port]
+        rebless Forwards [] [port] [port { exToken = Just 2 }] `shouldBe` Right []
+
+      it "bootstraps from the mint when nothing is committed yet" $
+        mapM_ (\m -> rebless m [] [] [port] `shouldBe` Right [port])
+              [Both, Backwards, Forwards, None]
+
+      -- The refusal must name the SMALLEST mode that would admit the change,
+      -- so a human is never told to reach for the biggest hammer.
+      it "names the smallest mode that admits a violation" $ do
+        smallestCompat [] [host] `shouldBe` Forwards
+        smallestCompat fillsHost [host] `shouldBe` None
+        smallestCompat fillsHost [port, host] `shouldBe` None
+
     -- A model may write an attrsOf key in Nix-attr-path form, quoted
     -- (locations."/".proxyPass), or bare (locations./.proxyPass). Both must
     -- parse to the SAME segment, so a rule written bare and an expect written
@@ -1280,7 +1337,7 @@ main = hspec $ do
       length (checkArtifactValues ground [(onOut, "bye")]) `shouldBe` 1
       -- a claim the engine stopped emitting fails loud, which is the drop gate
       let dropped = Expect "e2" ["claim","gone","stdout"] (Subject ["witness","out"]) Nothing
-      checkArtifactValues ground [(dropped, "hi")]
+      map snd (checkArtifactValues ground [(dropped, "hi")])
         `shouldSatisfy` any (T.isInfixOf "nothing realizes this slot")
 
     -- A slot holds a VALUE; the program states a value. They must be compared as
@@ -1307,10 +1364,10 @@ main = hspec $ do
             ]
           onIn = Expect "e3" ["claim","echo","stdin"] (Subject ["witness","in"]) Nothing
           -- the program side renders a two-part value space-joined
-          fails = checkArtifactValues ground [(onIn, "{\"a\":\"1\"} {\"a\":\"2\"}")]
+          fails = map snd (checkArtifactValues ground [(onIn, "{\"a\":\"1\"} {\"a\":\"2\"}")])
       fails `shouldSatisfy` any (T.isInfixOf "pin one part per assertion")
       -- a genuinely absent value gets no such hint, since it is a different fault
-      checkArtifactValues ground [(onIn, "nowhere")]
+      map snd (checkArtifactValues ground [(onIn, "nowhere")])
         `shouldSatisfy` all (not . T.isInfixOf "pin one part per assertion")
 
     it "still judges a slot whose value has no text form" $ do

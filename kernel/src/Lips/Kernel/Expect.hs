@@ -24,6 +24,11 @@
 -- judges the results.
 module Lips.Kernel.Expect
   ( Expect (..)
+  , Compat (..)
+  , compatSlug
+  , parseCompat
+  , rebless
+  , smallestCompat
   , renderExpect
   , readExpect
   , bindSelfExpect
@@ -45,7 +50,7 @@ import           Text.Read  (readMaybe)
 import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Capture  (captureName, fillCaptures, fillName, matchSubject, selfName)
 import Lips.Kernel.Decision
-import Lips.Kernel.Engine.Data (renderAttrPath, splitAttrPath)
+import Lips.Kernel.Engine.Data (Emit (..), MapRule (..), renderAttrPath, splitAttrPath)
 import Lips.Kernel.Engine.Value (parseValue, sourceText)
 import Lips.Kernel.Reader   (ParseError (..))
 import Lips.Kernel.Surface  (valueText, valueTokens)
@@ -59,6 +64,82 @@ data Expect = Expect
   , exToken :: Maybe Int
   }
   deriving (Eq, Show)
+
+-- | How much of the committed contract a re-mint may move. Two independent
+-- permissions, so four points rather than the one word (@--renew@) this
+-- replaces: may a committed assertion VANISH (drop), and may a freshly minted
+-- one JOIN (add)?
+--
+-- Named from the caller's promise about the CONTRACT, not from the file
+-- operation: @backwards@ keeps every check a committed contract makes (it can
+-- only grow), @forwards@ keeps every check the new engine makes (it can only
+-- shrink), @both@ keeps both promises and is therefore the default, @none@
+-- keeps neither and rewrites.
+data Compat = Both | Backwards | Forwards | None
+  deriving (Eq, Show, Bounded, Enum)
+
+-- | The word a caller writes for a mode, and reads back in a refusal.
+compatSlug :: Compat -> Text
+compatSlug Both      = "both"
+compatSlug Backwards = "backwards"
+compatSlug Forwards  = "forwards"
+compatSlug None      = "none"
+
+-- | Read a mode word. Derived from the type ('Bounded'\/'Enum'), so a mode
+-- added later cannot be missing here.
+parseCompat :: Text -> Maybe Compat
+parseCompat w = lookup w [(compatSlug c, c) | c <- [minBound .. maxBound]]
+
+-- | Two assertions are THE SAME when they pin the same option to the same
+-- source: the @a1@\/@a2@ ids are minted fresh every run and carry no identity.
+sameExpect :: Expect -> Expect -> Bool
+sameExpect x y = exPath x == exPath y && exFrom x == exFrom y && exToken x == exToken y
+
+-- | The contract a re-mint is judged by and writes back, from the committed set
+-- C and the freshly minted set M, under one mode. @Left@ names the committed
+-- assertions the mode does not permit to leave.
+--
+-- With nothing committed yet every mode bootstraps from M: there is no promise
+-- to keep, and a first mint must write the contract it just earned.
+--
+-- The guard that keeps @forwards@ from letting the model choose which checks to
+-- skip: an assertion may leave only when NO rule in the new engine assigns its
+-- option path -- the engine genuinely stopped filling it. A path still filled
+-- but no longer asserted refuses, so the one thing a re-mint cannot do is
+-- quietly stop looking. Structural, the same shape as
+-- 'Lips.Generate.Minting.uncheckableExpects' (invariant 2).
+rebless :: Compat -> [MapRule] -> [Expect] -> [Expect] -> Either [Expect] [Expect]
+rebless mode rules committed minted
+  | null committed = Right minted
+  | otherwise = case mode of
+      Both      -> Right committed
+      None      -> Right minted
+      Backwards -> Right (committed ++ joining)
+      Forwards  -> case filter (stillFilled rules) leaving of
+        []  -> Right kept
+        bad -> Left bad
+  where
+    kept    = [c | c <- committed, any (sameExpect c) minted]
+    leaving = [c | c <- committed, not (any (sameExpect c) minted)]
+    -- An extra keeps its own shape but never a committed id, so the file's
+    -- diff shows one added line rather than a renumbering of every line.
+    joining = [ m { exId = "a" <> tshow n }
+              | (n, m) <- zip [length committed + 1 ..]
+                              [m | m <- minted, not (any (sameExpect m) committed)] ]
+
+-- | Does the engine still assign this assertion's option path? Then dropping
+-- the assertion would leave a filled option unchecked.
+stillFilled :: [MapRule] -> Expect -> Bool
+stillFilled rules e = exPath e `elem` [emPath em | r <- rules, em <- mrEmits r]
+
+-- | The smallest mode that would admit these committed assertions changing:
+-- @forwards@ while every one of them names an option the engine stopped
+-- filling, else @none@. Named in a refusal so the human reaches for the
+-- narrowest word rather than the biggest hammer.
+smallestCompat :: [MapRule] -> [Expect] -> Compat
+smallestCompat rules es
+  | any (stillFilled rules) es = None
+  | otherwise                  = Forwards
 
 -- | Render a contract to canonical @.expect@ text, ordered by id.
 renderExpect :: [Expect] -> Text
@@ -225,10 +306,10 @@ isGroundExpect e = case exPath e of
 -- uses on evaluated options. The assertion's option path IS the ground
 -- subject, so an assertion whose slot no rule fills fails loud instead of
 -- reading a silent @null@.
-checkArtifactValues :: Base -> [(Expect, Text)] -> [Text]
+checkArtifactValues :: Base -> [(Expect, Text)] -> [(Expect, Text)]
 checkArtifactValues ground pairs = concatMap judge pairs
   where
-    judge (e, pv) = case [ a | d <- toList ground, dSubject d == Subject (exPath e)
+    judge (e, pv) = map ((,) e) $ case [ a | d <- toList ground, dSubject d == Subject (exPath e)
                              , let Assertion a = dAssertion d ] of
       []      -> [ dotted (exPath e) <> ": nothing realizes this slot, so the "
                     <> "program value " <> pv <> " lands nowhere" ]
@@ -270,11 +351,13 @@ checkArtifactValues ground pairs = concatMap judge pairs
                 | otherwise   -> inOrder ps (T.drop (T.length p) rest)
 
 -- | Judge the eval results against the program values. Containment: each
--- program value must appear in its option's evaluated JSON. Returns one message
--- per failed assertion (empty = all pass).
-checkValues :: [Expect] -> [(Text, Text)] -> [Text]
+-- program value must appear in its option's evaluated JSON. Returns the failed
+-- assertion WITH its message (empty = all pass): the caller shows the message
+-- and asks the assertion which re-bless mode would admit the change
+-- ('smallestCompat').
+checkValues :: [Expect] -> [(Text, Text)] -> [(Expect, Text)]
 checkValues es pairs =
-  [ fail' e pv ev | (e, (pv, ev)) <- zip es pairs, not (pv `T.isInfixOf` ev) ]
+  [ (e, fail' e pv ev) | (e, (pv, ev)) <- zip es pairs, not (pv `T.isInfixOf` ev) ]
   where
     -- Plain, author-facing: name the NixOS option and the mismatch, no internal
     -- assertion id. The caller (CLI) indents and frames it.

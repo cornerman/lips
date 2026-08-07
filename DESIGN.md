@@ -1046,7 +1046,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   from validating at all. "Not verified" is stated, never rendered as verified.
   The governing contract is generate's rule, not the tool's: the committed
   `.expect` on a regeneration, the draft's own expects on a first mint or under
-  `--renew`, exported so the two cannot drift into a false green. Nothing
+  `--compat none`, exported so the two cannot drift into a false green. Nothing
   enforces that the tool is used: the deciding gate is unchanged, so the feature
   is strictly non-worse than before.
 
@@ -1417,7 +1417,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   sibling of the copied `kernel/` tree so the same relative `../assets/mint/*`
   path resolves in both places). Not done in this pass, deliberately: no
   example under `examples/` was re-minted against the new prompt (that is a
-  separate, explicit action -- `generate --renew` on each -- left for whoever
+  separate, explicit action -- `generate --compat none` on each -- left for whoever
   reviews the new wording; every existing `.generation` record, and its
   `@gen` stamps, remain valid against the OLD prompt they recorded).
 
@@ -1741,7 +1741,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   (`generate`, `compile`, `check`, `lsp` -- `lsp` was reachable before but
   absent from `--help`; now consistent). `-m/--model` is the only way to name
   a model; short aliases `-t/--target`, `-o/--out`, `-v/--verbose` are added
-  (`--renew` stays long-only, a deliberate rare action). Because completion
+  (`--compat` stays long-only, a deliberate rare action). Because completion
   scripts derive from the same `Parser` that parses real invocations, they
   cannot drift the way a hand-maintained static script would --
   `installShellCompletion` (nix packaging) ships bash/zsh/fish completions
@@ -2073,13 +2073,25 @@ but the loop around it is incomplete; "missing" means specced, not built.
   lips cannot read intent, so targeting a system-concern program at
   home-manager is a human error it will faithfully realize.
 
-- **Re-bless flag (`generate --renew`).** Ignore the committed `.expect` and
-  rewrite it from this mint, so a deliberate behavior change is one command
-  instead of `rm .expect && generate`. Every correctness gate (crystallize,
-  option grounding, realize, nix-parse) and the behavioral gate still run, so a
-  bad mint still writes nothing; the rewritten `.expect` diff stays the semantic
-  changelog (invariant 5 preserved: explicit human decision, never silent). The
-  refusal message names it.
+- **Re-bless lattice (`generate --compat both|backwards|forwards|none`).** One
+  word used to hide two independent permissions: may a committed assertion
+  VANISH, and may a freshly minted one JOIN. Naming both makes the switch four
+  points instead of two. `both` (the default) grants neither, so the committed
+  contract governs unchanged and a differently-worded re-mint still passes;
+  `backwards` lets this run's extra checks join, so the contract can only grow;
+  `forwards` lets a check leave, so it can only shrink; `none` rewrites it from
+  this run (the old `--renew`, which is gone -- an old invocation fails loud
+  rather than silently keeping the contract). Sameness is the option path plus
+  the source it draws from, since the `a1`/`a2` ids are minted fresh every run.
+  The guard that keeps `forwards` from letting the model choose which checks to
+  skip: an assertion may leave only when NO rule in the new engine assigns its
+  option path; a path still filled but no longer asserted refuses. Every
+  correctness gate and the behavioral gate still run whatever the word, so a bad
+  mint still writes nothing, and the `.expect` diff stays the semantic changelog
+  (invariant 5: an explicit human decision, never silent). A refusal names the
+  SMALLEST mode that would admit the change, which is why `checkValues` returns
+  the failing assertions and not only their messages. The mode gates and does
+  not mint: it stays out of `.generation` and `genId`.
 
 - **Grammar completeness: typed hole inside a string.** Inside a Nix string the
   value is text, so a redundant `:type` on a hole (`<value:int>`,
