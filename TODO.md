@@ -260,15 +260,16 @@ tracks only what is still open.
 
 8. **Remaining known gaps on the clause axis** (none blocking).
 
-   a. **`app/Main.hs` is 1390 lines** (2135 before 2026-08-05). Three seams moved
+   a. **`app/Main.hs` is 990 lines** (2135 before 2026-08-05). Four seams moved
       out: `Lips.Report` (every message it prints, pure -- one voice per defect,
       readable without the control flow around it), `Lips.Schema` (locking a
       flakeref, building the option JSON, the `options` verb and the mint's
-      admissibility gate) and `Lips.Stage` (staging a language's trees into a
-      temp dir, filling markers, writing the site). What is left and would factor
-      the same way: the GATES themselves (`expectGate`, `artifactGate`,
-      `mintClaimGate`, `sourceSpecGate`, `runExpects`, ~330 lines), which now sit
-      on top of `Lips.Stage` rather than mixed into it.
+      admissibility gate), `Lips.Stage` (staging a language's trees into a temp
+      dir, filling markers, writing the site) and `Lips.Gate` (every gate that
+      judges one realization against something outside the module text).
+      What is left is verb-level composition: which gates a verb runs, the mint
+      round, and reading and writing a language folder. No further seam is
+      obvious, so this stops being an item unless Main grows again.
    b. **Several sites at once is refused, not built** (plan Task 10 landed as
       shape only). No committed example needs a second place; the refusal makes
       growing to several a kernel change nobody can stumble into.
