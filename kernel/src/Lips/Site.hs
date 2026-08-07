@@ -16,6 +16,7 @@ module Lips.Site
   ) where
 
 import           Data.Bifunctor (first)
+import           Data.List (nub, sort)
 import           Data.Text (Text)
 import qualified Data.Text as T
 
@@ -87,7 +88,16 @@ planSite asset runtimes rl = case rlCore rl of
         claims     = rlClauseClaims rl
         adapters   = rBuild rt : rFiles rt <> rEffectFiles rt
                        <> (if null claims then [] else rClaimFiles rt)
-    shipped <- traverse (fromAsset rt) adapters
+    shipped <- traverse (fromAsset rt) (nub adapters)
+    -- The plan is the site's WHOLE content, so one path may appear once. A
+    -- runtime declaring the same file twice (in its pure list and its claim list)
+    -- would otherwise write it twice and make "total content" a claim the type
+    -- does not keep.
+    case duplicates (map fst shipped <> ["core.scm", "main.scm", "claims.scm"]) of
+      (dup : _) -> Left ("the " <> rName rt <> " runtime would write " <> T.pack dup
+                          <> " twice into one site."
+                        , "\8594 this is a lips bug; report it.")
+      []        -> Right ()
     Right (Just SitePlan
       { spRuntime = rt
       , spFiles =
@@ -103,6 +113,8 @@ planSite asset runtimes rl = case rlCore rl of
     engineFault why = Left (why, "\8594 rebuild the setup: lips generate <program>.")
     plural 1 = "1 parameter"
     plural n = T.pack (show n) <> " parameters"
+    duplicates xs = [ a | (a : b : _) <- window (sort xs), a == b ]
+    window ys = [ drop i ys | i <- [0 .. length ys - 1] ]
     plural' 1 what = "1 " <> what
     plural' n what = T.pack (show n) <> " " <> what <> "s"
     -- The builder is written under a fixed name, so the module and the flake can

@@ -263,6 +263,11 @@ packagesOutput target rungs
     -- binary, just the core evaluated with list-backed adapters. A failed claim
     -- exits nonzero, so the build fails and an unheld claim can never read as
     -- held.
+    --
+    -- The @| tee@ reads like the classic bug where a pipe hides the exit status
+    -- of the command before it, and is not one: nixpkgs' stdenv sets
+    -- @set -o pipefail@, so the failing claim run still fails the build. Verified
+    -- rather than assumed, because the whole rung is worthless if it does not.
     siteClaimLine
       | hasSiteClaims rungs =
           [ "        site-claims = let p = pkgsFor system; in p.runCommand \"site-claims\" {} ''"

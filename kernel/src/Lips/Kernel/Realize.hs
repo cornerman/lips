@@ -404,7 +404,7 @@ deepClauseSubjects winners =
 -- program lines behind it are walked out of the provenance chain.
 clauseOf :: Map.Map DecisionId Decision -> (Text, Decision) -> Either RealizeError Clause
 clauseOf index (name, d) = case parseValue (unAssertion (dAssertion d)) of
-  Right (VSexp x) -> Right (Clause name x (sourceLocs index d))
+  Right (VSexp x) -> (\locs -> Clause name x locs) <$> sourceLocs index d
   Right _ -> Left (RBadClause ("clause " <> name <> " is not an s-expression: "
                                 <> unAssertion (dAssertion d)))
   Left e  -> Left (RBadClause ("clause " <> name <> " does not parse: " <> e))
@@ -413,15 +413,24 @@ clauseOf index (name, d) = case parseValue (unAssertion (dAssertion d)) of
 -- their sources. A minted clause is always derived (a rule emitted it), so its
 -- own provenance names a rule; the LINES are its parents', and they are what a
 -- human wrote.
-sourceLocs :: Map.Map DecisionId Decision -> Decision -> [SourceLoc]
-sourceLocs index = nub . go 8
+-- The walk is bounded, and exhausting the bound is an ERROR rather than an empty
+-- answer: dropping the lines silently would report the clause as caused by
+-- nothing, and the gate would then refuse it as unprovenanced -- blaming the mint
+-- for a depth the kernel gave up on.
+sourceLocs :: Map.Map DecisionId Decision -> Decision -> Either RealizeError [SourceLoc]
+sourceLocs index d0 = nub <$> go (8 :: Int) d0
   where
-    go :: Int -> Decision -> [SourceLoc]
-    go 0 _ = []                       -- a cycle cannot arise, but never loop on one
+    go :: Int -> Decision -> Either RealizeError [SourceLoc]
+    go 0 _ = Left (RBadClause
+      ("the provenance of " <> subjText (dSubject d0) <> " is more than 8 steps deep,\
+       \ so lips cannot say which program line caused it. This is a lips limit, not\
+       \ a defect in the program."))
     go fuel d = case dProv d of
-      FromSource loc  -> [loc]
-      Derived ids _   -> concat [ go (fuel - 1) p | i <- ids, Just p <- [Map.lookup i index] ]
-      FromGeneration _ -> []
+      FromSource loc  -> Right [loc]
+      Derived ids _   -> concat <$> traverse (go (fuel - 1))
+                                             [ p | i <- ids, Just p <- [Map.lookup i index] ]
+      FromGeneration _ -> Right []
+    subjText (Subject segs) = T.intercalate "." segs
 
 byId :: Base -> Map.Map DecisionId Decision
 byId b = Map.fromList [ (dId d, d) | d <- toList b ]
