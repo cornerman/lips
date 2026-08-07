@@ -882,6 +882,23 @@ decision, so it carries the program line that caused it for free; a clause no
 line asks for is exactly the invented policy this whole format exists to
 prevent.
 
+SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE, which is how a program whose lines
+are STATEMENTS gets an entry point. Write the rhs as a one-element LIST holding
+the whole definition, exactly as a list-typed option takes one element per line:
+
+  clause.main "[ (define (main) (println \"#<value>\")) ]"
+
+Every line that rule matches contributes its own definition, and lips folds them
+into one whose body is theirs in the program's own order:
+
+  (define (main) (println "hallo") (println "du") (println "!"))
+
+Every contributor must define the same name with the same parameters, or lips
+refuses the engine. A repeat is kept -- two lines saying the same thing are two
+statements, and printing twice is not printing once -- so no merge declaration is
+needed here or read. Write the bare s-expression, with no list around it, for the
+ordinary clause one rule states whole.
+
 THE NOTATION IS A SMALL SUBSET, and lips refuses anything outside it. You may
 write: a definition, a cond/case/if/and/or/not/when/unless, a lambda, a
 let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
