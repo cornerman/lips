@@ -2169,10 +2169,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   lips cannot read intent, so targeting a system-concern program at
   home-manager is a human error it will faithfully realize.
 
-- **Re-bless lattice (`generate --compat both|backwards|forwards|none`).** One
+- **Re-bless lattice (`generate --compat full|backwards|forwards|none`).** One
   word used to hide two independent permissions: may a committed assertion
   VANISH, and may a freshly minted one JOIN. Naming both makes the switch four
-  points instead of two. `both` (the default) grants neither, so the committed
+  points instead of two. `full` (the default) grants neither, so the committed
   contract governs unchanged and a differently-worded re-mint still passes;
   `backwards` lets this run's extra checks join, so the contract can only grow;
   `forwards` lets a check leave, so it can only shrink; `none` rewrites it from

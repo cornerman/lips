@@ -73,14 +73,14 @@ data Expect = Expect
 -- Named from the caller's promise about the CONTRACT, not from the file
 -- operation: @backwards@ keeps every check a committed contract makes (it can
 -- only grow), @forwards@ keeps every check the new engine makes (it can only
--- shrink), @both@ keeps both promises and is therefore the default, @none@
+-- shrink), @full@ keeps both promises and is therefore the default, @none@
 -- keeps neither and rewrites.
-data Compat = Both | Backwards | Forwards | None
+data Compat = Full | Backwards | Forwards | None
   deriving (Eq, Show, Bounded, Enum)
 
 -- | The word a caller writes for a mode, and reads back in a refusal.
 compatSlug :: Compat -> Text
-compatSlug Both      = "both"
+compatSlug Full      = "full"
 compatSlug Backwards = "backwards"
 compatSlug Forwards  = "forwards"
 compatSlug None      = "none"
@@ -112,7 +112,7 @@ rebless :: Compat -> [MapRule] -> [Expect] -> [Expect] -> Either [Expect] [Expec
 rebless mode rules committed minted
   | null committed = Right minted
   | otherwise = case mode of
-      Both      -> Right committed
+      Full      -> Right committed
       None      -> Right minted
       Backwards -> Right (committed ++ joining)
       Forwards  -> case filter (stillFilled rules) leaving of

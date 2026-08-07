@@ -841,7 +841,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
           ensureDerived f
           TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
         -- Write the contract the mode settled on, and only when it differs from
-        -- what is committed: --compat both writes nothing (the default keeps the
+        -- what is committed: --compat full writes nothing (the default keeps the
         -- committed spec byte-identical), a first mint bootstraps, and the two
         -- relaxing modes leave the .expect diff as the semantic changelog.
         let contract = renderExpect expects

@@ -229,8 +229,8 @@ generateOpts defConf = GenerateOpts
         (long "confidence" <> value defConf
           <> metavar "0..1" <> help "How sure the model must be of every line it writes (default: 0.7). Anything less is refused.")
   <*> option compatReader
-        (long "compat" <> value Both <> metavar compatMetavar
-          <> help ("How much of the committed .expect a re-mint may move: both "
+        (long "compat" <> value Full <> metavar compatMetavar
+          <> help ("How much of the committed .expect a re-mint may move: full "
                     <> "(keep it, the default), backwards (minted extras may join), "
                     <> "forwards (an assertion the engine stopped filling may leave), "
                     <> "none (rewrite it from this run)."))
