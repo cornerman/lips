@@ -38,9 +38,9 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 
 import Lips.Kernel.Base         (Base, Conflict, MergeMode (..), ResolveErr (..), resolve, toList)
-import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, gateClaim, paramCount,
-                                 reachedContracts)
-import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary)
+import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, gateClaim, mergeDefinitions,
+                                 paramCount, reachedContracts)
+import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim        (Claim, ClauseClaim (..), claimRooted, claimsFromDecisions,
                                  clauseClaimsFromDecisions)
@@ -208,7 +208,7 @@ realizeClauses modeOf assemble vocab source base =
   case resolve modeOf assemble base of
     Left errs -> Left (resolveErr errs)
     Right winners -> do
-      ordered <- clausesFrom (byId source <> byId base) (Map.toList winners)
+      ordered <- clausesFrom vocab (byId source <> byId base) (Map.toList winners)
       case gate vocab ordered of
         (f : _) -> Left (RBadClause (faultText "clause" f))
         -- The contracts travel with the core, because the caller needs both and
@@ -225,15 +225,15 @@ realizeClauses modeOf assemble vocab source base =
 -- The @index@ spans the SOURCE base as well as the ground one: a minted clause is
 -- derived from the program's decision, and that decision is refined away before
 -- realize, so the ground base alone cannot answer which line caused the clause.
-clausesFrom :: Map.Map DecisionId Decision -> [(Subject, Decision)]
+clausesFrom :: Vocabulary -> Map.Map DecisionId Decision -> [(Subject, Decision)]
             -> Either RealizeError [Clause]
-clausesFrom index winners = do
+clausesFrom vocab index winners = do
   case deepClauseSubjects winners of
     (bad : _) -> Left (RBadClause (bad <> " is not a clause subject: a clause is\
       \ clause.<name>, and a deeper path collapses to the same name as the\
       \ clause it would shadow, which the notation resolves silently."))
     []        -> Right ()
-  clauses <- traverse (clauseOf index) (clauseDecisions winners)
+  clauses <- traverse (clauseOf vocab index) (clauseDecisions winners)
   Right (sortOn (locOf . clFrom) clauses)
   where
     -- A clause with no provenance sorts last; the gate rejects it anyway, so the
@@ -372,12 +372,6 @@ referencesSite (VAttr fs) = any (referencesSite . snd) fs
 referencesSite (VRef RSite) = True
 referencesSite _          = False
 
--- | Is this path the clause vocabulary? Twin of 'Lips.Kernel.Claim.claimRooted'
--- and 'Lips.Kernel.OptionType.reservedRoot': no head of it becomes an option.
-clauseRooted :: [Text] -> Bool
-clauseRooted ("clause" : _) = True
-clauseRooted _              = False
-
 -- | Is this path the site vocabulary? @site.name@ tells the module what to call
 -- the program's own build; like a clause, it is not an option any world declares.
 siteRooted :: [Text] -> Bool
@@ -402,12 +396,26 @@ deepClauseSubjects winners =
 
 -- | One clause from its decision: the assertion must be an s-expression, and the
 -- program lines behind it are walked out of the provenance chain.
-clauseOf :: Map.Map DecisionId Decision -> (Text, Decision) -> Either RealizeError Clause
-clauseOf index (name, d) = case parseValue (unAssertion (dAssertion d)) of
-  Right (VSexp x) -> (\locs -> Clause name x locs) <$> sourceLocs index d
+--
+-- A LIST of s-expressions is the aggregated form: several program lines each
+-- contributed one definition of this clause, assembled by the same 'Append'
+-- machinery a list-typed option uses, and they fold into one definition whose
+-- body is theirs in program order ('mergeDefinitions').
+clauseOf :: Vocabulary -> Map.Map DecisionId Decision -> (Text, Decision)
+         -> Either RealizeError Clause
+clauseOf vocab index (name, d) = case parseValue (unAssertion (dAssertion d)) of
+  Right (VSexp x)   -> clause x
+  Right (VList vs)  -> traverse element vs >>= mergeAll
   Right _ -> Left (RBadClause ("clause " <> name <> " is not an s-expression: "
                                 <> unAssertion (dAssertion d)))
   Left e  -> Left (RBadClause ("clause " <> name <> " does not parse: " <> e))
+  where
+    clause x = (\locs -> Clause name x locs) <$> sourceLocs index d
+    element (VSexp x) = Right x
+    element other = Left (RBadClause ("clause " <> name <> " is contributed to by "
+      <> renderRealized other <> ", which is not an s-expression"))
+    mergeAll xs = either (Left . RBadClause) clause
+                    (mergeDefinitions (vDefiners vocab) name xs)
 
 -- | The program lines a decision rests on, by walking @Derived@ parents back to
 -- their sources. A minted clause is always derived (a rule emitted it), so its
@@ -457,7 +465,7 @@ realizeClauseClaims modeOf assemble vocab source base =
     Right winners -> do
       claims  <- either (Left . RBadClaim) Right
                         (clauseClaimsFromDecisions (Map.toList winners))
-      clauses <- clausesFrom (byId source <> byId base) (Map.toList winners)
+      clauses <- clausesFrom vocab (byId source <> byId base) (Map.toList winners)
       -- A claim is grounded by the same walk a clause is, with the observations
       -- added: it runs with the core and the adapters loaded, so an ungrounded
       -- name there reaches the world exactly as one in a clause would.

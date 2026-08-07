@@ -71,13 +71,22 @@ assembleSubject = assembleWith (const False)
 -- them -- two program lines naming one package name it once -- while a list keeps
 -- every contribution. The kernel cannot tell which an option is, so the caller
 -- passes the engine's own declaration ('Lips.Kernel.Engine.Data.keepsRepeats').
+--
+-- A clause subject is the exception the kernel answers itself (see below): its
+-- contributors are statements, and no engine declaration may drop one.
 assembleWith :: ([Text] -> Bool) -> [Decision] -> Either Text Decision
 assembleWith _ [] = Left "assembleSubject: no contributors"
 assembleWith keepsRepeated contributors = do
   let ordered = sortOn sourceKey contributors
   vals <- traverse listValOf ordered
   let segsOf (Subject ss) = ss
-      dedup = if keepsRepeated (segsOf (dSubject (head' ordered))) then id else nub
+      -- A CLAUSE keeps its repeats whatever the engine declared, and the kernel
+      -- decides that rather than the mint: two lines contributing one statement
+      -- to a body are two statements, so printing twice is not printing once.
+      -- Collapsing them would delete behaviour with every gate still green,
+      -- which is the worst failure aggregation can have.
+      keeps ss = clauseRooted ss || keepsRepeated ss
+      dedup = if keeps (segsOf (dSubject (head' ordered))) then id else nub
       assembled = VList (dedup (concatMap unwrap vals))
       head' (x : _) = x
       head' []      = error "assembleWith: unreachable (empty guarded above)"

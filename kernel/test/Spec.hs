@@ -3483,6 +3483,14 @@ main = hspec $ do
       p `shouldSatisfy` T.isInfixOf "claim.<id>.call"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.equals"
 
+    -- The physics landed for the gap examples/function's first live mint filed
+    -- as clause-sequence; a mint that cannot read the shape would file it again
+    -- and go on demoting a program's statements to observations.
+    it "tells the model how several lines contribute to one clause" $ do
+      p `shouldSatisfy` T.isInfixOf "SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE"
+      p `shouldSatisfy` T.isInfixOf "clause.main \"[ (define (main) (println \\\"#<value>\\\")) ]\""
+      parseValue "[ (define (main) (println \"#<value>\")) ]" `shouldSatisfy` isRight
+
     -- Grepping the prompt proves only that words are present. These parse the
     -- exact rhs forms it teaches through the real grammar, which is what catches
     -- a prompt teaching something lips refuses -- as it did for equals "#t".
@@ -5651,6 +5659,69 @@ main = hspec $ do
       realizeClausesOf
         [ clauseDecision "c1" "keep" "\"just a string\"" (FromSource (SourceLoc "p.lips" 1)) ]
         `shouldSatisfy` either (const True) (const False)
+
+  -- The gap the first live mint of examples/function filed as clause-sequence: a
+  -- program whose lines are STATEMENTS needs them in one entry point's body, and
+  -- a clause rhs is one s-expression per subject. So a clause aggregates the way
+  -- a list-typed option does -- several contributors, assembled in program order
+  -- -- and the assembled value is a list of definitions of one name.
+  describe "a clause several program lines contribute to" $ do
+    it "assembles one definition whose body is theirs, in program order" $
+      realizeClausesOf
+        [ clauseDecision "c1" "main"
+            "[ (define (main) (emit \"first\")) (define (main) (emit \"second\")) ]"
+            (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldBe` Right (Just ";; @from p.lips:1\n(define (main) (emit \"first\") (emit \"second\"))\n")
+
+    it "keeps a statement two lines both state, since printing twice is not printing once" $
+      realizeClausesOf
+        [ clauseDecision "c1" "main"
+            "[ (define (main) (emit \"hi\")) (define (main) (emit \"hi\")) ]"
+            (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldBe` Right (Just ";; @from p.lips:1\n(define (main) (emit \"hi\") (emit \"hi\"))\n")
+
+    -- Contributors defining different names cannot be one definition, and
+    -- picking either would silently drop the other's behaviour.
+    it "refuses contributors that define different names" $
+      realizeClausesOf
+        [ clauseDecision "c1" "main"
+            "[ (define (main) (emit \"a\")) (define (other) (emit \"b\")) ]"
+            (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldSatisfy` either (T.isInfixOf "define one name" . T.pack . show) (const False)
+
+    it "refuses a contributor that is not a definition" $
+      realizeClausesOf
+        [ clauseDecision "c1" "main" "[ (define (main) (emit \"a\")) (emit \"b\") ]"
+            (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldSatisfy` either (const True) (const False)
+
+    it "refuses a clause no line contributed to" $
+      realizeClausesOf
+        [ clauseDecision "c1" "main" "[ ]" (FromSource (SourceLoc "p.lips" 1)) ]
+        `shouldSatisfy` either (const True) (const False)
+
+    -- The whole chain, as a live engine runs it: two rules emit a one-element
+    -- list to the same clause subject, mergeModeOf reads the list rhs as Append,
+    -- and the contributors assemble into one entry point.
+    it "composes two program lines into one entry point end to end" $ do
+      let rhs = case parseValue "[ (define (main) (emit \"#<value>\")) ]" of
+            Right v -> v
+            Left e  -> error (T.unpack e)
+          rules = [MapRule "r1" Fact ["say", "<w>"] [Emit ["clause", "main"] rhs]]
+          base = fromList
+            [ (mk "d1" "say" "hallo" Stated)
+                { dSubject = Subject ["say", "one"], dProv = FromSource (SourceLoc "p.lips" 1) }
+            , (mk "d2" "say" "du" Stated)
+                { dSubject = Subject ["say", "two"], dProv = FromSource (SourceLoc "p.lips" 2) }
+            , (mk "k1" "claim" "(begin (main) (emitted))" Stated)
+                { dSubject = Subject ["claim", "w", "call"], dKind = Meta }
+            , (mk "k2" "claim" "(list \"hallo\" \"du\")" Stated)
+                { dSubject = Subject ["claim", "w", "equals"], dKind = Meta } ]
+      case runBase (mergeModeOf rules) (assembleWith (const False)) schemeVocabulary 100
+             (map toRule rules) [] base of
+        Left e   -> expectationFailure (show e)
+        Right rl -> fmap (\(t, _, _) -> t) (rlCore rl)
+          `shouldSatisfy` maybe False (T.isInfixOf "(emit \"hallo\") (emit \"du\")")
 
   -- A claim over the program's own definitions: judged by evaluating them with
   -- the in-memory adapters linked, so no derivation is built and no machine

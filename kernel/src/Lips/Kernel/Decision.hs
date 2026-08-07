@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- | The atom of lips: a decision, and the vocabulary that identifies and
 -- ranks decisions. Everything in lips is made of these (spec v2, section 2).
 --
@@ -20,6 +21,7 @@ module Lips.Kernel.Decision
   , Kind (..)
   , Assertion (..)
   , Decision (..)
+  , clauseRooted
   , kindText
   , kindTable
   , strengthText
@@ -33,6 +35,14 @@ import qualified Data.Text as T
 -- on: same subject means the decisions are about the same thing and compete.
 newtype Subject = Subject [Text]
   deriving (Eq, Ord, Show)
+
+-- | Is this path the clause vocabulary? Twin of 'Lips.Kernel.Claim.claimRooted'
+-- and 'Lips.Kernel.OptionType.reservedRoot', and here rather than beside them
+-- because two tiers ask: 'Lips.Kernel.Realize' (a clause becomes no option) and
+-- 'Lips.Kernel.Engine.Aggregate' (a clause's contributors keep their repeats).
+clauseRooted :: [Text] -> Bool
+clauseRooted ("clause" : _) = True
+clauseRooted _              = False
 
 -- | Stable identity of a decision within a base. Human decisions get ids from
 -- the reader; derived decisions get fresh ids from the refiner.

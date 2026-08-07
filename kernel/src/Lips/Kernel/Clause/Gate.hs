@@ -33,6 +33,7 @@ module Lips.Kernel.Clause.Gate
   , gateClaim
   , faultText
   , paramCount
+  , mergeDefinitions
   , reachedContracts
   ) where
 
@@ -203,6 +204,40 @@ definition definers _ other =
 
 wrongName :: Text -> Text
 wrongName n = "it defines " <> n <> " instead"
+
+-- | Fold the contributions several program lines make to ONE clause into one
+-- definition, its body theirs in the order given (which is the program's own).
+--
+-- The dual of list aggregation on a list-typed option, and it exists for the
+-- same reason: a program whose lines are STATEMENTS has to put them in one
+-- entry point's body, and a clause rhs is one s-expression per subject. Without
+-- it a second statement line is a merge conflict, which is what the first live
+-- mint of @examples\/function@ reported as the gap @clause-sequence@.
+--
+-- The head is the FIRST contributor's, verbatim, and the rest hand over their
+-- bodies only, so nothing here reconstructs a definition and the defining word
+-- stays the vocabulary's. Every contributor must define the same name with the
+-- same parameters, or the fold would silently drop one line's behaviour.
+mergeDefinitions :: [Text] -> Text -> [SExp] -> Either Text SExp
+mergeDefinitions _ name [] =
+  Left ("clause " <> name <> " has no contributors, so there is nothing to define")
+mergeDefinitions _ _ [one] = Right one
+mergeDefinitions definers name (first : rest) = do
+  (params, _) <- located first
+  bodies <- traverse (contribution params) rest
+  case first of
+    SList xs -> Right (SList (xs <> concat bodies))
+    other    -> Left (prefix <> "reads " <> renderSexp other <> ", not a definition")
+  where
+    prefix = "clause " <> name <> ": its contributors must all define one name\
+             \ with one parameter list, and "
+    located x = first' (prefix <>) (definition definers name x)
+    contribution params x = do
+      (ps, body) <- located x
+      if ps == params
+        then Right body
+        else Left (prefix <> renderSexp x <> " takes different parameters")
+    first' f = either (Left . f) Right
 
 -- | How many parameters a clause's definition takes, or 'Nothing' when it
 -- defines a CONSTANT (which is what a stated number becomes).
