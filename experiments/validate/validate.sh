@@ -33,7 +33,15 @@ for dir in "$here"/scenarios/*/; do
     echo "   BUILD FAILED"; echo "$store" | tail -5 | sed 's/^/   /'
     bad=$((bad+1)); continue
   fi
-  bin="$store/bin/site"
+  # The site is installed under the name the PROGRAM chose ("install the tool as
+  # the command x"), which is the same name the realized module binds. So the
+  # binary is found rather than assumed: hardcoding bin/site passed only while
+  # the flake and the module disagreed about what to call the thing.
+  bins=("$store"/bin/*)
+  if [ "${#bins[@]}" -ne 1 ]; then
+    echo "   EXPECTED ONE BINARY, got: ${bins[*]}"; bad=$((bad+1)); continue
+  fi
+  bin="${bins[0]}"
 
   # cases: one per line, | separated (NOT tab: bash strips a leading empty field
   # when IFS is whitespace, which silently shifts every column)

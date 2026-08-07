@@ -1,0 +1,3 @@
+# args|stdin|expected stdout|exit
+pw|{"user":"ada","pw":"s3cret"}\n|{"user":"ada","pw":"***"}|0
+pw|{"user":"bob"}\n|{"user":"bob"}|0

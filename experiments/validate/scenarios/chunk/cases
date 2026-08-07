@@ -1,0 +1,4 @@
+# args|stdin|expected stdout|exit
+|a\nb\nc\nd\n|a,b,c\nd|0
+|a\n|a|0
+|||0

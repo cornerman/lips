@@ -1,0 +1,6 @@
+a1 expect claim.example.feed from chunk.example.input#1
+a2 expect claim.example.feed from chunk.example.input#2
+a3 expect claim.example.feed from chunk.example.input#3
+a4 expect claim.example.feed from chunk.example.input#4
+a5 expect claim.example.equals from chunk.example.output#1
+a6 expect claim.example.equals from chunk.example.output#2

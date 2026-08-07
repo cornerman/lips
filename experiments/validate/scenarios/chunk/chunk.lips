@@ -1,0 +1,5 @@
+read lines from standard input.
+print them in groups of three, joined by commas.
+print a short last group when the input runs out.
+install the tool as the command chunk.
+given the lines a, b, c and d, print a,b,c then d.
