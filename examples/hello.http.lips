@@ -1,4 +1,6 @@
 serve http on port 8080.
-respond to every request with the text "hello from lips".
 run it as a systemd service named hello.
-a request to / answers with the text "hello from lips".
+routes:
+- / answers with the text "hello from lips"
+- /health answers with the text "ok"
+- /version answers with the text "lips 0.1"

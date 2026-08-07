@@ -1,7 +1,7 @@
 model: claude-opus-5
 target: nixos
 schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
-thinking: high
+thinking: medium
 confidence-threshold: 0.7
 --- system prompt ---
 TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
@@ -102,16 +102,25 @@ yourself: crystallizing programs you were never shown, realizing a module,
 evaluating your own expects. Verify beforehand everything you can, since
 nothing you get wrong here is caught before it costs the human a fresh mint.
 
-The one thing you CAN verify is an option. YOUR ONE TOOL, query_options(query),
-searches the pinned option schema of the target world named above. A dotted
+YOU HAVE TWO TOOLS, and using both is how a mint survives its own gates.
+
+query_options(query) searches the pinned option schema of the target world
+named above. A dotted
 prefix browses a namespace and lists its options with their types; a plain
 domain word finds the namespace in the first place. A broad query answers
 with the namespaces holding the matches, the one with the most matches first
 -- ask again by that name to see its options. Every option path and type you
 are not certain of, look it up instead of recalling it: a rule naming an
 option that does not exist, or filling one with the wrong type, is rejected
-outright and the whole mint fails. There is no tool that judges your engine,
-and none that runs anything.
+outright and the whole mint fails.
+
+check_draft(draft) runs lips' own gates over the lines you are about to answer
+with, and reports the first gate that rejects them, in the exact words the
+refusal would use. Call it before you answer, and again after every fix.
+It does not run the claim gate or the artifact build, and it says so: a clean
+answer is not a guarantee of acceptance, while a dirty one is a guarantee of
+refusal. Nothing here judges FOR you and nothing runs your program: the gate
+that decides is still lips', after you are done.
 
 State the limit of the tool in the same breath: it grounds NAMES, never VALUES.
 Being told an option exists is not permission to invent what fills
@@ -663,9 +672,16 @@ DO EXPECT A CLAIM SECTION, exactly as you expect an artifact arg:
 so a later mint that drops the author's example is refused instead of
 quietly narrowing what is observed.
 
-IF YOU BAKE SOURCE, YOU MUST STATE AT LEAST ONE CLAIM. A mint that writes a
-source block and no claim is refused. A pure-configuration language needs
-none: its behaviour IS its option assignments, which the expects pin.
+IF YOU BAKE SOURCE, STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE. This
+is where a claim earns the most: nothing else holds minted code to the
+sentences it was written from. Read every line for an example -- an input
+and what it prints, an exit status, a usage error -- and turn it into a
+claim rather than into prose. Where the program truly states no example,
+file a GAP saying the observable is missing and mint the rest; lips says the
+same thing in its report. Never invent one to fill the hole.
+
+A pure-configuration language needs no claim: its behaviour IS its option
+assignments, which the expects pin.
 
 ### List Aggregation
 
@@ -876,209 +892,356 @@ Before you answer, run this list against your own engine:
 6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
 7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
 
+### Behaviour: Clauses, Not Source
+
+When the program states BEHAVIOUR -- what it decides, keeps, rejects, computes
+-- emit CLAUSES, not a source file. A clause is one named definition under the
+subject root clause.<name>, and its rhs is an s-expression:
+
+  clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) (else #f)))"
+
+One definition per thing the program says, and nothing else. Every clause is a
+decision, so it carries the program line that caused it for free; a clause no
+line asks for is exactly the invented policy this whole format exists to
+prevent.
+
+SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE, which is how a program whose lines
+are STATEMENTS gets an entry point. Write the rhs as a one-element LIST holding
+the whole definition, exactly as a list-typed option takes one element per line:
+
+  clause.main "[ (define (main) (println \"#<value>\")) ]"
+
+Every line that rule matches contributes its own definition, and lips folds them
+into one whose body is theirs in the program's own order:
+
+  (define (main) (println "hallo") (println "du") (println "!"))
+
+Every contributor must define the same name with the same parameters, or lips
+refuses the engine. A repeat is kept -- two lines saying the same thing are two
+statements, and printing twice is not printing once -- so no merge declaration is
+needed here or read. Write the bare s-expression, with no list around it, for the
+ordinary clause one rule states whole.
+
+THE NOTATION IS A SMALL SUBSET, and lips refuses anything outside it. You may
+write: a definition, a cond/case/if/and/or/not/when/unless, a lambda, a
+let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
+#\=), recursion (a clause may call itself and any other clause), and a call to
+a base procedure or a CONTRACT. You may NOT write: a macro, set! or any
+mutation, eval, an internal define, or a name nothing grounds.
+
+THE HOLE MARKER INSIDE A CLAUSE IS #<name>, NOT <name>. Both < and > are
+ordinary Scheme identifier characters, so a clause must be able to write
+(< n 3); the marker is therefore #<value:int>, #<value>, #<capture>. Inside a
+NIX value it stays <value> as everywhere else. Getting this wrong writes the
+literal text "<value>" into the program and the claim fails on it.
+
+CONTRACTS ARE THE ONLY DOOR TO THE WORLD. A clause cannot open a file, run a
+command or reach the network; it calls a contract by name and an adapter
+provides it, chosen at compile time by what the clauses need. The contracts
+available are:
+
+  json-parse (1) -- text -> record, or #f when the text is not JSON
+  string-cut (2) -- text char -> (before . after) at the first occurrence, or #f
+  field-of (2) -- record name -> the field's value, or #f when absent
+  field-name (1) -- pair -> its name
+  field-value (1) -- pair -> its value
+  arguments (0) -- -> the words after the command name, as a list of strings
+  read-a-line (0) -- -> the next input line, or the end-of-input value
+  end-of-input? (1) -- x -> whether x is the end-of-input value
+  emit (1) -- line -> writes it to the output, followed by a newline
+  die (2) -- message subject -> stops the program, naming the subject
+  emitted (0) -- -> the lines the program printed, in order
+
+
+If the program needs a capability no contract offers, that is a GAP: report it
+and refuse, exactly as you would for a missing option. Never reach for a shell
+command or a source file to get around a missing contract, and never invent a
+name hoping one exists -- a name nothing grounds is refused before anything
+runs, so it costs the mint rather than the author.
+
+CLAIM WHAT THE BEHAVIOUR DOES. A claim over clauses is judged offline, with no
+binary built and no machine booted, so an observable here is cheap enough that
+every behaviour sentence should have one:
+
+  claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
+  claim.<id>.equals "#t"
+
+EVERY CLAUSE MUST BE REACHED BY A CLAIM, following calls from the claim's own
+expression through the clauses it calls. lips computes that set and REFUSES an
+engine leaving any definition outside it, naming the ones nothing runs -- a
+clause no claim reaches is behaviour the next mint may rewrite with every gate
+still green. So claim the ENTRY, not only the helpers: one claim of the shape
+
+  claim.whole.feed "[ \"first line\" \"second line\" ]" ;
+  claim.whole.call "(begin (main) (emitted))" ;
+  claim.whole.equals "(list \"what it prints\")"
+
+reaches main and everything main calls, which is usually the whole program.
+Claims over single definitions are good beside it, never instead of it.
+
+Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
+serve those lines to read-a-line first, and claim.<id>.args the same way to set
+the command line the program sees. That is how a whole program is observed end
+to end rather than one definition at a time. A claim states either a command
+(run/stdin/stdout/exit) or an expression (call/equals/feed/args), never both.
+
+WHAT THE PROGRAM PRINTED IS OBSERVABLE. Inside a claim (never inside a clause)
+three more names exist, provided by the same list-backed adapters that replace
+the real effects: (emitted) is the lines the program printed, in order, and
+feed-lines / feed-args are what claim.<id>.feed and claim.<id>.args compile to.
+So a program whose whole job is to print is claimed end to end:
+  claim.<id>.feed "[ \"2\" \"3\" ]" ;
+  claim.<id>.call "(begin (main) (emitted))" ;
+  claim.<id>.equals "(list \"5\")"
+A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
+
+NEVER FIX A COUNT IN A TEMPLATE. A sentence carrying a list of items --
+"given the lines A, B and C" -- must NOT become a template with one hole per
+item (<l1>, <l2>, <l3>): that pattern reads a three-item program and refuses a
+four-item one, so adding an example costs the author a fresh mint. Every such
+sentence is a BLOCK: a header pattern, a child pattern nested under it, and one
+decision per item keyed by its position.
+
+  p3 pattern given these lines => concept witness.given "the example input follows"
+  p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
+  r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
+
+The author then writes the items on their own lines under the header, however
+many there are, and Append assembles the one-element lists into one list in
+source order. The same shape carries any list a sentence states: paths to back
+up, packages to install, ports to open. The kernel dictates no collection
+syntax, so the words that open a block are yours to choose in the header
+pattern.
+
+A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
+claim around it: the stop becomes an ordinary value, so state what it must be.
+  claim.<id>.call "(parse-pair \"a\")" ;
+  claim.<id>.equals "(list (quote died) \"argument is not field=value:\" \"a\")"
+So a fail-loud sentence gets a claim like any other, and there is no reason to
+leave one unobserved.
+
+INSTALL THE PROGRAM BY NAMING THE SITE. The clauses are built into one
+executable, and ${site} is its derivation, exactly as ${artifact.<name>} is an
+artifact's. Say what to call it with a site.name emit and put it on PATH like
+any other package:
+  site.<self>.command "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
+A site is NAMED (site.<self> for the one place a program runs today) because a
+program may one day run its behaviour in several places. If the program states
+WHERE it must run -- in a browser, as one static binary -- say so as a property
+and lips picks the runtime that has it:
+  site.<self>.property.browser "\"the form is checked as the user types\""
+STATING it is the requirement, so there is no negative form and none is needed.
+The assertion is the REASON, quoted back to the author when no runtime has the
+property, so write the sentence's own words there. State only what the program
+actually requires.
+A program whose behaviour is clauses needs no artifact and no source block for
+this, and MUST NOT WRAP THE SITE: a writeShellApplication around
+${site}/bin/... only renames what site.name already names, and gets the inner
+path wrong the moment the two names differ. Install ${site} itself.
+
+A SOURCE BLOCK IS THE LAST RESORT, for behaviour clauses genuinely cannot
+express. Prefer clauses every time you can: a source file is traceable to no
+program line, is rewritten wholesale on the next mint, and is the one thing lips
+cannot check.
+
 --- program (input) ---
 === program hello.http.lips ===
 serve http on port 8080.
-respond to every request with the text "hello from lips".
 run it as a systemd service named hello.
-a request to / answers with the text "hello from lips".
+routes:
+- / answers with the text "hello from lips"
+- /health answers with the text "ok"
+- /version answers with the text "lips 0.1"
 
 --- tool transcript ---
--> query_options "systemd.services.<name>.serviceConfig"
--> query_options "networking.firewall.allowedTCPPorts"
+-> query_options "services.nginx.virtualHosts"
+-> query_options "systemd.services"
 <- query_options
-systemd.services.<name>.serviceConfig is below systemd.services : attribute set of (submodule)
-That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.<name>.serviceConfig.
-Emit it only from documentation you actually have; otherwise refuse.
+services.nginx.virtualHosts.* (49 options)
+services.nginx.virtualHosts (1 option)
+Ask again with one of these paths to see its options.
 
+<- query_options
+systemd.services.* (47 options)
+systemd.services (1 option)
+Ask again with one of these paths to see its options.
+
+-> query_options "services.nginx.virtualHosts.*"
+-> query_options "systemd.services.*"
+<- query_options
+services.nginx.virtualHosts.*.locations (16 options)
+services.nginx.virtualHosts.*.listen (6 options)
+services.nginx.virtualHosts.*.acmeFallbackHost (1 option)
+services.nginx.virtualHosts.*.acmeRoot (1 option)
+services.nginx.virtualHosts.*.addSSL (1 option)
+services.nginx.virtualHosts.*.basicAuth (1 option)
+services.nginx.virtualHosts.*.basicAuthFile (1 option)
+services.nginx.virtualHosts.*.default (1 option)
+services.nginx.virtualHosts.*.enableACME (1 option)
+services.nginx.virtualHosts.*.extraConfig (1 option)
+services.nginx.virtualHosts.*.forceSSL (1 option)
+services.nginx.virtualHosts.*.globalRedirect (1 option)
+services.nginx.virtualHosts.*.http2 (1 option)
+services.nginx.virtualHosts.*.http3 (1 option)
+services.nginx.virtualHosts.*.http3_hq (1 option)
+services.nginx.virtualHosts.*.kTLS (1 option)
+services.nginx.virtualHosts.*.listenAddresses (1 option)
+services.nginx.virtualHosts.*.onlySSL (1 option)
+services.nginx.virtualHosts.*.quic (1 option)
+services.nginx.virtualHosts.*.redirectCode (1 option)
+services.nginx.virtualHosts.*.rejectSSL (1 option)
+services.nginx.virtualHosts.*.reuseport (1 option)
+services.nginx.virtualHosts.*.root (1 option)
+services.nginx.virtualHosts.*.serverAliases (1 option)
+services.nginx.virtualHosts.*.serverName (1 option)
+services.nginx.virtualHosts.*.sslCertificate (1 option)
+services.nginx.virtualHosts.*.sslCertificateKey (1 option)
+services.nginx.virtualHosts.*.sslTrustedCertificate (1 option)
+services.nginx.virtualHosts.*.useACMEHost (1 option)
+Ask again with one of these paths to see its options.
+
+<- query_options
+systemd.services.*.confinement (5 options)
+systemd.services.*.after (1 option)
+systemd.services.*.aliases (1 option)
+systemd.services.*.before (1 option)
+systemd.services.*.bindsTo (1 option)
+systemd.services.*.conflicts (1 option)
+systemd.services.*.description (1 option)
+systemd.services.*.documentation (1 option)
+systemd.services.*.enable (1 option)
+systemd.services.*.enableDefaultPath (1 option)
+systemd.services.*.enableStrictShellChecks (1 option)
+systemd.services.*.environment (1 option)
+systemd.services.*.name (1 option)
+systemd.services.*.notSocketActivated (1 option)
+systemd.services.*.onFailure (1 option)
+systemd.services.*.onSuccess (1 option)
+systemd.services.*.overrideStrategy (1 option)
+systemd.services.*.partOf (1 option)
+systemd.services.*.path (1 option)
+systemd.services.*.postStart (1 option)
+systemd.services.*.postStop (1 option)
+systemd.services.*.preStart (1 option)
+systemd.services.*.preStop (1 option)
+systemd.services.*.reload (1 option)
+systemd.services.*.reloadIfChanged (1 option)
+systemd.services.*.reloadTriggers (1 option)
+systemd.services.*.requiredBy (1 option)
+systemd.services.*.requires (1 option)
+systemd.services.*.requisite (1 option)
+systemd.services.*.restartIfChanged (1 option)
+systemd.services.*.restartTriggers (1 option)
+systemd.services.*.script (1 option)
+systemd.services.*.scriptArgs (1 option)
+systemd.services.*.serviceConfig (1 option)
+systemd.services.*.startAt (1 option)
+systemd.services.*.startLimitBurst (1 option)
+systemd.services.*.startLimitIntervalSec (1 option)
+systemd.services.*.stopIfChanged (1 option)
+systemd.services.*.unitConfig (1 option)
+systemd.services.*.upheldBy (1 option)
+… and 3 more namespaces.
+Ask again with one of these paths to see its options.
+
+-> query_options "services.nginx.virtualHosts.*.locations"
+-> query_options "services.nginx.defaultHTTPListenPort"
+<- query_options
+services.nginx.virtualHosts.*.locations : attribute set of (submodule)
+services.nginx.virtualHosts.*.locations.*.alias : null or absolute path
+services.nginx.virtualHosts.*.locations.*.basicAuth : attribute set of string
+services.nginx.virtualHosts.*.locations.*.basicAuthFile : null or absolute path
+services.nginx.virtualHosts.*.locations.*.extraConfig : string
+services.nginx.virtualHosts.*.locations.*.fastcgiParams : attribute set of (string or absolute path)
+services.nginx.virtualHosts.*.locations.*.index : null or string
+services.nginx.virtualHosts.*.locations.*.priority : integer
+services.nginx.virtualHosts.*.locations.*.proxyPass : null or string
+services.nginx.virtualHosts.*.locations.*.proxyWebsockets : boolean
+services.nginx.virtualHosts.*.locations.*.recommendedProxySettings : boolean
+services.nginx.virtualHosts.*.locations.*.recommendedUwsgiSettings : boolean
+services.nginx.virtualHosts.*.locations.*.return : integer
+services.nginx.virtualHosts.*.locations.*.root : null or absolute path
+services.nginx.virtualHosts.*.locations.*.tryFiles : null or string
+services.nginx.virtualHosts.*.locations.*.uwsgiPass : null or string
+
+<- query_options
+services.nginx.defaultHTTPListenPort : integer
+
+-> query_options "networking.firewall.allowedTCPPorts"
+-> query_options "services.nginx.enable"
 <- query_options
 networking.firewall.allowedTCPPorts : list of integer
 
--> query_options "systemd.services.<name>."
--> query_options "systemd.services.<name>.wantedBy"
 <- query_options
-systemd.services.<name>. is below systemd.services : attribute set of (submodule)
-That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.<name>..
-Emit it only from documentation you actually have; otherwise refuse.
+services.nginx.enable : boolean
 
+-> query_options "systemd.services.*.aliases"
 <- query_options
-systemd.services.<name>.wantedBy is below systemd.services : attribute set of (submodule)
-That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.<name>.wantedBy.
-Emit it only from documentation you actually have; otherwise refuse.
+systemd.services.*.aliases : list of string
 
+-> check_draft "0.95 p1 pattern serve http on port <port> => fact server.port \"<port>\"\n0.9 p2 pattern run it as a systemd service named <name> => concept server.<name> \"the http server this program describes\" ; fact service.<name>.alias \"<name>\"\n0.95 p3 pattern routes: => concept routes \"the routes this server answers\"\n0.95 p4.under.p2 pattern - <path> answers with the text \"<body>\" => fact route.<name>.<path>.text \"<body>\"\n0.95 r1 match fact server.port => services.nginx.enable \"true\" ; services.nginx.defaultHTTPListenPort \"<value:int>\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\"\n0.9 r2 match fact service.<name>.alias => systemd.services.nginx.aliases \"[ \\\"<value>.service\\\" ]\"\n0.9 r3 match fact route.<name>.<path>.text => services.nginx.virtualHosts.<name>.locations.<path>.extraConfig \"\\\"default_type text/plain; return 200 '<value>';\\\"\"\n0.9 q1 demand server.port \"which TCP port should the http server listen on?\"\n0.9 q2 demand service.<name>.alias \"what should the systemd service be called?\"\n0.95 a1 expect services.nginx.defaultHTTPListenPort from server.port\n0.9 a2 expect services.nginx.virtualHosts.<name>.locations.<path>.extraConfig from route.<name>.<path>.text\n0.95 d1 report <<<lips\ntest\nlips>>>"
+<- check_draft
+the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
 
 --- raw reply ---
-0.96 p1 pattern serve http on port <port> => fact server.port "<port>"
-0.96 p2 pattern respond to every request with the text "<body>" => fact server.response "<body>"
-0.95 p3 pattern run it as a systemd service named <name> => fact service.<name> "<name>"
-0.93 p4 pattern a request to <path> answers with the text "<body>" => fact witness.<path>.body "<body>"
-0.9 r1 match fact server.port => artifact.<self>.builder "\"buildGoModule\"" ; artifact.<self>.args.pname "\"httpserve\"" ; artifact.<self>.args.version "\"0.1.0\"" ; artifact.<self>.args.src "./artifacts/<self>" ; artifact.<self>.args.vendorHash "null" ; artifact.<self>.fill.port "\"<value>\"" ; networking.firewall.allowedTCPPorts "[ <value:int> ]"
-0.92 r2 match fact server.response => artifact.<self>.fill.body "\"<value>\""
-0.9 r3 match fact service.<name> => systemd.services.<name>.description "\"http responder <value>\"" ; systemd.services.<name>.after "[ \"network.target\" ]" ; systemd.services.<name>.wantedBy "[ \"multi-user.target\" ]" ; systemd.services.<name>.serviceConfig.ExecStart "\"${artifact.<self>}/bin/httpserve\"" ; systemd.services.<name>.serviceConfig.Restart "\"always\"" ; systemd.services.<name>.serviceConfig.DynamicUser "true" ; systemd.services.<name>.serviceConfig.AmbientCapabilities "\"CAP_NET_BIND_SERVICE\"" ; systemd.services.<name>.serviceConfig.SyslogIdentifier "\"<value>\""
-0.87 r4 match fact witness.<path>.body => claim.serve.run "\"${artifact.<self>}/bin/httpserve -check <path>\"" ; claim.serve.stdout "\"<value>\"" ; claim.serve.exit "0"
+0.95 p1 pattern serve http on port <port> => fact server.port "<port>"
+0.9 p2 pattern run it as a systemd service named <name> => concept server.<name> "the http server this program describes" ; fact service.<name>.alias "<name>"
+0.95 p3 pattern routes: => concept routes "the routes this server answers"
+0.95 p4.under.p2 pattern - <path> answers with the text "<body>" => fact route.<name>.<path>.text "<body>"
+0.95 r1 match fact server.port => services.nginx.enable "true" ; services.nginx.defaultHTTPListenPort "<value:int>" ; networking.firewall.allowedTCPPorts "[ <value:int> ]"
+0.9 r2 match fact service.<name>.alias => systemd.services.nginx.aliases "[ \"<value>.service\" ]"
+0.9 r3 match fact route.<name>.<path>.text => services.nginx.virtualHosts.<name>.locations.<path>.extraConfig "\"default_type text/plain; return 200 '<value>';\""
 0.9 q1 demand server.port "which TCP port should the http server listen on?"
-0.9 q2 demand server.response "what text should every request be answered with?"
-0.9 q3 demand service.<name> "what should the systemd service be named?"
-0.85 q4 demand witness.<path>.body "give one example request: which path answers with what text?"
-0.9 a1 expect artifact.<self>.fill.port from server.port
-0.92 a2 expect artifact.<self>.fill.body from server.response
-0.88 a3 expect systemd.services.<name>.serviceConfig.SyslogIdentifier from service.<name>
-0.87 a4 expect claim.serve.stdout from witness.<path>.body
-0.9 s1 source hello go.mod <<<lips
-module httpserve
-
-go 1.21
-lips>>>
-0.88 s2 source hello main.go <<<lips
-package main
-
-// A one-response http server. Both values below are written in by lips at
-// compile time from the .lips program: the port it listens on and the text
-// every request is answered with.
-
-import (
-	"flag"
-	"fmt"
-	"io"
-	"log"
-	"net"
-	"net/http"
-	"strings"
-)
-
-const listenPort = "@port@"
-const responseBody = "@body@"
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	io.WriteString(w, responseBody)
-}
-
-// selfCheck serves one request to itself on a loopback port picked by the
-// kernel and prints the response body. It needs no configured port and no
-// running service, so the program's own example line can be observed.
-func selfCheck(path string) {
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		log.Fatalf("self-check listen: %v", err)
-	}
-	defer ln.Close()
-	srv := &http.Server{Handler: http.HandlerFunc(handler)}
-	go srv.Serve(ln)
-	resp, err := http.Get("http://" + ln.Addr().String() + path)
-	if err != nil {
-		log.Fatalf("self-check request: %v", err)
-	}
-	defer resp.Body.Close()
-	out, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("self-check read: %v", err)
-	}
-	fmt.Println(string(out))
-}
-
-func main() {
-	check := flag.String("check", "", "answer one request for the given path on stdout, then exit")
-	flag.Parse()
-	if *check != "" {
-		selfCheck(*check)
-		return
-	}
-	addr := ":" + listenPort
-	log.Printf("answering every request with %q on %s", responseBody, addr)
-	if err := http.ListenAndServe(addr, http.HandlerFunc(handler)); err != nil {
-		log.Fatalf("listen: %v", err)
-	}
-}
-lips>>>
-0.8 g1 gap cross-line-instance-key <<<lips
-blocked lines (three lines that together configure ONE unit):
-  serve http on port 8080.
-  respond to every request with the text "hello from lips".
-  run it as a systemd service named hello.
-A rule sees only its own decision, so the port rule cannot write into
-systemd.services.<name>.environment.PORT -- <name> is bound by the service-name
-line, a different decision. The only shared key available to every rule is
-<self> (the file name), which the program's own word "hello" would then not
-govern. Repro: two facts (server.port, service.<name>) whose values must land
-in one attrsOf slot keyed by the second fact's value. Missing capability: a way
-for one line's captured key to key another line's emit (a program-wide key, or
-a block that can open on a non-heading line).
-lips>>>
-0.75 g2 gap per-item-claim-key <<<lips
-blocked line (a hypothetical second example in the same program):
-  a request to /health answers with the text "ok".
-Both example lines emit claim.serve.*, and two rules writing one option slot is
-a conflict, so a program may state exactly one example. A claim id cannot be
-keyed by <n:index> (the example lines sit under no heading) and keying it by
-the path would put "/" in an identifier segment. Missing capability: an
-index-like key for claims outside a block.
-lips>>>
+0.9 q2 demand service.<name>.alias "what should the systemd service be called?"
+0.95 a1 expect services.nginx.defaultHTTPListenPort from server.port
+0.9 a2 expect services.nginx.virtualHosts.<name>.locations.<path>.extraConfig from route.<name>.<path>.text
 0.95 d1 report <<<lips
-This language describes one tiny http responder per program: a port, the text
-it answers with, the name of the systemd service that runs it, and one worked
-example of a request.
+This language describes a small HTTP endpoint that answers a handful of
+fixed paths with fixed text.
 
-## The four line shapes
+**The lines it accepts**
 
-- `serve http on port 8080.` -- the TCP port. Any number; the port is also
-  opened in the firewall (`networking.firewall.allowedTCPPorts`), which is what
-  type-checks it as an integer.
-- `respond to every request with the text "hello from lips".` -- the body
-  returned for every path. Must be quoted; the quotes are dropped.
-- `run it as a systemd service named hello.` -- the unit name. This word keys
-  the unit itself (`systemd.services.hello`), and is repeated as the unit's
-  `SyslogIdentifier` so it is visible in the journal (and pinnable by a test).
-- `a request to / answers with the text "hello from lips".` -- an EXAMPLE, not
-  configuration. It becomes a claim: the built binary is run in the build
-  sandbox with `-check /` and its printed body must equal the stated text,
-  byte for byte. This is the only thing that holds the baked source to the
-  program's sentences, so a program is required to state one such line.
+- `serve http on port 8080.` — the TCP port. It sets
+  `services.nginx.defaultHTTPListenPort`, turns nginx on, and opens the port
+  in the firewall.
+- `run it as a systemd service named hello.` — the server's name. The name
+  keys everything below it: the nginx virtual host is called `hello`, and the
+  serving unit gets the systemd alias `hello.service`, so `systemctl status
+  hello` works on the booted machine.
+- `routes:` — a heading. It carries no value and realizes nothing.
+- `- /health answers with the text "ok"` — one route. The path may be any
+  path, the text is quoted so it may contain spaces. Each route becomes an
+  nginx `location` under the named virtual host that answers `200` with that
+  text as `text/plain`.
 
-All four lines are required; a program missing one is refused with the question
-printed beside it (see the demands).
+Route lines are read as items of the block opened by the `run it as a
+systemd service named …` line, which is how each route knows which server it
+belongs to. That means the naming line must come before the routes; the
+`routes:` heading itself is free-standing decoration, so you may drop or
+reword it only by regenerating.
 
-## Mechanism, and why
+**The mechanism I chose**
 
-No prebuilt server fit. nginx and caddy come with unit names of their own, and
-the program insists on naming the service, so I write the server: a ~50-line Go
-program (`buildGoModule`, no dependencies, `vendorHash = null`) that answers
-every path with one fixed text.
+nginx, rather than a hand-written server binary. Every fact the programs
+state — a port, a path, a body — is exactly an nginx virtual host, location
+and `return`, so nothing had to be invented or compiled, and a later edit of
+a route body flows straight through to the configuration. A route's body is
+rendered as `default_type text/plain; return 200 '<body>';` inside the
+location's `extraConfig` (this schema types `locations.*.return` as an
+integer, so the body cannot ride there). Because the bodies are wrapped in
+nginx single quotes, a body containing a single quote is not supported today.
 
-The port and the text reach that binary as compile-time FILLS (`@port@`,
-`@body@` in `main.go`), not as environment variables on the unit. That is
-forced, not preferred: a rule can only key an option by its own captured words,
-and the unit's name comes from a different line than the port does, so no rule
-can write `systemd.services.<the-name>.environment.PORT`. Filed as gap
-`cross-line-instance-key`. The practical consequence for you: editing the port
-or the text rebuilds the little binary, and the values are pinned by expects on
-the fills rather than on a module option.
+**What I had to decide myself**
 
-The unit runs with `DynamicUser = true` plus `CAP_NET_BIND_SERVICE` (so ports
-below 1024 work too), `Restart = always`, after `network.target`, wanted by
-`multi-user.target`.
-
-## The example, and where it runs
-
-The claim runs the built binary itself with `-check <path>`: the binary starts a
-listener on a kernel-chosen loopback port inside the sandbox, requests the given
-path from itself, and prints the response body. That needs no booted machine and
-no knowledge of the configured port -- which the claim rule could not see anyway,
-for the same reason as above. It does mean the claim observes the handler and
-the baked text, not the TCP port; the port is checked by type and by the two
-options it lands in.
-
-## Limits worth knowing
-
-- Exactly one example line per program (gap `per-item-claim-key`).
-- The response text is baked into a Go string literal, so a text containing a
-  double quote or a backslash will not build. Plain prose is fine.
-- Two programs of this language may run side by side: each gets its own unit
-  name and its own build.
+- The serving unit is nginx's own; the program's name is attached to it as a
+  systemd *alias* (`hello.service`) rather than as a second unit, since a
+  dummy unit next to nginx would serve nothing. No expect pins the alias,
+  because the option holds the name with `.service` appended rather than the
+  program's word verbatim; the word is pinned instead by the virtual-host key
+  in the route expect.
+- Content type `text/plain` for every route: the programs say "the text", so
+  plain text is what they mean. If a route ever needs another type, that is a
+  new word in the sentence and a regeneration.
+- No claim is minted: this language is pure configuration, and the expects
+  pin the port and every route body to the option that carries it.
 lips>>>
