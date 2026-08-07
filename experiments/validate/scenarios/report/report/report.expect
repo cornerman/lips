@@ -1,2 +1,4 @@
-a1 expect systemd.services.<self>.environment.REPORT_RECIPIENT from report.recipient
-a2 expect systemd.services.<self>.script from tool.command
+a1 expect services.cron.mailto from report.recipient
+a2 expect services.cron.systemCronJobs from tool.command
+a3 expect claim.example.feed from witness.given#4
+a4 expect claim.example.equals from witness.printed#1

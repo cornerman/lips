@@ -1,2 +1,1 @@
-a1 expect claim.filter.call from witness.example#3
-a2 expect claim.kept.call from witness.example#3
+a1 expect claim.filter.args from witness.args

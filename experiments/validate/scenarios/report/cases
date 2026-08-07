@@ -1,5 +1,7 @@
 # args|stdin|expected stdout|exit
-|a\nb\na\nc\na\nb\n|a\nb\nc|0
+# the program mails the TWO most common lines, so a third distinct line is
+# counted and then left out: that is what pins the number to two.
+|a\nb\na\nc\na\nb\n|a\nb|0
 |x\n|x|0
 |||0
-|a\na\nb\nb\nc\n|a\nb\nc|0
+|a\na\nb\nb\nc\n|a\nb|0

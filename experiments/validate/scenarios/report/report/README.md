@@ -2,62 +2,77 @@
 
 # The `report` language
 
-This language describes a nightly line-frequency report.
+This language describes a little line-counting reporter: what it reads, how
+many of the commonest lines it reports, who gets them, what the command is
+called, and one worked example that is checked on every compile.
 
-It reads exactly two sentence shapes:
+## The lines it accepts
 
-- `read lines from standard input and mail the ten most common ones to <address> every night.`
-  The address is the only editable word; it becomes the recipient of the mail.
-- `install the tool as the command <name>.`
-  The name is what the tool is called on the machine's PATH.
+1. `read lines from standard input and mail the <count> most common ones to
+   <address> every night.` -- `<count>` is a number word (one .. ten) and
+   `<address>` is the mail recipient. The rest of the sentence is fixed
+   vocabulary: "standard input" and "every night" pick the mechanism, they are
+   not values.
+2. `install the tool as the command <name>.` -- the name the tool gets on the
+   system.
+3. `given the lines <a>, <b>, <c>, <d> and <e>, print <x> then <y>.` -- the
+   worked example: five input lines and the two lines that must come out. It
+   is compiled into a claim and re-run on every compile.
 
-**The counting is behaviour, not a script.** The ranking is minted as clauses:
-`collect` reads standard input line by line, `bump` keeps a tally of how often each
-line was seen, `best`/`without`/`top-n` pull out the ten most frequent in
-descending order, and `emit-all` prints them, most common first, one per line, with
-no counts (there is no way to render a number as text with the contracts
-available). `main` ties them together. These clauses are built into one executable,
-installed system-wide, and named by the second sentence, so `nightly` on this
-machine is exactly this filter.
+## What it builds
 
-**Mailing and scheduling are the machine's job**, because a clause can only read
-lines and print lines -- there is no mail contract. So the module also defines a
-oneshot service and a timer, both keyed by the program's instance name: the timer
-fires `daily` (with `Persistent`, so a machine that was off catches up), and the
-service's script runs the tool and pipes its output into `mail -s nightly-report`
-at the recipient address, which is passed to the unit as the environment variable
-`REPORT_RECIPIENT`. The service's PATH carries the built tool and `mailutils`.
+The behaviour is written as clauses, not as a source file: `all-lines` reads
+standard input to end of input, `tally` counts each distinct line keeping
+first-appearance order, `top-lines` repeatedly takes the most frequent
+remaining line, and `main` prints them. Ties go to the line seen first, which
+is what makes the program's own example ("a then b", both seen twice) come
+out in that order. The count word from sentence 1 reaches the behaviour
+through `count-of`, a small table from number words to numbers; a word outside
+one..ten stops the program loudly rather than guessing.
 
-**Two things you should know before you rely on it.**
-First, the machine needs a working mail transport; the program says to mail a
-report, not how mail leaves this host, so nothing here configures one.
-Second, the program says the tool reads *standard input*, and a timer-started unit
-has no standard input of its own. Nothing in the program says what should feed the
-nightly run, and I did not invent a source (a log file, the journal): as it stands
-the scheduled run mails an empty report until you connect its input, e.g. by
-adding `StandardInput` to the unit or by stating the source in the program and
-regenerating. Running `nightly` by hand in a pipeline works today.
+Those clauses are built into one executable and installed system-wide under
+the name sentence 2 gives, so `nightly` is on every user's PATH.
 
-Two limits are filed as gaps: the word "ten" cannot be a hole (a number word
-cannot become an integer anywhere in this grammar), so the count is fixed by the
-sentence's wording; and the program states no example input/output, so nothing
-observes the ranking -- add one ("given the lines A A B, print A") and a
-regeneration can claim it.
+The nightly mail is cron, because cron is the mechanism that already mails a
+job's output: `services.cron.mailto` is the address from sentence 1, and
+`services.cron.systemCronJobs` gets one entry, at 03:00 daily, running the
+command. Whatever the command prints that night is what arrives in the
+recipient's mailbox.
+
+Two choices are mine, not the program's: the hour (03:00 -- the program says
+only "every night"), and the fact that the nightly run gets cron's own
+standard input, which is empty. The program says the tool reads standard
+input but never says where the night's lines come from, so nothing is wired
+in front of it and nothing was invented; if the lines should come from a file
+or a command, that has to be said in the program and the language rebuilt.
+
+## What is checked
+
+Every compile re-checks that the address reaches `services.cron.mailto`, that
+the command name reaches the cron entry, and that the worked example still
+holds: the five given lines are fed to the program and its output must equal
+the two printed lines, exactly.
+
+## The rough edge
+
+Sentence 3 states its list inline, and a line's items can only be counted out
+one hole at a time, so that sentence is locked to five inputs and two outputs.
+Changing the example's size needs a fresh `generate`; this is filed as a gap.
 
 ## Known Gaps
 
-### counted-word-is-not-a-number
+### inline-list-witness
 
-blocked line: read lines from standard input and mail the ten most common ones to ops@example.com every night.
-"ten" is a value a human would edit, but a hole capturing it binds the word "ten",
-and neither the value grammar nor the clause subset can turn a number word into
-the integer 10 (no conversion, no computation). So the count had to stay a literal
-template token and is fixed at ten; changing it needs a fresh mint.
+blocked line: given the lines a, b, a, c and b, print a then b.
 
-### no-witness-for-baked-behaviour
+repro: an example sentence that carries its items inline. A block fans one
+decision out per item and <n:index> keys them, but a block needs the items on
+separate lines; a multi-token hole reads the whole phrase as one string and
+nothing can split it into the per-line strings claim.<id>.feed takes.
+So the sentence has to be read with one hole per item, which fixes the example
+at five input lines and two printed lines: "given the lines a, b and c, print
+a" no longer crystallizes.
 
-blocked line: read lines from standard input and mail the ten most common ones to ops@example.com every night.
-The program bakes behaviour (counting and ranking lines) but states no example
-input and no example output, so there is nothing to claim. A witness may not be
-invented, so the ranking is realized unobserved.
+wanted: a way to read an inline, comma-separated list in one line as one
+decision per item.
 
