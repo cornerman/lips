@@ -116,6 +116,7 @@ unconditionally. The slot language then needs no `if`, and stays plain text.
 `.generation` already uses, so the parser and the reading habit both exist.
 
 ```
+format: 1
 world: nixos
 module-attr: nixosModules
 schema-pin: LIPS_NIXPKGS_FLAKE
@@ -189,6 +190,29 @@ file.
 fallback is a `schema-shape:` header naming one of a small closed set of
 document shapes, which is a much smaller enumeration than a world list, and it
 is about JSON document shapes rather than about worlds.
+
+### Format Versions: Breaking Nicely
+
+Two breakage classes, two mechanisms. Unknown structure (a slot or key this
+lips does not know) is caught by strict, closed parsing: refuse unknown names,
+loud. Changed meaning (a later format reuses a key with different semantics)
+is invisible to any parser and needs a declaration: `format: N` as a header
+key, integer, bumped only on incompatible meaning change.
+
+Where it goes is governed by what is sealed. `.world` files carry it from the
+first byte. New `.generation` records gain it (entering `genId` like every
+line); existing records are sealed by their own hash, so ABSENCE = FORMAT 0,
+a rule that stays correct forever and doubles as the pre-world-files
+detection (no `world:` line = format 0). `.lang`/`.expect` are not
+retrofitted: touching them is a re-blessing event, and their strict parser
+plus `@gen:` stamps anchor them to the record, which carries the version.
+
+The error contract is the deliverable: a mismatch names what the file
+declares, what this binary reads, and the remedy per direction (file newer:
+upgrade lips; file older: re-mint or re-author, named per file kind).
+Rejected: capability lists (more machinery than the closed slot grammar
+already provides), version ranges (YAGNI until a second format exists),
+shape-sniffing (inference where a declaration is available, worst errors).
 
 ## The Trust Question, Answered Rather Than Avoided
 
