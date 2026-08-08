@@ -409,6 +409,20 @@ tracks only what is still open.
   proven path is no-dependency source (Go stdlib with `vendorHash = null`);
   fetching a real dependency graph at generate time is unexplored.
 
+- **Naming foreign derivations (external artifact kinds).** Discussed
+  2026-08-07, unresolved by design: no format chosen yet because there is no
+  common artifact concept to enumerate -- a real application is human-written,
+  lives in its own repo with its own flake, and lips should NAME its build
+  rather than mint it (the same move as `${pkgs.nginx}`). Candidate shapes,
+  none picked: a pinned flake-ref value form (`${flake:<pin>#<output>}`), an
+  artifact whose `args.src` is a flake input, or wrapping the foreign build in
+  a sibling lips program once `${program...}` exists. Constraint from the
+  discussion: whatever lands must be externally defined and unenumerated, like
+  worlds and builders -- the kernel learns one closed reference form, never a
+  list of artifact kinds. Blocks any real application (the football-manager
+  case) more than the world axis does, together with dependency-fetching
+  builders above.
+
 - **Language migration** -- no diff/migration path when a `.lang` regenerates
   to a different shape.
 
