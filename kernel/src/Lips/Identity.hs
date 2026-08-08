@@ -57,6 +57,7 @@ module Lips.Identity
   , expectPathIn
   , generationPathIn
   , artifactsPathIn
+  , worldPathIn
   ) where
 
 import           Data.Text       (Text)
@@ -194,6 +195,12 @@ expectPathIn dir = langLevelIn dir "expect"
 -- | 'generationPath', reading from an explicitly given directory.
 generationPathIn :: FilePath -> FilePath -> FilePath
 generationPathIn dir = langLevelIn dir "generation"
+
+-- | The world file copied beside an engine, named after the world it is. Named
+-- by the WORLD rather than by the language: a language folder holds one engine
+-- and the world it was minted into, and the name is what the record pins.
+worldPathIn :: FilePath -> Text -> FilePath
+worldPathIn dir name = dir </> T.unpack name <.> "world"
 
 -- | 'artifactsPath', reading from an explicitly given directory: a directory
 -- inside the given directory, so (like 'artifactsPath') it needs no prefix to

@@ -24,6 +24,7 @@ module Lips.Cli
 
 import Control.Monad      (filterM)
 import Data.List          (intercalate, isPrefixOf, isSuffixOf)
+import           Data.Text          (Text)
 import qualified Data.Text as T
 import Options.Applicative
 import System.Directory    (doesDirectoryExist, listDirectory)
@@ -31,13 +32,14 @@ import System.FilePath     (splitFileName, (</>))
 import Text.Read          (readMaybe)
 
 import Lips.Kernel.Expect (Compat (..), compatSlug, parseCompat)
-import Lips.Nix.Target (Target (..), defaultTarget, parseTarget, targetSlug)
+import Lips.World.Resolve (builtinNames)
 
 -- | Everything @generate@ needs. @-m\/--model@ is the ONLY way to name a
 -- model -- no positional guessing (deleted with @Lips.Generate.Args@'s
 -- @looksLikeModel@); omitting it lets @pi@'s own configured default apply.
 data GenerateOpts = GenerateOpts
-  { goTarget     :: Target
+  { goTarget     :: Text
+  , goWorlds     :: Maybe FilePath
   , goSchema     :: Maybe String
   , goConfidence :: Double
   , goCompat     :: Compat
@@ -92,7 +94,8 @@ data CheckOpts = CheckOpts
 -- | Everything @options@ needs. A read-only schema lookup: which world's
 -- schema to search, how many entries an answer may print, and the query.
 data OptionsOpts = OptionsOpts
-  { ooTarget :: Target
+  { ooTarget :: Text
+  , ooWorlds :: Maybe FilePath
   , ooSchema :: Maybe String
   , ooLimit  :: Int
   , ooQuery  :: String
@@ -105,6 +108,11 @@ data Command
   | Compile CompileOpts
   | Check CheckOpts
   | Options OptionsOpts
+  -- | Print the world a name resolves to, or list every world reachable from
+  -- here: the seed a house world starts from, and the way to restore a copy
+  -- beside an engine. Carries the same @--worlds@ override the other verbs take,
+  -- so what it lists is exactly what @--target@ could resolve.
+  | WorldCmd (Maybe FilePath) (Maybe Text)
   | Lsp
   deriving (Eq, Show)
 
@@ -134,6 +142,10 @@ cliParser defConf = hsubparser
   (  command "options"
        (info (Options <$> optionsOpts)
              (progDesc "Search the pinned option schema of a Nix world. Reads only, changes nothing."))
+  <> command "world"
+       (info (WorldCmd <$> worldsDirOpt <*> optional (strArgument
+                (metavar "NAME" <> help "Which world to print (default: list every world reachable from here).")))
+             (progDesc "Print a world file, or list the worlds. A house world starts as a copy of one."))
   <> command "lsp"
        (info (pure Lsp)
              (progDesc "Serve your editor: diagnostics for a program as you write it (stdio)."))
@@ -170,20 +182,22 @@ programCompleter = mkCompleter $ \word -> do
     pure $ [shown n <> "/" | n <- dirs]
         <> [shown n | n <- names, n `notElem` dirs, ".lips" `isSuffixOf` n]
 
--- | @--target@'s reader: reuses the existing 'parseTarget', so the CLI and
--- the @.generation@ record stay the single source of truth for target slugs.
--- An unknown value is an optparse-applicative parse error (a malformed
--- invocation), never a silent default.
-targetReader :: ReadM Target
-targetReader = eitherReader $ \s -> case parseTarget s of
-  Just t  -> Right t
-  Nothing -> Left ("unknown target " <> s <> " (expected " <> targetMetavar <> ")")
-
--- | Every world's slug, listed from the type itself, so adding a target cannot
--- leave the help text or the error message naming a world that no longer is the
--- whole set.
+-- | The worlds lips ships, for the help text. A NAME the CLI does not know is
+-- not an error here: it may be a house world file beside the program, which
+-- only the resolver (which knows the directory) can look for.
 targetMetavar :: String
-targetMetavar = intercalate "|" [ T.unpack (targetSlug t) | t <- [minBound .. maxBound] ]
+targetMetavar = intercalate "|" (map T.unpack builtinNames) <> "|NAME"
+
+-- | @--worlds@: resolve a world NAME against DIR instead of the program's own
+-- directory. Mirrors @--lang@'s judgment exactly, including the absent short
+-- alias: an occasional, deliberate override, not an everyday flag.
+worldsDirOpt :: Parser (Maybe FilePath)
+worldsDirOpt = optional (strOption
+  (long "worlds" <> metavar "DIR"
+    <> help "Look for <name>.world in DIR instead of beside the program."))
+
+defaultTargetName :: Text
+defaultTargetName = "nixos"
 
 -- | Every re-bless mode, listed from the type, so a mode added later cannot
 -- leave the help text naming less than the whole set.
@@ -221,9 +235,10 @@ schemaOpt = optional (strOption
 
 generateOpts :: Double -> Parser GenerateOpts
 generateOpts defConf = GenerateOpts
-  <$> option targetReader
-        (long "target" <> short 't' <> value defaultTarget
-          <> metavar targetMetavar <> help "Which Nix world the configuration is for (default: nixos).")
+  <$> (T.pack <$> strOption
+        (long "target" <> short 't' <> value (T.unpack defaultTargetName)
+          <> metavar targetMetavar <> help "Which Nix world the configuration is for (default: nixos)."))
+  <*> worldsDirOpt
   <*> schemaOpt
   <*> option confidenceReader
         (long "confidence" <> value defConf
@@ -303,9 +318,10 @@ limitReader = eitherReader $ \s -> case readMaybe s of
 
 optionsOpts :: Parser OptionsOpts
 optionsOpts = OptionsOpts
-  <$> option targetReader
-        (long "target" <> short 't' <> value defaultTarget
-          <> metavar targetMetavar <> help "Which Nix world's options to search (default: nixos).")
+  <$> (T.pack <$> strOption
+        (long "target" <> short 't' <> value (T.unpack defaultTargetName)
+          <> metavar targetMetavar <> help "Which Nix world's options to search (default: nixos)."))
+  <*> worldsDirOpt
   <*> schemaOpt
   <*> option limitReader
         (long "limit" <> value 40

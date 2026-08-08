@@ -49,6 +49,7 @@ import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommand
 import Lips.Nix.Target
 import Lips.World
 import Lips.World.Builtin (builtinWorld, builtinWorlds, worldForTarget)
+import Lips.World.Resolve (resolveWorld)
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
@@ -140,37 +141,44 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
     it "defaults target to nixos, confidence to the default, compat full, verbose off" $
       parseArgs ["ledger.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Full False Nothing defaultThinking ["ledger.backup.lips"])
+        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full False Nothing defaultThinking ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseArgs ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
-    it "rejects an unknown target" $
-      parseArgs ["--target", "darwin", "a.backup.lips"] `shouldBe` Nothing
+        `shouldBe` Just (GenerateOpts "home-manager" Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+    -- A name the CLI does not know may be a house world file beside the
+    -- program, which only the resolver (which knows the directory) can look
+    -- for, so the parser takes any name and resolution decides.
+    it "takes a world name the binary does not ship" $
+      parseArgs ["--target", "house-k3s", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts "house-k3s" Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+    it "reads --worlds as the directory to resolve a world name in" $
+      parseArgs ["--worlds", "worlds", "--target", "house-k3s", "a.backup.lips"]
+        `shouldBe` Just (GenerateOpts "house-k3s" (Just "worlds") Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
     it "reads an explicit --model alongside multiple programs" $
       parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts HomeManager Nothing 0.9 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts "home-manager" Nothing Nothing 0.9 Full False Nothing defaultThinking ["a.backup.lips"])
     it "rejects an out-of-range confidence" $
       parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
     it "reads --compat in any position, and refuses a word that is not a mode" $ do
       parseArgs ["--compat", "none", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 None False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 None False Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "--compat", "forwards"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Forwards False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Forwards False Nothing defaultThinking ["a.backup.lips"])
       -- the flag it replaces is gone, so an old invocation fails loud rather
       -- than silently keeping the committed contract
       parseArgs ["--renew", "a.backup.lips"] `shouldBe` Nothing
       parseArgs ["--compat", "renew", "a.backup.lips"] `shouldBe` Nothing
     it "reads -v/--verbose in any position" $ do
       parseArgs ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "-v"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
     it "reads -m as the short alias for --model" $
       parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts Nixos Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     -- The thinking level is always passed to pi and always recorded, so an
@@ -234,17 +242,18 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info optionsOpts idm)
     it "defaults to the default target and cap" $
       parseArgs ["services.restic"]
-        `shouldBe` Just (OptionsOpts Nixos Nothing 40 "services.restic")
+        `shouldBe` Just (OptionsOpts "nixos" Nothing Nothing 40 "services.restic")
     it "takes a target, a limit and a query" $
       parseArgs ["--target", "home-manager", "--limit", "10", "services.restic"]
-        `shouldBe` Just (OptionsOpts HomeManager Nothing 10 "services.restic")
-    it "rejects an unknown target, like generate does" $
-      parseArgs ["--target", "darwin", "services.restic"] `shouldBe` Nothing
+        `shouldBe` Just (OptionsOpts "home-manager" Nothing Nothing 10 "services.restic")
+    it "takes a world name the binary does not ship, like generate does" $
+      parseArgs ["--target", "house-k3s", "services.restic"]
+        `shouldBe` Just (OptionsOpts "house-k3s" Nothing Nothing 40 "services.restic")
     -- The lookup verb is the mint's own tool, so it must be able to read exactly
     -- the schema a mint would read -- including an overridden one.
     it "takes the same --schema override generate takes" $
       parseArgs ["--schema", "github:NixOS/nixpkgs/nixos-24.11", "services.restic"]
-        `shouldBe` Just (OptionsOpts Nixos (Just "github:NixOS/nixpkgs/nixos-24.11") 40 "services.restic")
+        `shouldBe` Just (OptionsOpts "nixos" Nothing (Just "github:NixOS/nixpkgs/nixos-24.11") 40 "services.restic")
     it "fails with no query at all" $
       parseArgs [] `shouldBe` Nothing
 
@@ -331,6 +340,54 @@ main = hspec $ do
         `shouldBe` (Nothing, Nothing, "")
     it "keeps the raw bytes for hashing" $
       right wRaw minimal `shouldBe` minimal
+
+    -- Resolution: a name is a file beside the program, else one lips ships.
+    describe "resolution (Lips.World.Resolve)" $ do
+      let withDir act = do
+            tmp <- getTemporaryDirectory
+            let root = tmp </> "lips-world-spec"
+            createDirectoryIfMissing True root
+            r <- act root
+            removeDirectoryRecursive root
+            pure r
+          houseWorld n = "format: 1\nworld: " <> n
+            <> "\nmodule-attr: houseModules\n--- preamble ---\nP\n--- schema ---\nE\n"
+      it "resolves a local world from the program's own directory" $
+        withDir (\d -> do
+          TIO.writeFile (d </> "house-k3s.world") (houseWorld "house-k3s")
+          fmap wModuleAttr <$> resolveWorld d Nothing "house-k3s")
+          `shouldReturn` Right "houseModules"
+      it "refuses a local file taking a name lips ships" $
+        withDir (\d -> do
+          TIO.writeFile (d </> "nixos.world") (houseWorld "nixos")
+          either (\e -> all (`T.isInfixOf` e)
+                    ["is one lips ships", T.pack (d </> "nixos.world"), "house-nixos"])
+                 (const False)
+            <$> resolveWorld d Nothing "nixos")
+          `shouldReturn` True
+      it "refuses a local file whose header names another world" $
+        withDir (\d -> do
+          TIO.writeFile (d </> "house-k3s.world") (houseWorld "house-other")
+          either (T.isInfixOf "declares world: house-other") (const False)
+            <$> resolveWorld d Nothing "house-k3s")
+          `shouldReturn` True
+      it "falls back to the built-in when no file is there" $
+        withDir (\d -> fmap wModuleAttr <$> resolveWorld d Nothing "nixos")
+          `shouldReturn` Right "nixosModules"
+      it "refuses an unknown name, listing the built-ins and where it looked" $
+        withDir (\d -> either (\e -> all (`T.isInfixOf` e)
+                          ("nixos" : "terranix" : [T.pack (d </> "nowhere.world")]))
+                        (const False)
+                        <$> resolveWorld d Nothing "nowhere")
+          `shouldReturn` True
+      it "--worlds moves the directory a name is looked up in" $
+        withDir (\d -> do
+          createDirectoryIfMissing True (d </> "elsewhere")
+          TIO.writeFile (d </> "elsewhere" </> "house-k3s.world") (houseWorld "house-k3s")
+          (,) <$> (fmap wModuleAttr <$> resolveWorld d (Just (d </> "elsewhere")) "house-k3s")
+              <*> (either (T.isInfixOf "doesn't know") (const False)
+                    <$> resolveWorld d Nothing "house-k3s"))
+          `shouldReturn` (Right "houseModules", True)
 
     it "every built-in world file parses, under its own name" $
       mapM_ (\(n, raw) -> fmap wName (parseWorld raw) `shouldBe` Right n) builtinWorlds

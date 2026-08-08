@@ -41,15 +41,15 @@ import           GHC.IO.Encoding     (setLocaleEncoding)
 import           System.IO          (BufferMode (..), hClose, hGetContents,
                                      hIsEOF, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
 import           System.Directory   (createDirectoryIfMissing, doesFileExist,
-                                     doesPathExist, removePathForcibly)
-import           System.FilePath    ((</>))
+                                     doesPathExist, listDirectory, removePathForcibly)
+import           System.FilePath    (dropExtension, takeDirectory, takeExtension, (</>))
 import           System.Process     (CreateProcess (..), StdStream (..), createProcess, proc,
                                      readProcessWithExitCode, waitForProcess)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
-import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir)
+import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir, worldPathIn)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
@@ -90,6 +90,7 @@ import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flake
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget)
 import           Lips.World                     (World (..))
 import           Lips.World.Builtin             (builtinWorld, worldForTarget)
+import           Lips.World.Resolve            (builtinNames, resolveWorld)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -126,13 +127,56 @@ main = do
   setLocaleEncoding utf8
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
-    Generate go -> generate (worldForTarget (goTarget go)) (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+    Generate go -> do
+      -- A world is resolved before anything else runs: a name that names
+      -- nothing must cost no model call and write no file. Beside the FIRST
+      -- program, which is the one whose language folder the mint writes; the
+      -- CLI parser guarantees there is one.
+      let base = case goFiles go of
+                   (f : _) -> takeDirectory f
+                   []      -> "."
+      world <- resolveWorldOrDie base (goWorlds go) (goTarget go)
+      generate world (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
       | otherwise  -> () <$ checkLoose True True (ceLangDir co) (ceFile co)
-    Options oo  -> optionsQuery (worldForTarget (ooTarget oo)) (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
+    Options oo  -> do
+      -- A lookup has no program, so a house world is resolved against the
+      -- directory the human stands in (or --worlds).
+      world <- resolveWorldOrDie "." (ooWorlds oo) (ooTarget oo)
+      optionsQuery world (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
+    WorldCmd dir mname -> worldVerb dir mname
     Lsp         -> runLsp
+
+-- | Resolve a world name or die naming the remedy. The one door: every verb
+-- that takes @--target@ comes through here, so a name means the same thing
+-- everywhere.
+resolveWorldOrDie :: FilePath -> Maybe FilePath -> Text -> IO World
+resolveWorldOrDie base override name = do
+  r <- resolveWorld base override name
+  case r of
+    Right w  -> pure w
+    Left why -> die (report ("lips can't use the world " <> name <> ":") [why]
+                       "\8594 name a world lips ships (lips world), or write one beside the program.")
+
+-- | @world@: print the world a name resolves to, or list every world reachable
+-- from here. The listing marks which are local, because that is the difference
+-- a reader acts on: a local file is theirs to edit, a shipped one is not.
+worldVerb :: Maybe FilePath -> Maybe Text -> IO ()
+worldVerb dir (Just name) = do
+  w <- resolveWorldOrDie "." dir name
+  -- On stdout, undecorated: this is what a human redirects into a file to
+  -- start a house world, and what the migration one-off writes beside an engine.
+  sayAnswer (wRaw w)
+worldVerb dir Nothing = do
+  let here = fromMaybe "." dir
+  entries <- listDirectory here
+  let locals = [ T.pack (dropExtension f) | f <- entries, takeExtension f == ".world" ]
+  sayAnswer (T.unlines
+    ([ n <> "   (lips ships it)" | n <- builtinNames ]
+      ++ [ n <> "   (" <> T.pack (worldPathIn here n) <> ")"
+         | n <- locals, n `notElem` builtinNames ]))
 
 -- | @compile@: verify the program's committed contract, then crystallize +
 -- realize and materialize a DIRECTORY -- default @<language>/out/<instance>/@, or
@@ -753,6 +797,11 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
         -- program just works.
         createDirectoryIfMissing True (langDir rep)
         TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
+        -- The world travels WITH the engine: the record pins this copy by
+        -- hash, and compile reads the copy, never the search path. So a
+        -- committed engine carries the physics it was minted into, and a
+        -- checkout on another machine compiles the same way.
+        TIO.writeFile (worldPathIn (langDir rep) (wName world)) (wRaw world)
         TIO.writeFile (generationPath rep) rec
         TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
         -- A refusal artifact describes a run that produced no engine, so it is a
