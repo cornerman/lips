@@ -288,6 +288,75 @@ tracks only what is still open.
 
 ## Backlog (larger / deferred by design)
 
+- **A fill-the-holes UI (`lips ui`): the form derived from the engine**
+  (raised 2026-08-09; design NOT settled, this entry is the knowledge gathered
+  so the next session starts warm). Instead of writing the `.lips` file, you
+  fill the holes in a browser and compile.
+
+  Why it is on-thesis rather than a gadget: the form is DERIVED from `.lang`
+  data (patterns give the sentence skeletons and their holes, demands give the
+  question text), so a language nobody foresaw gets a UI with no per-language
+  code. That is the kernel-knows-nothing test one level up, and the LSP already
+  passes it the same way.
+
+  Settled in the raising session:
+  1. A LOCAL authoring tool on localhost, kernel running natively, nix
+     reachable. Not a public WASM playground (that was the alternative, and it
+     would lose the contract check and every build).
+  2. FILL-ONLY. The UI can express only sentences the language already reads,
+     so it structurally cannot produce the unreadable line that sends an author
+     to `generate`. Accepted, not fixed: growing a language stays a terminal
+     act, and the UI never mints.
+  3. QUESTIONNAIRE-FIRST. The demands are the main view (their question text
+     was written for exactly this), the pattern rows are the detail behind
+     them, and the live `.lips` text sits underneath, because that file stays
+     the artifact the human owns.
+  4. PANES: live `.decisions` ("did it understand me?") and the live realized
+     `default.nix`, both pure and instant, plus buttons that shell out to the
+     real `lips compile` / `lips check` and stream their output.
+
+  Open, in rough dependency order: how the screen is reached (one program named
+  on the command line, mirroring `lips compile <program>`, versus `lips ui` in a
+  directory with a list and a "new instance of this language" button -- the
+  latter turns the no-AI reuse promise into a button, at the cost of a
+  file-listing concept the CLI does not otherwise have); the save model (browser
+  buffer plus explicit save, versus write-through on every keystroke); how an
+  ambiguous doorway is shown when two patterns could answer one question; how
+  much of `diagnose` reaches the rows (inert, restated, unfit, decorative); and
+  the serving stack.
+
+  Feasibility already established, so nobody re-derives it:
+  - `Lips.Lsp.Derive` is the pure core that already produces the material:
+    `completionItems` renders every pattern as a sentence form with its holes
+    and their types (`Engine.Typing.wordTypes`), `diagsOf` and `hoverAt` give
+    the per-line verdict and what a line becomes. The UI is a second frontend
+    over existing physics, not new physics.
+  - The doorway (which sentence answers this question, in which hole) is a pure
+    function over engine data: a `DemandSpec` carries `dsSubject`, a
+    `Pattern`'s `PatEmit` carries the subject it emits
+    (`Kernel/Lang/Pattern.hs`, `Kernel/Engine/Data.hs`), and `matchSubject`
+    handles capture-bearing subjects. The relation is not 1:1 -- `backup`'s
+    `p1` feeds `source`, `dest` and `schedule` from one line -- which is why
+    the PATTERN must own the row and the demand only points at it.
+  - Pre-filling from an existing program is `classifyLines`
+    (`Kernel/Lang/Crystallize.hs`), the same matcher `diagnose` runs, so the
+    captured values land in the inputs and the UI cannot disagree with the CLI.
+  - The live panes need no nix: crystallize and realize are pure, and only the
+    contract check and builds reach for nix (which is what `--no-contract`
+    already exists for).
+  - No web dependency exists today. `flake.nix` gives ghc exactly hspec,
+    QuickCheck, aeson, optparse-applicative and file-embed, and the LSP is
+    hand-rolled over stdio (`Lips/Lsp/Server.hs`, 340 lines). So the stack is a
+    real complexity decision: warp/wai as a new dependency versus a hand-rolled
+    localhost HTTP loop, and one embedded HTML file with vanilla JS (file-embed
+    is already in use) versus any JS toolchain. No npm.
+
+  The risk to weigh before building any of it: a GUI is a second authoring
+  surface for an artifact whose whole point is being small plain text a human
+  owns. It earns its keep only while the form stays fully derived (zero
+  per-language code) and the `.lips` file stays visibly the truth; otherwise it
+  is the complexity daemon with a nicer font.
+
 - **Cross-program composition (one program naming another).** Nix composes;
   lips does not yet. Names RESERVED for it, so nothing squats on them and a
   later rename is not a re-blessing event for every committed engine: the emit
