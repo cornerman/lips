@@ -177,9 +177,10 @@ compileLoose mout mLangDir noContract file = do
     -- the runtime's own builder. A configuration-only program writes none, so
     -- its output stays byte-identical.
     hasSite <- writeSite outDirPath rl
-    artNames <- case rlArtifact rl of
-      Nothing            -> pure []
-      Just (body, names) -> TIO.writeFile (outDirPath </> "artifact.nix") body >> pure names
+    -- Always written, empty set when the program declares none: the flake text
+    -- imports it unconditionally.
+    let (artBody, artNames) = rlArtifact rl
+    TIO.writeFile (outDirPath </> "artifact.nix") artBody
     -- The experiments the program states, beside the artifacts they observe. A
     -- claim-free program writes no file and its output stays byte-identical.
     hasClaims' <- case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
@@ -723,7 +724,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       -- Last gate, and the only one that observes rather than reads: build each
       -- artifact and look inside it. Deliberately after the cheap gates, so a
       -- mint that fails for a readable reason never pays a build.
-      when (any (isJust . rlArtifact . snd) validated) $ do
+      when (any (not . null . snd . rlArtifact . snd) validated) $ do
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
           artifactGate nixpkgs (\root -> writeSources (root </> "artifacts") minted

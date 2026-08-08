@@ -133,9 +133,8 @@ commandClaimGate target dir file rl
         TIO.writeFile (tmp </> "default.nix") (rlModule rl)
         stageBeside dir file rl tmp
         fillStagedTree file (tmp </> "artifacts") (rlFills rl)
-        artNames <- case rlArtifact rl of
-          Nothing            -> pure []
-          Just (body, names) -> TIO.writeFile (tmp </> "artifact.nix") body >> pure names
+        let (artBody, artNames) = rlArtifact rl
+        TIO.writeFile (tmp </> "artifact.nix") artBody
         case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (tmp </> "claims.nix") body
@@ -275,8 +274,8 @@ stagedGate stage file rl
 -- is, so nobody reads "offline" as a promise the claim gates cannot keep.
 artifactGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 artifactGate nixpkgs stage file rl = case rlArtifact rl of
-  Nothing            -> pure ()
-  Just (body, names) -> step ("build " <> plural (length names) "artifact") $ withTempDir $ \dir -> do
+  (_, [])         -> pure ()
+  (body, names) -> step ("build " <> plural (length names) "artifact") $ withTempDir $ \dir -> do
     -- The build reads the tree exactly as compile writes it: artifact.nix beside
     -- a staged, FILLED artifacts/ tree, so `src = ./artifacts/<name>` resolves.
     TIO.writeFile (dir </> "artifact.nix") body
@@ -331,9 +330,8 @@ mintClaimGate nixpkgs stage file rl
         -- argument may all name the site.
         stage dir
         fillStagedTree file (dir </> "artifacts") (rlFills rl)
-        artNames <- case rlArtifact rl of
-          Nothing            -> pure []
-          Just (body, names) -> TIO.writeFile (dir </> "artifact.nix") body >> pure names
+        let (artBody, artNames) = rlArtifact rl
+        TIO.writeFile (dir </> "artifact.nix") artBody
         case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (dir </> "claims.nix") body

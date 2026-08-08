@@ -147,12 +147,13 @@ resolveErr errs =
 -- derivation the module @let@-binds (via 'artifactEntries'), extracted so a
 -- compiled directory's flake can address each artifact as a buildable package
 -- without re-deriving it (one authoritative rendering, from one ground base).
--- 'Nothing' when the program declares no artifacts, so an artifact-free
--- compile writes no such file. Pass the same /ground/ base 'realize' takes.
+-- An artifact-free program renders the EMPTY set rather than no file: the file
+-- exists unconditionally, so the flake text can import it without asking
+-- whether the program declared any. Pass the same /ground/ base 'realize' takes.
 -- Returns the file body paired with the artifact names (the attrset keys), so
 -- the caller can print exact @#artifact.\<name\>@ commands without re-parsing.
 realizeArtifactFile :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-                    -> Base -> Either RealizeError (Maybe (Text, [Text]))
+                    -> Base -> Either RealizeError (Text, [Text])
 realizeArtifactFile modeOf assemble base =
   case resolve modeOf assemble base of
     Left errs     -> Left (resolveErr errs)
@@ -160,7 +161,11 @@ realizeArtifactFile modeOf assemble base =
       let arts  = filter (rootedAtArtifact . fst) (Map.toList winners)
           names = nub [ n | (Subject ("artifact" : n : _), _) <- arts ]
       in if null arts
-           then Right Nothing
+           then Right (T.unlines
+                  [ "# lips-realized artifact derivations. Generated; do not edit."
+                  , "{ pkgs }:"
+                  , "{ }"
+                  ], [])
            else do
              requireDefined names =<< artifactArgRefs arts
              argSite <- anyArgReferencesSite arts
@@ -176,7 +181,7 @@ realizeArtifactFile modeOf assemble base =
                    [ "# lips-realized artifact derivations. Generated; do not edit."
                    , "{ pkgs }:"
                    ] ++ letBlock siteNm entries ++ ["artifact"])
-             Right (Just (body, names))
+             Right (body, names)
 
 -- | The claims a ground base states: the observables the author supplied,
 -- projected exactly like the artifacts beside them (same resolve, same base), so

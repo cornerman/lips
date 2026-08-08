@@ -80,7 +80,11 @@ data Realization = Realization
   { rlBase     :: Base
   , rlGround   :: Base
   , rlModule   :: Text
-  , rlArtifact :: Maybe (Text, [Text])
+  , rlArtifact :: (Text, [Text])
+    -- ^ The @artifact.nix@ body and the artifact names it binds. Always a body,
+    -- empty set when the program declares none, so every writer emits the file
+    -- unconditionally and the names list alone says whether there is anything
+    -- to build.
   , rlStaged   :: [(Text, Decision)]
   , rlArtPaths :: [(Text, Text, Decision)]
     -- ^ @(artifact, \/rel\/path, the decision that named it)@: what the output

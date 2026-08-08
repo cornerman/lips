@@ -711,7 +711,7 @@ main = hspec $ do
             , "artifact"
             ]
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
-        `shouldBe` Right (Just (expected, ["myserver"]))
+        `shouldBe` Right (expected, ["myserver"])
 
     -- nix's default `nix run`/`nix develop` program lookup assumes
     -- bin/<pname>; a builder is free to name its output differently (a Go
@@ -745,7 +745,7 @@ main = hspec $ do
             , "artifact"
             ]
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
-        `shouldBe` Right (Just (expected, ["website"]))
+        `shouldBe` Right (expected, ["website"])
 
     -- Ambiguous evidence never becomes a guess: two ExecStarts inside one
     -- artifact naming two different bin/<x> paths leave meta.mainProgram unset
@@ -770,7 +770,7 @@ main = hspec $ do
             , "artifact"
             ]
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
-        `shouldBe` Right (Just (expected, ["website"]))
+        `shouldBe` Right (expected, ["website"])
 
     -- An artifact arg may name another artifact (the core-plus-wrapper shape:
     -- a wrapper's runtimeInputs holds ${artifact.core}). In the module the
@@ -800,7 +800,7 @@ main = hspec $ do
             , "artifact"
             ]
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList arts)
-        `shouldBe` Right (Just (expected, ["core","wrap"]))
+        `shouldBe` Right (expected, ["core","wrap"])
 
     -- The dangling check used to scan option assignments only, so an artifact
     -- arg naming an unbuilt artifact reached the module and died inside nix as
@@ -814,9 +814,15 @@ main = hspec $ do
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList dangling)
         `shouldBe` Left (RDangling ["nosuch"])
 
-    it "emits no artifact.nix for a program with no artifacts" $
+    -- The file is always written, empty when the program declares no
+    -- artifacts, so the flake text needs no conditional around its import.
+    it "renders an empty artifact set for an artifact-free program" $
       realizeArtifactFile (const Replace) (\_ -> Left "unused") (fromList ground)
-        `shouldBe` Right Nothing
+        `shouldBe` Right (T.unlines
+          [ "# lips-realized artifact derivations. Generated; do not edit."
+          , "{ pkgs }:"
+          , "{ }"
+          ], [])
 
     -- A relative path literal names a file lips STAGED beside the module (an
     -- artifact's source tree). It is the one value a module cannot vouch for
@@ -3602,6 +3608,12 @@ main = hspec $ do
     it "leaves a claim-free flake free of claim vocabulary" $
       flakeText Nixos noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
 
+    -- artifact.nix is always written, so the shell reaches it without asking
+    -- whether the program declared artifacts: one less conditional in the text.
+    it "the nixos shell references artifact.nix unconditionally" $
+      flakeText Nixos noRungs `shouldSatisfy`
+        T.isInfixOf "builtins.attrValues (import ./artifact.nix"
+
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $
       flakeText Kubenix noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
@@ -6263,7 +6275,7 @@ withBase f ds = let b = fromList ds in f b b
 -- under test.
 emptyRealization :: Realization
 emptyRealization = Realization
-  { rlBase = empty, rlGround = empty, rlModule = "", rlArtifact = Nothing
+  { rlBase = empty, rlGround = empty, rlModule = "", rlArtifact = ("", [])
   , rlStaged = [], rlArtPaths = [], rlFills = [], rlCore = Nothing
   , rlClauseClaims = [], rlSiteProps = [], rlSiteName = Nothing
   , rlGrounding = grounding [], rlClaims = [] }

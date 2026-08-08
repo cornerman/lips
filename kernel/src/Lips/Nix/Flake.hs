@@ -106,7 +106,7 @@ flakeText target rungs = T.unlines $
   , "      forSystems = nixpkgs.lib.genAttrs systems;"
   , "      pkgsFor = system: import nixpkgs { inherit system; };"
   ]
-  ++ nixosBuildsLet target (hasArtifacts rungs)
+  ++ nixosBuildsLet target
   ++ kubenixBuildsLet target
   ++ terranixBuildsLet target
   ++ [ "    in {" ]
@@ -180,11 +180,11 @@ terranixBuildsLet _ = []
 -- boot) reference the SAME vm\/toplevel. This is the @nix build \<x\>@ vs
 -- @nix run \<x\>@ duality: a rung is one derivation reachable two ways, never
 -- two definitions. home-manager has no machine, so it emits nothing here.
-nixosBuildsLet :: Target -> Bool -> [Text]
-nixosBuildsLet HomeManager _ = []
-nixosBuildsLet Kubenix _     = []
-nixosBuildsLet Terranix _    = []
-nixosBuildsLet Nixos hasArtifacts =
+nixosBuildsLet :: Target -> [Text]
+nixosBuildsLet HomeManager = []
+nixosBuildsLet Kubenix     = []
+nixosBuildsLet Terranix    = []
+nixosBuildsLet Nixos =
   [ "      nixosBuilds = system:"
   , "        let"
   , "          evalNixos = extra: mods: import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
@@ -211,8 +211,11 @@ nixosBuildsLet Nixos hasArtifacts =
     -- remains is exactly what THIS program adds to the system PATH.
   , "          basePackages = (evalNixos [ shellStub ] []).config.environment.systemPackages;"
   , "          cfg = (evalConfig [ shellStub ]).config;"
+    -- artifact.nix is always written (empty when the program declares none),
+    -- so the shell reaches it with no conditional here.
   , "          shellPackages = nixpkgs.lib.subtractLists basePackages"
-  , "            cfg.environment.systemPackages" <> shellArtifacts <> ";"
+  , "            cfg.environment.systemPackages"
+      <> " ++ builtins.attrValues (import ./artifact.nix { pkgs = pkgsFor system; });"
   , "          shell = (pkgsFor system).mkShell { packages = shellPackages; };"
     -- The same subtraction, one option over: the units a BARE eval already
     -- carries are NixOS's own, so what remains is what this program adds. Each
@@ -235,10 +238,6 @@ nixosBuildsLet Nixos hasArtifacts =
   , "          }) (nixpkgs.lib.subtractLists baseServices (builtins.attrNames cfg.systemd.services)));"
   , "        in { inherit vm shell serviceShells; };"
   ]
-  where
-    shellArtifacts
-      | hasArtifacts = " ++ builtins.attrValues (import ./artifact.nix { pkgs = pkgsFor system; })"
-      | otherwise    = ""
 
 -- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
 -- activate). Artifacts sit under the @artifact.\<name\>@ namespace (so a
