@@ -44,7 +44,6 @@ import Lips.Site (SitePlan (..), planSite)
 import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
-import Lips.Nix.Schema (schemaFor)
 import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
 import Lips.Nix.Target
@@ -58,7 +57,7 @@ import System.FilePath ((</>))
 import Data.List (nubBy, sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPrompt, systemPromptFor, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
 import Lips.Kernel.Claim
@@ -2663,13 +2662,13 @@ main = hspec $ do
             `shouldBe` []
 
     it "generation ids are deterministic and content-sensitive" $ do
-      let r  = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
-          r' = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply2"
-          rc = record "m" Nixos "github:o/r/aaa" "high" 0.5 "sp" "prog" "tt" "reply"
-          rt = record "m" HomeManager "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
-          rl = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "other lookup" "reply"
-          rk = record "m" Nixos "github:o/r/aaa" "low" 0.7 "sp" "prog" "tt" "reply"
-          rs = record "m" Nixos "github:o/r/bbb" "high" 0.7 "sp" "prog" "tt" "reply"
+      let r  = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+          r' = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply2"
+          rc = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.5 "sp" "prog" "tt" "reply"
+          rt = record "m" "home-manager" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+          rl = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "other lookup" "reply"
+          rk = record "m" "nixos" "wh1" "github:o/r/aaa" "low" 0.7 "sp" "prog" "tt" "reply"
+          rs = record "m" "nixos" "wh1" "github:o/r/bbb" "high" 0.7 "sp" "prog" "tt" "reply"
       genId r `shouldBe` genId r
       genId r `shouldNotBe` genId r'
       -- the confidence threshold is pinned: changing it changes the id
@@ -2690,7 +2689,7 @@ main = hspec $ do
     -- for a year, so a change to what the record CONTAINS could have
     -- invalidated every committed engine with all gates green.
     describe "generation stamps (does the engine name the record beside it)" $ do
-      let rec  = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+      let rec  = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
           want = genId rec
           line i g = "p" <> T.pack (show (i :: Int)) <> " meta lang.pattern.p"
                        <> T.pack (show i) <> " stated \"x" <> T.pack (show i)
@@ -2735,9 +2734,9 @@ main = hspec $ do
     -- (or --schema), so the one thing a reader needs is to be TOLD when the two
     -- differ. That needs the committed pin read back out.
     it "reads the schema pin back out of a committed record" $ do
-      recordedSchema (record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply")
+      recordedSchema (record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply")
         `shouldBe` Just "github:o/r/aaa"
-      recordedSchema (record "m" Nixos "options-json:cafe0123" "high" 0.7 "sp" "p" "t" "r")
+      recordedSchema (record "m" "nixos" "wh1" "options-json:cafe0123" "high" 0.7 "sp" "p" "t" "r")
         `shouldBe` Just "options-json:cafe0123"
       -- a record written before the pin existed simply has none
       recordedSchema "model: m\ntarget: nixos\n" `shouldBe` Nothing
@@ -2746,14 +2745,14 @@ main = hspec $ do
       -- A reader (and the re-mint that wants the same grounding) must be able to
       -- see WHICH schema admitted these rules, without re-deriving it from
       -- whichever lips binary happens to be installed.
-      T.lines (record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply")
+      T.lines (record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply")
         `shouldContain` ["schema: github:o/r/aaa"]
     -- The record stores the corpus verbatim, which makes it the one offline
     -- witness of what each program SAID when the language (and any baked
     -- artifact source) was minted. The source-specification gate reads it back.
     it "reads one program's text back out of the record it was minted from" $ do
       let progs = [("a/one.log.lips", "first line\nsecond line\n"), ("a/two.log.lips", "other\n")]
-          r     = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" (corpusText progs) "tt" "reply"
+          r     = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" (corpusText progs) "tt" "reply"
       recordedProgram "a/one.log.lips" r `shouldBe` Just "first line\nsecond line\n"
       -- addressed by file NAME, so the same program under another directory reads
       recordedProgram "b/two.log.lips" r `shouldBe` Just "other\n"
@@ -2767,21 +2766,28 @@ main = hspec $ do
     -- sentences the mint saw somewhere in the language.
     it "reads every program section back out of the record" $ do
       let progs = [("a/one.log.lips", "first line\nsecond line\n"), ("a/two.log.lips", "other\n")]
-          r     = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" (corpusText progs) "tt" "reply"
+          r     = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" (corpusText progs) "tt" "reply"
       recordedPrograms r `shouldBe`
         [("one.log.lips", "first line\nsecond line\n"), ("two.log.lips", "other\n")]
       -- a record with no corpus block at all yields no sections, never a crash
       recordedPrograms "nothing here" `shouldBe` []
 
-    it "writes the target slug into the record text" $
-      record "m" HomeManager "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
-        `shouldSatisfy` T.isInfixOf "target: home-manager"
-    -- readRecordedTarget scans for the FIRST line starting with "target:", so
+    -- A world is data now, so the name alone would not say WHICH world ran:
+    -- the record pins the file by content, and compile re-checks the committed
+    -- copy against that hash. Both enter genId like every other mint input.
+    it "names the world and pins the world file it was minted from" $ do
+      let r1 = record "m" "nixos" "h1" "s" "high" 0.7 "p" "c" "t" "y"
+          r2 = record "m" "nixos" "h2" "s" "high" 0.7 "p" "c" "t" "y"
+      r1 `shouldSatisfy` T.isInfixOf "format: 1"
+      r1 `shouldSatisfy` T.isInfixOf "world: nixos h1"
+      genId r1 `shouldNotBe` genId r2
+    -- readRecordedWorld scans for the FIRST line starting with "world:", so
     -- the headers must stay above every section a lookup answer could pollute.
     it "keeps the headers above the tool transcript" $ do
-      let r = record "m" Nixos "github:o/r/aaa" "high" 0.7 "sp" "prog" "<- query_options\ntarget: not-this" "reply"
-      take 4 (T.lines r)
-        `shouldBe` ["model: m", "target: nixos", "schema: github:o/r/aaa", "thinking: high"]
+      let r = record "m" "nixos" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "<- query_options\nworld: not-this" "reply"
+      take 5 (T.lines r)
+        `shouldBe` [ "format: 1", "model: m", "world: nixos wh1"
+                   , "schema: github:o/r/aaa", "thinking: high" ]
       r `shouldSatisfy` T.isInfixOf "--- tool transcript ---"
 
     it "emit grammar carries no strength: body parses and applies to a Stated fact" $
@@ -3604,27 +3610,27 @@ main = hspec $ do
 
   describe "the mint prompt states the claim grammar" $ do
     it "names the head and its closed section set" $ do
-      let p = systemPromptFor Nixos
+      let p = systemPromptFor (worldForTarget Nixos)
       p `shouldSatisfy` T.isInfixOf "claim.<id>.run"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.stdin"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.stdout"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.exit"
 
     it "forbids inventing a witness and asks for one where source is baked" $ do
-      let p = systemPromptFor Nixos
+      let p = systemPromptFor (worldForTarget Nixos)
       p `shouldSatisfy` T.isInfixOf "NEVER INVENT A WITNESS"
       p `shouldSatisfy` T.isInfixOf "STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE"
 
     it "states the exact-comparison rule" $
-      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
+      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
 
     it "states the world limit where there is no machine to boot" $ do
-      systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "no machine to\nboot"
-      systemPromptFor Terranix `shouldSatisfy` T.isInfixOf "no machine to\nboot"
-      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor (worldForTarget Kubenix) `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor (worldForTarget Terranix) `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "no machine to\nboot"
 
     it "offers the booted machine only in the world that has one" $
-      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
+      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
 
   describe "the mint is asked for an observable where it bakes source" $ do
     let src = SourceFile { sfArtifact = "tool", sfPath = "main.go", sfContent = "package main" }
@@ -3643,17 +3649,21 @@ main = hspec $ do
     it "leaves a pure-configuration mint unaffected" $
       claimlessBakedSource [] [] `shouldBe` False
 
+    -- Which places a world hosts is its file's own `claims:` header, so this
+    -- gate reads data and never asks which world it is looking at.
     it "refuses a machine claim in a world with no machine to boot" $ do
-      unplaceableClaims Kubenix [machC] `shouldBe` ["alive"]
-      unplaceableClaims Terranix [machC] `shouldBe` ["alive"]
-      unplaceableClaims HomeManager [machC] `shouldBe` ["alive"]
+      let hosted t = wClaims (worldForTarget t)
+      unplaceableClaims (hosted Kubenix) [machC] `shouldBe` ["alive"]
+      unplaceableClaims (hosted Terranix) [machC] `shouldBe` ["alive"]
+      unplaceableClaims (hosted HomeManager) [machC] `shouldBe` ["alive"]
 
     it "admits an artifact-only claim in every world" $ do
-      unplaceableClaims Kubenix [derivC] `shouldBe` []
-      unplaceableClaims Terranix [derivC] `shouldBe` []
+      let hosted t = wClaims (worldForTarget t)
+      unplaceableClaims (hosted Kubenix) [derivC] `shouldBe` []
+      unplaceableClaims (hosted Terranix) [derivC] `shouldBe` []
 
     it "admits a machine claim where there IS a machine" $
-      unplaceableClaims Nixos [machC] `shouldBe` []
+      unplaceableClaims (wClaims (worldForTarget Nixos)) [machC] `shouldBe` []
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do
@@ -4635,36 +4645,36 @@ main = hspec $ do
     it "names the tool and when to reach for it, in every world" $
       mapM_ (\p -> mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
               [ "query_options", "look it up", "grounds NAMES, never VALUES" ])
-            [ systemPromptFor Nixos, systemPromptFor HomeManager, systemPromptFor Kubenix
-            , systemPromptFor Terranix ]
+            [ systemPromptFor (worldForTarget Nixos), systemPromptFor (worldForTarget HomeManager), systemPromptFor (worldForTarget Kubenix)
+            , systemPromptFor (worldForTarget Terranix) ]
     it "repeats that a confirmed option is not a licence to invent its value" $
-      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "refusal beats invention"
+      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "refusal beats invention"
 
   -- The optional per-program .direction file steers mint taste. It must ride
   -- on top of the fixed prompt (so it enters genId) and carry the guard that
   -- keeps it advisory, never an obligation channel.
   describe "direction file (optional mint taste)" $ do
     it "absent or blank direction leaves the prompt untouched" $ do
-      promptWithDirection Nothing Nixos `shouldBe` systemPrompt
-      promptWithDirection (Just "   \n  ") Nixos `shouldBe` systemPrompt
+      promptWithDirection Nothing (worldForTarget Nixos) `shouldBe` systemPrompt
+      promptWithDirection (Just "   \n  ") (worldForTarget Nixos) `shouldBe` systemPrompt
     it "steers kubenix to the resource alias every kubenix example writes" $ do
-      systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "kubernetes.resources."
-      systemPromptFor Kubenix `shouldSatisfy` T.isInfixOf "kubenix"
+      systemPromptFor (worldForTarget Kubenix) `shouldSatisfy` T.isInfixOf "kubernetes.resources."
+      systemPromptFor (worldForTarget Kubenix) `shouldSatisfy` T.isInfixOf "kubenix"
     it "steers terranix to the terraform namespaces, and says grounding stops there" $ do
-      let p = systemPromptFor Terranix
+      let p = systemPromptFor (worldForTarget Terranix)
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "terranix", "resource.<type>.<self>", "data.", "provider.", "output." ]
     it "steers home-manager to its namespaces, nixos to system options" $ do
-      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "home-manager"
-      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "systemd.user.services"
-      systemPromptFor HomeManager `shouldSatisfy` T.isInfixOf "home.packages"
-      systemPromptFor Nixos `shouldSatisfy` T.isInfixOf "NixOS"
+      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "home-manager"
+      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "systemd.user.services"
+      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "home.packages"
+      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "NixOS"
     it "present direction is appended verbatim atop the fixed prompt" $ do
-      let p = promptWithDirection (Just "prefer restic, no docker") Nixos
+      let p = promptWithDirection (Just "prefer restic, no docker") (worldForTarget Nixos)
       systemPrompt `shouldSatisfy` (`T.isInfixOf` p)
       p `shouldSatisfy` T.isInfixOf "prefer restic, no docker"
     it "states the advisory-not-obligation guard when direction is present" $ do
-      let p = promptWithDirection (Just "prefer systemd timers") Nixos
+      let p = promptWithDirection (Just "prefer systemd timers") (worldForTarget Nixos)
       mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
         [ "PREFERENCE, not requirement"
         , "never let it override a value the program states"
@@ -5146,62 +5156,15 @@ main = hspec $ do
           -- a <name> placeholder normalizes to the wildcard sentinel
           Map.lookup ["services", "y", "*", "port"] schema `shouldBe` Just OTInt
 
-  -- The kubenix world's schema needs reshaping the other two do not: its typed
-  -- tree sits behind an alias, and its inner nodes are free-form, which
-  -- checkEmits would read as "anything below is fine".
-  describe "kubenix optionsJSON reshaping (Lips.Nix.Kubenix)" $ do
-    let kubeSchema = do
-          bytes <- BL.readFile "test/fixtures/options-kubenix-mini.json"
-          either (fail . T.unpack) pure (schemaFor Kubenix bytes)
-    it "re-keys the typed tree onto the alias every program writes" $ do
-      sch <- kubeSchema
-      Map.lookup ["kubernetes","resources","deployments","*","spec","replicas"] sch
-        `shouldBe` Just OTInt
-      -- the group/version/kind spelling of the same alias
-      Map.lookup ["kubernetes","resources","apps","v1","Deployment","*","spec","replicas"] sch
-        `shouldBe` Just OTInt
-      -- the typed path itself is MOVED, not copied: one spelling grounds
-      Map.lookup ["kubernetes","api","resources","deployments","*","spec","replicas"] sch
-        `shouldBe` Nothing
-    it "unwraps a k8s optional so its scalar type still grounds" $ do
-      sch <- kubeSchema
-      Map.lookup ["kubernetes","resources","deployments","*","metadata","name"] sch
-        `shouldBe` Just OTString
-      Map.lookup ["kubernetes","resources","deployments","*","spec","paused"] sch
-        `shouldBe` Just OTBool
-    it "keeps an unmodelled optional's wording verbatim (it feeds the refusal)" $ do
-      sch <- kubeSchema
-      Map.lookup ["kubernetes","resources","deployments","*","metadata","labels"] sch
-        `shouldBe` Just (OTOther "null or (attribute set of (string))")
-    it "drops every inner node, which would swallow any path below it" $ do
-      sch <- kubeSchema
-      Map.lookup ["kubernetes","resources"] sch `shouldBe` Nothing
-      Map.lookup ["kubernetes","api","resources"] sch `shouldBe` Nothing
-      Map.lookup ["kubernetes","resources","deployments"] sch `shouldBe` Nothing
-    it "keeps the world's own leaf options" $ do
-      sch <- kubeSchema
-      Map.lookup ["kubenix","project"] sch `shouldBe` Just OTString
-      Map.lookup ["kubernetes","namespace"] sch `shouldBe` Just OTString
-    it "grounds a real emit and refuses a misspelled field" $ do
-      sch <- kubeSchema
-      let emit p v = MapRule "r1" Fact ["replicas"] [Emit p v]
-          good = emit ["kubernetes","resources","deployments","web","spec","replicas"] (VInt 3)
-          bad  = emit ["kubernetes","resources","deployments","web","spec","replicaz"] (VInt 3)
-          mist = emit ["kubernetes","resources","deployments","web","spec","replicas"] (VStr [PLit "three"])
-      checkEmits sch [good] `shouldBe` []
-      checkEmits sch [bad]  `shouldBe` [UnknownOption "r1" ["kubernetes","resources","deployments","web","spec","replicaz"]]
-      checkEmits sch [mist] `shouldBe`
-        [TypeMismatch "r1" ["kubernetes","resources","deployments","web","spec","replicas"] OTInt (VStr [PLit "three"])]
-
   -- terranix needs no reshaping (its document is plain nixosOptionsDoc output),
   -- but it grounds only the top-level terraform namespaces: they are declared
   -- free-form options, so every provider path below them is accepted unchecked.
   -- These cases pin that boundary, so a later provider-schema fix has a
   -- statement of the current, weaker guarantee to replace.
-  describe "terranix optionsJSON grounding (Lips.Nix.Schema)" $ do
+  describe "terranix optionsJSON grounding (Lips.Nix.Options)" $ do
     let tnxSchema = do
           bytes <- BL.readFile "test/fixtures/options-terranix-mini.json"
-          either (fail . T.unpack) pure (schemaFor Terranix bytes)
+          either (fail . T.unpack) pure (parseNixOptionsJson bytes)
         emit p v = MapRule "r1" Fact ["ami"] [Emit p v]
     it "keeps the free-form namespace as a declared option" $ do
       sch <- tnxSchema
@@ -6349,6 +6312,11 @@ withBase f ds = let b = fromList ds in f b b
 -- | A realization with nothing in it, for a test that cares about one field. The
 -- record has many, and naming them all at every call site would bury the field
 -- under test.
+-- The NixOS prompt, which most prompt cases are stated over: one world's
+-- preamble plus the world-neutral body.
+systemPrompt :: Text
+systemPrompt = systemPromptFor (worldForTarget Nixos)
+
 emptyRealization :: Realization
 emptyRealization = Realization
   { rlBase = empty, rlGround = empty, rlModule = "", rlArtifact = ("", [])

@@ -71,7 +71,7 @@ import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidat
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, record,
-                                         recordedSchema, renderStampFault, stampFaults)
+                                         recordedSchema, renderStampFault, stampFaults, worldHash)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), bindSelfExpect, compatSlug, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
@@ -87,8 +87,9 @@ import           Lips.Kernel.Engine.Gate       (engineViolations)
 import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText,
                                                 runCommands)
-import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
-import           Lips.World.Builtin             (worldForTarget)
+import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget)
+import           Lips.World                     (World (..))
+import           Lips.World.Builtin             (builtinWorld, worldForTarget)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -125,12 +126,12 @@ main = do
   setLocaleEncoding utf8
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
-    Generate go -> generate (goTarget go) (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+    Generate go -> generate (worldForTarget (goTarget go)) (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
       | otherwise  -> () <$ checkLoose True True (ceLangDir co) (ceFile co)
-    Options oo  -> optionsQuery (ooTarget oo) (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
+    Options oo  -> optionsQuery (worldForTarget (ooTarget oo)) (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
     Lsp         -> runLsp
 
 -- | @compile@: verify the program's committed contract, then crystallize +
@@ -347,35 +348,34 @@ checkDraft file = do
       mschema <- lookupEnv "LIPS_MINT_SCHEMA"
       case mschema of
         Just p | not (null p) -> do
-          target <- draftTarget
+          world <- draftWorld
           eng <- loadLangOrDie (dtLangDir t) file
-          assertOptionsAdmissible target p file eng
+          assertOptionsAdmissible world p file eng
         _ -> pure ()
       rl <- checkLoose True False (Just (dtLangDir t)) file
-      target <- draftTargetOrDefault
-      clauseClaimGate target file rl
+      world <- draftWorldOrDefault
+      clauseClaimGate world file rl
       note "the command claim gate and the artifact build were NOT run"
 
 -- | The draft's world where generate stated one, else the default. Used only
 -- where a wrong guess is harmless (which flake shape a throwaway directory gets);
 -- the schema gate keeps using 'draftTarget', which refuses to guess.
-draftTargetOrDefault :: IO Target
-draftTargetOrDefault = do
-  mt <- lookupEnv "LIPS_MINT_TARGET"
-  pure (maybe defaultTarget id (mt >>= parseTarget))
+draftWorldOrDefault :: IO World
+draftWorldOrDefault = do
+  mt <- lookupEnv "LIPS_MINT_WORLD"
+  pure (fromMaybe (worldForTarget defaultTarget) (mt >>= builtinWorld . T.pack))
 
 -- | Which world a draft is grounded against. Read from the environment generate
 -- controls, never defaulted: a silent default would ground a mint against the
 -- wrong world's schema and report the wrong names as missing.
-draftTarget :: IO Target
-draftTarget = do
-  mt <- lookupEnv "LIPS_MINT_TARGET"
-  case mt >>= parseTarget of
-    Just t  -> pure t
+draftWorld :: IO World
+draftWorld = do
+  mt <- lookupEnv "LIPS_MINT_WORLD"
+  case mt >>= builtinWorld . T.pack of
+    Just w  -> pure w
     Nothing -> die (report
       "lips can't check this draft: the world it is minted for is not stated."
-      ["LIPS_MINT_SCHEMA names a schema, but LIPS_MINT_TARGET is missing or not one of "
-        <> T.intercalate ", " (map targetSlug [minBound .. maxBound]) <> "."]
+      ["LIPS_MINT_SCHEMA names a schema, but LIPS_MINT_WORLD is missing or not a world lips ships."]
       "\8594 this is generate's to set; report it as a lips bug.")
 
 -- | The behavioral gate: the committed @.expect@ contract against the realized
@@ -415,7 +415,7 @@ expectGate contract claims dir file eng program = do
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
   when claims $ do
     target <- readRecordedTarget dir file
-    claimGate target dir file rl
+    claimGate (worldForTarget target) dir file rl
   pure rl
 
 -- | Load and parse a program's @.lang@ (found under @dir@), or fail loud
@@ -485,11 +485,11 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: Target -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
+generate :: World -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
 generate _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate target mschema confidence compat verbose mmodel thinking files@(rep : _) = do
+generate world mschema confidence compat verbose mmodel thinking files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -502,7 +502,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
   progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
   -- Owner taste is language-level (shared); read once from the language path.
   direction <- tryRead (directionPath rep)
-  let prompt = promptWithDirection direction target
+  let prompt = promptWithDirection direction world
       -- The mint sees the whole example set at once, so the grammar generalizes
       -- across them (anti-unification): tokens that vary between examples become
       -- holes, tokens that agree stay literal. One program is the corpus-of-one
@@ -511,7 +511,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
   -- Resolve the grounding schema BEFORE the model runs: it is an input of the
   -- generation event (it decides which rules are admissible), it is recorded as
   -- such, and a schema that cannot be built must not cost an AI call first.
-  (schemaPath, schemaPin) <- ensureOptionSchema target mschema ("generate " <> T.pack rep)
+  (schemaPath, schemaPin) <- ensureOptionSchema world mschema ("generate " <> T.pack rep)
   -- A re-mint grounds against the pin this binary carries (or --schema), NOT
   -- against the one the committed record names: fresh grounding is the point of
   -- re-minting, and replaying an old one is impossible anyway. The only hole
@@ -537,7 +537,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       pure (if there then Just (expectPath rep) else Nothing)
   (reply, model, transcript) <-
     step ("mint ." <> T.pack lang <> " from " <> plural (length files) "program") $
-      callPi verbose mmodel thinking prompt corpus target files committedExpectPath schemaPath
+      callPi verbose mmodel thinking prompt corpus world files committedExpectPath schemaPath
   note ("minted by " <> model <> ", thinking " <> T.pack thinking)
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
@@ -561,7 +561,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       -- scheme as a successful '.generation' record (built the same way, from
       -- the same in-scope values), so a refusal is pinned exactly as an
       -- acceptance would have been.
-      let rec = record model target schemaPin (T.pack thinking) confidence prompt corpus transcript reply
+      let rec = record model (wName world) (worldHash world) schemaPin (T.pack thinking) confidence prompt corpus transcript reply
       -- The refusal is the first thing written for a language, so its directory
       -- (<language>/, home of .lang/.expect/.generation) need not exist yet.
       createDirectoryIfMissing True (langDir rep)
@@ -591,7 +591,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       case engineViolations eng of
         []      -> pure ()
         (v : _) -> die (validationReport rep v)
-      assertOptionsAdmissible target schemaPath rep eng
+      assertOptionsAdmissible world schemaPath rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
       validated <- forM progs $ \(f, t) -> case validate f eng t of
@@ -665,11 +665,11 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
           <> " mint again: lips generate " <> T.pack rep
           <> ". State the example in the program only where the mint reports it"
           <> " cannot deduce one."))
-      case unplaceableClaims target allClaims of
+      case unplaceableClaims (wClaims world) allClaims of
         []  -> pure ()
         ids -> die (report
           (T.pack rep <> ": " <> plural (length ids) "claim"
-            <> " must be observed in a booted machine, and the " <> targetSlug target
+            <> " must be observed in a booted machine, and the " <> wName world
             <> " world has none.")
           ids
           ("\8594 state the observable over the program's own binary, which needs no"
@@ -737,7 +737,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       -- (a clause is no option, so .expect can pin nothing about it), and they
       -- cost a small derivation rather than a boot. Without this the mint would
       -- write an engine whose stated behaviour was never observed.
-      forM_ validated $ \(f, rl) -> clauseClaimGate target f rl
+      forM_ validated $ \(f, rl) -> clauseClaimGate world f rl
       when (not (null allClaims)) $ do
         nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
         forM_ validated $ \(f, rl) ->
@@ -746,7 +746,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
-      let rec = record model target schemaPin (T.pack thinking) confidence prompt corpus transcript reply
+      let rec = record model (wName world) (worldHash world) schemaPin (T.pack thinking) confidence prompt corpus transcript reply
       step ("write " <> T.pack (langDir rep)) $ do
         -- The language folder holds every minted and derived file; create it (and
         -- its derived out/ subtree) before writing, so a first mint beside a bare
@@ -787,7 +787,7 @@ generate target mschema confidence compat verbose mmodel thinking files@(rep : _
       -- both are files now, and a human reads them there.
       say ""
       say ("✓ ." <> T.pack lang <> " holds for " <> plural (length files) "program"
-             <> " as a " <> targetSlug target <> " configuration.")
+             <> " as a " <> wName world <> " configuration.")
       say ""
       mapM_ say (take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ])
       unless (null gaps) $ do
@@ -847,8 +847,8 @@ nixParses nixModule = do
 -- omitted and pi's own configured default applies. Either way the json stream
 -- reports the model actually used, which the caller records, so provenance
 -- stays concrete without a model baked into the deliverable.
-callPi :: Bool -> Maybe String -> String -> Text -> Text -> Target -> [FilePath] -> Maybe FilePath -> FilePath -> IO (Text, Text, Text)
-callPi verbose mmodel thinking system userPrompt target files mExpect schemaPath = do
+callPi :: Bool -> Maybe String -> String -> Text -> Text -> World -> [FilePath] -> Maybe FilePath -> FilePath -> IO (Text, Text, Text)
+callPi verbose mmodel thinking system userPrompt world files mExpect schemaPath = do
   -- The mint's tools ship with the binary; without them a mint would have to
   -- recall option names instead of looking them up, and could not check a draft
   -- before answering -- the guessing this whole path exists to prevent. So a
@@ -871,7 +871,7 @@ callPi verbose mmodel thinking system userPrompt target files mExpect schemaPath
   -- that is not being minted), the governing contract, and the schema this run
   -- was grounded against.
   parentEnv <- getEnvironment
-  let ours = [ ("LIPS_MINT_TARGET",   T.unpack (targetSlug target))
+  let ours = [ ("LIPS_MINT_WORLD",    T.unpack (wName world))
              , ("LIPS_MINT_PROGRAMS", intercalate "\n" files)
              -- Empty means "the draft's own minted expects govern", which is a
              -- first mint or --renew.

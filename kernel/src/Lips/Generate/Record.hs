@@ -14,6 +14,7 @@
 -- hashing dependencies.
 module Lips.Generate.Record
   ( record
+  , worldHash
   , genId
   , hashBytes
   , corpusText
@@ -38,7 +39,7 @@ import           System.FilePath    (takeFileName)
 
 import           Lips.Kernel.Decision (Decision (..), Provenance (..))
 import           Lips.Kernel.Reader   (readDecision)
-import           Lips.Nix.Target      (Target, targetSlug)
+import           Lips.World           (World (..))
 
 -- | The auditable record of a generation event: everything the model saw and
 -- said, self-contained (the system prompt is embedded, not referenced, so the
@@ -49,11 +50,15 @@ import           Lips.Nix.Target      (Target, targetSlug)
 -- admitted (deduce-or-fail), so a record that omitted it would not pin the
 -- event. It therefore also enters 'genId', so re-running with a different
 -- threshold yields a different id.
--- The target world co-determines what the mint produced (the option namespace
--- it aimed at and the schema it was grounded against), so it is part of the
--- event and enters 'genId': a re-mint targeting a different world yields a
--- different id, so every engine line's @gen stamp pins the world it was minted
--- for.
+-- The world co-determines what the mint produced (the option namespace it aimed
+-- at and the schema it was grounded against), so it is part of the event and
+-- enters 'genId': a re-mint into a different world yields a different id, so
+-- every engine line's @gen stamp pins the world it was minted for. Recorded as
+-- NAME plus the content hash of the world file beside the engine, because a
+-- world is data now: the name alone would not say which version of it ran, and
+-- the hash is what compile re-checks the committed copy against.
+-- The format line pins the record's own shape, so a lips that learns a new
+-- record field can tell a record it fully understands from one it does not.
 -- The schema pin is the LOCKED flakeref (as @nix flake metadata@ reports it)
 -- whose option document grounded the mint, or @options-json:\<hash\>@ when a
 -- caller supplied the document directly. It co-determines the engine: an option
@@ -68,10 +73,11 @@ import           Lips.Nix.Target      (Target, targetSlug)
 -- The thinking level is an input like the model: it changes what the mint
 -- produces, so a record omitting it would not pin the event. lips always passes
 -- it explicitly, so nothing ambient can steer a mint unrecorded.
-record :: Text -> Target -> Text -> Text -> Double -> Text -> Text -> Text -> Text -> Text
-record model target schema thinking confidence sysPrompt program transcript reply = T.unlines
-  [ "model: " <> model
-  , "target: " <> targetSlug target
+record :: Text -> Text -> Text -> Text -> Text -> Double -> Text -> Text -> Text -> Text -> Text
+record model worldName whash schema thinking confidence sysPrompt program transcript reply = T.unlines
+  [ "format: 1"
+  , "model: " <> model
+  , "world: " <> worldName <> " " <> whash
   , "schema: " <> schema
   , "thinking: " <> thinking
   , "confidence-threshold: " <> T.pack (show confidence)
@@ -80,6 +86,11 @@ record model target schema thinking confidence sysPrompt program transcript repl
   , "--- tool transcript ---", transcript
   , "--- raw reply ---", reply
   ]
+
+-- | A world file's content id: what a record pins it by, and what @compile@
+-- re-checks the committed copy against. The same hash the record's own id uses.
+worldHash :: World -> Text
+worldHash = hashBytes . encodeUtf8 . wRaw
 
 -- | Content identity of a record: FNV-1a 64-bit over UTF-8, 16 hex digits.
 -- Deterministic, dependency-free; collision odds are negligible for its job

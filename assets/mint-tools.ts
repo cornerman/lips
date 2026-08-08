@@ -35,7 +35,7 @@ function required(name: string): string {
 }
 
 const bin = required("LIPS_BIN");
-const target = required("LIPS_MINT_TARGET");
+const world = required("LIPS_MINT_WORLD");
 // Newline-separated, supplied by generate: the model may not choose which
 // programs its draft is judged against, or it could validate against a corpus
 // that is not the one being minted.
@@ -62,7 +62,7 @@ export default function (pi: ExtensionAPI) {
       }),
     }),
     async execute(_toolCallId: string, params: { query: string }) {
-      const r = spawnSync(bin, ["options", "--target", target, params.query], {
+      const r = spawnSync(bin, ["options", "--target", world, params.query], {
         encoding: "utf8",
       });
       // On success the answer alone goes back. lips writes progress to stderr

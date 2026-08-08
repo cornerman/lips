@@ -1804,7 +1804,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   to answer a wrong path with the real leaves beside it. The mint invocation is
   hermetic by explicit subtraction (`-nbt --no-extensions --no-skills
   --no-prompt-templates -nc`) plus the one deliberate extension, with
-  `LIPS_MINT_TARGET` passed explicitly so a mint for one world can never be
+  `LIPS_MINT_WORLD` passed explicitly so a mint for one world can never be
   answered from another world's schema. Every call and answer is recovered from
   pi's `agent_end` messages (`Lips.Generate.PiJson.prTranscript`) into a
   `--- tool transcript ---` section of the record, hence into `genId`: what the

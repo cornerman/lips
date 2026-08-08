@@ -38,8 +38,8 @@ import           Lips.Generate.Record          (hashBytes)
 import           Lips.Kernel.Lang.Store        (EngineData (..))
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted,
                                                 renderOptionError, renderOptionType)
-import           Lips.Nix.Schema               (schemaFor)
-import           Lips.Nix.Target               (Target (..), targetSlug)
+import           Lips.Nix.Options              (parseNixOptionsJson)
+import           Lips.World                    (World (..))
 import           Lips.Report                   (plural, validationReport)
 
 -- | @options@: look a query up in the target world's pinned option schema and
@@ -49,21 +49,21 @@ import           Lips.Report                   (plural, validationReport)
 --
 -- It never calls a model (invariant 1 holds trivially: no model runs anywhere
 -- but generate) and it never writes anything.
-optionsQuery :: Target -> Maybe String -> Int -> Text -> IO ()
-optionsQuery target mschema limit query = do
+optionsQuery :: World -> Maybe String -> Int -> Text -> IO ()
+optionsQuery world mschema limit query = do
   -- The pin is discarded here: a lookup records nothing. Only generate, which
   -- commits an engine, has a record to name it in.
-  (schemaPath, _) <- ensureOptionSchema target mschema ("options " <> query)
+  (schemaPath, _) <- ensureOptionSchema world mschema ("options " <> query)
   mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
   bytes <- case mbytes of
     Left e -> die (report
-      ("lips can't read the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
+      ("lips can't read the " <> wName world <> " option schema at " <> T.pack schemaPath <> ":")
       [tshow e]
       "→ run it again.")
     Right b -> pure b
-  case schemaFor target bytes of
+  case parseNixOptionsJson bytes of
     Left why -> die (report
-      ("lips can't parse the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
+      ("lips can't parse the " <> wName world <> " option schema at " <> T.pack schemaPath <> ":")
       [why]
       "→ run it again.")
     -- Exit 0 even for Nowhere: "no option matches that" is a valid answer to a
@@ -102,23 +102,23 @@ renderAnswer query ans = case ans of
 -- schema fails loud: an unverifiable engine is not written.
 -- The check is domain-blind: 'checkEmits' takes a typed schema, and the NixOS
 -- specifics live in 'Lips.Nix.Options'.
-assertOptionsAdmissible :: Target -> FilePath -> FilePath -> EngineData -> IO ()
-assertOptionsAdmissible target schemaPath file eng = do
+assertOptionsAdmissible :: World -> FilePath -> FilePath -> EngineData -> IO ()
+assertOptionsAdmissible world schemaPath file eng = do
   mbytes <- try (BL.readFile schemaPath) :: IO (Either IOException BL.ByteString)
   case mbytes of
     Left e -> die (report
-      ("lips can't read the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
+      ("lips can't read the " <> wName world <> " option schema at " <> T.pack schemaPath <> ":")
       [tshow e]
       "→ run generate again.")
-    Right bytes -> case schemaFor target bytes of
+    Right bytes -> case parseNixOptionsJson bytes of
       Left why -> die (report
-        ("lips can't parse the " <> targetSlug target <> " option schema at " <> T.pack schemaPath <> ":")
+        ("lips can't parse the " <> wName world <> " option schema at " <> T.pack schemaPath <> ":")
         [why]
         "→ run generate again.")
       Right schema -> case checkEmits schema (edRules eng) of
         []   -> pure ()
         errs -> die (validationReport file
-          ("its rules use " <> targetSlug target <> " options that don't exist or have the wrong type:\n"
+          ("its rules use " <> wName world <> " options that don't exist or have the wrong type:\n"
             <> T.unlines (map (("  - " <>) . renderOptionError) errs)))
 
 -- | Locate the target world's @options.json@, and say WHICH schema that is:
@@ -144,12 +144,12 @@ assertOptionsAdmissible target schemaPath file eng = do
 --
 -- @remedy@ is the invocation to suggest when the schema cannot be had; it is a
 -- parameter because this function serves two verbs and knows about neither.
-ensureOptionSchema :: Target -> Maybe String -> Text -> IO (FilePath, Text)
-ensureOptionSchema target (Just ref) remedy = do
+ensureOptionSchema :: World -> Maybe String -> Text -> IO (FilePath, Text)
+ensureOptionSchema world (Just ref) remedy = do
   locked <- lockFlakeRef ref remedy
-  path <- buildOptionSchema target locked remedy
+  path <- buildOptionSchema world locked remedy
   pure (path, locked)
-ensureOptionSchema target Nothing remedy = do
+ensureOptionSchema world Nothing remedy = do
   override <- lookupEnv "LIPS_OPTIONS_JSON"
   case override of
     -- Pinned by content: a path names a file that changes, so the record would
@@ -165,25 +165,23 @@ ensureOptionSchema target Nothing remedy = do
         Right bytes -> pure (p, "options-json:" <> hashBytes bytes)
     Nothing -> do
       -- The world's own env var, set by the packaged binary from lips's flake
-      -- lock. Unset means no schema source is configured at all.
-      mflake <- lookupEnv (bakedPinVar target)
-      case mflake of
+      -- lock, then the flakeref the world file itself names. A world that
+      -- declares neither has no schema source at all.
+      mpin <- maybe (pure Nothing) (lookupEnv . T.unpack) (wSchemaPin world)
+      case mpin `orElse` (T.unpack <$> wSchemaFlake world) of
         Nothing -> die (report
-          ("lips can't read the setup's options: no " <> targetSlug target <> " option schema source is configured.")
-          ["none of --schema, LIPS_OPTIONS_JSON or " <> T.pack (bakedPinVar target) <> " is set."]
+          ("lips can't read the setup's options: no " <> wName world <> " option schema source is configured.")
+          [ "none of --schema, LIPS_OPTIONS_JSON"
+              <> maybe "" (\v -> ", " <> v) (wSchemaPin world)
+              <> " or a schema-flake: header in the world file names one." ]
           ("→ run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
         Just flakeref -> do
           locked <- lockFlakeRef flakeref remedy
-          path <- buildOptionSchema target locked remedy
+          path <- buildOptionSchema world locked remedy
           pure (path, locked)
-
--- | The env var carrying the flakeref baked into the packaged binary for one
--- world. Per world, because each world's schema comes from its own flake.
-bakedPinVar :: Target -> String
-bakedPinVar Nixos       = "LIPS_NIXPKGS_FLAKE"
-bakedPinVar HomeManager = "LIPS_HM_FLAKE"
-bakedPinVar Kubenix     = "LIPS_KUBENIX_FLAKE"
-bakedPinVar Terranix    = "LIPS_TERRANIX_FLAKE"
+  where
+    orElse (Just x) _ = Just x
+    orElse Nothing  y = y
 
 -- | Resolve any flakeref to the LOCKED url nix reports for it, which is then
 -- both built and recorded. Asking nix (rather than inspecting the ref's shape)
@@ -220,9 +218,13 @@ lockedUrl bytes = do
   pure u
 
 -- | Build one world's optionsJSON from a locked flakeref and return the path of
--- the document inside it.
-buildOptionSchema :: Target -> Text -> Text -> IO FilePath
-buildOptionSchema target locked remedy = step (targetSlug target <> " option schema") $ do
+-- the document. The expression is the WORLD FILE's schema slot with its two
+-- holes filled: the locked ref, and @builtins.currentSystem@ (which is why the
+-- build is @--impure@). Its output IS the document -- no caller knows a path
+-- inside the derivation, so a world whose options live somewhere else entirely
+-- needs no lips change.
+buildOptionSchema :: World -> Text -> Text -> IO FilePath
+buildOptionSchema world locked remedy = step (wName world <> " option schema") $ do
   -- The pin without nix's hash query, which is half a line of noise a reader
   -- never types back in.
   note ("pinned flake " <> T.takeWhile (/= '?') locked)
@@ -231,70 +233,20 @@ buildOptionSchema target locked remedy = step (targetSlug target <> " option sch
   setState "a cache miss evaluates the whole manual, which takes minutes"
   built <- try (readProcessWithExitCode "nix"
     [ "build", "--impure", "--no-link", "--print-out-paths"
-    , "--expr", T.unpack (schemaExpr target (T.unpack locked)) ] "")
+    , "--expr", T.unpack (schemaExpr world locked) ] "")
   case built of
     Left e -> die (report
       "lips needs nix to build the option schema, but couldn't run it:"
       (T.lines (tshow (e :: IOException)))
       ("→ install nix, or run lips through it: nix run . -- " <> remedy))
     Right (ExitFailure _, _, err) -> die (report
-      ("lips couldn't build the " <> targetSlug target <> " option schema:")
+      ("lips couldn't build the " <> wName world <> " option schema:")
       (T.lines (T.pack err))
       ("→ run it again: nix run . -- " <> remedy))
     Right (ExitSuccess, out, _) ->
-      pure (T.unpack (T.strip (T.pack out)) <> schemaSubPath target)
+      pure (T.unpack (T.strip (T.pack out)))
 
--- | Where the options document sits inside the built derivation. The JSON shape
--- is identical across worlds (all are nixosOptionsDoc output); only the path
--- differs -- and kubenix and terranix, whose documents lips builds itself with
--- nixosOptionsDoc, inherit that helper's NixOS default path.
-schemaSubPath :: Target -> FilePath
-schemaSubPath Nixos       = "/share/doc/nixos/options.json"
-schemaSubPath HomeManager = "/share/doc/home-manager/options.json"
-schemaSubPath Kubenix     = "/share/doc/nixos/options.json"
-schemaSubPath Terranix    = "/share/doc/nixos/options.json"
-
--- | The Nix expression producing the target world's optionsJSON derivation.
--- NixOS: the pinned nixpkgs NixOS manual optionsJSON (the same options.json
--- search.nixos.org is built from). home-manager: the pinned home-manager
--- flake's docs-json. Both are the same optionsJSON shape, so only the
--- derivation differs. Pins via @builtins.getFlake@; @--impure@ covers
--- @builtins.currentSystem@.
-schemaExpr :: Target -> String -> Text
-schemaExpr Nixos flakeref = T.pack $ concat
-  [ "let np = builtins.getFlake \"", flakeref, "\"; in "
-  , "(import (np.outPath + \"/nixos\") "
-  , "{ configuration = {}; system = builtins.currentSystem; })"
-  , ".config.system.build.manual.optionsJSON" ]
-schemaExpr HomeManager flakeref = T.pack $ concat
-  [ "let hm = builtins.getFlake \"", flakeref, "\"; in "
-  , "hm.packages.${builtins.currentSystem}.docs-json" ]
--- kubenix declares its Kubernetes resource fields as module options generated
--- from the Kubernetes API, so the document comes from nixosOptionsDoc over an
--- otherwise EMPTY kubenix evaluation: the option TREE is what grounds a rule,
--- and no program's own values may enter the schema.
--- nixpkgs comes from the kubenix flake's OWN pinned input, never resolved
--- ambiently: a grounding schema must be reproducible from the recorded ref
--- alone.
-schemaExpr Kubenix flakeref = T.pack $ concat
-  [ "let k = builtins.getFlake \"", flakeref, "\"; "
-  , "system = builtins.currentSystem; "
-  , "pkgs = import k.inputs.nixpkgs { inherit system; }; "
-  , "e = k.evalModules.${system} { module = { kubenix, ... }: "
-  , "{ imports = [ kubenix.modules.k8s ]; }; }; in "
-  , "(pkgs.nixosOptionsDoc { options = e.options; warningsAreErrors = false; }).optionsJSON" ]
--- terranix publishes @lib.terranixOptions@, but that helper documents the
--- USER's modules: its jq pass deletes resource, data, provider, output and
--- every other core namespace, which are exactly the paths a program writes. So
--- lips evaluates terranix's own core modules and runs nixosOptionsDoc over
--- them, the same mechanism the other worlds use. The lib.extend mirrors
--- terranix's core/default.nix, whose modules use those lib helpers.
-schemaExpr Terranix flakeref = T.pack $ concat
-  [ "let t = builtins.getFlake \"", flakeref, "\"; "
-  , "system = builtins.currentSystem; "
-  , "pkgs = import t.inputs.nixpkgs { inherit system; }; "
-  , "lib = pkgs.lib.extend (import (t + \"/core/helpers.nix\") pkgs); "
-  , "e = lib.evalModules { modules = [ "
-  , "{ imports = [ (t + \"/core/terraform-options.nix\") (t + \"/modules\") ]; } "
-  , "{ _module.args = { inherit pkgs; }; } ]; }; in "
-  , "(pkgs.nixosOptionsDoc { options = e.options; warningsAreErrors = false; }).optionsJSON" ]
+-- | The world's schema slot with its holes filled.
+schemaExpr :: World -> Text -> Text
+schemaExpr world locked =
+  T.replace "<system>" "builtins.currentSystem" (T.replace "<flakeref>" locked (wSchema world))

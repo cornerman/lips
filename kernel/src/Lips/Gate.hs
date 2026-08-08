@@ -57,8 +57,7 @@ import           Lips.Kernel.Lang.Store (EngineData (..))
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
 import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRungs)
-import           Lips.World.Builtin (worldForTarget)
-import           Lips.Nix.Target    (Target)
+import           Lips.World         (World)
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Schema        (lockFlakeRef)
 import           Lips.Stage         (fillStagedTree, siteNameOf, stageBeside, withTempDir, writeSite)
@@ -85,9 +84,9 @@ readIfPresent p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (E
 -- needs an ambient nixpkgs (the compiled flake resolves @flake:nixpkgs@, as it
 -- does for every other rung). A claim-free program is untouched and @check@
 -- stays nixpkgs-free for it.
-claimGate :: Target -> FilePath -> FilePath -> Realization -> IO ()
-claimGate target dir file rl =
-  clauseClaimGate target file rl >> commandClaimGate target dir file rl
+claimGate :: World -> FilePath -> FilePath -> Realization -> IO ()
+claimGate world dir file rl =
+  clauseClaimGate world file rl >> commandClaimGate world dir file rl
 
 -- | The clause claims, judged: one small derivation that evaluates the program's
 -- own definitions with the runtime's list-backed adapters. No machine boots and
@@ -97,15 +96,15 @@ claimGate target dir file rl =
 -- It is still a @nix build@, so a clause-claiming program's @check@ needs an
 -- ambient nixpkgs exactly as a command-claiming one does. A program that states
 -- no observable is untouched and its @check@ stays nixpkgs-free.
-clauseClaimGate :: Target -> FilePath -> Realization -> IO ()
-clauseClaimGate target file rl
+clauseClaimGate :: World -> FilePath -> Realization -> IO ()
+clauseClaimGate world file rl
   | null (rlClauseClaims rl) = pure ()
   | otherwise =
       step ("clause claims: " <> plural (length (rlClauseClaims rl)) "claim") $
         withTempDir $ \tmp -> do
           _ <- writeSite tmp rl
           TIO.writeFile (tmp </> "flake.nix")
-            (flakeText (worldForTarget target) noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
+            (flakeText world noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
           res <- try (readProcessWithExitCode "nix"
             ["build", "--no-link", "path:" <> tmp <> "#site-claims"] "")
           case res of
@@ -118,8 +117,8 @@ clauseClaimGate target file rl
                 <> " fix the sentence, or the claim that pins it."))
             Right (ExitSuccess, _, _) -> pure ()
 
-commandClaimGate :: Target -> FilePath -> FilePath -> Realization -> IO ()
-commandClaimGate target dir file rl
+commandClaimGate :: World -> FilePath -> FilePath -> Realization -> IO ()
+commandClaimGate world dir file rl
   | null (rlClaims rl) = pure ()
   | otherwise = do
       let machine = [ clId c | c <- rlClaims rl, clPlace c == PlaceMachine ]
@@ -140,7 +139,7 @@ commandClaimGate target dir file rl
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (tmp </> "claims.nix") body
         TIO.writeFile (tmp </> "flake.nix")
-          (flakeText (worldForTarget target) noRungs { hasArtifacts = not (null artNames), hasClaims = True })
+          (flakeText world noRungs { hasArtifacts = not (null artNames), hasClaims = True })
         res <- try (readProcessWithExitCode "nix"
           ["build", "--no-link", "path:" <> tmp <> "#claims"] "")
         case res of

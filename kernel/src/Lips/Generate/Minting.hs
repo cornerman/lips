@@ -18,8 +18,7 @@
 -- confidence-prefixed item per line; the item body distinguishes the three
 -- forms (pattern, @match@ rule, @demand@).
 module Lips.Generate.Minting
-  ( systemPrompt
-  , systemPromptFor
+  ( systemPromptFor
   , promptWithDirection
   , EngineItem (..)
   , SourceFile (..)
@@ -49,9 +48,7 @@ import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Runtime                 (schemeVocabulary)
-import Lips.Nix.Target       (Target (..), targetSlug)
 import Lips.World            (World (..))
-import Lips.World.Builtin    (builtinWorld)
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
 import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody)
@@ -156,10 +153,8 @@ directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 -- typed holes, artifacts, expects) is identical.
 -- The preamble comes from the world's own file, so the world-steering half of
 -- the prompt is data a house world supplies exactly as a shipped one does.
-systemPromptFor :: Target -> Text
-systemPromptFor t = maybe (error ("no built-in world " <> T.unpack (targetSlug t)))
-                          (\w -> wPreamble w <> "\n" <> promptBody)
-                          (builtinWorld (targetSlug t))
+systemPromptFor :: World -> Text
+systemPromptFor w = wPreamble w <> "\n" <> promptBody
 
 -- | The body with the contract set substituted in. The list is rendered from the
 -- shipped vocabulary rather than written into the markdown, so the prompt cannot
@@ -173,10 +168,6 @@ contractList = T.unlines
   [ "  " <> cName c <> " (" <> T.pack (show (cArity c)) <> ") -- " <> cDoc c
   | c <- vContracts schemeVocabulary ]
 
--- | Kept for back-compat and the pinned-artifact test: the NixOS prompt.
-systemPrompt :: Text
-systemPrompt = systemPromptFor Nixos
-
 -- | Compose the effective mint prompt: the fixed domain-blind physics, plus
 -- (when present) the owner's per-program DIRECTION. Direction is mechanism
 -- taste that steers /how/ the engine is minted (which package, which shape),
@@ -185,15 +176,15 @@ systemPrompt = systemPromptFor Nixos
 -- Because direction rides inside the system prompt, it is pinned into the
 -- @.generation@ record and the @genId@ hash for free, and @run@\/@check@ never
 -- see it. A blank direction file is ignored (no channel, no drift).
-promptWithDirection :: Maybe Text -> Target -> Text
-promptWithDirection md t = case md of
+promptWithDirection :: Maybe Text -> World -> Text
+promptWithDirection md w = case md of
   Just d | not (T.null (T.strip d)) ->
     -- directionDoc carries the fixed wrapper text with a single {{DIRECTION}}
     -- placeholder line; substituting it (rather than building the wrapper as
     -- a Haskell literal) keeps this wording in the same reviewable markdown
     -- asset as the rest of the prompt.
-    systemPromptFor t <> "\n" <> T.replace "{{DIRECTION}}" (T.strip d) directionDoc
-  _ -> systemPromptFor t
+    systemPromptFor w <> "\n" <> T.replace "{{DIRECTION}}" (T.strip d) directionDoc
+  _ -> systemPromptFor w
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
 -- Single-item lines parse individually; a @source@ block spans multiple lines
@@ -351,15 +342,24 @@ uncheckableExpects rules = filter uncheckable
 claimlessBakedSource :: [SourceFile] -> [Claim] -> Bool
 claimlessBakedSource sources claims = not (null sources) && null claims
 
--- | The claims a world cannot observe, by id. A machine claim boots the realized
--- module, which only the NixOS world has; elsewhere an observable must be stated
--- over the program's own artifacts, which needs no machine.
+-- | The claims a world cannot observe, by id: those whose PLACE the world does
+-- not host. A machine claim boots the realized module, which only a world with
+-- a machine offers; elsewhere an observable must be stated over the program's
+-- own artifacts, which needs no machine.
+--
+-- The hosted places come from the world file's @claims:@ header, so which
+-- claims a world admits is data -- lips never asks which world this is.
 --
 -- Refused at the gate rather than at some later check, so an engine whose claims
 -- could never run is never written.
-unplaceableClaims :: Target -> [Claim] -> [Text]
-unplaceableClaims Nixos _  = []
-unplaceableClaims _     cs = [ clId c | c <- cs, clPlace c == PlaceMachine ]
+unplaceableClaims :: [Text] -> [Claim] -> [Text]
+unplaceableClaims hosted cs =
+  [ clId c | c <- cs, placeSlug (clPlace c) `notElem` hosted ]
+
+-- | What a world file calls each place a claim can be observed in.
+placeSlug :: ClaimPlace -> Text
+placeSlug PlaceMachine    = "machine"
+placeSlug PlaceDerivation = "sandbox"
 
 parseLine :: Text -> Either Text ItemCandidate
 parseLine line = do
