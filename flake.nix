@@ -387,6 +387,9 @@
               # look like a real language folder even though this one bakes no
               # source and so never consults it.
               cp ${./examples/backup/backup.generation} backup/backup.generation
+              # The world file travels too: it IS the physics compile assembles
+              # the flake from, and compile requires the copy the record names.
+              cp ${./examples/backup/nixos.world} backup/nixos.world
               # --no-contract: the gate needs nix to evaluate the module, which
               # a compile inside a nix build has not got; `lips check` gates in
               # the repo (see just check-expect).
@@ -456,6 +459,7 @@
               # specification that source was written from, and refuses rather
               # than skip when it cannot.
               cp ${./examples/website/website.generation} website/website.generation
+              cp ${./examples/website/nixos.world} website/nixos.world
               # --no-contract: the gate needs nix to evaluate the module, which
               # a compile inside a nix build has not got; `lips check` gates in
               # the repo (see just check-expect).
@@ -494,6 +498,7 @@
               cp ${./examples/hello.http.lips} hello.http.lips
               cp ${./examples/http/http.lang} http/http.lang
               cp ${./examples/http/http.generation} http/http.generation
+              cp ${./examples/http/nixos.world} http/nixos.world
               ${lips}/bin/lips compile --no-contract --out "$out" hello.http.lips
             '';
           in

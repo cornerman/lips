@@ -126,7 +126,7 @@ test-draft:
     EOF
     sed -i 's/^    //' "$tmp/badopt.txt"
     export LIPS_MINT_SCHEMA="$PWD/kernel/test/fixtures/options-mini.json"
-    export LIPS_MINT_TARGET=nixos
+    export LIPS_MINT_WORLD=nixos
     if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/badopt.txt" > "$tmp/out4" 2>&1; then
       echo "FAIL: --draft accepted an option that does not exist"; cat "$tmp/out4"; exit 1
     fi
