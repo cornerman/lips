@@ -309,7 +309,13 @@ tracks only what is still open.
   is world-specific, only the artifact is world-neutral, so the artifact is the
   natural seam. kubenix already ships `modules/docker.nix` and
   `docker-image-from-package.nix`, so image-from-derivation is upstream physics
-  lips can reach by name rather than invent. Dual of the existing
+  lips can reach by name rather than invent. Under the GitOps assumption (git
+  is the source of truth; a reconciler performs push/apply from what is
+  merged) the cross-world value is DERIVABLE at compile, not just stated:
+  a content-addressed image tag from the artifact's own Nix output hash makes
+  the export true by construction, and eventual consistency (pull retry until
+  the push lands) is the reconciler's semantics, not lips'. See
+  `docs/superpowers/specs/2026-08-07-multi-world-builds-design.md`. Dual of the existing
   "Multi-language composition" item (several engines in one Solution): same
   axis, one level up.
 
@@ -332,20 +338,31 @@ tracks only what is still open.
   file beside the per-program one, entering the generation record the same way,
   so a house convention is stated once instead of re-typed per language.
 
-- **Targets as external plugins.** A world is four knobs: mint preamble
-  (markdown, already data), schema source (a Nix expression plus an output
-  sub-path, nearly data), schema reshaping (Haskell -- kubenix needed three
-  operations: re-key an alias, drop inner nodes, unwrap optionals), and the run
-  harness (Haskell emitting flake text and printed rungs). Two of four are data
-  today. Now that terranix has landed there is evidence on the open question:
-  the reshaping knob DOES factor (terranix needed none at all, reusing
-  `parseNixOptionsJson`), while the other two did not shrink -- the schema source
-  was a bespoke Nix expression reaching into terranix's own internals (its
-  published options helper deletes the namespaces programs write), and the
-  harness was per-world flake text either way. So a plugin format would still be
-  "ship a Nix expression plus flake text", i.e. code, not data. Counter-argument to weigh then: a
-  plugin's harness is arbitrary Nix, i.e. an arbitrary-code channel into
-  compiled output, while the closed set keeps every world reviewed in-tree.
+- **World files: a world is data, not a constructor.** DESIGNED, not built:
+  `docs/superpowers/specs/2026-08-07-world-files-design.md` carries the full
+  concept, the six knobs measured in the tree, the slot grammar and the file
+  format. Short version: `data Target = Nixos | HomeManager | Kubenix |
+  Terranix` is the open list the kernel is not allowed to enumerate, so a world
+  becomes a committed `<world>.world` file (header keys plus `--- <slot> ---`
+  blocks, the shape `.generation` already uses); the four in-tree worlds ship as
+  ordinary such files embedded in the binary. The 426-line flake harness does
+  NOT factor as a hole template (nixos, kubenix and terranix share no Nix
+  skeleton) but as a closed set of slots -- `inputs`, one `builds` binding,
+  attrset expressions for `packages`/`apps`/`devShells`, `module-attr`, `rungs`,
+  `claims` -- with lips keeping the world-neutral skeleton and the
+  artifact/site/claims physics. Schema reshaping (kubenix's 85 Haskell lines)
+  moves into the `schema` slot, which must evaluate to a derivation whose output
+  is canonical options JSON; feasibility in Nix/jq is the one untested risk, with
+  a `schema-shape:` header as the honest fallback. Resolution is
+  `./<name>.world` beside the program, else built-in (built-in names reserved),
+  `--worlds DIR` overriding like `--lang DIR`; the resolved file is COPIED into
+  the language folder and hashed into `.generation`, so compile resolves nothing
+  and compiled output stops depending on the lips binary version. Prerequisite
+  simplification: always emit `artifact.nix` (`{ }` when empty) so the harness
+  needs no conditional. The old counter-argument (a plugin harness is an
+  arbitrary-Nix channel into compiled output) is answered in the spec: the file
+  is committed, hashed and human-written, which is better provenance than the
+  AI-written source `artifacts/` already builds.
 
 - **terranix grounding is path-blind below the top level.** Live as of the
   terranix target (DESIGN §13): terranix's core options (`resource`, `data`,
