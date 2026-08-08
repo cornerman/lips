@@ -49,7 +49,9 @@ import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Runtime                 (schemeVocabulary)
-import Lips.Nix.Target       (Target (..))
+import Lips.Nix.Target       (Target (..), targetSlug)
+import Lips.World            (World (..))
+import Lips.World.Builtin    (builtinWorld)
 import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
 import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody)
@@ -145,18 +147,6 @@ data ItemCandidate = ItemCandidate
 bodyDoc :: Text
 bodyDoc = T.pack $(embedStringFile "../assets/mint/body.md")
 
-nixosDoc :: Text
-nixosDoc = T.pack $(embedStringFile "../assets/mint/nixos.md")
-
-homeManagerDoc :: Text
-homeManagerDoc = T.pack $(embedStringFile "../assets/mint/home-manager.md")
-
-kubenixDoc :: Text
-kubenixDoc = T.pack $(embedStringFile "../assets/mint/kubenix.md")
-
-terranixDoc :: Text
-terranixDoc = T.pack $(embedStringFile "../assets/mint/terranix.md")
-
 directionDoc :: Text
 directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 
@@ -164,11 +154,12 @@ directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 -- option namespaces to emit into, then the world-neutral body. The preamble is
 -- the ONLY thing that differs per world; the body's grammar (patterns, rules,
 -- typed holes, artifacts, expects) is identical.
+-- The preamble comes from the world's own file, so the world-steering half of
+-- the prompt is data a house world supplies exactly as a shipped one does.
 systemPromptFor :: Target -> Text
-systemPromptFor Nixos       = nixosDoc <> "\n" <> promptBody
-systemPromptFor HomeManager = homeManagerDoc <> "\n" <> promptBody
-systemPromptFor Kubenix     = kubenixDoc <> "\n" <> promptBody
-systemPromptFor Terranix    = terranixDoc <> "\n" <> promptBody
+systemPromptFor t = maybe (error ("no built-in world " <> T.unpack (targetSlug t)))
+                          (\w -> wPreamble w <> "\n" <> promptBody)
+                          (builtinWorld (targetSlug t))
 
 -- | The body with the contract set substituted in. The list is rendered from the
 -- shipped vocabulary rather than written into the markdown, so the prompt cannot

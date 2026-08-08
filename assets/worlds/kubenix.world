@@ -1,0 +1,106 @@
+format: 1
+world: kubenix
+module-attr: kubenixModules
+schema-pin: LIPS_KUBENIX_FLAKE
+input-args: , kubenix
+claims: sandbox
+
+--- preamble ---
+TARGET WORLD: kubenix. A kubenix configuration renders KUBERNETES
+MANIFESTS: nothing is installed and no machine is configured, so never emit
+a NixOS or home-manager option here (no services.*, no systemd.*, no
+environment.*). Its namespace is kubernetes.resources.<kindPlural>.<name>.*
+-- the plural, lower-camel kind name, then the resource's own name, then the
+fields of the Kubernetes API object itself
+(kubernetes.resources.deployments.<self>.spec.replicas,
+kubernetes.resources.services.<self>.spec.ports). <self> keys the resource
+name, so one program's resources all carry its instance name and a sibling
+instance composes without collision. Beside the resources, this world offers
+kubernetes.namespace (the namespace resources land in) and kubenix.project
+(a label put on every object). query_options searches exactly this world's
+pinned schema: the kubenix option tree, whose resource fields come from the
+Kubernetes API, nothing else. Write the alias path
+(kubernetes.resources.*), never the kubernetes.api.resources.* spelling
+behind it.
+
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world, so an observable is a command over ${artifact.<name>}
+and literal text, run in the build sandbox. A claim reaching anything else is
+refused.
+
+--- schema ---
+# kubenix declares its Kubernetes resource fields as module options generated
+# from the Kubernetes API, so the document comes from nixosOptionsDoc over an
+# otherwise EMPTY kubenix evaluation: the option TREE is what grounds a rule,
+# and no program's own values may enter the schema. nixpkgs comes from the
+# kubenix flake's OWN pinned input, never resolved ambiently: a grounding
+# schema must be reproducible from the recorded ref alone.
+#
+# The jq pass is this world's shape, not lips': it re-keys the generated
+# kubernetes.api.resources.* paths to the kubernetes.resources.* alias a
+# program writes, unwraps the `null or X` optionals kubenix's generator emits,
+# and drops every inner node whose own children carry the fields (a resource's
+# submodule appears both as a node and as its leaves). sort_by(.key | split("."))
+# is load-bearing: the adjacency test below needs SEGMENT order, not string
+# order, or a name like `a.b-c` breaks it.
+let k = builtins.getFlake "<flakeref>";
+    system = builtins.currentSystem;
+    pkgs = import k.inputs.nixpkgs { inherit system; };
+    e = k.evalModules.${system} {
+      module = { kubenix, ... }: { imports = [ kubenix.modules.k8s ]; };
+    };
+    doc = (pkgs.nixosOptionsDoc { options = e.options; warningsAreErrors = false; }).optionsJSON;
+in pkgs.runCommand "options.json" { } ''
+  ${pkgs.jq}/bin/jq '
+    to_entries
+    | map(.key |= (if startswith("kubernetes.api.resources.")
+          then "kubernetes.resources." + .[25:] else . end))
+    | map(.value.type |= (if (type == "string") and startswith("null or ")
+          then (.[8:] | if startswith("(") and endswith(")") then .[1:-1] else . end)
+          else . end))
+    | sort_by(.key | split("."))
+    | . as $es
+    | [ range(0; length) as $i | $es[$i]
+        | select(($i + 1 >= ($es | length))
+            or (($es[$i+1].key | startswith($es[$i].key + ".")) | not)) ]
+    | from_entries
+  ' ${doc}/share/doc/nixos/options.json > $out
+''
+
+--- inputs ---
+  inputs.kubenix.url = "github:hall/kubenix";
+
+--- builds ---
+      # The per-system kubenix evaluation, defined once so the buildable
+      # manifest (packages) and the printing rung (apps) reference the SAME
+      # rendered file. Both output spellings are kubenix's OWN options
+      # (resultYAML, result), so lips converts nothing and owns no format code.
+      builds = system:
+        let
+          cfg = (kubenix.evalModules.${system} {
+            module = { kubenix, ... }: {
+              imports = [ kubenix.modules.k8s ./default.nix ];
+            };
+          }).config.kubernetes;
+        in { yaml = cfg.resultYAML; json = cfg.result; };
+
+--- packages ---
+        manifest = (builds system).yaml;
+        manifest-json = (builds system).json;
+
+--- apps ---
+        let b = builds system; p = pkgsFor system; in {
+          manifest = { type = "app"; program = "${p.writeShellScript "print-manifest" "cat ${b.yaml}"}"; };
+          manifest-json = { type = "app"; program = "${p.writeShellScript "print-manifest-json" "cat ${b.json}"}"; };
+        }
+
+--- devShells ---
+        let p = pkgsFor system; in {
+          default = p.mkShell { packages = [ p.kubectl ]; };
+        }
+
+--- rungs ---
+write the manifests | run | manifest | > manifests.yaml
+check it renders | build | manifest |
+the JSON form | run | manifest-json | > manifests.json
+a shell with kubectl | develop | |

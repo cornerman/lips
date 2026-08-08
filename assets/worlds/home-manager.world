@@ -1,3 +1,10 @@
+format: 1
+world: home-manager
+module-attr: homeManagerModules
+schema-pin: LIPS_HM_FLAKE
+claims: sandbox
+
+--- preamble ---
 TARGET WORLD: home-manager. A home-manager configuration governs one
 USER's $HOME, unprivileged: there is no system-level config and no root,
 so never emit a NixOS system option here. Its namespaces include
@@ -13,3 +20,13 @@ A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
 boot in this world (a module is imported into a home configuration, not run),
 so an observable is a command over ${artifact.<name>} and literal text, run
 in the build sandbox. A claim reaching anything else is refused.
+
+--- schema ---
+let hm = builtins.getFlake "<flakeref>";
+    pkgs = import hm.inputs.nixpkgs { system = builtins.currentSystem; };
+    doc = hm.packages.${builtins.currentSystem}.docs-json;
+in pkgs.runCommand "options.json" { }
+     "cp ${doc}/share/doc/home-manager/options.json $out"
+
+--- rungs ---
+text: import into your home config: imports = [ <dir> ];

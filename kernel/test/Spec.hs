@@ -49,6 +49,7 @@ import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
 import Lips.Nix.Target
 import Lips.World
+import Lips.World.Builtin (builtinWorld, builtinWorlds)
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
@@ -331,6 +332,16 @@ main = hspec $ do
         `shouldBe` (Nothing, Nothing, "")
     it "keeps the raw bytes for hashing" $
       right wRaw minimal `shouldBe` minimal
+
+    it "every built-in world file parses, under its own name" $
+      mapM_ (\(n, raw) -> fmap wName (parseWorld raw) `shouldBe` Right n) builtinWorlds
+
+    it "the built-ins carry the claim places the old code hard-coded" $ do
+      let claimsOf n = maybe [] wClaims (builtinWorld n)
+      claimsOf "nixos" `shouldBe` ["machine", "sandbox"]
+      claimsOf "home-manager" `shouldBe` ["sandbox"]
+      claimsOf "kubenix" `shouldBe` ["sandbox"]
+      claimsOf "terranix" `shouldBe` ["sandbox"]
 
   describe "merge (spec 2.1: strength) " $ do
     it "delta-over-defaults: Stated overrides Default on the same subject" $ do
