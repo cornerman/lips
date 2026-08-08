@@ -27,8 +27,9 @@
       # The kernel needs only base, containers, text; the Generate tier adds
       # aeson (parsing pi's json event stream); hspec + QuickCheck drive the
       # conformance suite (spec section 12).
-      # file-embed: the mint prompt lives as markdown under assets/mint/,
-      # embedded at compile time (see kernel/src/Lips/Generate/Minting.hs).
+      # file-embed: the mint prompt lives as markdown under assets/mint/ and the
+      # worlds as data under assets/worlds/, both embedded at compile time (see
+      # kernel/src/Lips/Generate/Minting.hs and Lips/World/Builtin.hs).
       ghc = pkgs: pkgs.haskellPackages.ghcWithPackages (p: [ p.hspec p.QuickCheck p.aeson p.optparse-applicative p.file-embed ]);
       # The VS Code client, as an installable extension package.
       #
@@ -97,7 +98,7 @@
         default = pkgs.runCommand "lips"
           { nativeBuildInputs = [ (ghc pkgs) pkgs.makeWrapper pkgs.installShellFiles ]; } ''
           # assets/ is copied as build's SIBLING (not build/assets/), so the
-          # embedStringFile path "../assets/mint/..." in Minting.hs resolves
+          # embedStringFile path "../assets/..." in Minting.hs/World/Builtin.hs resolves
           # the same way here as it does from kernel/ under a direct `ghc`
           # invocation, where ".." is likewise the repo root.
           mkdir -p assets && cp -r ${./assets}/. assets && cp -r ${./kernel}/. build && cd build

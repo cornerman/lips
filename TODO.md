@@ -399,39 +399,19 @@ tracks only what is still open.
   The recording half is now solved in shape: a mint's grounding is pinned in the
   record as `schema:` and overridable with `--schema` (DESIGN §13), so the CRD
   work is "let the schema source take extra definitions and pin each of them",
-  not "invent a way to record a schema source".
+  not "invent a way to record a schema source" -- and the source itself is now
+  data, kubenix.world's `schema` slot, so taking CRDs in is an edit to a world
+  file (yours, if you copy it) rather than to lips.
   (ii) CONVENTION HAS NO WORLD-LEVEL CHANNEL. Label keys, naming, namespace
   policy, resource limits are mechanism taste -- exactly what
   `<language>.direction` carries -- but nothing today states a direction shared
   by every language minted into one world. Candidate: a per-world direction
   file beside the per-program one, entering the generation record the same way,
-  so a house convention is stated once instead of re-typed per language.
-
-- **World files: a world is data, not a constructor.** DESIGNED, not built:
-  `docs/superpowers/specs/2026-08-07-world-files-design.md` carries the full
-  concept, the six knobs measured in the tree, the slot grammar and the file
-  format. Short version: `data Target = Nixos | HomeManager | Kubenix |
-  Terranix` is the open list the kernel is not allowed to enumerate, so a world
-  becomes a committed `<world>.world` file (header keys plus `--- <slot> ---`
-  blocks, the shape `.generation` already uses); the four in-tree worlds ship as
-  ordinary such files embedded in the binary. The 426-line flake harness does
-  NOT factor as a hole template (nixos, kubenix and terranix share no Nix
-  skeleton) but as a closed set of slots -- `inputs`, one `builds` binding,
-  attrset expressions for `packages`/`apps`/`devShells`, `module-attr`, `rungs`,
-  `claims` -- with lips keeping the world-neutral skeleton and the
-  artifact/site/claims physics. Schema reshaping (kubenix's 85 Haskell lines)
-  moves into the `schema` slot, which must evaluate to a derivation whose output
-  is canonical options JSON; feasibility in Nix/jq is the one untested risk, with
-  a `schema-shape:` header as the honest fallback. Resolution is
-  `./<name>.world` beside the program, else built-in (built-in names reserved),
-  `--worlds DIR` overriding like `--lang DIR`; the resolved file is COPIED into
-  the language folder and hashed into `.generation`, so compile resolves nothing
-  and compiled output stops depending on the lips binary version. Prerequisite
-  simplification: always emit `artifact.nix` (`{ }` when empty) so the harness
-  needs no conditional. The old counter-argument (a plugin harness is an
-  arbitrary-Nix channel into compiled output) is answered in the spec: the file
-  is committed, hashed and human-written, which is better provenance than the
-  AI-written source `artifacts/` already builds.
+  so a house convention is stated once instead of re-typed per language. Worlds
+  are data now, so the cheap version already exists: copy a world file, edit its
+  `preamble` slot, and the copy is pinned in the record like any other -- what is
+  missing is only the shared-direction channel that avoids forking a world for
+  taste alone.
 
 - **terranix grounding is path-blind below the top level.** Live as of the
   terranix target (DESIGN §13): terranix's core options (`resource`, `data`,
@@ -441,7 +421,9 @@ tracks only what is still open.
   fails at `tofu plan`, not at generate. Two things soften it today, both
   shipped: the mint preamble states the limit and tells the mint to refuse rather
   than guess a field, and a lookup inside a free-form region answers `Freeform`,
-  saying in words that the name was not checked. The remedy is a different schema
+  saying in words that the name was not checked. Where a richer source would plug
+  in is now one place, in data: terranix.world's `schema` slot, whose only
+  contract is that its output is the options JSON. The remedy is a different schema
   source -- `terraform providers schema -json`, a per-provider network fetch at
   generate time -- which generate could afford (it is already online). What holds
   it back: that schema is per provider AND per provider version, so it needs a

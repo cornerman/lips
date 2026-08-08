@@ -39,7 +39,8 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Capture` | ledger 13 | the one capture/name grammar shared by rules, expects and demands (`matchSubject`, `nameParse`, `fillName`) |
 | `Lips.Kernel.Lang.Diagnose` | ledger 13 | the authoring report: per-line outcome, open questions, inert lines, discarded words |
 | `Lips.Kernel.OptionType` | ledger 13 | domain-blind option grounding over a typed `OptionSchema`, plus the schema lookup the mint's `query_options` tool asks |
-| `Lips.Nix.Options` / `Lips.Nix.Target` / `Lips.Nix.Flake` | ledger 13 | the NixOS/home-manager specifics: `optionsJSON` shape, the closed `Target`, the emitted `flake.nix` |
+| `Lips.Nix.Options` / `Lips.Nix.Flake` | ledger 13 | the `optionsJSON` shape every world's schema parses as, and the `flake.nix` assembled from a world's slots |
+| `Lips.World` / `Lips.World.Builtin` / `Lips.World.Resolve` | ledger 13 | a world as DATA: the `<world>.world` format and its strict parser, the four lips ships (embedded), and how a name becomes one |
 | `Lips.Identity` | ledger 13 | the only place that knows the file layout (`<instance>.<language>.lips` -> language folder, `out/`) |
 | `Lips.Cli` | ledger 13 | the whole CLI grammar as one `optparse-applicative` parser (verbs, flags, completion) |
 | `Lips.Lsp.Derive` / `Lips.Lsp.Server` | ledger 13 | the language server: pure completion/diagnostics core, and its stdio JSON-RPC shell |
@@ -119,9 +120,11 @@ text. The boundary is explicit in the code:
 - `Lips.Generate.Minting` holds the *pure* minting logic: the system prompt (a
   versioned artifact, spec section 5 layer 3) and the parser that turns the
   model's confidence-prefixed pattern lines into candidates. The prompt itself
-  is not a Haskell string: it is markdown under `assets/mint/` (a world-neutral
-  body plus one preamble per target world), embedded at compile time with
-  `file-embed`, so it reads and reviews like the document it is.
+  is not a Haskell string: the world-neutral body is markdown under
+  `assets/mint/`, and each world's steering preamble is the `preamble` slot of
+  its own `<world>.world` file (`assets/worlds/`, or a house world beside the
+  program), both embedded at compile time with `file-embed`, so each reads and
+  reviews like the document it is.
 - `generate` refuses to write a language it is unsure of: any pattern below the
   confidence threshold (default 0.7, overridable with `--confidence <0..1>` and
   pinned into the generation record) aborts the write (deduce-or-fail). The minted

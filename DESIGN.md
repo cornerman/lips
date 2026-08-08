@@ -877,6 +877,53 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Worlds are data: a `<world>.world` file, not four arms of a Haskell enum.**
+  The world axis was the design's own counter-example: adding a world meant
+  editing `Lips.Nix.Target`'s enum, six per-world Haskell sites (the mint
+  preamble, the schema expression and its sub-path, the baked pin variable, the
+  flake harness, the printed rungs, the claim places a world hosts) and the
+  deploy helper's four output names -- an OPEN list the kernel enumerated,
+  exactly what the kernel is forbidden to do about anything else. A world is now
+  a data file: header lines (`world`, `module-attr`, `schema-pin`,
+  `schema-flake`, `input-args`, `claims`, `format`) plus named slots
+  (`preamble`, `schema`, `inputs`, `builds`, `packages`, `apps`, `devShells`,
+  `rungs`), parsed strictly by `Lips.World` -- an unknown key or slot names
+  itself in the refusal, and a file declaring a newer `format:` says which lips
+  to upgrade. The four lips ships live in `assets/worlds/*.world`, embedded, and
+  a `<name>.world` beside a program (or under `--worlds DIR`) resolves the same
+  way; built-in names are reserved, so `nixos` means one thing everywhere.
+  `lips world` lists what is reachable from here, `lips world <name>` prints one
+  -- the seed a house world starts from, and the way to restore a copy.
+
+  The harness became a world-neutral skeleton (description, nixpkgs input,
+  `forSystems`, the artifact/site/claims package entries) plus the world's slots
+  placed verbatim, which is what makes `flakeText :: World -> Rungs -> Text`
+  domain-blind; one simplification fell out on the way, `artifact.nix` is now
+  always written (empty set when a program declares none), so the text carries no
+  conditional at all. `Lips.Nix.Kubenix`'s three reshapings moved into
+  kubenix.world's schema slot as jq, and `Lips.Nix.Schema` died with it: every
+  world's document now parses with `parseNixOptionsJson`, and the slot's
+  contract is that its `$out` IS the options.json, which killed `schemaSubPath`.
+  The jq is witnessed by an offline flake check (`kubenix-schema`) reading the
+  slot out of the world file, since grounding runs only at generate and CI never
+  mints. That move also FIXED 78 fields: the Haskell classifier read
+  `null or (list of signed integer)` as a plain integer (its scalar test matched
+  the substring), so a correct list emit was refused; unwrapping first types
+  them as lists. The known cosmetic delta is the other direction -- an
+  unmodelled optional's refusal wording loses its `null or ` prefix.
+
+  A world travels WITH the engine: generate copies the resolved file into the
+  language folder and the record pins it by content hash (`world: <name>
+  <hash>`, `format: 1`), both entering `genId`. compile reads that copy, never
+  what lips ships, and refuses on a missing file (naming `lips world <name> >
+  <path>` as the remedy) or a hash mismatch (naming both hashes). A record with
+  no `format:` header is format 0 and is read by its `target:` slug, or as nixos
+  when it has none -- not a fallback but the only reading its sealed bytes can
+  have. `nix/modulesFromDir.nix` groups by the world file's own `module-attr:`,
+  so a house world lands under its own flake output with no edit there. The test
+  that this is finished: `Lips.Nix.Target` is deleted, and nothing in lips
+  enumerates a world.
+
 - **A clause takes contributions from several program lines.** A program whose
   lines are STATEMENTS (`examples/function`: a declaration and three calls) had
   no way to reach one entry point: a clause rhs is one s-expression per subject,
@@ -1511,7 +1558,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   prohibition three times and made every worked example expensive to write and
   hard to read (docs/superpowers/plans/2026-07-26-mint-prompt-rewrite-plan.md).
   It now lives as markdown under `assets/mint/` (`body.md` the world-neutral
-  body, `nixos.md`/`home-manager.md` the two world preambles, `direction.md`
+  body, `nixos.md`/`home-manager.md` the two world preambles -- since moved into
+  the world files' `preamble` slot by "worlds are data" above --, `direction.md`
   the advisory-direction wrapper), embedded at compile time with `file-embed`
   (`Data.FileEmbed.embedStringFile`); `Minting.systemPromptFor` composes them,
   unchanged as a public surface. The migration landed byte-identical first (an
@@ -2067,10 +2115,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
 - **Third realization target (kubenix).** `lips generate --target kubenix`
   mints into `kubernetes.resources.<kindPlural>.<self>.*` and `compile` renders
   Kubernetes manifests. Zero kernel change, as the target axis promised: the
-  three knobs are `assets/mint/kubenix.md` (the world preamble),
+  three knobs were `assets/mint/kubenix.md` (the world preamble),
   `Lips.Nix.Kubenix` (the grounding schema) and `Lips.Nix.Flake` (the rungs),
   plus one dispatcher, `Lips.Nix.Schema.schemaFor`, so the two grounding call
-  sites cannot disagree about a world. Grounding is real, not nominal: lips
+  sites could not disagree about a world. (All four are gone with "worlds are
+  data" above: those knobs are now slots of `assets/worlds/kubenix.world`.) Grounding is real, not nominal: lips
   builds a 31478-entry `optionsJSON` with `nixosOptionsDoc` over an empty
   `kubenix.evalModules` (pinned `LIPS_KUBENIX_FLAKE`, ~4 minutes once, then
   cached), and reshapes it three ways, each a kubenix fact and none a kernel

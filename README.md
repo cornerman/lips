@@ -144,12 +144,19 @@ goes into `<language>.generation` to enter the generation hash. Nothing in lips
 lets a model run its own engine or decide that it is good — that verification
 happens afterwards, offline, by lips itself, and it is unchanged by what the
 model checked. The mint's own instructions are a
-reviewable artifact, not a secret: they live as plain markdown under
-`assets/mint/` in this repo, embedded into the binary at build time.
+reviewable artifact, not a secret: the world-neutral half lives as plain
+markdown under `assets/mint/` in this repo, the world's own half in its world
+file, both embedded into the binary at build time.
 
 You pick the world at mint time. `--target nixos` (the default),
 `--target home-manager`, `--target kubenix` or `--target terranix` picks the
-world the engine is born into. The flag steers the
+world the engine is born into. A world is DATA, not a lips feature: each of
+those names a `<world>.world` file lips ships (`lips world` lists them, `lips
+world nixos` prints one), and a `<name>.world` file beside your program is
+resolved the same way, so a world lips never heard of works with no change to
+lips. The names lips ships are reserved, so `nixos` means one thing everywhere;
+call yours `house-k3s`. `--worlds DIR` looks them up in `DIR` instead of beside
+the program. The flag steers the
 mint into that world's option namespace (`services.*`, `boot.*`, `users.*`
 versus `programs.*`, `systemd.user.*`, `home.file.*` versus
 `kubernetes.resources.<kind>.<name>.*` versus `resource.<type>.<name>.*`) and
@@ -159,14 +166,17 @@ differs per world, and lips says which: kubenix types every Kubernetes field,
 while terranix declares its Terraform namespaces free-form, so there a lookup
 confirms `resource` exists and nothing below it — the answer says so in those
 words rather than implying a name was checked. Nothing translates between worlds: a user-service backup
-is a different intent, minted into a different engine. The choice is recorded
-in `backup.generation` and enters the generation id, so re-minting for another
-world is a distinct, `.expect`-gated event.
+is a different intent, minted into a different engine. The world file is copied
+into the language folder and pinned by content hash in `backup.generation`,
+which enters the generation id: the engine carries the physics it was minted
+into, so a checkout on another machine compiles identically, and re-minting for
+another world is a distinct, `.expect`-gated event.
 
 **Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
 your text into a directory holding `default.nix` (the Nix module, for import
 and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory
-runnable. `compile` reads the recorded world to decide what that flake offers:
+runnable. `compile` reads the world file beside the engine — required, and
+checked against the record's hash — to decide what that flake offers:
 a NixOS engine gets a bootable VM, a home-manager engine gets the module and an
 import hint, since there is no machine to boot, and a kubenix or terranix engine
 gets what it renders. Running is not a lips verb:
@@ -282,7 +292,8 @@ it by the world its engine was minted for:
 
 A home-manager engine appears under `lips.homeManagerModules.<instance>`
 instead, a kubenix one under `lips.kubenixModules.<instance>` and a terranix one
-under `lips.terranixModules.<instance>`. Nix flakes see only git-tracked files, so `git add` your program and
+under `lips.terranixModules.<instance>` — each name is the world file's own
+`module-attr:`, so a house world lands under the attribute it names. Nix flakes see only git-tracked files, so `git add` your program and
 its language folder before rebuilding. Both program shapes work here, the
 singleton `<language>.lips` included.
 
@@ -361,7 +372,8 @@ under `out/` is per instance, derived, and safe to delete.
 | `backup/backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
 | `backup/README.md` | AI, once | the language explained in plain words, your review artifact | yes |
 | `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
-| `backup/backup.generation` | machine | receipt of the exact AI call and its target world, shared | yes |
+| `backup/backup.generation` | machine | receipt of the exact AI call and the world it pins, shared | yes |
+| `backup/nixos.world` | machine | the world the engine was minted into, copied verbatim | yes |
 | `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
 | `backup/out/ledger/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |
 
