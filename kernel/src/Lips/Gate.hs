@@ -57,6 +57,7 @@ import           Lips.Kernel.Lang.Store (EngineData (..))
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
 import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRungs)
+import           Lips.World.Builtin (worldForTarget)
 import           Lips.Nix.Target    (Target)
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Schema        (lockFlakeRef)
@@ -104,7 +105,7 @@ clauseClaimGate target file rl
         withTempDir $ \tmp -> do
           _ <- writeSite tmp rl
           TIO.writeFile (tmp </> "flake.nix")
-            (flakeText target noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
+            (flakeText (worldForTarget target) noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
           res <- try (readProcessWithExitCode "nix"
             ["build", "--no-link", "path:" <> tmp <> "#site-claims"] "")
           case res of
@@ -139,7 +140,7 @@ commandClaimGate target dir file rl
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (tmp </> "claims.nix") body
         TIO.writeFile (tmp </> "flake.nix")
-          (flakeText target noRungs { hasArtifacts = not (null artNames), hasClaims = True })
+          (flakeText (worldForTarget target) noRungs { hasArtifacts = not (null artNames), hasClaims = True })
         res <- try (readProcessWithExitCode "nix"
           ["build", "--no-link", "path:" <> tmp <> "#claims"] "")
         case res of

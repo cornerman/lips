@@ -31,7 +31,7 @@ import           Control.Monad      (forM, forM_, unless, when, void)
 import           Data.IORef         (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import           Data.Bifunctor     (first)
 import           Data.List          (intercalate)
-import           Data.Maybe         (fromMaybe, isJust)
+import           Data.Maybe         (fromMaybe)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
@@ -88,6 +88,7 @@ import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText,
                                                 runCommands)
 import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget, targetSlug)
+import           Lips.World.Builtin             (worldForTarget)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -192,10 +193,10 @@ compileLoose mout mLangDir noContract file = do
                       , siteRung = if not hasSite then Nothing
                                    else Just (SiteRung (siteNameOf rl)
                                                        (not (null (rlClauseClaims rl)))) }
-    TIO.writeFile (outDirPath </> "flake.nix") (flakeText target rungs)
+    TIO.writeFile (outDirPath </> "flake.nix") (flakeText (worldForTarget target) rungs)
     pure (artNames, rungs)
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
-  mapM_ note (runCommands target artNames rungs outDirPath)
+  mapM_ note (runCommands (worldForTarget target) artNames rungs outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the

@@ -53,11 +53,8 @@ module Lips.Nix.Flake
 import           Data.Text     (Text)
 import qualified Data.Text     as T
 
-import Lips.Nix.Target (Target (..))
+import Lips.World (Rung (..), World (..))
 
--- | The @flake.nix@ text for a compiled directory. @hasArtifacts@ toggles the
--- artifact package output; the target toggles the system rung (nixos gets
--- @apps.vm@ + @packages.vm@; home-manager gets neither, only the module).
 -- | What the site axis offers, when it offers anything. A sum rather than two
 -- booleans, so "judge the clauses of a program that has none" cannot be written.
 data SiteRung = SiteRung
@@ -91,165 +88,49 @@ hasSite = (/= Nothing) . siteRung
 hasSiteClaims :: Rungs -> Bool
 hasSiteClaims r = maybe False srClaims (siteRung r)
 
-flakeText :: Target -> Rungs -> Text
-flakeText target rungs = T.unlines $
+flakeText :: World -> Rungs -> Text
+flakeText w rungs = T.unlines $
   [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
   , "{"
   , "  description = \"lips-compiled program (nixpkgs resolved ambiently)\";"
   , "  inputs.nixpkgs.url = \"flake:nixpkgs\";"
   ]
-  ++ worldInputs target
+  ++ wInputs w
   ++
-  [ "  outputs = { self, nixpkgs" <> worldArgs target <> " }:"
+  [ "  outputs = { self, nixpkgs" <> wInputArgs w <> " }:"
   , "    let"
   , "      systems = [ \"x86_64-linux\" \"aarch64-linux\" ];"
   , "      forSystems = nixpkgs.lib.genAttrs systems;"
   , "      pkgsFor = system: import nixpkgs { inherit system; };"
   ]
-  ++ nixosBuildsLet target
-  ++ kubenixBuildsLet target
-  ++ terranixBuildsLet target
+  -- The world's own let-bindings, verbatim. Nothing in this skeleton reads
+  -- them: only the world's own packages\/apps\/devShells slots do, so what they
+  -- are called is the world file's business.
+  ++ wBuilds w
   ++ [ "    in {" ]
-  ++ moduleOutput target
-  ++ packagesOutput target rungs
-  ++ appsOutput target
-  ++ devShellsOutput target
+  -- Keyed by the world's own attribute name so @imports@\/deploy resolve it.
+  -- Never a clash source: modules live under their own top-level attribute.
+  ++ [ "      " <> wModuleAttr w <> ".default = import ./default.nix;" ]
+  ++ packagesOutput w rungs
+  ++ wrapOutput "apps" (wApps w)
+  ++ wrapOutput "devShells" (wDevShells w)
   ++ [ "    };"
      , "}"
      ]
 
--- | The module output, keyed by world so @imports@\/deploy resolve it. Never a
--- clash source: modules live under their own top-level attribute.
-moduleOutput :: Target -> [Text]
-moduleOutput Nixos       = [ "      nixosModules.default = import ./default.nix;" ]
-moduleOutput HomeManager = [ "      homeManagerModules.default = import ./default.nix;" ]
--- kubenix has no module-output convention of its own, so lips names one, and a
--- config that wants to compose this program imports it like any other module.
-moduleOutput Kubenix     = [ "      kubenixModules.default = import ./default.nix;" ]
-moduleOutput Terranix    = [ "      terranixModules.default = import ./default.nix;" ]
-
--- | The world's extra flake inputs. kubenix is a module system of its own, so
--- rendering needs it; it is resolved ambiently (unpinned), the same Heile-Welt
--- softness @flake:nixpkgs@ already carries.
-worldInputs :: Target -> [Text]
-worldInputs Kubenix  = [ "  inputs.kubenix.url = \"github:hall/kubenix\";" ]
-worldInputs Terranix = [ "  inputs.terranix.url = \"github:terranix/terranix\";" ]
-worldInputs _        = []
-
--- | The output-function arguments those inputs add.
-worldArgs :: Target -> Text
-worldArgs Kubenix  = ", kubenix"
-worldArgs Terranix = ", terranix"
-worldArgs _        = ""
-
--- | The per-system kubenix evaluation, defined once in the outer @let@ so both
--- the buildable manifest (@packages@) and the printing rung (@apps@) reference
--- the SAME rendered file. Both output spellings are kubenix's OWN options
--- (@resultYAML@, @result@), so lips converts nothing and owns no format code.
-kubenixBuildsLet :: Target -> [Text]
-kubenixBuildsLet Kubenix =
-  [ "      kubenixBuilds = system:"
-  , "        let"
-  , "          cfg = (kubenix.evalModules.${system} {"
-  , "            module = { kubenix, ... }: {"
-  , "              imports = [ kubenix.modules.k8s ./default.nix ];"
-  , "            };"
-  , "          }).config.kubernetes;"
-  , "        in { yaml = cfg.resultYAML; json = cfg.result; };"
-  ]
-kubenixBuildsLet _ = []
-
--- | The per-system terranix render, defined once in the outer @let@ so the
--- buildable configuration (@packages@) and the printing rung (@apps@) are the
--- SAME file. @pkgs@ is passed explicitly, so the render uses this flake's
--- nixpkgs rather than terranix's own input, and terranix owns the JSON format
--- (@lib.terranixConfiguration@ produces config.tf.json); lips converts nothing.
-terranixBuildsLet :: Target -> [Text]
-terranixBuildsLet Terranix =
-  [ "      terranixBuilds = system: {"
-  , "        config = terranix.lib.terranixConfiguration {"
-  , "          pkgs = pkgsFor system;"
-  , "          modules = [ ./default.nix ];"
-  , "        };"
-  , "      };"
-  ]
-terranixBuildsLet _ = []
-
--- | The per-system system-rung derivations (nixos only), defined once in the
--- outer @let@ so both @packages@ (build, don't activate) and @apps@ (build +
--- boot) reference the SAME vm\/toplevel. This is the @nix build \<x\>@ vs
--- @nix run \<x\>@ duality: a rung is one derivation reachable two ways, never
--- two definitions. home-manager has no machine, so it emits nothing here.
-nixosBuildsLet :: Target -> [Text]
-nixosBuildsLet HomeManager = []
-nixosBuildsLet Kubenix     = []
-nixosBuildsLet Terranix    = []
-nixosBuildsLet Nixos =
-  [ "      nixosBuilds = system:"
-  , "        let"
-  , "          evalNixos = extra: mods: import (nixpkgs + \"/nixos/lib/eval-config.nix\") {"
-  , "            inherit system;"
-  , "            modules = extra ++ mods;"
-  , "          };"
-  , "          evalConfig = extra: evalNixos extra [ ./default.nix ];"
-    -- Both shell evals carry the same stub, so the subtraction stays symmetric
-    -- and neither warns about an unset stateVersion.
-  , "          shellStub = { system.stateVersion = \"24.11\"; };"
-  , "          # A fixed hostname so the VM boot script has a fixed name to run."
-  , "          vm = (evalConfig ["
-  , "            (nixpkgs + \"/nixos/modules/virtualisation/qemu-vm.nix\")"
-  , "            { system.stateVersion = \"24.11\"; networking.hostName = \"lips\";"
-  , "              virtualisation.graphics = false; users.users.root.password = \"\"; }"
-  , "          ]).config.system.build.vm;"
-    -- The shell rung off the same evaluation: what the config puts on the
-    -- system PATH is exactly what a shell for this program should hold. Only
-    -- environment.systemPackages is forced, so no VM/bootloader option has to
-    -- be satisfied.
-    -- The shell rung off the same evaluation. A bare NixOS eval already carries
-    -- the whole base system (systemd, grub, coreutils, ...) in
-    -- environment.systemPackages, so subtract an empty config's list: what
-    -- remains is exactly what THIS program adds to the system PATH.
-  , "          basePackages = (evalNixos [ shellStub ] []).config.environment.systemPackages;"
-  , "          cfg = (evalConfig [ shellStub ]).config;"
-    -- artifact.nix is always written (empty when the program declares none),
-    -- so the shell reaches it with no conditional here.
-  , "          shellPackages = nixpkgs.lib.subtractLists basePackages"
-  , "            cfg.environment.systemPackages"
-      <> " ++ builtins.attrValues (import ./artifact.nix { pkgs = pkgsFor system; });"
-  , "          shell = (pkgsFor system).mkShell { packages = shellPackages; };"
-    -- The same subtraction, one option over: the units a BARE eval already
-    -- carries are NixOS's own, so what remains is what this program adds. Each
-    -- gets the tools shell plus that unit's environment, which is the env the
-    -- artifact rungs cannot have (they run with no init). Derived here, so no
-    -- unit name is ever known to lips. The name is `service-<unit>`, flat: a
-    -- nested set is not a flake leaf, so `nix flake show` would refuse to list
-    -- the units it holds (the flat fallback this spec already names for
-    -- artifacts). Prefixing is injective and never produces `default`, so a
-    -- minted unit name cannot collide with the tools shell.
-    -- `env` is mkDerivation's dedicated channel for environment variables, so a
-    -- unit variable named `packages` cannot shadow a derivation argument.
-  , "          baseServices = builtins.attrNames (evalNixos [ shellStub ] []).config.systemd.services;"
-  , "          serviceShells = nixpkgs.lib.listToAttrs (map (u: {"
-  , "            name = \"service-${u}\";"
-  , "            value = (pkgsFor system).mkShell {"
-  , "              packages = shellPackages;"
-  , "              env = cfg.systemd.services.${u}.environment;"
-  , "            };"
-  , "          }) (nixpkgs.lib.subtractLists baseServices (builtins.attrNames cfg.systemd.services)));"
-  , "        in { inherit vm shell serviceShells; };"
-  ]
-
 -- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
--- activate). Artifacts sit under the @artifact.\<name\>@ namespace (so a
--- domain artifact named @vm@ never clashes with the @vm@ rung); the system
--- rung exposes @vm@ (the boot-script derivation -- building it needs no KVM, so
--- @nix build \<x\>#vm@ is the cheap \"does the whole system build\" check).
-packagesOutput :: Target -> Rungs -> [Text]
-packagesOutput target rungs
+-- activate). The only output lips contributes entries to: artifacts (under the
+-- @artifact.\<name\>@ namespace, so a domain artifact named @vm@ never clashes
+-- with a world rung called @vm@), the program's own site, and the claims
+-- aggregate. The world's entries follow, so a world adds rungs without lips
+-- knowing what they are.
+packagesOutput :: World -> Rungs -> [Text]
+packagesOutput w rungs
   | null body = []
   | otherwise = [ "      packages = forSystems (system: {" ] ++ body ++ [ "      });" ]
   where
-    body = artLine ++ siteLine ++ siteClaimLine ++ claimLine ++ sysLines
+    body = artLine ++ siteLine ++ siteClaimLine ++ claimLine ++ worldLines
+    worldLines = maybe [] textLines (wPackages w)
     -- The program's own behaviour, built by the runtime its contracts chose. The
     -- builder is the runtime's file, copied verbatim; this flake knows only its
     -- interface.
@@ -286,140 +167,68 @@ packagesOutput target rungs
       | hasClaims rungs = [ "        claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
                     , "          (builtins.attrValues (import ./claims.nix { pkgs = pkgsFor system; }));" ]
       | otherwise = []
-    sysLines = case target of
-      -- vm is buildable (no KVM) as the cheap "does the whole system build"
-      -- check; booting it (the app) needs KVM.
-      Nixos       -> [ "        vm = (nixosBuilds system).vm;" ]
-      HomeManager -> []
-      -- Building the manifest IS the check that the program renders: kubenix
-      -- refuses an unknown field, and a wrong-typed one, at evaluation.
-      Kubenix     -> [ "        manifest = (kubenixBuilds system).yaml;"
-                     , "        manifest-json = (kubenixBuilds system).json;" ]
-      -- Building the configuration IS the check that the program renders: the
-      -- module must evaluate and its values must be JSON-representable. Unlike
-      -- kubenix, terranix does NOT reject an unknown field (its namespaces are
-      -- free-form), so this rung checks rendering only, never field validity.
-      Terranix    -> [ "        config = (terranixBuilds system).config;" ]
 
--- | @apps@ (@nix run \<x\>@ builds + activates), nixos only. Each references
--- the shared 'nixosBuildsLet' derivations, so run and build agree.
-appsOutput :: Target -> [Text]
-appsOutput HomeManager = []
-appsOutput Nixos =
-  [ "      apps = forSystems (system:"
-  , "        let b = nixosBuilds system; in {"
-  , "          vm = { type = \"app\"; program = \"${b.vm}/bin/run-lips-vm\"; };"
-  , "        });"
-  ]
--- The manifest rungs PRINT: a rendered file is not executable, so the app is a
--- script that cats it, which is what makes @nix run … > manifests.yaml@ (and a
--- pipe into kubectl) the way to write manifests out.
-appsOutput Terranix =
-  [ "      apps = forSystems (system:"
-  , "        let b = terranixBuilds system; p = pkgsFor system; in {"
-  , "          config = { type = \"app\"; program = \"${p.writeShellScript \"print-config\" \"cat ${b.config}\"}\"; };"
-  , "        });"
-  ]
-appsOutput Kubenix =
-  [ "      apps = forSystems (system:"
-  , "        let b = kubenixBuilds system; p = pkgsFor system; in {"
-  , "          manifest = { type = \"app\"; program = \"${p.writeShellScript \"print-manifest\" \"cat ${b.yaml}\"}\"; };"
-  , "          manifest-json = { type = \"app\"; program = \"${p.writeShellScript \"print-manifest-json\" \"cat ${b.json}\"}\"; };"
-  , "        });"
-  ]
+-- | Wrap one world slot as a per-system output: the slot is the body of
+-- @forSystems (system: \<body\>)@, so a world writes an attrset, a @let@, or a
+-- @\/\/@ merge (nixos\'s per-unit shells are exactly that) without lips knowing
+-- which. The closing paren joins the last line, so the generated Nix reads as a
+-- human would write it.
+wrapOutput :: Text -> Maybe Text -> [Text]
+wrapOutput _ Nothing = []
+wrapOutput name (Just body) = case textLines body of
+  []  -> []
+  ls  -> [ "      " <> name <> " = forSystems (system:" ]
+           ++ init ls ++ [ last ls <> ");" ]
 
--- | @devShells@ (@nix develop \<x\>@ enters), nixos only. @default@ so the
--- command needs no attribute: @nix develop path:\<dir\>@.
-devShellsOutput :: Target -> [Text]
-devShellsOutput HomeManager = []
--- The shell a human needs here holds the client that consumes the rendered
--- configuration. opentofu, not terraform: the same rendered JSON, under a
--- licence nixpkgs ships unencumbered.
-devShellsOutput Terranix =
-  [ "      devShells = forSystems (system:"
-  , "        let p = pkgsFor system; in {"
-  , "          default = p.mkShell { packages = [ p.opentofu ]; };"
-  , "        });"
-  ]
--- The shell a human needs here holds the client that consumes the manifests.
-devShellsOutput Kubenix =
-  [ "      devShells = forSystems (system:"
-  , "        let p = pkgsFor system; in {"
-  , "          default = p.mkShell { packages = [ p.kubectl ]; };"
-  , "        });"
-  ]
-devShellsOutput Nixos =
-  [ "      devShells = forSystems (system:"
-  , "        let b = nixosBuilds system; in {"
-  , "          default = b.shell;"
-  , "        } // b.serviceShells);"
-  ]
+-- | A slot's lines, without the trailing blank @unlines@ leaves behind. Only
+-- trailing ones: a blank line inside a slot is the world's own formatting.
+textLines :: Text -> [Text]
+textLines = reverse . dropWhile (T.null . T.strip) . reverse . T.lines
 
 -- | The exact commands to print after a successful compile, so the human sees
 -- only rungs the program's shape supports (deduce-or-fail: no impossible
 -- command is ever shown). @dir@ is the output directory; commands use
 -- @path:\<dir\>@ because the compiled dir is derived and gitignored, and
 -- @path:@ copies it verbatim, bypassing flake's git rules.
-runCommands :: Target -> [Text] -> Rungs -> FilePath -> [Text]
-runCommands target artNames rungs dir =
-  concatMap artifactLines artNames ++ siteLines ++ systemLines target ++ claimLines
+runCommands :: World -> [Text] -> Rungs -> FilePath -> [Text]
+runCommands w artNames rungs dir =
+  concatMap artifactLines artNames ++ siteLines ++ map worldRung (wRungs w) ++ claimLines
   where
     -- Printed first when the program states behaviour: it is the program itself,
     -- and everything else on the list is scaffolding around it.
     siteLines
       | hasSite rungs =
-          [ cmd "run it" "run" (ref "site") "   (the program's own behaviour)"
+          [ cmd "run it" "run" (ref "site") "(the program's own behaviour)"
           , cmd "build it" "build" (ref "site") "" ]
             <> [ cmd "judge it" "build" (ref "site-claims")
-                     "   (runs every claim over its clauses)"
+                     "(runs every claim over its clauses)"
                | hasSiteClaims rungs ]
       | otherwise = []
     -- Printed last, and only when the program states observables: it is the rung
     -- that answers "does it do what I said", which is worth reaching for after
     -- the ones that merely build.
     claimLines
-      | hasClaims rungs = [ cmd "check what it does" "build" (ref "claims") "   (runs every claim the program states)" ]
+      | hasClaims rungs = [ cmd "check what it does" "build" (ref "claims") "(runs every claim the program states)" ]
       | otherwise = []
+    -- The world's own rungs, as the world file spells them. An empty attribute
+    -- means the bare directory (a devShells.default needs no attribute); a
+    -- literal line is a world with nothing to run, which says what to do
+    -- instead. @<dir>@ is the world's hole for the output directory.
+    worldRung (RungLine t) = "  " <> fill t
+    worldRung (RungCmd label verb attr note)
+      | T.null attr = cmd label verb ("path:" <> T.pack dir) (fill note)
+      | otherwise   = cmd label verb (ref (fill attr)) (fill note)
+    fill = T.replace "<dir>" (T.pack dir)
     ref suffix = "path:" <> T.pack dir <> "#" <> suffix
     -- One column for the label, one for the verb, so the flake refs line up
-    -- however long a verb or an artifact name is.
+    -- however long a verb or an artifact name is. A note is set off by a fixed
+    -- gap, so a world file writes the note itself and never its spacing.
     cmd label verb target' note =
       "  " <> T.justifyLeft 23 ' ' (label <> ":") <> " "
-        <> T.justifyLeft 12 ' ' ("nix " <> verb) <> target' <> note
+        <> T.justifyLeft 12 ' ' ("nix " <> verb) <> target'
+        <> (if T.null note then "" else "   " <> note)
     artifactLines n =
       [ cmd ("run the " <> n <> " binary") "run"   (ref ("artifact." <> n)) ""
       , cmd "build it"                     "build" (ref ("artifact." <> n)) ""
       , cmd "a shell with it"              "shell" (ref ("artifact." <> n)) ""
-      ]
-    systemLines Nixos =
-      [ cmd "run in a VM"      "run"     (ref "vm") "   (full system, all services; needs KVM)"
-      , cmd "build the system" "build"   (ref "vm") "   (checks it builds; no KVM)"
-      -- The shell rung needs no attribute: it is devShells.default.
-      , cmd "a shell of its tools" "develop" ("path:" <> T.pack dir) "   (what the config puts on PATH)"
-      -- The unit name is minted, so lips cannot name it here; the placeholder
-      -- plus the stock command that lists the units keeps the hint honest.
-      , cmd "...with a unit's env" "develop" (ref "service-<unit>")
-          "   (nix flake show " <> "path:" <> T.pack dir <> " lists them)"
-      ]
-    -- home-manager has no machine to boot: a module is imported into a home
-    -- config, not run standalone. Name that instead of a build that can't work.
-    systemLines HomeManager =
-      [ "  import into your home config: imports = [ " <> T.pack dir <> " ];"
-      ]
-    -- Rendering is what this world DOES, so the first rung writes the
-    -- manifests; the build rung is the same derivation, reached the other way,
-    -- and it is the cheap "does it render and validate" check.
-    systemLines Kubenix =
-      [ cmd "write the manifests" "run"     (ref "manifest")      "   > manifests.yaml"
-      , cmd "check it renders"    "build"   (ref "manifest")      ""
-      , cmd "the JSON form"       "run"     (ref "manifest-json") "   > manifests.json"
-      , cmd "a shell with kubectl" "develop" ("path:" <> T.pack dir) ""
-      ]
-    -- Same shape as kubenix: rendering is what this world does, so the first
-    -- rung writes the file terraform/opentofu consumes, and the build rung is
-    -- that same derivation reached the other way.
-    systemLines Terranix =
-      [ cmd "write the config" "run"     (ref "config") "   > config.tf.json"
-      , cmd "check it renders" "build"   (ref "config") ""
-      , cmd "a shell with opentofu" "develop" ("path:" <> T.pack dir) ""
       ]

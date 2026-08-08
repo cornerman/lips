@@ -120,8 +120,13 @@ parseWorld raw = do
     slotsOf [] = Right []
     slotsOf (l : ls)
       | isMarker l = let (body, rest) = break isMarker ls
-                     in ((markerName l, body) :) <$> slotsOf rest
+                     in ((markerName l, trimTrailing body) :) <$> slotsOf rest
       | otherwise = err ("stray line outside every slot: " <> l)
+
+    -- The blank line before the next marker is the file's own spacing, never
+    -- the slot's content: a world file reads as prose, and its Nix must not
+    -- inherit that formatting.
+    trimTrailing = reverse . dropWhile blank . reverse
 
     required hdrs k = maybe (err ("missing required header " <> k)) Right (lookup k hdrs)
     requiredSlot slots s =

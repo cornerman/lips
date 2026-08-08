@@ -49,7 +49,7 @@ import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
 import Lips.Nix.Target
 import Lips.World
-import Lips.World.Builtin (builtinWorld, builtinWorlds)
+import Lips.World.Builtin (builtinWorld, builtinWorlds, worldForTarget)
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
@@ -3657,43 +3657,63 @@ main = hspec $ do
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do
-      let txt = flakeText Nixos noRungs { hasArtifacts = True, hasClaims = True }
+      let txt = flakeText (worldForTarget Nixos) noRungs { hasArtifacts = True, hasClaims = True }
       txt `shouldSatisfy` T.isInfixOf "claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
       txt `shouldSatisfy` T.isInfixOf "import ./claims.nix { pkgs = pkgsFor system; }"
 
     it "leaves a claim-free flake free of claim vocabulary" $
-      flakeText Nixos noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
+      flakeText (worldForTarget Nixos) noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
 
     -- artifact.nix is always written, so the shell reaches it without asking
     -- whether the program declared artifacts: one less conditional in the text.
     it "the nixos shell references artifact.nix unconditionally" $
-      flakeText Nixos noRungs `shouldSatisfy`
+      flakeText (worldForTarget Nixos) noRungs `shouldSatisfy`
         T.isInfixOf "builtins.attrValues (import ./artifact.nix"
+
+    -- The harness is a world-neutral skeleton plus the world's own slots, so
+    -- the four built-ins must reproduce what the four Haskell arms produced.
+    it "the assembled nixos flake still carries vm, shell and serviceShells" $ do
+      let t = flakeText (worldForTarget Nixos) noRungs
+      mapM_ (\s -> t `shouldSatisfy` T.isInfixOf s)
+        [ "builds = ", "vm = (builds system).vm", "nixosModules.default"
+        , "default = b.shell;" ]
+
+    -- The physics of a world that contributes nothing: lips' own outputs and
+    -- the module, and not one line of anyone else's Nix. This is what the
+    -- coming artifact.world (the empty world) rests on.
+    it "a world with empty slots yields only lips' own outputs" $ do
+      let w = either (error . T.unpack) id (parseWorld
+            ("format: 1\nworld: w\nmodule-attr: wModules\n"
+              <> "--- preamble ---\nP\n--- schema ---\nE\n"))
+      flakeText w noRungs { hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
+      flakeText w noRungs `shouldNotSatisfy` T.isInfixOf "builds ="
+      flakeText w noRungs `shouldNotSatisfy` T.isInfixOf "packages"
+      flakeText w noRungs `shouldSatisfy` T.isInfixOf "wModules.default = import ./default.nix;"
 
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $
-      flakeText Kubenix noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
+      flakeText (worldForTarget Kubenix) noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
 
     it "prints the build command only when the program states claims" $ do
-      runCommands Nixos [] noRungs { hasClaims = True } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
-      runCommands Nixos [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#claims")
+      runCommands (worldForTarget Nixos) [] noRungs { hasClaims = True } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
+      runCommands (worldForTarget Nixos) [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#claims")
 
     -- The site rung is the program's own behaviour, so it appears exactly when
     -- the program states some and never otherwise.
     it "offers the site rung, and its run command, only for a program with behaviour" $ do
-      flakeText Nixos noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
-      flakeText Nixos noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
-      runCommands Nixos [] noRungs { siteRung = Just (SiteRung "\"tool\"" False) } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
-      runCommands Nixos [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
+      flakeText (worldForTarget Nixos) noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
+      flakeText (worldForTarget Nixos) noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
+      runCommands (worldForTarget Nixos) [] noRungs { siteRung = Just (SiteRung "\"tool\"" False) } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
+      runCommands (worldForTarget Nixos) [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
 
     -- Judging the clauses is offered only when there is something to judge: a
     -- site with no observables states none, and a rung that runs nothing must
     -- never be printed as if it verified something.
     it "offers the judging rung only when the program states claims over its clauses" $ do
       let withClaims = noRungs { siteRung = Just (SiteRung "\"tool\"" True) }
-      flakeText Nixos withClaims `shouldSatisfy` T.isInfixOf "site-claims"
-      flakeText Nixos noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
-      runCommands Nixos [] withClaims "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site-claims")
+      flakeText (worldForTarget Nixos) withClaims `shouldSatisfy` T.isInfixOf "site-claims"
+      flakeText (worldForTarget Nixos) noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
+      runCommands (worldForTarget Nixos) [] withClaims "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site-claims")
 
   describe "claims.nix (the experiments, as nix)" $ do
     let vstr t = case parseValue t of
@@ -5210,36 +5230,36 @@ main = hspec $ do
     -- config, carrying that unit's environment. Derived inside nix from the
     -- same evaluation, so lips knows no unit name.
     it "nixos exposes a shell per unit the program adds, holding its env" $ do
-      let t = flakeText Nixos noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (worldForTarget Nixos) noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "baseServices", "systemd.services", "genAttrs", "subtractLists"
         , "// b.serviceShells", "service-${u}", "env = cfg.systemd.services" ]
     it "nixos prints the per-unit shell, naming the unit as a placeholder" $ do
-      let ls = T.unlines (runCommands Nixos [] noRungs { hasClaims = False } "/tmp/out")
+      let ls = T.unlines (runCommands (worldForTarget Nixos) [] noRungs { hasClaims = False } "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix develop path:/tmp/out#service-<unit>", "nix flake show" ]
     it "kubenix exposes the module and kubenix's own rendered outputs" $ do
-      let t = flakeText Kubenix noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (worldForTarget Kubenix) noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "kubenixModules.default", "kubenix.evalModules", "kubenix.modules.k8s"
         , "config.kubernetes", "cfg.resultYAML", "cfg.result", "kubectl" ]
       mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
         [ "nixosModules", "run-lips-vm", "eval-config.nix" ]
     it "kubenix prints how to write, check and shell the manifests" $ do
-      let ls = T.unlines (runCommands Kubenix [] noRungs { hasClaims = False } "/tmp/out")
+      let ls = T.unlines (runCommands (worldForTarget Kubenix) [] noRungs { hasClaims = False } "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix run", "path:/tmp/out#manifest", "manifests.yaml"
         , "nix build", "#manifest-json", "nix develop" ]
       ls `shouldNotSatisfy` T.isInfixOf "#vm"
     it "terranix exposes the module and terranix's own config.tf.json" $ do
-      let t = flakeText Terranix noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (worldForTarget Terranix) noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "terranixModules.default", "terranix.lib.terranixConfiguration"
         , "config = ", "opentofu" ]
       mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
         [ "nixosModules", "run-lips-vm", "eval-config.nix", "kubenix" ]
     it "terranix prints how to write, check and shell the configuration" $ do
-      let ls = T.unlines (runCommands Terranix [] noRungs { hasClaims = False } "/tmp/out")
+      let ls = T.unlines (runCommands (worldForTarget Terranix) [] noRungs { hasClaims = False } "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix run", "path:/tmp/out#config", "config.tf.json"
         , "nix build", "nix develop" ]
