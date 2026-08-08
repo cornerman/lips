@@ -1,7 +1,8 @@
-# Expose lips programs in a directory as flake module outputs, labeled by the
-# world each engine was minted for. The label is read from the committed
-# <language>/<language>.generation record (the `target:` line), so a program lands under
-# nixosModules or homeManagerModules automatically. The realized module is
+# Expose lips programs in a directory as flake module outputs, grouped by the
+# world each engine was minted into. The world is read from the committed
+# <language>/<language>.generation record, and the OUTPUT NAME from that world
+# file's own `module-attr:` header -- so a house world lands under its own
+# attribute with no edit here, exactly as nixos lands under nixosModules. The realized module is
 # DERIVED by running `lips compile` in a derivation (offline, deterministic);
 # the program and its .lang are the only committed inputs. Each output value is
 # the compiled DIRECTORY (default.nix + a staged artifacts/ tree); `imports`
@@ -33,19 +34,37 @@ let
   # (Lips.Identity.langDir): <dir>/<language>/.
   langDir = language: dir + "/${language}";
 
-  # The world the engine was minted for, from its committed .generation record.
-  # The slug is read, not tested against a list of known worlds, so a target
-  # added to Lips.Nix.Target needs no edit here beyond its output name below.
-  # The FIRST "target: " line is the record's own field; the mint prompt quoted
-  # further down the same file must not be able to answer this question.
-  # No record, or no target line (an engine minted before targets): nixos.
-  targetOf = language:
+  # The FIRST line with a given prefix. The record embeds the mint prompt and a
+  # tool transcript further down, which must never answer a header question.
+  firstLine = prefix: text:
+    let hit = lib.findFirst (l: lib.hasPrefix prefix l) null (lib.splitString "\n" text);
+    in if hit == null then null else lib.removePrefix prefix hit;
+
+  # The world the engine was minted into, from its committed record. Same
+  # precedence as Lips.Generate.Record.recordedWorld: the `world:` pin (name
+  # first, hash second), else a pre-worlds `target:` slug, else nixos -- which
+  # is what a record older than both meant.
+  worldOf = language:
     let genFile = langDir language + "/${language}.generation";
-        hit = if builtins.pathExists genFile
-              then lib.findFirst (l: lib.hasPrefix "target: " l) null
-                     (lib.splitString "\n" (builtins.readFile genFile))
-              else null;
-    in if hit == null then "nixos" else lib.removePrefix "target: " hit;
+        text = if builtins.pathExists genFile then builtins.readFile genFile else "";
+        pinned = firstLine "world: " text;
+        legacy = firstLine "target: " text;
+    in if pinned != null then builtins.head (lib.splitString " " pinned)
+       else if legacy != null then legacy
+       else "nixos";
+
+  # Which flake output a world's modules belong under: the world file's own
+  # word for it. Read from the copy beside the engine, never from a list here,
+  # so a world nobody foresaw needs no edit in this file.
+  moduleAttrOf = language:
+    let wFile = langDir language + "/${worldOf language}.world";
+        attr = if builtins.pathExists wFile
+               then firstLine "module-attr: " (builtins.readFile wFile)
+               else null;
+    in if attr != null then attr
+       else throw ("lips.modulesFromDir: " + toString wFile + " is missing or states no"
+                    + " module-attr:, so nothing says which output "
+                    + language + " belongs under.");
 
   # Reproduce the on-disk shape in the build cwd -- program at top level, engine
   # and artifacts in the language folder -- so `lips compile` finds them by the
@@ -57,11 +76,12 @@ let
       mkdir -p ${p.language}
       cp ${dir + "/${name}"} ${name}
       cp ${langDir p.language + "/${p.language}.lang"} ${p.language}/${p.language}.lang
-      # The .generation record travels too: it names the world the engine was
-      # minted for, and compile reads it to decide which flake the compiled
-      # directory gets. Without it every world would silently compile as the
-      # default one and the emitted flake would offer rungs that cannot work.
+      # The .generation record and the world file travel too: the record names
+      # the world, the world file IS the physics compile assembles the flake
+      # from. Without them compile refuses, which is the point -- a compiled
+      # directory can only come from the world its engine was minted into.
       cp ${langDir p.language + "/${p.language}.generation"} ${p.language}/${p.language}.generation
+      cp ${langDir p.language + "/${worldOf p.language}.world"} ${p.language}/${worldOf p.language}.world
       ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}/artifacts"}
       # --no-contract: the behavioral gate evaluates the realized module with
       # nix, which a compile INSIDE a nix build cannot do (no recursive nix). The
@@ -73,7 +93,7 @@ let
   built = lib.mapAttrs' (name: _:
     let p = parse name;
     in lib.nameValuePair p.instance {
-         target = targetOf p.language;
+         moduleAttr = moduleAttrOf p.language;
          module = realize name p;   # the compiled DIRECTORY (artifact.nix lives beside default.nix in it)
        }) entries;
 
@@ -97,14 +117,11 @@ let
   # every internal consumer of `nixosModules`/`homeManagerModules` (the eval
   # and build checks below, which read `${p}/default.nix` and `${p}/artifact.nix`)
   # is unaffected: they see the identical text either way.
-  byTarget = t: lib.mapAttrs (_: v: "${v.module}")
-                  (lib.filterAttrs (_: v: v.target == t) built);
-in {
-  nixosModules = byTarget "nixos";
-  homeManagerModules = byTarget "home-manager";
-  # kubenix has no module-output convention of its own, so lips names one, the
-  # same name the compiled flake uses (Lips.Nix.Flake.moduleOutput).
-  kubenixModules = byTarget "kubenix";
-  # Same for terranix: lips names the output, matching the compiled flake.
-  terranixModules = byTarget "terranix";
-}
+  byAttr = a: lib.mapAttrs (_: v: "${v.module}")
+                 (lib.filterAttrs (_: v: v.moduleAttr == a) built);
+  # Exactly the outputs the programs in this directory call for: an attribute
+  # exists when some engine was minted into a world that names it. A consumer
+  # reading an absent one gets nix's own "attribute missing", which says the
+  # truth (there is no such program here) rather than an empty set that reads
+  # as "none of yours built".
+in lib.genAttrs (lib.unique (map (v: v.moduleAttr) (lib.attrValues built))) byAttr
