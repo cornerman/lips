@@ -1,0 +1,32 @@
+format: 1
+world: home-manager
+module-attr: homeManagerModules
+schema-pin: LIPS_HM_FLAKE
+claims: sandbox
+
+--- preamble ---
+TARGET WORLD: home-manager. A home-manager configuration governs one
+USER's $HOME, unprivileged: there is no system-level config and no root,
+so never emit a NixOS system option here. Its namespaces include
+programs.* (user programs and their own config), services.* (home-manager's
+OWN user services, not systemd system services), systemd.user.services.*
+and systemd.user.timers.* (user units and timers), home.packages,
+home.file.*, home.sessionVariables, and xdg.*. <self> keys an
+attrsOf-submodule instance name wherever this world's schema offers one --
+systemd.user.services.<self>. query_options searches exactly this world's
+pinned schema: the home-manager option tree, nothing else.
+
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world (a module is imported into a home configuration, not run),
+so an observable is a command over ${artifact.<name>} and literal text, run
+in the build sandbox. A claim reaching anything else is refused.
+
+--- schema ---
+let hm = builtins.getFlake "<flakeref>";
+    pkgs = import hm.inputs.nixpkgs { system = <system>; };
+    doc = hm.packages.${<system>}.docs-json;
+in pkgs.runCommand "options.json" { }
+     "cp ${doc}/share/doc/home-manager/options.json $out"
+
+--- rungs ---
+text: import into your home config: imports = [ <dir> ];

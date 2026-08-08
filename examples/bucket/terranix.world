@@ -1,0 +1,99 @@
+format: 1
+world: terranix
+module-attr: terranixModules
+schema-pin: LIPS_TERRANIX_FLAKE
+input-args: , terranix
+claims: sandbox
+
+--- preamble ---
+TARGET WORLD: terranix. A terranix configuration renders a TERRAFORM
+CONFIGURATION (config.tf.json): nothing is installed and no machine is
+configured, so never emit a NixOS or home-manager option here (no services.*,
+no systemd.*, no environment.*). Its namespaces are the Terraform blocks
+themselves:
+
+- resource.<type>.<self>.* -- the thing to create, keyed by its provider's
+  resource type and then its own name (resource.aws_instance.<self>.ami,
+  resource.hcloud_server.<self>.server_type). <self> keys the resource name,
+  so one program's resources all carry its instance name and a sibling
+  instance composes without collision.
+- data.<type>.<self>.* -- a value looked up from the provider instead of
+  created.
+- provider.<name>.* -- the provider's own settings (region, endpoint).
+- output.<name>.value -- a value to report after apply.
+- variable.<name>.* -- an input the human supplies at apply time.
+
+Reference another resource the way Terraform does, with a string carrying its
+address -- and ESCAPE it, because ${...} is Nix's own interpolation and a
+Terraform reference is plain text to Nix:
+
+    resource.aws_s3_bucket_versioning.<self>.bucket "\${aws_s3_bucket.<self>.id}"
+
+The backslash is required: written bare, the value is rejected. Terraform
+resolves such a reference at apply time; nothing here resolves it at Nix time.
+
+query_options searches exactly this world's pinned schema, and here it is
+WEAK on purpose: terranix declares resource, data, provider, output and
+variable as free-form options, so the lookup confirms only that the top-level
+namespace exists. It cannot confirm that a resource type, or a field of one,
+is real. Treat every path below the namespace as unverified: emit only fields
+you know from the provider's documentation, and refuse rather than guess a
+field name. The typed part of this world is its backend and remote_state
+options (backend.s3.bucket, backend.local.path), where the lookup does hold.
+
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world, so an observable is a command over ${artifact.<name>}
+and literal text, run in the build sandbox. A claim reaching anything else is
+refused.
+
+--- schema ---
+# terranix publishes lib.terranixOptions, but that helper documents the USER's
+# modules: its jq pass deletes resource, data, provider, output and every other
+# core namespace, which are exactly the paths a program writes. So this
+# evaluates terranix's own core modules and runs nixosOptionsDoc over them, the
+# same mechanism the other worlds use. The lib.extend mirrors terranix's
+# core/default.nix, whose modules use those lib helpers.
+let t = builtins.getFlake "<flakeref>";
+    system = <system>;
+    pkgs = import t.inputs.nixpkgs { inherit system; };
+    lib = pkgs.lib.extend (import (t + "/core/helpers.nix") pkgs);
+    e = lib.evalModules { modules = [
+      { imports = [ (t + "/core/terraform-options.nix") (t + "/modules") ]; }
+      { _module.args = { inherit pkgs; }; } ]; };
+    doc = (pkgs.nixosOptionsDoc { options = e.options; warningsAreErrors = false; }).optionsJSON;
+in pkgs.runCommand "options.json" { }
+     "cp ${doc}/share/doc/nixos/options.json $out"
+
+--- inputs ---
+  inputs.terranix.url = "github:terranix/terranix";
+
+--- builds ---
+      # The per-system terranix render, defined once so the buildable
+      # configuration (packages) and the printing rung (apps) are the SAME file.
+      # pkgs is passed explicitly, so the render uses this flake's nixpkgs rather
+      # than terranix's own input, and terranix owns the JSON format
+      # (lib.terranixConfiguration produces config.tf.json); lips converts nothing.
+      builds = system: {
+        config = terranix.lib.terranixConfiguration {
+          pkgs = pkgsFor system;
+          modules = [ ./default.nix ];
+        };
+      };
+
+--- packages ---
+        config = (builds system).config;
+
+--- apps ---
+        let b = builds system; p = pkgsFor system; in {
+          config = { type = "app"; program = "${p.writeShellScript "print-config" "cat ${b.config}"}"; };
+        }
+
+--- devShells ---
+        let p = pkgsFor system; in {
+          default = p.mkShell { packages = [ p.opentofu ]; };
+        }
+
+--- rungs ---
+write the config | run | config | > config.tf.json
+check it renders | build | config |
+a shell with opentofu | develop | |

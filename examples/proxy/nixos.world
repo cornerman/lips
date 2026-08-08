@@ -1,0 +1,93 @@
+format: 1
+world: nixos
+module-attr: nixosModules
+schema-pin: LIPS_NIXPKGS_FLAKE
+claims: machine sandbox
+
+--- preamble ---
+TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
+evaluated as root, so every option you emit affects the system as a whole,
+never one user's session alone. Its namespaces include services.* (system
+services), systemd.services.* and systemd.timers.* (units and timers),
+environment.* (system-wide packages and files), networking.*, and users.*.
+<self> keys an attrsOf-submodule instance name wherever this world's schema
+offers one -- systemd.services.<self>, or a service family's own instance
+table (an option shaped like services.<name>.<instances>.<self>).
+query_options searches exactly this world's pinned schema: the NixOS
+option tree, nothing narrower and nothing wider.
+
+A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
+command that reaches beyond the program's own artifacts (a systemctl call, a
+curl against a running service) is run inside the booted module. It costs a
+boot, so prefer an observable over the program's own binary where the
+behaviour lives in a binary.
+
+--- schema ---
+let np = builtins.getFlake "<flakeref>";
+    pkgs = import np { system = <system>; };
+    doc = (import (np.outPath + "/nixos")
+      { configuration = {}; system = <system>; })
+      .config.system.build.manual.optionsJSON;
+in pkgs.runCommand "options.json" { }
+     "cp ${doc}/share/doc/nixos/options.json $out"
+
+--- builds ---
+      builds = system:
+        let
+          evalNixos = extra: mods: import (nixpkgs + "/nixos/lib/eval-config.nix") {
+            inherit system;
+            modules = extra ++ mods;
+          };
+          evalConfig = extra: evalNixos extra [ ./default.nix ];
+          shellStub = { system.stateVersion = "24.11"; };
+          # A fixed hostname so the VM boot script has a fixed name to run.
+          vm = (evalConfig [
+            (nixpkgs + "/nixos/modules/virtualisation/qemu-vm.nix")
+            { system.stateVersion = "24.11"; networking.hostName = "lips";
+              virtualisation.graphics = false; users.users.root.password = ""; }
+          ]).config.system.build.vm;
+          # A bare NixOS eval already carries the whole base system (systemd,
+          # grub, coreutils, ...) in environment.systemPackages, so subtract an
+          # empty config's list: what remains is exactly what THIS program adds
+          # to the system PATH. artifact.nix is always written, so the shell
+          # reaches it with no conditional.
+          basePackages = (evalNixos [ shellStub ] []).config.environment.systemPackages;
+          cfg = (evalConfig [ shellStub ]).config;
+          shellPackages = nixpkgs.lib.subtractLists basePackages
+            cfg.environment.systemPackages ++ builtins.attrValues (import ./artifact.nix { pkgs = pkgsFor system; });
+          shell = (pkgsFor system).mkShell { packages = shellPackages; };
+          # The same subtraction, one option over: the units a BARE eval carries
+          # are NixOS's own, so what remains is what this program adds. Each gets
+          # the tools shell plus that unit's environment. The name is
+          # `service-<unit>`, flat: a nested set is not a flake leaf, so
+          # `nix flake show` would refuse to list the units it holds. `env` is
+          # mkDerivation's dedicated channel for environment variables, so a unit
+          # variable named `packages` cannot shadow a derivation argument.
+          baseServices = builtins.attrNames (evalNixos [ shellStub ] []).config.systemd.services;
+          serviceShells = nixpkgs.lib.listToAttrs (map (u: {
+            name = "service-${u}";
+            value = (pkgsFor system).mkShell {
+              packages = shellPackages;
+              env = cfg.systemd.services.${u}.environment;
+            };
+          }) (nixpkgs.lib.subtractLists baseServices (builtins.attrNames cfg.systemd.services)));
+        in { inherit vm shell serviceShells; };
+
+--- packages ---
+        vm = (builds system).vm;
+
+--- apps ---
+        let b = builds system; in {
+          vm = { type = "app"; program = "${b.vm}/bin/run-lips-vm"; };
+        }
+
+--- devShells ---
+        let b = builds system; in {
+          default = b.shell;
+        } // b.serviceShells
+
+--- rungs ---
+run in a VM | run | vm | (full system, all services; needs KVM)
+build the system | build | vm | (checks it builds; no KVM)
+a shell of its tools | develop | | (what the config puts on PATH)
+...with a unit's env | develop | service-<unit> | (nix flake show path:<dir> lists them)
