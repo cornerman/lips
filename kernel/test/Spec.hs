@@ -48,6 +48,7 @@ import Lips.Nix.Schema (schemaFor)
 import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
 import Lips.Nix.Target
+import Lips.World
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
@@ -286,6 +287,50 @@ main = hspec $ do
             [minBound .. maxBound]
     it "defaults to nixos" $
       defaultTarget `shouldBe` Nixos
+
+  -- A world is data, so lips reads one rather than enumerating four. The parser
+  -- is strict on purpose: an unknown header or slot is a typo or a file from a
+  -- lips that knows more, and either must be named rather than ignored.
+  describe "world files (Lips.World)" $ do
+    let hdr = "format: 1\nworld: w\nmodule-attr: wModules\nclaims: sandbox\n"
+        minimal = hdr <> "--- preamble ---\nP\n--- schema ---\nE\n"
+        right f t = case parseWorld t of
+          Right w -> f w
+          Left e  -> error (T.unpack e)
+    it "parses a minimal world" $ do
+      right (\w -> (wName w, wModuleAttr w, wClaims w)) minimal
+        `shouldBe` ("w", "wModules", ["sandbox"])
+      right (\w -> (T.strip (wPreamble w), T.strip (wSchema w))) minimal
+        `shouldBe` ("P", "E")
+    it "refuses an unknown header key, naming it" $
+      parseWorld ("frmat: 1\n" <> minimal) `shouldSatisfy`
+        either (T.isInfixOf "frmat") (const False)
+    it "refuses an unknown slot, naming it" $
+      parseWorld (minimal <> "--- rung ---\nx\n") `shouldSatisfy`
+        either (T.isInfixOf "rung") (const False)
+    it "refuses a newer format, naming both versions" $
+      parseWorld (T.replace "format: 1" "format: 2" minimal) `shouldSatisfy`
+        either (\e -> T.isInfixOf "2" e && T.isInfixOf "1" e) (const False)
+    it "refuses a missing required header" $
+      parseWorld "format: 1\nworld: w\n--- preamble ---\nP\n--- schema ---\nE\n"
+        `shouldSatisfy` either (T.isInfixOf "module-attr") (const False)
+    it "refuses a missing required slot" $
+      parseWorld (hdr <> "--- preamble ---\nP\n")
+        `shouldSatisfy` either (T.isInfixOf "schema") (const False)
+    it "parses both rung forms" $
+      right wRungs (minimal
+        <> "--- rungs ---\nrun it | run | vm | (needs KVM)\ntext: import it: <dir>\n")
+        `shouldBe` [ RungCmd "run it" "run" "vm" "(needs KVM)"
+                   , RungLine "import it: <dir>" ]
+    it "reads the optional headers, and defaults the rest" $ do
+      let w = hdr <> "schema-pin: LIPS_X_FLAKE\nschema-flake: flake:x\ninput-args: , x\n"
+                  <> "--- preamble ---\nP\n--- schema ---\nE\n"
+      right (\x -> (wSchemaPin x, wSchemaFlake x, wInputArgs x)) w
+        `shouldBe` (Just "LIPS_X_FLAKE", Just "flake:x", ", x")
+      right (\x -> (wSchemaPin x, wSchemaFlake x, wInputArgs x)) minimal
+        `shouldBe` (Nothing, Nothing, "")
+    it "keeps the raw bytes for hashing" $
+      right wRaw minimal `shouldBe` minimal
 
   describe "merge (spec 2.1: strength) " $ do
     it "delta-over-defaults: Stated overrides Default on the same subject" $ do
