@@ -71,7 +71,7 @@ import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidat
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, record,
-                                         recordedSchema, renderStampFault, stampFaults, worldHash)
+                                         recordedSchema, recordedWorld, renderStampFault, stampFaults, worldHash)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), bindSelfExpect, compatSlug, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
@@ -87,9 +87,8 @@ import           Lips.Kernel.Engine.Gate       (engineViolations)
 import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText,
                                                 runCommands)
-import           Lips.Nix.Target               (Target (..), defaultTarget, parseTarget)
-import           Lips.World                     (World (..))
-import           Lips.World.Builtin             (builtinWorld, worldForTarget)
+import           Lips.World                     (World (..), parseWorld)
+import           Lips.World.Builtin             (builtinWorld)
 import           Lips.World.Resolve            (builtinNames, resolveWorld)
 import           Lips.Lsp.Server               (runLsp)
 
@@ -208,7 +207,7 @@ compileLoose mout mLangDir noContract file = do
   -- @--no-contract@ is the one caller that cannot gate (a compile inside a nix
   -- derivation has no nix to evaluate with); it still crystallizes and realizes.
   rl  <- checkLoose (not noContract) (not noContract) mLangDir file
-  target  <- readRecordedTarget dir file
+  world   <- readRecordedWorld dir file
   let outDirPath = maybe (compiledPath file) id mout
   (artNames, rungs) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
@@ -238,10 +237,10 @@ compileLoose mout mLangDir noContract file = do
                       , siteRung = if not hasSite then Nothing
                                    else Just (SiteRung (siteNameOf rl)
                                                        (not (null (rlClauseClaims rl)))) }
-    TIO.writeFile (outDirPath </> "flake.nix") (flakeText (worldForTarget target) rungs)
+    TIO.writeFile (outDirPath </> "flake.nix") (flakeText world rungs)
     pure (artNames, rungs)
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
-  mapM_ note (runCommands (worldForTarget target) artNames rungs outDirPath)
+  mapM_ note (runCommands world artNames rungs outDirPath)
 
 -- | Create a language's derived subtree and make it ignore itself: @out/@ gets
 -- a @.gitignore@ holding @*@. lips writes that rule rather than asking the
@@ -255,28 +254,55 @@ ensureDerived file = do
   there <- doesPathExist ign
   unless there (TIO.writeFile ign "*\n")
 
--- | The world an engine was minted for, read from its committed .generation
--- record (the @target:@ line). An engine minted before targets existed has no
--- record line and defaults to nixos, so old engines keep working -- but a record
--- that EXISTS and cannot be read is a loud failure, never the default world:
--- guessing here compiles a program into the wrong world's flake, and the whole
--- output still looks plausible (deduce-or-fail).
-readRecordedTarget :: FilePath -> FilePath -> IO Target
-readRecordedTarget dir file = do
+-- | The world an engine was minted into: named by its committed .generation
+-- record, and READ from the copy that travels beside the engine. The copy is
+-- required -- lips never falls back to what it ships, because a world is data
+-- now and the shipped one may have moved on. When the record carries a pin, the
+-- copy must hash to it, so a compiled flake can never come from physics the
+-- record does not name.
+readRecordedWorld :: FilePath -> FilePath -> IO World
+readRecordedWorld dir file = do
   let path = generationPathIn dir file
   there <- doesPathExist path
   m <- tryRead path
-  case (there, m) of
+  src <- case (there, m) of
     (True, Nothing) -> die (report
       ("lips can't read the generation record at " <> T.pack path <> ",")
       ["so it cannot tell which world this engine was minted for."]
       "\8594 restore the file, or re-mint: lips generate <program>.")
-    (_, Nothing) -> pure defaultTarget
-    (_, Just src) -> pure $ case [ t | l <- T.lines src
-                                     , Just rest <- [T.stripPrefix "target:" l]
-                                     , Just t <- [parseTarget (T.unpack (T.strip rest))] ] of
-      (t : _) -> t
-      []      -> defaultTarget
+    (_, Nothing) -> die (report
+      ("lips can't compile " <> T.pack file <> ": there is no generation record at "
+        <> T.pack path <> ".")
+      []
+      "\8594 mint it: lips generate <program>.")
+    (_, Just s) -> pure s
+  (name, mpin) <- either (\why -> die (report
+      ("lips can't compile " <> T.pack file <> ": " <> why <> ".")
+      [T.pack path <> " is the record it read."]
+      "\8594 re-mint it: lips generate <program>.")) pure (recordedWorld src)
+  let wpath = worldPathIn dir name
+  mraw <- tryRead wpath
+  raw <- case mraw of
+    Just r  -> pure r
+    Nothing -> die (report
+      ("lips can't compile " <> T.pack file <> ": its world file is missing.")
+      [ T.pack path <> " names the world " <> name <> ", and " <> T.pack wpath <> " is not there." ]
+      ("\8594 restore it: lips world " <> name <> " > " <> T.pack wpath
+        <> " (for a world lips ships), or put your own copy back."))
+  world <- either (\why -> die (report
+      ("lips can't compile " <> T.pack file <> ": its world file does not read.")
+      [T.pack wpath <> ": " <> why]
+      "\8594 restore it from the copy the record was minted with.")) pure (parseWorld raw)
+  -- A record from before the pin existed cannot be re-hashed (a committed
+  -- record is sealed: editing one would invalidate every stamp it names), so
+  -- the copy is required but unpinned there.
+  case mpin of
+    Just pin | worldHash world /= pin -> die (report
+      ("lips can't compile " <> T.pack file <> ": its world file is not the one it was minted with.")
+      [ T.pack path <> " pins " <> pin <> ", and " <> T.pack wpath <> " hashes to " <> worldHash world ]
+      "\8594 restore that world file, or re-mint against this one: lips generate <program>.")
+    _ -> pure ()
+  pure world
 
 -- | @check@: verify the program's committed behavioral contract holds against
 -- its realized module, deterministically (no AI). This is the offline guardian
@@ -403,11 +429,12 @@ checkDraft file = do
 
 -- | The draft's world where generate stated one, else the default. Used only
 -- where a wrong guess is harmless (which flake shape a throwaway directory gets);
--- the schema gate keeps using 'draftTarget', which refuses to guess.
+-- the schema gate keeps using 'draftWorld', which refuses to guess.
 draftWorldOrDefault :: IO World
 draftWorldOrDefault = do
   mt <- lookupEnv "LIPS_MINT_WORLD"
-  pure (fromMaybe (worldForTarget defaultTarget) (mt >>= builtinWorld . T.pack))
+  pure (fromMaybe (fromMaybe (error "lips ships no nixos world") (builtinWorld "nixos"))
+                  (mt >>= builtinWorld . T.pack))
 
 -- | Which world a draft is grounded against. Read from the environment generate
 -- controls, never defaulted: a silent default would ground a mint against the
@@ -458,8 +485,8 @@ expectGate contract claims dir file eng program = do
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
   when claims $ do
-    target <- readRecordedTarget dir file
-    claimGate (worldForTarget target) dir file rl
+    world <- readRecordedWorld dir file
+    claimGate world dir file rl
   pure rl
 
 -- | Load and parse a program's @.lang@ (found under @dir@), or fail loud
@@ -487,7 +514,7 @@ loadLangOrDie dir file = do
 --
 -- An engine with no record at all is judged the other way round ('stampFaults'):
 -- it may claim no generation. A record that EXISTS and cannot be read is a loud
--- failure rather than the no-record reading, exactly as 'readRecordedTarget'
+-- failure rather than the no-record reading, exactly as 'readRecordedWorld'
 -- treats it -- guessing there would turn a broken repository into a green check.
 assertStamps :: FilePath -> FilePath -> IO ()
 assertStamps dir file = do

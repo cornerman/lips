@@ -21,6 +21,7 @@ module Lips.Generate.Record
   , recordedProgram
   , recordedPrograms
   , recordedSchema
+  , recordedWorld
   , StampFault (..)
   , stampFaults
   , renderStampFault
@@ -29,7 +30,7 @@ module Lips.Generate.Record
 import           Data.Bits          (shiftR, xor)
 import qualified Data.ByteString    as BS
 import           Data.List          (dropWhileEnd)
-import           Data.Maybe         (isJust)
+import           Data.Maybe         (isJust, listToMaybe)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import           Data.Text.Encoding (encodeUtf8)
@@ -195,6 +196,36 @@ recordedSchema :: Text -> Maybe Text
 recordedSchema rec = case [ T.strip rest | l <- T.lines rec, Just rest <- [T.stripPrefix "schema:" l] ] of
   (p : _) | not (T.null p) -> Just p
   _                        -> Nothing
+
+-- | Which world a record names, and the world file it pins: @(name, hash)@.
+-- Pure, so the precedence is testable without a filesystem.
+--
+-- The @format:@ header decides how the record is read, which is what a version
+-- is FOR: format 1 pins the world by name and content hash, and a format-1
+-- record without that line is a defect. A record with no format header is
+-- format 0 (written before worlds were data): it names a world by @target:@
+-- slug, or none at all -- and "none" meant nixos to the lips that wrote it, so
+-- that is what it still means. Not a fallback: a committed record is SEALED (a
+-- byte changed invalidates every @gen stamp it names), so this is the only way
+-- its own words can be read. The world FILE beside the engine is required
+-- either way; only the hash check needs a pin to check against.
+recordedWorld :: Text -> Either Text (Text, Maybe Text)
+recordedWorld src
+  | isJust (firstOf "format:") = case pinned of
+      Just (n, h) -> Right (n, Just h)
+      Nothing     -> Left "the record states a format but names no world, so nothing \
+                          \says which physics this engine was minted into"
+  | otherwise = Right (maybe "nixos" id legacy, Nothing)
+  where
+    firstOf k = listToMaybe [ T.strip rest | l <- T.lines src, Just rest <- [T.stripPrefix k l] ]
+    pinned = do
+      v <- firstOf "world:"
+      case T.words v of
+        (n : h : _) -> Just (n, h)
+        _           -> Nothing
+    legacy = do
+      v <- firstOf "target:"
+      if T.null v then Nothing else Just v
 
 -- | Read one program's text back out of a committed record: the inverse of
 -- 'corpusText' over the record's program block. 'Nothing' when this record holds

@@ -46,9 +46,8 @@ import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
-import Lips.Nix.Target
 import Lips.World
-import Lips.World.Builtin (builtinWorld, builtinWorlds, worldForTarget)
+import Lips.World.Builtin (builtinWorld, builtinWorlds)
 import Lips.World.Resolve (resolveWorld)
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
@@ -64,7 +63,7 @@ import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elap
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
 import Lips.Generate.Record (StampFault (..), corpusText, genId, record, recordedProgram,
-                             recordedPrograms, recordedSchema, renderStampFault, stampFaults)
+                             recordedPrograms, recordedSchema, recordedWorld, renderStampFault, stampFaults)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
@@ -283,19 +282,6 @@ main = hspec $ do
           , ["ledger.backup.lips"]
           , [] )
 
-
-  describe "realization target (Lips.Nix.Target)" $ do
-    it "parses the world slugs and rejects others" $ do
-      parseTarget "nixos" `shouldBe` Just Nixos
-      parseTarget "home-manager" `shouldBe` Just HomeManager
-      parseTarget "kubenix" `shouldBe` Just Kubenix
-      parseTarget "terranix" `shouldBe` Just Terranix
-      parseTarget "darwin" `shouldBe` Nothing
-    it "slug round-trips through parse for every target" $
-      mapM_ (\t -> parseTarget (T.unpack (targetSlug t)) `shouldBe` Just t)
-            [minBound .. maxBound]
-    it "defaults to nixos" $
-      defaultTarget `shouldBe` Nixos
 
   -- A world is data, so lips reads one rather than enumerating four. The parser
   -- is strict on purpose: an unknown header or slot is a typo or a file from a
@@ -2838,6 +2824,21 @@ main = hspec $ do
       r1 `shouldSatisfy` T.isInfixOf "format: 1"
       r1 `shouldSatisfy` T.isInfixOf "world: nixos h1"
       genId r1 `shouldNotBe` genId r2
+    -- What compile reads back: which world, and which world FILE. Pure, so the
+    -- precedence (a pin beats a legacy slug) is pinned without a filesystem.
+    it "prefers the world pin over the legacy target line" $
+      recordedWorld "format: 1\nworld: nixos abc\ntarget: x\n"
+        `shouldBe` Right ("nixos", Just "abc")
+    it "reads a pre-world-files record by its target line, unpinned" $
+      recordedWorld "model: m\ntarget: kubenix\n" `shouldBe` Right ("kubenix", Nothing)
+    -- A record from before targets existed named no world and meant nixos,
+    -- which is what it still means: its bytes are sealed, so this reading is
+    -- the only one it can have.
+    it "reads a record older than targets as the world it meant" $
+      recordedWorld "model: m\n" `shouldBe` Right ("nixos", Nothing)
+    it "refuses a format-stating record that names no world" $
+      recordedWorld "format: 1\nmodel: m\n" `shouldSatisfy` isLeft
+
     -- readRecordedWorld scans for the FIRST line starting with "world:", so
     -- the headers must stay above every section a lookup answer could pollute.
     it "keeps the headers above the tool transcript" $ do
@@ -3667,27 +3668,27 @@ main = hspec $ do
 
   describe "the mint prompt states the claim grammar" $ do
     it "names the head and its closed section set" $ do
-      let p = systemPromptFor (worldForTarget Nixos)
+      let p = systemPromptFor (shippedWorld "nixos")
       p `shouldSatisfy` T.isInfixOf "claim.<id>.run"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.stdin"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.stdout"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.exit"
 
     it "forbids inventing a witness and asks for one where source is baked" $ do
-      let p = systemPromptFor (worldForTarget Nixos)
+      let p = systemPromptFor (shippedWorld "nixos")
       p `shouldSatisfy` T.isInfixOf "NEVER INVENT A WITNESS"
       p `shouldSatisfy` T.isInfixOf "STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE"
 
     it "states the exact-comparison rule" $
-      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
+      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
 
     it "states the world limit where there is no machine to boot" $ do
-      systemPromptFor (worldForTarget Kubenix) `shouldSatisfy` T.isInfixOf "no machine to\nboot"
-      systemPromptFor (worldForTarget Terranix) `shouldSatisfy` T.isInfixOf "no machine to\nboot"
-      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor (shippedWorld "terranix") `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "no machine to\nboot"
 
     it "offers the booted machine only in the world that has one" $
-      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
+      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
 
   describe "the mint is asked for an observable where it bakes source" $ do
     let src = SourceFile { sfArtifact = "tool", sfPath = "main.go", sfContent = "package main" }
@@ -3709,38 +3710,38 @@ main = hspec $ do
     -- Which places a world hosts is its file's own `claims:` header, so this
     -- gate reads data and never asks which world it is looking at.
     it "refuses a machine claim in a world with no machine to boot" $ do
-      let hosted t = wClaims (worldForTarget t)
-      unplaceableClaims (hosted Kubenix) [machC] `shouldBe` ["alive"]
-      unplaceableClaims (hosted Terranix) [machC] `shouldBe` ["alive"]
-      unplaceableClaims (hosted HomeManager) [machC] `shouldBe` ["alive"]
+      let hosted n = wClaims (shippedWorld n)
+      unplaceableClaims (hosted "kubenix") [machC] `shouldBe` ["alive"]
+      unplaceableClaims (hosted "terranix") [machC] `shouldBe` ["alive"]
+      unplaceableClaims (hosted "home-manager") [machC] `shouldBe` ["alive"]
 
     it "admits an artifact-only claim in every world" $ do
-      let hosted t = wClaims (worldForTarget t)
-      unplaceableClaims (hosted Kubenix) [derivC] `shouldBe` []
-      unplaceableClaims (hosted Terranix) [derivC] `shouldBe` []
+      let hosted n = wClaims (shippedWorld n)
+      unplaceableClaims (hosted "kubenix") [derivC] `shouldBe` []
+      unplaceableClaims (hosted "terranix") [derivC] `shouldBe` []
 
     it "admits a machine claim where there IS a machine" $
-      unplaceableClaims (wClaims (worldForTarget Nixos)) [machC] `shouldBe` []
+      unplaceableClaims (wClaims (shippedWorld "nixos")) [machC] `shouldBe` []
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do
-      let txt = flakeText (worldForTarget Nixos) noRungs { hasArtifacts = True, hasClaims = True }
+      let txt = flakeText (shippedWorld "nixos") noRungs { hasArtifacts = True, hasClaims = True }
       txt `shouldSatisfy` T.isInfixOf "claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
       txt `shouldSatisfy` T.isInfixOf "import ./claims.nix { pkgs = pkgsFor system; }"
 
     it "leaves a claim-free flake free of claim vocabulary" $
-      flakeText (worldForTarget Nixos) noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
+      flakeText (shippedWorld "nixos") noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
 
     -- artifact.nix is always written, so the shell reaches it without asking
     -- whether the program declared artifacts: one less conditional in the text.
     it "the nixos shell references artifact.nix unconditionally" $
-      flakeText (worldForTarget Nixos) noRungs `shouldSatisfy`
+      flakeText (shippedWorld "nixos") noRungs `shouldSatisfy`
         T.isInfixOf "builtins.attrValues (import ./artifact.nix"
 
     -- The harness is a world-neutral skeleton plus the world's own slots, so
     -- the four built-ins must reproduce what the four Haskell arms produced.
     it "the assembled nixos flake still carries vm, shell and serviceShells" $ do
-      let t = flakeText (worldForTarget Nixos) noRungs
+      let t = flakeText (shippedWorld "nixos") noRungs
       mapM_ (\s -> t `shouldSatisfy` T.isInfixOf s)
         [ "builds = ", "vm = (builds system).vm", "nixosModules.default"
         , "default = b.shell;" ]
@@ -3759,28 +3760,28 @@ main = hspec $ do
 
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $
-      flakeText (worldForTarget Kubenix) noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
+      flakeText (shippedWorld "kubenix") noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
 
     it "prints the build command only when the program states claims" $ do
-      runCommands (worldForTarget Nixos) [] noRungs { hasClaims = True } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
-      runCommands (worldForTarget Nixos) [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#claims")
+      runCommands (shippedWorld "nixos") [] noRungs { hasClaims = True } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
+      runCommands (shippedWorld "nixos") [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#claims")
 
     -- The site rung is the program's own behaviour, so it appears exactly when
     -- the program states some and never otherwise.
     it "offers the site rung, and its run command, only for a program with behaviour" $ do
-      flakeText (worldForTarget Nixos) noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
-      flakeText (worldForTarget Nixos) noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
-      runCommands (worldForTarget Nixos) [] noRungs { siteRung = Just (SiteRung "\"tool\"" False) } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
-      runCommands (worldForTarget Nixos) [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
+      flakeText (shippedWorld "nixos") noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
+      flakeText (shippedWorld "nixos") noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
+      runCommands (shippedWorld "nixos") [] noRungs { siteRung = Just (SiteRung "\"tool\"" False) } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
+      runCommands (shippedWorld "nixos") [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
 
     -- Judging the clauses is offered only when there is something to judge: a
     -- site with no observables states none, and a rung that runs nothing must
     -- never be printed as if it verified something.
     it "offers the judging rung only when the program states claims over its clauses" $ do
       let withClaims = noRungs { siteRung = Just (SiteRung "\"tool\"" True) }
-      flakeText (worldForTarget Nixos) withClaims `shouldSatisfy` T.isInfixOf "site-claims"
-      flakeText (worldForTarget Nixos) noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
-      runCommands (worldForTarget Nixos) [] withClaims "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site-claims")
+      flakeText (shippedWorld "nixos") withClaims `shouldSatisfy` T.isInfixOf "site-claims"
+      flakeText (shippedWorld "nixos") noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
+      runCommands (shippedWorld "nixos") [] withClaims "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site-claims")
 
   describe "claims.nix (the experiments, as nix)" $ do
     let vstr t = case parseValue t of
@@ -4702,36 +4703,36 @@ main = hspec $ do
     it "names the tool and when to reach for it, in every world" $
       mapM_ (\p -> mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
               [ "query_options", "look it up", "grounds NAMES, never VALUES" ])
-            [ systemPromptFor (worldForTarget Nixos), systemPromptFor (worldForTarget HomeManager), systemPromptFor (worldForTarget Kubenix)
-            , systemPromptFor (worldForTarget Terranix) ]
+            [ systemPromptFor (shippedWorld "nixos"), systemPromptFor (shippedWorld "home-manager"), systemPromptFor (shippedWorld "kubenix")
+            , systemPromptFor (shippedWorld "terranix") ]
     it "repeats that a confirmed option is not a licence to invent its value" $
-      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "refusal beats invention"
+      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "refusal beats invention"
 
   -- The optional per-program .direction file steers mint taste. It must ride
   -- on top of the fixed prompt (so it enters genId) and carry the guard that
   -- keeps it advisory, never an obligation channel.
   describe "direction file (optional mint taste)" $ do
     it "absent or blank direction leaves the prompt untouched" $ do
-      promptWithDirection Nothing (worldForTarget Nixos) `shouldBe` systemPrompt
-      promptWithDirection (Just "   \n  ") (worldForTarget Nixos) `shouldBe` systemPrompt
+      promptWithDirection Nothing (shippedWorld "nixos") `shouldBe` systemPrompt
+      promptWithDirection (Just "   \n  ") (shippedWorld "nixos") `shouldBe` systemPrompt
     it "steers kubenix to the resource alias every kubenix example writes" $ do
-      systemPromptFor (worldForTarget Kubenix) `shouldSatisfy` T.isInfixOf "kubernetes.resources."
-      systemPromptFor (worldForTarget Kubenix) `shouldSatisfy` T.isInfixOf "kubenix"
+      systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "kubernetes.resources."
+      systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "kubenix"
     it "steers terranix to the terraform namespaces, and says grounding stops there" $ do
-      let p = systemPromptFor (worldForTarget Terranix)
+      let p = systemPromptFor (shippedWorld "terranix")
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "terranix", "resource.<type>.<self>", "data.", "provider.", "output." ]
     it "steers home-manager to its namespaces, nixos to system options" $ do
-      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "home-manager"
-      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "systemd.user.services"
-      systemPromptFor (worldForTarget HomeManager) `shouldSatisfy` T.isInfixOf "home.packages"
-      systemPromptFor (worldForTarget Nixos) `shouldSatisfy` T.isInfixOf "NixOS"
+      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "home-manager"
+      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "systemd.user.services"
+      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "home.packages"
+      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "NixOS"
     it "present direction is appended verbatim atop the fixed prompt" $ do
-      let p = promptWithDirection (Just "prefer restic, no docker") (worldForTarget Nixos)
+      let p = promptWithDirection (Just "prefer restic, no docker") (shippedWorld "nixos")
       systemPrompt `shouldSatisfy` (`T.isInfixOf` p)
       p `shouldSatisfy` T.isInfixOf "prefer restic, no docker"
     it "states the advisory-not-obligation guard when direction is present" $ do
-      let p = promptWithDirection (Just "prefer systemd timers") (worldForTarget Nixos)
+      let p = promptWithDirection (Just "prefer systemd timers") (shippedWorld "nixos")
       mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
         [ "PREFERENCE, not requirement"
         , "never let it override a value the program states"
@@ -5250,36 +5251,36 @@ main = hspec $ do
     -- config, carrying that unit's environment. Derived inside nix from the
     -- same evaluation, so lips knows no unit name.
     it "nixos exposes a shell per unit the program adds, holding its env" $ do
-      let t = flakeText (worldForTarget Nixos) noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "nixos") noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "baseServices", "systemd.services", "genAttrs", "subtractLists"
         , "// b.serviceShells", "service-${u}", "env = cfg.systemd.services" ]
     it "nixos prints the per-unit shell, naming the unit as a placeholder" $ do
-      let ls = T.unlines (runCommands (worldForTarget Nixos) [] noRungs { hasClaims = False } "/tmp/out")
+      let ls = T.unlines (runCommands (shippedWorld "nixos") [] noRungs { hasClaims = False } "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix develop path:/tmp/out#service-<unit>", "nix flake show" ]
     it "kubenix exposes the module and kubenix's own rendered outputs" $ do
-      let t = flakeText (worldForTarget Kubenix) noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "kubenix") noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "kubenixModules.default", "kubenix.evalModules", "kubenix.modules.k8s"
         , "config.kubernetes", "cfg.resultYAML", "cfg.result", "kubectl" ]
       mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
         [ "nixosModules", "run-lips-vm", "eval-config.nix" ]
     it "kubenix prints how to write, check and shell the manifests" $ do
-      let ls = T.unlines (runCommands (worldForTarget Kubenix) [] noRungs { hasClaims = False } "/tmp/out")
+      let ls = T.unlines (runCommands (shippedWorld "kubenix") [] noRungs { hasClaims = False } "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix run", "path:/tmp/out#manifest", "manifests.yaml"
         , "nix build", "#manifest-json", "nix develop" ]
       ls `shouldNotSatisfy` T.isInfixOf "#vm"
     it "terranix exposes the module and terranix's own config.tf.json" $ do
-      let t = flakeText (worldForTarget Terranix) noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "terranix") noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "terranixModules.default", "terranix.lib.terranixConfiguration"
         , "config = ", "opentofu" ]
       mapM_ (\c -> t `shouldNotSatisfy` T.isInfixOf c)
         [ "nixosModules", "run-lips-vm", "eval-config.nix", "kubenix" ]
     it "terranix prints how to write, check and shell the configuration" $ do
-      let ls = T.unlines (runCommands (worldForTarget Terranix) [] noRungs { hasClaims = False } "/tmp/out")
+      let ls = T.unlines (runCommands (shippedWorld "terranix") [] noRungs { hasClaims = False } "/tmp/out")
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix run", "path:/tmp/out#config", "config.tf.json"
         , "nix build", "nix develop" ]
@@ -6369,10 +6370,15 @@ withBase f ds = let b = fromList ds in f b b
 -- | A realization with nothing in it, for a test that cares about one field. The
 -- record has many, and naming them all at every call site would bury the field
 -- under test.
+-- One world lips ships, by name: the tests state their cases over these four
+-- exactly as a program does, through the same door a house world comes in by.
+shippedWorld :: Text -> World
+shippedWorld n = maybe (error ("no built-in world " <> T.unpack n)) id (builtinWorld n)
+
 -- The NixOS prompt, which most prompt cases are stated over: one world's
 -- preamble plus the world-neutral body.
 systemPrompt :: Text
-systemPrompt = systemPromptFor (worldForTarget Nixos)
+systemPrompt = systemPromptFor (shippedWorld "nixos")
 
 emptyRealization :: Realization
 emptyRealization = Realization

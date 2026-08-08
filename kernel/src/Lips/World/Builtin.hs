@@ -12,15 +12,12 @@
 module Lips.World.Builtin
   ( builtinWorlds
   , builtinWorld
-  , worldForTarget
   ) where
 
 import           Data.FileEmbed  (embedStringFile)
-import           Data.Maybe      (fromMaybe)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 
-import           Lips.Nix.Target (Target, targetSlug)
 import           Lips.World      (World, parseWorld)
 
 -- | Every shipped world by name, paired with its file's raw bytes.
@@ -39,10 +36,3 @@ builtinWorld :: Text -> Maybe World
 builtinWorld name = do
   raw <- lookup name builtinWorlds
   either (error . T.unpack) Just (parseWorld raw)
-
--- | The built-in world one 'Target' names. TEMPORARY: it exists only while the
--- enum still reaches the flake and the mint, and dies with the enum once the
--- record names a world by name.
-worldForTarget :: Target -> World
-worldForTarget t = fromMaybe (error ("no built-in world " <> T.unpack (targetSlug t)))
-                             (builtinWorld (targetSlug t))
