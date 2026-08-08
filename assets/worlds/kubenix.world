@@ -44,7 +44,7 @@ refused.
 # is load-bearing: the adjacency test below needs SEGMENT order, not string
 # order, or a name like `a.b-c` breaks it.
 let k = builtins.getFlake "<flakeref>";
-    system = builtins.currentSystem;
+    system = <system>;
     pkgs = import k.inputs.nixpkgs { inherit system; };
     e = k.evalModules.${system} {
       module = { kubenix, ... }: { imports = [ kubenix.modules.k8s ]; };

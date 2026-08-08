@@ -152,6 +152,47 @@
 
       # `nix flake check` compiles the calculus with -Wall and runs the suite.
       checks = forAll (pkgs: {
+        # The kubenix world file's schema slot reshapes kubenix's option document
+        # with jq (re-key the api.resources tree onto the alias programs write,
+        # unwrap `null or X` optionals, drop the inner nodes whose children carry
+        # the fields). That jq used to be Haskell the suite covered; as data in a
+        # world file, nothing else would ever run it -- grounding happens only at
+        # generate, which CI never does, so a wrong reshaping would surface at
+        # some author's next kubenix mint instead of here.
+        #
+        # The slot is read out of the world file rather than restated, so the
+        # check judges exactly what generate will run. Both holes are filled the
+        # way a pure evaluation must: the pinned input's own rev, and this
+        # system's name (there is no builtins.currentSystem in pure eval, which
+        # is precisely why the slot carries a <system> hole).
+        kubenix-schema =
+          let
+            raw = builtins.readFile ./assets/worlds/kubenix.world;
+            afterMarker = builtins.elemAt (builtins.split "--- schema ---\n" raw) 2;
+            slot = builtins.head (builtins.split "\n--- " afterMarker);
+            expr = builtins.replaceStrings
+              [ "<flakeref>" "<system>" ]
+              [ "github:hall/kubenix/${kubenix.rev}" "\"${pkgs.stdenv.hostPlatform.system}\"" ]
+              slot;
+            schema = import (builtins.toFile "kubenix-schema.nix" expr);
+          in pkgs.runCommand "lips-kubenix-schema"
+            { nativeBuildInputs = [ pkgs.jq ]; } ''
+            # A resource field grounds under the alias path, with its optional
+            # unwrapped to the scalar type a rule is checked against.
+            test "$(jq -r '."kubernetes.resources.deployments.<name>.spec.replicas".type' ${schema})" \
+              = "signed integer"
+            # An optional LIST stays a list. The Haskell this replaced read
+            # "null or (list of signed integer)" as a plain integer (its scalar
+            # test matched the substring), so 78 fields refused a correct list.
+            test "$(jq -r '."kubernetes.resources.apps.v1.Deployment.<name>.spec.template.spec.securityContext.supplementalGroups".type' ${schema})" \
+              = "list of signed integer"
+            # The typed spelling is MOVED, not copied: one path grounds.
+            jq -e '[to_entries[] | select(.key | startswith("kubernetes.api.resources"))] | length == 0' ${schema} > /dev/null
+            # Inner nodes are gone, so a misspelled field below one cannot be
+            # admitted by its parent's declaration.
+            jq -e 'has("kubernetes.resources.deployments.<name>.spec") | not' ${schema} > /dev/null
+            touch "$out"
+          '';
         kernel-tests = pkgs.runCommand "lips-kernel-tests"
           { nativeBuildInputs = [ (ghc pkgs) ]; } ''
           mkdir -p assets && cp -r ${./assets}/. assets && cp -r ${./kernel}/. build && cd build

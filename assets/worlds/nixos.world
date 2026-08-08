@@ -24,9 +24,9 @@ behaviour lives in a binary.
 
 --- schema ---
 let np = builtins.getFlake "<flakeref>";
-    pkgs = import np { system = builtins.currentSystem; };
+    pkgs = import np { system = <system>; };
     doc = (import (np.outPath + "/nixos")
-      { configuration = {}; system = builtins.currentSystem; })
+      { configuration = {}; system = <system>; })
       .config.system.build.manual.optionsJSON;
 in pkgs.runCommand "options.json" { }
      "cp ${doc}/share/doc/nixos/options.json $out"

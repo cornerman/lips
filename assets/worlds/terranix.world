@@ -54,7 +54,7 @@ refused.
 # same mechanism the other worlds use. The lib.extend mirrors terranix's
 # core/default.nix, whose modules use those lib helpers.
 let t = builtins.getFlake "<flakeref>";
-    system = builtins.currentSystem;
+    system = <system>;
     pkgs = import t.inputs.nixpkgs { inherit system; };
     lib = pkgs.lib.extend (import (t + "/core/helpers.nix") pkgs);
     e = lib.evalModules { modules = [

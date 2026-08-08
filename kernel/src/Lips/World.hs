@@ -47,7 +47,12 @@ data World = World
   , wClaims      :: [Text]      -- ^ header @claims:@, the places this world can host
   , wInputArgs   :: Text        -- ^ header @input-args:@, extra outputs-function args
   , wPreamble    :: Text        -- ^ slot @preamble@, the world's half of the mint prompt
-  , wSchema      :: Text        -- ^ slot @schema@, a Nix expr with a @\<flakeref\>@ hole
+  , wSchema      :: Text
+    -- ^ slot @schema@: a Nix expression with two holes, @\<flakeref\>@ (the
+    -- locked flake the options come from) and @\<system\>@ (which lips fills
+    -- with @builtins.currentSystem@ and a pure evaluation fills with a literal).
+    -- Filled in, it must evaluate to a derivation whose @$out@ IS the
+    -- options.json file, so no caller knows a path inside it.
   , wInputs      :: [Text]      -- ^ slot @inputs@, flake input lines
   , wBuilds      :: [Text]      -- ^ slot @builds@, the body of the @builds@ let-binding
   , wPackages    :: Maybe Text  -- ^ slot @packages@
