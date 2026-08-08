@@ -6,6 +6,28 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
+0. **Multi-world builds: one program, several backends.** PLANNED AND READY, not
+   started: `docs/superpowers/plans/2026-08-07-multi-world-builds.md` (8 tasks,
+   from the layout move to the first real two-world mint), design in
+   `docs/superpowers/specs/2026-08-07-multi-world-builds-design.md`. Its
+   prerequisite (worlds are data) landed 2026-08-09, DESIGN §13.
+
+   Short version: a language folder gains one subdirectory per world, patterns
+   are shared (`<language>.grammar`) and rules, contract and record are per
+   world. `--target a,b` is one lips run and two model calls, left to right; the
+   second receives the committed grammar and may only append to it. `compile`
+   builds every minted world into `out/<instance>/<world>/`, and a program that
+   lands nowhere in one world fails that world alone, naming it. The engine
+   FORMAT does not change: `.lang` is already a flat list keyed by subject
+   prefix, so the split is a partition read back by concatenation, and the 20
+   committed examples migrate with no re-mint.
+
+   Decided while planning, so it is not re-opened: the mint is sequential
+   because the four world preambles are absolute prose that contradicts itself
+   when concatenated; records live per world, so a `@gen:` stamp must name one
+   of its language's records; and the diagnosis repeats per world because
+   demands and inert words genuinely differ between them.
+
 1. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
    by the meaning-dimension work, DESIGN §13).
 
@@ -287,6 +309,59 @@ tracks only what is still open.
       named functions.
 
 ## Backlog (larger / deferred by design)
+
+- **Nothing records WHICH lips wrote a language folder, or what format its
+  engine files are in** (raised 2026-08-09, immediately after worlds became
+  data; design NOT settled).
+
+  What is pinned today: `.generation` records the model, the thinking level, the
+  confidence threshold, the locked schema ref, the world name and the world
+  file's content hash, and (since worlds became data) `format: 1` for the
+  record's own shape; `<world>.world` carries its own `format:`. What is pinned
+  nowhere: the lips that ran, and the format of the engine files themselves
+  (`.lang`, and after multi-world `.grammar`/`.rules`/`.expect`).
+
+  Why that is the interesting hole. Invariant 6 pins every INPUT of a
+  generation event, and the reader is not one of them. The kernel's physics --
+  merge, refine, realize, the value grammar, the capture grammar -- decide what
+  a committed engine MEANS, so a lips whose physics moved reads the same bytes
+  differently, with every gate green and every hash still matching, because
+  nothing in the repository names the interpreter. Every other input is
+  recorded precisely because leaving one out lets something steer the result
+  unaccounted for; this is the last one, and it is the one lips itself controls.
+
+  Constraint that shapes any answer: a record is SEALED (its bytes hash to the
+  id every minted line is stamped with), so this cannot be back-filled into
+  committed records. Whatever lands is written by new mints only, and old
+  folders read as "a lips that did not say" -- exactly the format-0 rule the
+  world work already established.
+
+  Open, in the order they decide each other:
+  (i) WHERE. A line in `.generation` is free (it is already the receipt of the
+      event, and a multi-world language then honestly carries one answer per
+      world, since its worlds may well have been minted by different lips
+      versions). A separate `<language>/.lips-version` file is more visible but
+      is a second place to keep true. A header in every machine-written file is
+      the most robust and the most repetition.
+  (ii) WHAT a version IS. lips has no release number; the honest identifier is
+      the flake revision of the lips that ran, which the packaged binary can
+      bake exactly as it bakes the four `LIPS_*_FLAKE` pins. A dirty tree has
+      no revision, and the choice there is real: refuse to mint (pure, and
+      hostile to development) or record `dirty` (honest about being unpinnable).
+  (iii) WHAT LIPS DOES with a mismatch. Refusing on any difference makes every
+      upgrade a corpus-wide re-mint, which is absurd, so the version is
+      provenance and nothing more. The CHECKABLE half is the format number: a
+      file declaring a newer format must refuse naming the remedy, which is the
+      rule `Lips.World.parseWorld` already implements ("this file declares
+      format N; this lips reads M -> upgrade lips"). Copy it rather than invent
+      a second policy.
+  (iv) WHETHER the engine files gain a `format:` header at all. They are
+      decision lists parsed line by line and `readLang` already skips `#`
+      comments, so a header line is cheap; the question is whether a format
+      number that nothing has ever bumped earns its place, or whether the first
+      real format change should introduce it (and then cannot, since old files
+      carry no header -- which is the same absence-is-format-0 rule again, so
+      the answer is probably yes, add it now).
 
 - **A fill-the-holes UI (`lips ui`): the form derived from the engine**
   (raised 2026-08-09; design NOT settled, this entry is the knowledge gathered
