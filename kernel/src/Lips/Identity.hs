@@ -61,6 +61,8 @@ module Lips.Identity
   , expectPathIn
   , generationPathIn
   , readmePathIn
+  , languageRecordPathIn
+  , languageReadmePathIn
   , gapPathIn
   , artifactsPathIn
   , worldPathIn
@@ -203,6 +205,20 @@ generationPathIn dir world = langLevelIn (worldDirIn dir world) "generation"
 -- one mint's account of one lowering.
 readmePathIn :: FilePath -> Text -> FilePath
 readmePathIn dir world = worldDirIn dir world </> "README.md"
+
+-- | The record of a mint that covered the WHOLE language: @backup/backup.generation@,
+-- beside the grammar it wrote. One call may write for several worlds, and its
+-- event belongs to none of them alone, so it is filed where its outputs are. A
+-- mint of a single world keeps writing that world's own record instead
+-- ('generationPathIn'), so nothing committed moves.
+languageRecordPathIn :: FilePath -> FilePath -> FilePath
+languageRecordPathIn dir = langLevelIn dir "generation"
+
+-- | The account of a mint that covered the whole language:
+-- @backup/README.md@. Filed at the scope of the event, exactly as its record
+-- is; a single-world mint writes 'readmePathIn' instead.
+languageReadmePathIn :: FilePath -> FilePath
+languageReadmePathIn dir = dir </> "README.md"
 
 -- | One world's machine-readable refusal artifact:
 -- @services\/a\/backup\/nixos\/backup.gap@. Written only when @generate@

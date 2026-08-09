@@ -763,7 +763,7 @@ generate world inherited mschema confidence compat verbose mmodel thinking files
       -- scheme as a successful '.generation' record (built the same way, from
       -- the same in-scope values), so a refusal is pinned exactly as an
       -- acceptance would have been.
-      let rec = record model (wName world) (worldHash world) schemaPin (T.pack thinking) confidence prompt corpus transcript reply
+      let rec = record model [(wName world, worldHash world, schemaPin)] (T.pack thinking) confidence prompt corpus transcript reply
       -- The refusal is the first thing written for a world, so its directory
       -- (<language>/<world>/) need not exist yet.
       createDirectoryIfMissing True (worldDirIn (langDir rep) (wName world))
@@ -973,7 +973,7 @@ generate world inherited mschema confidence compat verbose mmodel thinking files
       -- All held: write the shared language once, a crystal per instance. Every
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
-      let rec = record model (wName world) (worldHash world) schemaPin (T.pack thinking) confidence prompt corpus transcript reply
+      let rec = record model [(wName world, worldHash world, schemaPin)] (T.pack thinking) confidence prompt corpus transcript reply
           dir  = langDir rep
           w    = wName world
           (minted', rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) eng)

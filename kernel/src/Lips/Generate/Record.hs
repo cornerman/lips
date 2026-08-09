@@ -22,6 +22,7 @@ module Lips.Generate.Record
   , recordedPrograms
   , recordedSchema
   , recordedWorld
+  , recordedWorldPin
   , StampFault (..)
   , stampFaults
   , renderStampFault
@@ -74,13 +75,13 @@ import           Lips.World           (World (..))
 -- The thinking level is an input like the model: it changes what the mint
 -- produces, so a record omitting it would not pin the event. lips always passes
 -- it explicitly, so nothing ambient can steer a mint unrecorded.
-record :: Text -> Text -> Text -> Text -> Text -> Double -> Text -> Text -> Text -> Text -> Text
-record model worldName whash schema thinking confidence sysPrompt program transcript reply = T.unlines
+record :: Text -> [(Text, Text, Text)] -> Text -> Double -> Text -> Text -> Text -> Text -> Text
+record model worlds thinking confidence sysPrompt program transcript reply = T.unlines $
   [ "format: 1"
-  , "model: " <> model
-  , "world: " <> worldName <> " " <> whash
-  , "schema: " <> schema
-  , "thinking: " <> thinking
+  , "model: " <> model ]
+  ++ concat [ [ "world: " <> n <> " " <> h, "schema: " <> s ] | (n, h, s) <- worlds ]
+  ++
+  [ "thinking: " <> thinking
   , "confidence-threshold: " <> T.pack (show confidence)
   , "--- system prompt ---", sysPrompt
   , "--- program (input) ---", program
@@ -218,6 +219,21 @@ recordedSchema rec = case [ T.strip rest | l <- T.lines rec, Just rest <- [T.str
 -- byte changed invalidates every @gen stamp it names), so this is the only way
 -- its own words can be read. The world FILE beside the engine is required
 -- either way; only the hash check needs a pin to check against.
+-- | The pin one world carries in a record that may cover several: its declared
+-- name and the hash of the world file it was minted against. 'Nothing' when the
+-- record does not name that world at all, which is how a reader tells a joint
+-- record apart from another world's.
+--
+-- One @world:@ line per world, each followed by that world's @schema:@ pin, so
+-- a joint mint records every physics it aimed at. A record covering ONE world
+-- renders exactly the bytes it always did, which matters because a record is
+-- sealed: its hash stamps every line of the engine beside it.
+recordedWorldPin :: Text -> Text -> Maybe (Text, Maybe Text)
+recordedWorldPin src world = listToMaybe
+  [ (n, Just h)
+  | l <- T.lines src, Just rest <- [T.stripPrefix "world:" l]
+  , (n : h : _) <- [T.words (T.strip rest)], n == world ]
+
 recordedWorld :: Text -> Either Text (Text, Maybe Text)
 recordedWorld src
   | isJust (firstOf "format:") = case pinned of
