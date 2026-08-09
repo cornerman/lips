@@ -31,6 +31,7 @@ import Lips.Kernel.Engine.Gate (engineViolations)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
 import Lips.Report                 (unportableReport)
+import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
@@ -142,44 +143,44 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
     it "defaults target to nixos, confidence to the default, compat full, verbose off" $
       parseArgs ["ledger.backup.lips"]
-        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full False Nothing defaultThinking ["ledger.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False Nothing defaultThinking ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseArgs ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts "home-manager" Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
     -- A name the CLI does not know may be a house world file beside the
     -- program, which only the resolver (which knows the directory) can look
     -- for, so the parser takes any name and resolution decides.
     it "takes a world name the binary does not ship" $
       parseArgs ["--target", "house-k3s", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts "house-k3s" Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["house-k3s"] Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
     it "reads --worlds as the directory to resolve a world name in" $
       parseArgs ["--worlds", "worlds", "--target", "house-k3s", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts "house-k3s" (Just "worlds") Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["house-k3s"] (Just "worlds") Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
     it "reads an explicit --model alongside multiple programs" $
       parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts "home-manager" Nothing Nothing 0.9 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.9 Full False Nothing defaultThinking ["a.backup.lips"])
     it "rejects an out-of-range confidence" $
       parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
     it "reads --compat in any position, and refuses a word that is not a mode" $ do
       parseArgs ["--compat", "none", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 None False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 None False Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "--compat", "forwards"]
-        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Forwards False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Forwards False Nothing defaultThinking ["a.backup.lips"])
       -- the flag it replaces is gone, so an old invocation fails loud rather
       -- than silently keeping the committed contract
       parseArgs ["--renew", "a.backup.lips"] `shouldBe` Nothing
       parseArgs ["--compat", "renew", "a.backup.lips"] `shouldBe` Nothing
     it "reads -v/--verbose in any position" $ do
       parseArgs ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "-v"]
-        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
     it "reads -m as the short alias for --model" $
       parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts "nixos" Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     -- The thinking level is always passed to pi and always recorded, so an
@@ -197,6 +198,14 @@ main = hspec $ do
       goSchema <$> parseArgs ["a.backup.lips"] `shouldBe` Just Nothing
       goSchema <$> parseArgs ["--schema", "github:NixOS/nixpkgs/nixos-24.11", "a.backup.lips"]
         `shouldBe` Just (Just "github:NixOS/nixpkgs/nixos-24.11")
+    -- Several worlds in one run: minted left to right, so the order is data,
+    -- not a set. A repeat would mint one world twice and judge the second pass
+    -- against the first's own grammar, which no caller can have meant.
+    it "reads a comma-separated world list, in order, and refuses a repeat" $ do
+      goTarget <$> parseArgs ["--target", "nixos,kubenix", "a.web.lips"]
+        `shouldBe` Just ["nixos", "kubenix"]
+      parseArgs ["--target", "nixos,nixos", "a.web.lips"] `shouldBe` Nothing
+      parseArgs ["--target", "nixos,", "a.web.lips"] `shouldBe` Nothing
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 
@@ -4728,8 +4737,8 @@ main = hspec $ do
   -- keeps it advisory, never an obligation channel.
   describe "direction file (optional mint taste)" $ do
     it "absent or blank direction leaves the prompt untouched" $ do
-      promptWithDirection Nothing (shippedWorld "nixos") `shouldBe` systemPrompt
-      promptWithDirection (Just "   \n  ") (shippedWorld "nixos") `shouldBe` systemPrompt
+      promptWithDirection Nothing Nothing (shippedWorld "nixos") `shouldBe` systemPrompt
+      promptWithDirection (Just "   \n  ") Nothing (shippedWorld "nixos") `shouldBe` systemPrompt
     it "steers kubenix to the resource alias every kubenix example writes" $ do
       systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "kubernetes.resources."
       systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "kubenix"
@@ -4743,15 +4752,28 @@ main = hspec $ do
       systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "home.packages"
       systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "NixOS"
     it "present direction is appended verbatim atop the fixed prompt" $ do
-      let p = promptWithDirection (Just "prefer restic, no docker") (shippedWorld "nixos")
+      let p = promptWithDirection (Just "prefer restic, no docker") Nothing (shippedWorld "nixos")
       systemPrompt `shouldSatisfy` (`T.isInfixOf` p)
       p `shouldSatisfy` T.isInfixOf "prefer restic, no docker"
     it "states the advisory-not-obligation guard when direction is present" $ do
-      let p = promptWithDirection (Just "prefer systemd timers") (shippedWorld "nixos")
+      let p = promptWithDirection (Just "prefer systemd timers") Nothing (shippedWorld "nixos")
       mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
         [ "PREFERENCE, not requirement"
         , "never let it override a value the program states"
         ]
+
+  -- A world minted after the first inherits the grammar, and the prompt is
+  -- where it learns that it may only append to it.
+  describe "inherited grammar in the prompt" $ do
+    it "is absent on a first mint" $
+      promptWithDirection Nothing Nothing (shippedWorld "nixos")
+        `shouldNotSatisfy` T.isInfixOf "begin grammar"
+    it "carries the committed patterns verbatim, and the rule about them" $ do
+      let g = "p1 meta lang.pattern.p1 stated \"a <x> => fact f \\\"<x>\\\"\" @gen:aaaa"
+          p = promptWithDirection Nothing (Just g) (shippedWorld "kubenix")
+      p `shouldSatisfy` T.isInfixOf g
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "must come back in your reply exactly", "You may ADD a pattern", "Refuse" ]
 
   -- Examples teach the grammar, so a stale one teaches a grammar that no longer
   -- exists. Extract every ```lips-engine block from the prompt and require the
@@ -4970,6 +4992,28 @@ main = hspec $ do
       t `shouldSatisfy` T.isInfixOf "services thing enable"
     it "does not send the reader to generate" $
       t `shouldNotSatisfy` T.isInfixOf "lips generate"
+
+  -- A world minted after the first inherits the grammar and may only add to it.
+  describe "append-only grammar (Lips.Generate.Minting.appendOnlyViolations)" $ do
+    let old = T.unlines
+          [ "p1 meta lang.pattern.p1 stated \"a <x> => fact f \\\"<x>\\\"\" @gen:aaaa"
+          , "p2 meta lang.pattern.p2 stated \"b <y> => fact g \\\"<y>\\\"\" @gen:aaaa" ]
+    it "accepts an appended pattern" $
+      appendOnlyViolations old
+        (old <> "p3 meta lang.pattern.p3 stated \"c <z> => fact h \\\"<z>\\\"\" @gen:bbbb\n")
+        `shouldBe` []
+    it "names a changed pattern" $
+      appendOnlyViolations old (T.replace "a <x>" "a <x> now" old) `shouldBe` ["p1"]
+    it "names a dropped pattern" $
+      appendOnlyViolations old (T.unlines (take 1 (T.lines old))) `shouldBe` ["p2"]
+    -- The stamp is the renderer's, not the mint's: an inherited pattern coming
+    -- back out of a second mint always carries the second record's id.
+    it "looks past the stamp, which every render rewrites" $
+      appendOnlyViolations old (T.replace "@gen:aaaa" "@gen:cccc" old) `shouldBe` []
+    it "writes the committed lines verbatim and appends the new one" $ do
+      let added = "p3 meta lang.pattern.p3 stated \"c\" @gen:bbbb\n"
+      mergeGrammar old (T.replace "@gen:aaaa" "@gen:bbbb" old <> added)
+        `shouldBe` old <> added
 
   describe "a language's worlds (Lips.Language)" $ do
     let withDir act = do

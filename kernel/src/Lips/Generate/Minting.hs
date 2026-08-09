@@ -35,6 +35,8 @@ module Lips.Generate.Minting
   , uncheckableExpects
   , claimlessBakedSource
   , unplaceableClaims
+  , appendOnlyViolations
+  , mergeGrammar
   ) where
 
 import           Data.Text       (Text)
@@ -147,6 +149,13 @@ bodyDoc = T.pack $(embedStringFile "../assets/mint/body.md")
 directionDoc :: Text
 directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 
+-- | The wrapper around an inherited grammar, carried in the same reviewable
+-- markdown as the rest of the prompt (the 'directionDoc' precedent): a section
+-- that is APPENDED when there is one, rather than a placeholder that has to be
+-- emptied on a first mint.
+grammarDoc :: Text
+grammarDoc = T.pack $(embedStringFile "../assets/mint/grammar.md")
+
 -- | The mint prompt for a target world: a world-steering preamble naming the
 -- option namespaces to emit into, then the world-neutral body. The preamble is
 -- the ONLY thing that differs per world; the body's grammar (patterns, rules,
@@ -176,15 +185,60 @@ contractList = T.unlines
 -- Because direction rides inside the system prompt, it is pinned into the
 -- @.generation@ record and the @genId@ hash for free, and @run@\/@check@ never
 -- see it. A blank direction file is ignored (no channel, no drift).
-promptWithDirection :: Maybe Text -> World -> Text
-promptWithDirection md w = case md of
-  Just d | not (T.null (T.strip d)) ->
-    -- directionDoc carries the fixed wrapper text with a single {{DIRECTION}}
-    -- placeholder line; substituting it (rather than building the wrapper as
-    -- a Haskell literal) keeps this wording in the same reviewable markdown
-    -- asset as the rest of the prompt.
-    systemPromptFor w <> "\n" <> T.replace "{{DIRECTION}}" (T.strip d) directionDoc
-  _ -> systemPromptFor w
+-- The inherited GRAMMAR rides in the same prompt, before the direction: a
+-- second world's mint may only append to what the first one wrote, so it has to
+-- see it. Absent on a first mint, and then the section is not there at all.
+promptWithDirection :: Maybe Text -> Maybe Text -> World -> Text
+promptWithDirection md mg w = systemPromptFor w <> section mg grammarDoc "{{GRAMMAR}}"
+                                                <> section md directionDoc "{{DIRECTION}}"
+  where
+    -- Each doc carries the fixed wrapper text with a single placeholder line;
+    -- substituting it (rather than building the wrapper as a Haskell literal)
+    -- keeps this wording in the same reviewable markdown asset as the rest of
+    -- the prompt.
+    section (Just t) doc hole | not (T.null (T.strip t)) =
+      "\n" <> T.replace hole (T.strip t) doc
+    section _ _ _ = ""
+
+-- | What a later world's mint did to the grammar an earlier one wrote: the ids
+-- of pattern lines it changed or dropped. Empty means it only appended, which
+-- is the only move a later world may make.
+--
+-- Compared statement by statement -- everything a line says except its @\@gen:@
+-- stamp -- because the stamp is not the mint's to keep: a reply carries no
+-- provenance, and lips stamps every line it renders with the record of the run
+-- that rendered it, so an inherited pattern coming back out of world B's mint
+-- necessarily carries B's id. What must not move is what the pattern SAYS. The
+-- written grammar keeps world A's bytes anyway (see 'mergeGrammar'), so A's
+-- stamps still re-hash against A's own record.
+--
+-- Being this strict about the statement is safe: every committed program
+-- already crystallizes under the old grammar, and two patterns reading one line
+-- is already refused as an overlap, so a new pattern can only claim a line of a
+-- program added in the SAME run -- adding one cannot break a world that already
+-- holds.
+appendOnlyViolations :: Text -> Text -> [Text]
+appendOnlyViolations old new =
+  [ i | (i, l) <- byId old, lookup i (byId new) /= Just l ]
+  where
+    byId t = [ (i, statement l) | l <- T.lines t, (i : _) <- [T.words l] ]
+
+-- | The grammar to WRITE when a later world appends to an inherited one: every
+-- committed line verbatim, then the ids this mint added. Verbatim because an
+-- inherited line belongs to the mint that wrote it -- re-rendering would stamp
+-- it with this run's record, churning a file no world asked to change and
+-- losing the honest origin of the pattern.
+mergeGrammar :: Text -> Text -> Text
+mergeGrammar old new = old <> T.unlines
+  [ l | l <- T.lines new, idOf l `notElem` map idOf (T.lines old) ]
+  where idOf l = take 1 (T.words l)
+
+-- | A rendered decision line without its provenance stamp: what it states,
+-- separated from which generation wrote it down.
+statement :: Text -> Text
+statement l = case T.breakOnEnd " @gen:" l of
+  ("", _)  -> l
+  (pre, _) -> T.stripEnd (T.dropEnd 6 pre)
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
 -- Single-item lines parse individually; a @source@ block spans multiple lines

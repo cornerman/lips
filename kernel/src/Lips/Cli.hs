@@ -38,7 +38,7 @@ import Lips.World.Resolve (builtinNames)
 -- model -- no positional guessing (deleted with @Lips.Generate.Args@'s
 -- @looksLikeModel@); omitting it lets @pi@'s own configured default apply.
 data GenerateOpts = GenerateOpts
-  { goTarget     :: Text
+  { goTarget     :: [Text]
   , goWorlds     :: Maybe FilePath
   , goSchema     :: Maybe String
   , goConfidence :: Double
@@ -199,6 +199,22 @@ worldsDirOpt = optional (strOption
 defaultTargetName :: Text
 defaultTargetName = "nixos"
 
+-- | @generate --target@'s reader: one world, or several separated by commas.
+-- Order is kept, because it is the order the worlds are minted in and every
+-- world after the first may only APPEND to the grammar the ones before it
+-- wrote. A repeated name is refused rather than deduplicated: it would mint one
+-- world twice, and the second pass would be judged against the first's grammar
+-- for no reason a caller could have meant.
+targetsReader :: ReadM [Text]
+targetsReader = eitherReader $ \s ->
+  let ws = map T.strip (T.splitOn "," (T.pack s))
+   in if any T.null ws
+        then Left (s <> " has an empty world name between its commas")
+        else case [ w | (w, n) <- counts ws, n > (1 :: Int) ] of
+          (w : _) -> Left (T.unpack w <> " is named twice in " <> s)
+          []      -> Right ws
+  where counts ws = [ (w, length (filter (== w) ws)) | w <- ws ]
+
 -- | Every re-bless mode, listed from the type, so a mode added later cannot
 -- leave the help text naming less than the whole set.
 compatMetavar :: String
@@ -235,9 +251,10 @@ schemaOpt = optional (strOption
 
 generateOpts :: Double -> Parser GenerateOpts
 generateOpts defConf = GenerateOpts
-  <$> (T.pack <$> strOption
-        (long "target" <> short 't' <> value (T.unpack defaultTargetName)
-          <> metavar targetMetavar <> help "Which Nix world the configuration is for (default: nixos)."))
+  <$> option targetsReader
+        (long "target" <> short 't' <> value [defaultTargetName]
+          <> metavar (targetMetavar <> "[,...]")
+          <> help "Which Nix worlds the configuration is for, minted left to right (default: nixos).")
   <*> worldsDirOpt
   <*> schemaOpt
   <*> option confidenceReader

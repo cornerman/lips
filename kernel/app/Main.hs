@@ -30,7 +30,7 @@ import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (forM, forM_, unless, when, void)
 import           Data.IORef         (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import           Data.Bifunctor     (first)
-import           Data.List          (intercalate)
+import           Data.List          (intercalate, tails)
 import           Data.Maybe         (fromMaybe)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -68,7 +68,7 @@ import           Lips.Report            (Failure (..), demandGenerateFail, failu
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), appendOnlyViolations, assemble, carriesEngineMeaning, mergeGrammar, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, record,
@@ -128,15 +128,21 @@ main = do
   cmd <- execParser (cliParserInfo defaultConfidence)
   case cmd of
     Generate go -> do
-      -- A world is resolved before anything else runs: a name that names
-      -- nothing must cost no model call and write no file. Beside the FIRST
+      -- Every world is resolved before anything else runs: a name that names
+      -- nothing must cost no model call and write no file, and that has to hold
+      -- for the LAST name in the list as much as the first. Beside the FIRST
       -- program, which is the one whose language folder the mint writes; the
       -- CLI parser guarantees there is one.
       let base = case goFiles go of
                    (f : _) -> takeDirectory f
                    []      -> "."
-      world <- resolveWorldOrDie base (goWorlds go) (goTarget go)
-      generate world (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+      worlds <- mapM (resolveWorldOrDie base (goWorlds go)) (goTarget go)
+      -- One model call per world, left to right. Sequential rather than
+      -- combined because a world's preamble is absolute prose about the one
+      -- namespace to emit into: concatenating four of them contradicts itself.
+      forM_ (zip worlds (drop 1 (tails (goTarget go)))) $ \(world, later) -> do
+        inherited <- inheritedGrammar later (goFiles go)
+        generate world inherited (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
@@ -149,6 +155,29 @@ main = do
       optionsQuery world (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
     WorldCmd dir mname -> worldVerb dir mname
     Lsp         -> runLsp
+
+-- | The committed grammar a mint must REUSE, or 'Nothing' when it is free to
+-- write its own. Read fresh before each world of a run, so world two inherits
+-- what world one just wrote.
+--
+-- Frozen exactly when some committed world will NOT be minted in the rest of
+-- this run: its rules were lowered from these patterns and nothing is going to
+-- rewrite them, so the patterns must stay as they are. That covers both cases
+-- with one test -- a world minted earlier in this same run is already committed
+-- and no longer upcoming, so the second world of @--target a,b@ inherits from
+-- the first. A first mint, and a re-mint of every world the language holds, are
+-- both free, which is why the remedy for a refused change is to name every
+-- world in one @--target@.
+--
+-- @upcoming@ is the worlds still to be minted, this one included.
+inheritedGrammar :: [Text] -> [FilePath] -> IO (Maybe Text)
+inheritedGrammar _ []                = pure Nothing
+inheritedGrammar upcoming (rep : _)  = do
+  let dir = langDir rep
+  committed <- mintedWorlds dir rep
+  case filter (`notElem` upcoming) committed of
+    [] -> pure Nothing
+    _  -> tryRead (grammarPathIn dir rep)
 
 -- | Resolve a world name or die naming the remedy. The one door: every verb
 -- that takes @--target@ comes through here, so a name means the same thing
@@ -655,11 +684,14 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- | @generate@: the one AI step. The model mints a whole engine (patterns,
 -- rules, demands); the kernel crystallizes the program with it and validates
 -- by a full run plus a Nix parse before writing anything.
-generate :: World -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
+-- The inherited grammar, when there is one, is both an INPUT (the mint is told
+-- to reuse it, so it enters the prompt and the record) and a GUARD (what comes
+-- back is checked against it).
+generate :: World -> Maybe Text -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
-generate _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate world mschema confidence compat verbose mmodel thinking files@(rep : _) = do
+generate _ _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
+generate world inherited mschema confidence compat verbose mmodel thinking files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -672,7 +704,7 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
   progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
   -- Owner taste is language-level (shared); read once from the language path.
   direction <- tryRead (directionPath rep)
-  let prompt = promptWithDirection direction world
+  let prompt = promptWithDirection direction inherited world
       -- The mint sees the whole example set at once, so the grammar generalizes
       -- across them (anti-unification): tokens that vary between examples become
       -- holes, tokens that agree stay literal. One program is the corpus-of-one
@@ -763,6 +795,23 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
       case engineViolations eng of
         []      -> pure ()
         (v : _) -> die (validationReport rep v)
+      -- Before any gate that costs a build: a later world may only APPEND to
+      -- the grammar its predecessors wrote, because their committed rules were
+      -- lowered from exactly those patterns and this run does not re-mint them.
+      case inherited of
+        Nothing -> pure ()
+        Just g  -> case appendOnlyViolations g (fst (splitEngine
+                          (renderLang (FromSource (SourceLoc "lang" 0)) eng))) of
+          []  -> pure ()
+          ids -> do
+            held <- mintedWorlds (langDir rep) rep
+            die (report
+              ("the " <> wName world <> " mint changed " <> plural (length ids) "pattern"
+                <> " the language's other worlds are built on:")
+              ids
+              ("\8594 re-mint every world together, so they agree: lips generate --target "
+                <> T.intercalate "," (held ++ [ wName world | wName world `notElem` held ])
+                <> " " <> T.pack rep))
       assertOptionsAdmissible world schemaPath rep eng
       -- Every program must crystallize, run, and parse as Nix under the shared
       -- engine: the example set is the regeneration corpus.
@@ -923,7 +972,11 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
       let rec = record model (wName world) (worldHash world) schemaPin (T.pack thinking) confidence prompt corpus transcript reply
           dir  = langDir rep
           w    = wName world
-          (grammarText, rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) eng)
+          (minted', rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) eng)
+          -- An inherited grammar is written back verbatim, with only this
+          -- mint's additions appended: the lines belong to the mint that wrote
+          -- them, and the other worlds' rules were lowered from those bytes.
+          grammarText = maybe minted' (`mergeGrammar` minted') inherited
       step ("write " <> T.pack (worldDirIn dir w)) $ do
         -- The language folder holds every minted and derived file, and the
         -- world's folder everything this lowering owns; create both (and the
