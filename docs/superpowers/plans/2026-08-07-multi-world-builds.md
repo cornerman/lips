@@ -328,6 +328,8 @@ it "names the world a program does not reach, not the program" $ do
 - `Lips.Cli.goTarget :: [Text]` — `--target nixos,kubenix` splits on commas, order preserved, duplicates refused by the parser naming the repeat.
 - `Lips.Generate.Minting.appendOnlyViolations :: Text -> Text -> [Text]` — committed grammar, newly minted grammar; the ids of pattern lines that were changed or dropped. Byte-identity, stamps included: appending world 2 never touches world 1's record, so its lines keep their stamps.
 
+**Why appending is safe, and why the guard can be this strict:** every committed program already crystallizes under the old grammar (a line no pattern reads fails the build), and two patterns reading one line is already refused as an overlap. So a new pattern can only claim a line of a program added in the SAME run: adding a pattern cannot break a world that already exists, and non-portability never appears retroactively. Do not weaken the guard to "modulo the stamp" — if a stamp moved, something rewrote a record that should not have been touched, and that is the defect the guard exists to catch.
+
 - [ ] **Step 1: Write the failing tests:**
 
 ```haskell

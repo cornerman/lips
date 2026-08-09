@@ -75,6 +75,22 @@ Consequence, named rather than hidden: when the grammar grows for world B, a
 program *using* the new line stops being portable to world A. That is reported
 at compile, per world, never at mint and never silently.
 
+The guard is byte-identity INCLUDING the `@gen:` stamp, and that is achievable
+rather than aspirational: appending world B never touches world A's record, so
+world A's lines keep the id they were stamped with. Sequencing buys this. A
+single record per language would have to be rewritten to hold the second event,
+changing its hash and forcing every one of world A's lines to be re-stamped,
+which is the same file edited -- so the guard would have to compare lines modulo
+their stamp, a weaker check for no gain.
+
+A safety property falls out, worth stating because it is what makes appending
+safe at all: **adding a pattern cannot break a world that already exists.**
+Every committed program already crystallizes under the old grammar (a line no
+pattern reads fails the build), and two patterns reading one line is already
+refused as an overlap. So a new pattern can only claim a line of a program added
+in the same run, and the worlds that existed before keep realizing exactly what
+they realized. Non-portability enters with new programs, never retroactively.
+
 ### 3. `--target a,b` Mints Several Backends at Once
 
 `generate` already takes several programs in one call and generalizes one
