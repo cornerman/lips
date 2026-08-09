@@ -65,7 +65,7 @@ import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSc
 import           Lips.Report            (Failure (..), demandGenerateFail, failureReport,
                                          gapArtifact, nixEvalFailed, nixMissing, plural,
                                          printFail, refusalReport, renderDiagnosis,
-                                         renderParseError, unanswerableReport,
+                                         renderParseError, unanswerableReport, unansweredReport,
                                          uncheckableReport, unportableReport, unreadable, validationReport)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
@@ -405,7 +405,7 @@ checkLoose contract claims mLangDir file = do
 checkWorld :: Bool -> Bool -> FilePath -> Text -> FilePath -> Text -> IO (Either Text Realization)
 checkWorld contract claims dir w file program = do
   eng <- loadLangOrDie dir w file
-  step ("crystallize " <> T.pack file) $ do
+  openQuestions <- step ("crystallize " <> T.pack file) $ do
     -- An engine unsound on its own terms makes every later verdict meaningless
     -- (an ambiguous line reads as the author's problem when it is the engine's),
     -- so it fails before the diagnosis. Same gate generate runs before accepting
@@ -429,30 +429,33 @@ checkWorld contract claims dir w file program = do
         -- telling the author to state a fact they already stated sends them in
         -- circles. So blame the side that can fix it.
         then case unanswerableDemands (edPatterns eng) (edDemands eng) of
-          []  -> die (report
-                   (T.pack file <> " is incomplete while these questions stay open.")
-                   []
-                   "→ answer them by stating the detail in the program.")
+          -- The demands are THIS WORLD's (they live in its rules), so the
+          -- question is this world's too: it is returned, not thrown, and the
+          -- worlds that hold are still reported and still compiled.
+          []  -> pure (diagOpen d)
           uds -> die (unanswerableReport file uds)
-        else pure ()
-  -- Validated ONCE, here, so the two readings of the outcome (is this world
-  -- reachable, and does its contract hold) judge the same run.
-  case validate file eng program of
-    Left (FailRun (Unmapped ds)) -> pure (Left (unportableReport file w ds))
-    Left ff -> die (printFail file ff)
-    Right rl0 -> do
-      rl <- expectGate contract claims dir w file eng program rl0
-      -- What vouches for each assertion, always printed. An unvouched assertion
-      -- (foreign text in an artifact argument, a staged source tree) is the one
-      -- thing lips cannot check, so the count is stated on every run rather than
-      -- discovered later by a reviewer reading generated code.
-      mapM_ note (groundingReport (rlGrounding rl))
-      -- A staged tree's size is the one thing the kernel cannot report: it is
-      -- pure and owns no filesystem, so the path counts as one word while the
-      -- file behind it may hold seventy lines nobody reviewed. The caller that
-      -- stages measures.
-      mapM_ note =<< stagedSizes dir file (rlGrounding rl)
-      pure (Right rl)
+        else pure []
+  case openQuestions of
+    (_ : _) -> pure (Left (unansweredReport file w openQuestions))
+    [] ->
+     -- Validated ONCE, here, so the two readings of the outcome (is this world
+     -- reachable, and does its contract hold) judge the same run.
+     case validate file eng program of
+      Left (FailRun (Unmapped ds)) -> pure (Left (unportableReport file w ds))
+      Left ff -> die (printFail file ff)
+      Right rl0 -> do
+        rl <- expectGate contract claims dir w file eng program rl0
+        -- What vouches for each assertion, always printed. An unvouched
+        -- assertion (foreign text in an artifact argument, a staged source tree)
+        -- is the one thing lips cannot check, so the count is stated on every
+        -- run rather than discovered later by a reviewer reading generated code.
+        mapM_ note (groundingReport (rlGrounding rl))
+        -- A staged tree's size is the one thing the kernel cannot report: it is
+        -- pure and owns no filesystem, so the path counts as one word while the
+        -- file behind it may hold seventy lines nobody reviewed. The caller that
+        -- stages measures.
+        mapM_ note =<< stagedSizes dir file (rlGrounding rl)
+        pure (Right rl)
   where
     escapes Matched{} = False
     escapes _         = True
@@ -945,7 +948,11 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   -- engine: the example set is the regeneration corpus.
   validated <- forM progs $ \(f, t) -> case validate f eng t of
     Left (FailRun (Unmapped ds))      -> throwE (unportableReport f wn ds)
-    Left (FailRun (OpenQuestions qs)) -> throwE (demandGenerateFail f qs)
+    -- At mint time the remedy has two sides (state it in the program, or mint
+    -- again so a rule fills it), so the existing message stands; what several
+    -- worlds add is WHICH world is asking, since the kubernetes lowering wants
+    -- an image the NixOS one does not.
+    Left (FailRun (OpenQuestions qs)) -> throwE (wn <> ": " <> demandGenerateFail f qs)
     Left ff                           -> throwE (validationReport f (failureReport f ff))
     Right rl -> do
       nixCheck <- lift (nixParses (rlModule rl))

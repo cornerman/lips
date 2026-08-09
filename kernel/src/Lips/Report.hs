@@ -29,6 +29,7 @@ module Lips.Report
   , validationReport
   , renderParseError
   , unportableReport
+  , unansweredReport
   , niceSubject
   , loc
   ) where
@@ -226,6 +227,23 @@ unportableReport file world ds =
              [ loc d <> ": " <> niceSubject (dSubject d) | d <- ds ]
     <> "\n\n\8594 compile the world this program is for, or state what " <> world
     <> " needs to place them."
+
+-- | One world's questions, left open by the program. A demand lives in a
+-- world's own rules, so an unanswered one is a fact about THAT WORLD: the
+-- kubernetes lowering of a scheduled job needs a container image, and the NixOS
+-- lowering of the same program needs nothing of the kind (measured 2026-08-09).
+--
+-- Separate from the plain open-questions message for the same reason
+-- 'unportableReport' is separate: with several worlds, "your program is
+-- incomplete" is false where the other worlds are complete, and the reader
+-- needs to know which world is asking before they answer.
+unansweredReport :: FilePath -> Text -> [Text] -> Text
+unansweredReport file world qs =
+  reportHead (T.pack file <> " leaves the world " <> world
+                <> " asking for what it does not state:")
+             qs
+    <> "\n\n\8594 state it in " <> T.pack file <> " to reach " <> world
+    <> ", or compile the worlds that already hold."
 
 -- | The full message for a print/run failure: the diagnosis plus the action
 -- that fits it -- edit the program (unanswered questions, a contradiction) or

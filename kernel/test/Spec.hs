@@ -30,7 +30,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
-import Lips.Report                 (unportableReport)
+import Lips.Report                 (unansweredReport, unportableReport)
 import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
@@ -5095,6 +5095,17 @@ main = hspec $ do
       let added = "p3 meta lang.pattern.p3 stated \"c\" @gen:bbbb\n"
       mergeGrammar old (T.replace "@gen:aaaa" "@gen:bbbb" old <> added)
         `shouldBe` old <> added
+
+  -- A demand lives in one world's rules, so the question it leaves open is that
+  -- world's, not the program's: the other worlds may be complete.
+  describe "a world's own open questions (Lips.Report.unansweredReport)" $ do
+    let t = unansweredReport "api.web.lips" "kubenix" ["which image should the run use?"]
+    it "names the world that is asking" $ do
+      t `shouldSatisfy` T.isInfixOf "world kubenix"
+      t `shouldSatisfy` T.isInfixOf "which image should the run use?"
+    it "points at the program, and says the other worlds still hold" $ do
+      t `shouldSatisfy` T.isInfixOf "api.web.lips"
+      t `shouldSatisfy` T.isInfixOf "worlds that already hold"
 
   describe "a language's worlds (Lips.Language)" $ do
     let withDir act = do
