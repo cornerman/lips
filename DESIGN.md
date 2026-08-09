@@ -775,7 +775,7 @@ omission.
   captured word is computation, so the mechanism-selecting word cannot be a
   hole; spelled literally, editing it stops the line matching, `check` fails
   loud with "grow the language", and a fresh mint picks the mechanism the new
-  word asks for. Regeneration IS the branch, and the `.lang` is disposable by
+  word asks for. Regeneration IS the branch, and the engine is disposable by
   design, so nothing is lost. The `droppedValues` gate (§13) makes the wrong
   shape unrepresentable in practice: a hole bound and then ignored is refused,
   which is what used to let an engine keep `buildGoModule` after the program
@@ -876,6 +876,67 @@ built and tested in `kernel/` on `main`; "partial" means the mechanism exists
 but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
+
+- **One program, several worlds: a shared grammar plus one folder per world.**
+  A language folder used to hold one engine for one world, so serving a program
+  to both NixOS and Kubernetes meant two languages, two readings of the same
+  sentences, and no way to say they were the same program. The engine format did
+  not have to change to fix this: a `.lang` is a flat list of decisions keyed by
+  subject, so the split already existed in the data. It is now a split in the
+  filesystem too -- `<language>.grammar` (the `lang.*` patterns: how a program is
+  READ, shared and identical in every world) at the language level, and
+  `<language>/<world>/` holding everything that depends on where a program LANDS
+  (`<language>.rules`, `.expect`, `.generation`, the world file copy, `README.md`,
+  and a refused mint's `.gap`). `Lips.Kernel.Lang.Store.readLang` reads the two
+  back as their concatenation, untouched; `Lips.Identity` is still the only place
+  that knows the layout, and `Lips.Language.mintedWorlds` answers which worlds a
+  folder holds by LOOKING (a subdirectory carrying this language's rules), so a
+  folder and its truth cannot disagree. The marker is the rules rather than the
+  record, because an engine written by hand carries no record and must still be
+  a world lips finds.
+
+  `generate --target a,b` is one run and one model call per world, left to
+  right: sequential because a world's preamble is absolute prose about the one
+  namespace to emit into, so concatenating two of them contradicts itself. Each
+  world gets its own record, and `stampFaults` now takes the language's records
+  as a LIST -- a line is sound when it names one of them, which is as strict as
+  before (every id still has to come from a record that re-hashes). A mint that
+  lands after another inherits the grammar in its prompt and may only APPEND to
+  it; `appendOnlyViolations` compares decisions with the provenance set aside
+  (the renderer stamps every line it writes, so the stamp is not the mint's to
+  keep) and a changed pattern is refused showing both lines, with the remedy
+  being a joint re-mint. `mergeGrammar` then writes the committed lines
+  verbatim, so an inherited pattern keeps the bytes and the stamp of the mint
+  that wrote it. Frozen exactly when some committed world will not be minted in
+  the rest of the run (`grammarIsFrozen`), which frees a first mint and a
+  re-mint of every world, and covers the second world of one run with the same
+  test.
+
+  `check` reports one verdict per world and `compile` writes one directory per
+  world (`out/<instance>/<world>`), because a compiled module is a world's shape
+  and one directory could hold only the last one written. A world a program does
+  not reach fails ALONE: ground decisions no rule of that world places are its
+  own defect, reported by `Lips.Report.unportableReport` (which never says "lips
+  generate", because re-minting nixos cannot make a kubenix-only line land
+  there), while every other failure stays fatal for the run -- a conflict or an
+  unanswered demand is a fact about the PROGRAM, true in every world. The worlds
+  that hold are still written, and the run still exits nonzero.
+
+  Measured, not assumed: `examples/install.packages.lips` is minted for nixos
+  beside home-manager, the grammar byte-identical across the two mints, and one
+  compile writes `home.packages` and `environment.systemPackages` from one
+  program. The first attempt, on `examples/nightly.timer.lips`, refused instead
+  -- and the refusal is the finding. A shared grammar can only serve worlds that
+  SPELL a value the same way: nixos wants `*-*-* 03:00:00`, a Kubernetes CronJob
+  wants `0 3 * * *`, and nothing below the mint can convert one into the other
+  (the value grammar has no computation, by construction). The first mint must
+  therefore emit such a value in parts (a fused hole `<hour>:<minute>` and a
+  multi-part assertion the rules spend with `<value.1>`), which is now stated in
+  `assets/mint/shared.md` and given to any mint that has worlds after it. Three
+  live mints of the timer still spelled the time whole and the kubenix mint
+  refused, correctly, naming the gap. So the mechanism holds and the open
+  question is the mint's: whether a first world can reliably write a grammar
+  neutral enough for a world it has not seen.
 
 - **Worlds are data: a `<world>.world` file, not four arms of a Haskell enum.**
   The world axis was the design's own counter-example: adding a world meant

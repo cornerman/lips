@@ -1,7 +1,7 @@
 # Editor Integration
 
 One server, every language: `lips lsp` is domain-blind and serves any lips
-program from the shared `<language>/<language>.lang` beside it. Configure it
+program from the shared `<language>/<language>.grammar` beside it. Configure it
 once; every program you mint gets tooling for free. It is pure of AI and
 offline, like `run`.
 
@@ -24,8 +24,10 @@ per-language configuration.
 
 Programs are named `<instance>.<language>.lips`: the uniform `.lips`
 extension is what every editor associates on, and the server reads the shared
-`<language>/<language>.lang` in the language folder beside the program (e.g.
-`ledger.backup.lips` -> `backup/backup.lang`).
+`<language>/<language>.grammar` in the language folder beside the program (e.g.
+`ledger.backup.lips` -> `backup/backup.grammar`). Completion and diagnostics are
+pattern-level, so the grammar alone is the whole answer and the editor sees the
+same language whichever worlds the folder was minted into.
 
 ## Neovim (built-in LSP)
 

@@ -6,27 +6,31 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-0. **Multi-world builds: one program, several backends.** PLANNED AND READY, not
-   started: `docs/superpowers/plans/2026-08-07-multi-world-builds.md` (8 tasks,
-   from the layout move to the first real two-world mint), design in
-   `docs/superpowers/specs/2026-08-07-multi-world-builds-design.md`. Its
-   prerequisite (worlds are data) landed 2026-08-09, DESIGN §13.
+0. **A grammar neutral enough for a world it has not seen** (opened 2026-08-09
+   by the multi-world work landing, DESIGN §13).
 
-   Short version: a language folder gains one subdirectory per world, patterns
-   are shared (`<language>.grammar`) and rules, contract and record are per
-   world. `--target a,b` is one lips run and two model calls, left to right; the
-   second receives the committed grammar and may only append to it. `compile`
-   builds every minted world into `out/<instance>/<world>/`, and a program that
-   lands nowhere in one world fails that world alone, naming it. The engine
-   FORMAT does not change: `.lang` is already a flat list keyed by subject
-   prefix, so the split is a partition read back by concatenation, and the 20
-   committed examples migrate with no re-mint.
+   Multi-world builds are BUILT: one grammar, one folder per world, `--target
+   a,b`, per-world compile and per-world failure. What the first live mints
+   exposed is the one thing the mechanism cannot do for you. A pattern's facts
+   are shared, and nothing below the mint can convert a value from one world's
+   notation into another's (the value grammar has no computation, by
+   construction). So a program stating `every day at 03:00` can serve nixos and
+   kubenix only if the FIRST mint splits the time into parts a rule can
+   reassemble (`<hour>:<minute>`, spent as `<value.1>`/`<value.2>`).
+   `assets/mint/shared.md` now tells a mint with worlds after it exactly that,
+   with the mechanism named. Three live mints of `examples/nightly.timer.lips`
+   still spelled the time whole, and the kubenix mint refused, correctly, with a
+   gap naming the conversion it could not make.
 
-   Decided while planning, so it is not re-opened: the mint is sequential
-   because the four world preambles are absolute prose that contradicts itself
-   when concatenated; records live per world, so a `@gen:` stamp must name one
-   of its language's records; and the diagnosis repeats per world because
-   demands and inert words genuinely differ between them.
+   So the open question is the mint's, not the kernel's: can a first world
+   reliably write a grammar neutral enough for a world it has not seen, or does
+   a notation-divergent value need the human to say so? Two things to try before
+   deciding: mint the two worlds' preambles into ONE call after all (rejected
+   while planning because absolute prose contradicts itself, but a shared
+   grammar is exactly the thing that wants one reading), or let a refusing
+   second world hand back a proposed grammar the human re-mints both worlds
+   with. Do not add a conversion form to the value grammar; that is the
+   computation the design forbids.
 
 1. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
    by the meaning-dimension work, DESIGN §13).
@@ -319,7 +323,7 @@ tracks only what is still open.
   file's content hash, and (since worlds became data) `format: 1` for the
   record's own shape; `<world>.world` carries its own `format:`. What is pinned
   nowhere: the lips that ran, and the format of the engine files themselves
-  (`.lang`, and after multi-world `.grammar`/`.rules`/`.expect`).
+  (`.grammar`, `.rules`, `.expect`).
 
   Why that is the interesting hole. Invariant 6 pins every INPUT of a
   generation event, and the reader is not one of them. The kernel's physics --

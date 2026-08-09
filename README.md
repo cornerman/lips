@@ -110,7 +110,7 @@ A program is named `<instance>.<language>.lips` and read right to left. The
 `.lips` extension is the constant marker every editor and language server keys
 on (one extension, so vim, VS Code, Emacs, and Helix all recognize a program
 with no per-language setup). lips ships that language server: `lips lsp` is one
-domain-blind, offline process that reads the `.lang` in the language folder and
+domain-blind, offline process that reads the `.grammar` in the language folder and
 gives completion (the language's own patterns as snippets) and live diagnostics
 (an unread line is an error, an open question a warning), with no per-language
 configuration. Editor glue for neovim, vim, VS Code, and Helix lives in
@@ -119,7 +119,7 @@ lips language the program is written in -- a reusable grammar shared by every
 program in it. What precedes that, `<instance>`, names this one instance.
 
 So `ledger.backup.lips` is the instance `ledger`, written in the language
-`backup`. A sibling `photos.backup.lips` reuses the same `backup.lang` grammar
+`backup`. A sibling `photos.backup.lips` reuses the same `backup.grammar`
 with no new AI; each realizes to its own instance
 (`services.restic.backups.ledger.*` and `...photos.*`) and the two compose in
 one configuration without collision. The instance is optional: `backup.lips`
@@ -150,7 +150,8 @@ file, both embedded into the binary at build time.
 
 You pick the world at mint time. `--target nixos` (the default),
 `--target home-manager`, `--target kubenix` or `--target terranix` picks the
-world the engine is born into. A world is DATA, not a lips feature: each of
+world the engine is born into, and `--target nixos,kubenix` picks several: one
+model call per world, left to right. A world is DATA, not a lips feature: each of
 those names a `<world>.world` file lips ships (`lips world` lists them, `lips
 world nixos` prints one), and a `<name>.world` file beside your program is
 resolved the same way, so a world lips never heard of works with no change to
@@ -165,12 +166,28 @@ does not exist there is refused before anything is written. How much that buys
 differs per world, and lips says which: kubenix types every Kubernetes field,
 while terranix declares its Terraform namespaces free-form, so there a lookup
 confirms `resource` exists and nothing below it — the answer says so in those
-words rather than implying a name was checked. Nothing translates between worlds: a user-service backup
-is a different intent, minted into a different engine. The world file is copied
+words rather than implying a name was checked. The world file is copied
 into the language folder and pinned by content hash in `backup.generation`,
 which enters the generation id: the engine carries the physics it was minted
-into, so a checkout on another machine compiles identically, and re-minting for
-another world is a distinct, `.expect`-gated event.
+into, so a checkout on another machine compiles identically.
+
+One language can serve several worlds, and the split between the files says
+how. The patterns — how a program is READ — sit in `backup.grammar` at the
+language level and are shared: one reading, the same everywhere. Everything
+that depends on where a program LANDS sits in a folder named after the world:
+`backup/nixos/backup.rules`, its `.expect`, its `.generation`, its copy of the
+world file. So `compile` writes one module directory per world
+(`out/ledger/nixos`, `out/ledger/kubenix`) and `check` reports one verdict per
+world.
+
+The grammar is what the worlds agree on, so a mint that lands after another may
+only ADD to it, never change a pattern the other worlds' rules were lowered
+from; lips refuses the change and names the remedy, which is to re-mint every
+world together (`--target nixos,kubenix`). This costs the first mint some care:
+a fact must carry what the program says in pieces every world can spend, since
+nothing below the mint can convert one notation into another. Where a program
+reaches one world and not another, only that world fails, by name, and the
+worlds that hold are still written.
 
 **Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
 your text into a directory holding `default.nix` (the Nix module, for import
@@ -320,9 +337,9 @@ The examples live in the repo, so clone it first:
 The commented lines show equivalents using `just` or `nix run . --` for when you are developing on `lips` itself.
 
 `compile` prints the stock nix commands that run the result, e.g.
-`nix run path:examples/backup/out/ledger#vm` for a throwaway QEMU boot (needs
-KVM), `nix build path:examples/backup/out/ledger#vm` to only check that it
-builds, or `nix develop path:examples/backup/out/ledger` for a shell with
+`nix run path:examples/backup/out/ledger/nixos#vm` for a throwaway QEMU boot (needs
+KVM), `nix build path:examples/backup/out/ledger/nixos#vm` to only check that it
+builds, or `nix develop path:examples/backup/out/ledger/nixos` for a shell with
 `restic-ledger` on PATH.
 
 Open `examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and
@@ -330,7 +347,7 @@ compile again. The module updates with no AI. Then add a sentence the language
 does not know and watch it fail loud, pointing you back to
 `lips generate my.backup.lips` (the only step that needs a model, via `pi`).
 To see reuse, look at `examples/photos.backup.lips`: a second instance of the
-same `backup` language, sharing `examples/backup/backup.lang`.
+same `backup` language, sharing `examples/backup/backup.grammar`.
 
 Sometimes intent needs a program written, not just a package configured.
 `examples/hello.http.lips` asks for a small HTTP server; its engine builds
@@ -355,29 +372,33 @@ listing shows what you own and nothing else:
     photos.backup.lips          <- yours
     backup.direction            <- yours (optional taste for the mint)
     backup/                     <- the machine's, all of it
-      backup.lang backup.expect backup.generation README.md
+      backup.grammar            <- how every program is read, shared by the worlds
+      nixos/                    <- one folder per world it was minted into
+        backup.rules backup.expect backup.generation nixos.world README.md
       artifacts/
       out/                      <- derived; lips writes out/.gitignore itself
-        ledger.decisions  ledger/
-        photos.decisions  photos/
+        ledger.decisions  ledger/nixos/
+        photos.decisions  photos/nixos/
 
-The three minted language files are shared by every `*.backup.lips` program; what sits
-under `out/` is per instance, derived, and safe to delete.
+The grammar is shared by every `*.backup.lips` program AND by every world; a
+world folder holds that world's own lowering. What sits under `out/` is per
+instance and per world, derived, and safe to delete.
 
 | File | Author | Role | In git |
 |------|--------|------|--------|
 | `ledger.backup.lips` | you | the program (instance `ledger`), the only real source | yes |
 | `backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
-| `backup/backup.lang` | AI, once | the engine (grammar + rules + tests), shared by the language | yes |
-| `backup/backup.expect` | AI, once | behavioral tests that gate regeneration, shared | yes |
-| `backup/README.md` | AI, once | the language explained in plain words, your review artifact | yes |
+| `backup/backup.grammar` | AI, once | the patterns: how a program is read, shared by every world | yes |
+| `backup/nixos/backup.rules` | AI, once | one world's lowering: rules and demands | yes |
+| `backup/nixos/backup.expect` | AI, once | that world's behavioral tests, which gate regeneration | yes |
+| `backup/nixos/README.md` | AI, once | the language explained in plain words, your review artifact | yes |
 | `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
-| `backup/backup.generation` | machine | receipt of the exact AI call and the world it pins, shared | yes |
-| `backup/nixos.world` | machine | the world the engine was minted into, copied verbatim | yes |
+| `backup/nixos/backup.generation` | machine | receipt of the exact AI call and the world it pins | yes |
+| `backup/nixos/nixos.world` | machine | the world that mint was aimed at, copied verbatim | yes |
 | `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
-| `backup/out/ledger/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |
+| `backup/out/ledger/nixos/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |
 
-Everything the machine writes is traceable. Each `.lang` line ends in
+Everything the machine writes is traceable. Each minted line ends in
 `@gen:<fingerprint>`, the hash of the AI call recorded in `.generation`. And
 `.decisions` shows how the machine read you, one precise statement per line, so
 you can check "did it understand me?" before trusting the output.

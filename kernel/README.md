@@ -21,7 +21,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
 | `Lips.Kernel.Lang.Nest` | ledger 13 | blocks: the pattern-nesting relation, a line's scope in the block it sits in (ancestors' captures, `<n:index>`, `<k:key>`), and the checks that close it |
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |
-| `Lips.Kernel.Lang.Store` | section 5 | the `.lang` stored form: the whole engine as `meta` decisions, round-tripping |
+| `Lips.Kernel.Lang.Store` | section 5 | the stored engine form: the whole engine as `meta` decisions, round-tripping. A language folder splits it by subject -- `<language>.grammar` (patterns) plus one world's `<language>.rules` -- and reads the two back as their concatenation |
 | `Lips.Kernel.Engine.Data` | section 5 | the engine's back half as data: minted rules (`match ... => options`) and demands, interpreted generically |
 | `Lips.Kernel.Engine.Value` | section 5 | the closed rhs value grammar (string/list/bool/int/float/path/null, attrsets, s-expressions; holes, typed holes and `${pkgs...}`/`${artifact...}` refs only) -- computation and injection unrepresentable |
 | `Lips.Kernel.Hole` | ledger 13 | the type a hole coerces a program word into, shared by BOTH value grammars so `<value:int>` cannot come to mean two things |
@@ -41,18 +41,19 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.OptionType` | ledger 13 | domain-blind option grounding over a typed `OptionSchema`, plus the schema lookup the mint's `query_options` tool asks |
 | `Lips.Nix.Options` / `Lips.Nix.Flake` | ledger 13 | the `optionsJSON` shape every world's schema parses as, and the `flake.nix` assembled from a world's slots |
 | `Lips.World` / `Lips.World.Builtin` / `Lips.World.Resolve` | ledger 13 | a world as DATA: the `<world>.world` format and its strict parser, the four lips ships (embedded), and how a name becomes one |
-| `Lips.Identity` | ledger 13 | the only place that knows the file layout (`<instance>.<language>.lips` -> language folder, `out/`) |
+| `Lips.Identity` | ledger 13 | the only place that knows the file layout (`<instance>.<language>.lips` -> language folder, one folder per world, `out/`) |
+| `Lips.Language` | ledger 13 | which worlds a language holds, found by looking: a subdirectory carrying this language's rules |
 | `Lips.Cli` | ledger 13 | the whole CLI grammar as one `optparse-applicative` parser (verbs, flags, completion) |
 | `Lips.Lsp.Derive` / `Lips.Lsp.Server` | ledger 13 | the language server: pure completion/diagnostics core, and its stdio JSON-RPC shell |
 | `Lips.Generate.Harness` | section 5 | the `Confidence` unit the deduce-or-fail gate speaks in (the resampling harness was removed as speculative) |
 | `Lips.Generate.PiJson` | section 5 | parsing pi's json event stream: the reply, the model used, and the tool transcript |
-| `Lips.Generate.Record` | section 5 | the pinned generation record and its content id; every minted `.lang` line is stamped `@gen:<id>` |
+| `Lips.Generate.Record` | section 5 | the pinned generation record and its content id; every minted line is stamped `@gen:<id>`, and must name one of its language's records (one per world) |
 | `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + whole-engine candidate parser (pure) |
-| `Lips.Generate.Readme` | section 5 | the mint's `report` and `gap` blocks rendered as `<language>/README.md`, the human's review artifact |
+| `Lips.Generate.Readme` | section 5 | the mint's `report` and `gap` blocks rendered as `<language>/<world>/README.md`, the human's review artifact |
 
 ## The Loop
 
-    lips generate examples/ingest.feed.lips   # AI step: mints feed/feed.lang + feed/feed.expect, validates by a full run
+    lips generate examples/ingest.feed.lips   # AI step: mints feed/feed.grammar + feed/nixos/*, validates by a full run
     lips compile examples/ingest.feed.lips    # deterministic: crystallize -> refine -> realize -> module dir (no AI)
     lips check   examples/ingest.feed.lips    # deterministic: the committed .expect contract must hold (no AI)
     lips lsp                                  # the domain-blind language server (stdio)
@@ -61,14 +62,16 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 
 Every path is derived from the program name by `Lips.Identity`: a program
 `<instance>.<language>.lips` keeps everything the machine writes in a
-`<language>/` folder beside it (`feed/feed.lang`, `feed/feed.expect`,
-`feed/feed.generation`, `feed/artifacts/`), with derived output under
-`feed/out/` (`out/ingest.decisions`, the compiled dir `out/ingest/`). Running is
+`<language>/` folder beside it: the shared `feed/feed.grammar`, one folder per
+world it was minted into (`feed/nixos/feed.rules`, `feed/nixos/feed.expect`,
+`feed/nixos/feed.generation`, `feed/nixos/nixos.world`) and `feed/artifacts/`,
+with derived output under `feed/out/` (`out/ingest.decisions`, the compiled dir
+`out/ingest/nixos/`). Running is
 not a lips verb: `compile` prints the stock `nix` commands over the compiled
 directory.
 
 `generate` is the one step where a model runs (spec section 5). The model mints
-a whole *engine* into `<language>/<language>.lang` -- patterns (the language), rules (the
+a whole *engine* -- patterns (the language), rules (the
 mechanisms, as `match <kind> <subject> => <option.path> "<rhs>" ; ...`, where
 `<rhs>` is a value in a closed grammar, never a Nix expression), and
 demands -- and it never states the meaning of the program. The kernel then
@@ -76,7 +79,7 @@ crystallizes the program with that engine, validates it by a full run, a
 Nix parse (`nix-instantiate --parse`), and an option-schema check (every minted
 rule must fill a NixOS option that exists in the pinned nixpkgs, with a
 compatible value type, or the engine is rejected -- deduce-or-fail), and only
-then writes the language's `.lang`, the
+then writes the grammar and the world's rules, the
 per-instance crystal witness `out/<instance>.decisions`, and a `.generation`
 audit record. It
 routes the model call through `pi` in json print mode, hermetic by explicit
@@ -105,7 +108,8 @@ input of the generation event like the model and the prompt, and it enters the
 record's own id.
 
 `compile` takes the loose program directly and crystallizes it with the
-language's `.lang`, with no model. Edits that stay within the language (changing a value or
+language's grammar, then lowers it through every world the language holds, with
+no model. Edits that stay within the language (changing a value or
 instance a hole binds) flow through unchanged; an edit that escapes the
 language fails loud and names `generate` as the remedy.
 
@@ -143,7 +147,8 @@ text. The boundary is explicit in the code:
   model saw escapes `genId`.
 
 The whole engine is data: patterns (front half) and rules + demands (back
-half) all live in the one `.lang` file and are interpreted by generic kernel
+half) are one flat list of decisions, split across the grammar and one world's
+rules, and interpreted by generic kernel
 executors (`Lips.Kernel.Engine.Data`). Nothing problem-specific is compiled into the
 kernel; there is no hand-written engine anymore. Minted rules emit only ground
 (`Meta`) decisions, so a minted engine terminates in one refinement pass by
@@ -154,7 +159,8 @@ kernel physics absorbed from the first live run, where the model otherwise
 unpacked packed values with Nix `splitString` gymnastics.
 
 `.decisions` is no longer a source artifact: it is the cached crystal, derived
-from the loose text plus `.lang`, safe to delete -- which is why it lives under
+from the loose text plus the grammar (so it is the same in every world), safe to
+delete -- which is why it lives under
 the language folder's self-ignoring `out/`. The only irrecoverable
 artifact is the loose program itself.
 
@@ -174,7 +180,7 @@ the repo root, where the flake and `examples/` live):
     nix run . -- compile examples/ingest.feed.lips    # crystallize + realize -> module dir, no AI
     nix run . -- compile examples/ledger.backup.lips  # a second, non-feed domain
 
-This reads the program and its language's `.lang`. An unmet demand, an escaping
+This reads the program, its language's grammar and every world's rules. An unmet demand, an escaping
 line, or a missing language instead fails loud and names `generate` as the
 remedy.
 

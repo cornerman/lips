@@ -41,9 +41,11 @@ kernel bug; a missing domain fact is the engine's job.
   Evolves slowly; per-problem knowledge never lives here (see "The Kernel
   Knows Nothing"). It reaches concrete things only by name, inherited from
   Nix.
-- **Engine**: the per-problem rulebook, pure data in `<program>.lang`
-  (patterns + rules + demands). AI-minted, disposable, regenerable. There is
-  no per-problem engine *code*.
+- **Engine**: the per-problem rulebook, pure data (patterns + rules +
+  demands), split across `<language>.grammar` (the patterns, shared by every
+  world) and `<world>/<language>.rules` (that world's lowering), read back as
+  their concatenation. AI-minted, disposable, regenerable. There is no
+  per-problem engine *code*.
 - **generate / compile / check**: generate is the only AI door (via `pi` print
   mode). compile and check are deterministic and offline, always. Running is
   not a lips verb: `compile` prints the stock `nix` commands over the compiled
@@ -85,10 +87,13 @@ kernel bug; a missing domain fact is the engine's job.
 - Layout: one rule -- a directory listing shows what a human owns and nothing
   else. Human-written files sit at the top level (programs `*.lips`, optional
   `<language>.direction`); everything the machine writes for a language goes in
-  `<language>/` beside them -- `<language>.lang`, `.expect`, `.generation`,
-  `artifacts/` (committed) and `out/` (derived: `<instance>.decisions`, compiled
-  module dirs). lips writes `out/.gitignore` (`*`) itself. `Lips.Identity` is
-  the only place that knows these paths.
+  `<language>/` beside them -- the shared `<language>.grammar`, one folder per
+  world holding `<language>.rules`, `.expect`, `.generation` and the world file
+  copy, plus `artifacts/` (all committed) and `out/` (derived:
+  `<instance>.decisions`, compiled module dirs per world). lips writes
+  `out/.gitignore` (`*`) itself. `Lips.Identity` is the only place that knows
+  these paths, and `Lips.Language.mintedWorlds` the only one that asks which
+  worlds a folder holds.
 - Model gateway: `pi -p -nt --no-session --model <provider/id>` reading the
   prompt from stdin; `pi` is deliberately not in the dev shell (it is the
   user's harness and carries auth).
