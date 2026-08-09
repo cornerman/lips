@@ -74,7 +74,7 @@ import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidat
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, record,
-                                         recordedSchemaFor, recordedWorld, renderStampFault, stampFaults, worldHash)
+                                         recordedSchemaFor, recordedWorld, recordedWorldPin, renderStampFault, stampFaults, worldHash)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), bindSelfExpect, compatSlug, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
@@ -308,7 +308,11 @@ ensureDerived file = do
 -- record does not name.
 readRecordedWorld :: FilePath -> Text -> FilePath -> IO World
 readRecordedWorld dir w file = do
-  let path = generationPathIn dir w file
+  -- The world's own record when it was minted alone, else the language-level
+  -- record of the call that covered it: one mint may write for several worlds,
+  -- and its event belongs to none of them alone.
+  own <- doesPathExist (generationPathIn dir w file)
+  let path = if own then generationPathIn dir w file else languageRecordPathIn dir file
   there <- doesPathExist path
   m <- tryRead path
   src <- case (there, m) of
@@ -322,7 +326,11 @@ readRecordedWorld dir w file = do
       []
       "\8594 mint it: lips generate <program>.")
     (_, Just s) -> pure s
-  (name, mpin) <- either (\why -> die (report
+  (name, mpin) <- case recordedWorldPin src w of
+    Just pin -> pure pin
+    -- A record that does not name this world at all cannot vouch for it. Older
+    -- records name exactly one world, so they still read through recordedWorld.
+    Nothing  -> either (\why -> die (report
       ("lips can't compile " <> T.pack file <> ": " <> why <> ".")
       [T.pack path <> " is the record it read."]
       "\8594 re-mint it: lips generate <program>.")) pure (recordedWorld src)
@@ -636,15 +644,18 @@ loadLangOrDie dir w file = do
 -- treats it -- guessing there would turn a broken repository into a green check.
 assertStamps :: FilePath -> [Text] -> FilePath -> IO ()
 assertStamps dir ws file = do
-  recs <- fmap concat $ forM ws $ \w -> do
-    let recPath = generationPathIn dir w file
+  -- Every record of the language: one per world minted alone, plus the
+  -- language-level record of any call that covered several at once. A line is
+  -- sound when it names one of them.
+  recs <- fmap concat $ forM (languageRecordPathIn dir file
+                                : [ generationPathIn dir w file | w <- ws ]) $ \recPath -> do
     there <- doesPathExist recPath
     mrec  <- tryRead recPath
     case (there, mrec) of
-      -- A world with no record at all is a hand-written engine, judged by the
-      -- inverted rule (no line may claim a generation). A record that EXISTS
-      -- and cannot be read is the other case entirely: reading it as absent is
-      -- what would turn a damaged repository green.
+      -- No record at all is a hand-written engine, judged by the inverted rule
+      -- (no line may claim a generation). A record that EXISTS and cannot be
+      -- read is the other case entirely: reading it as absent is what would
+      -- turn a damaged repository green.
       (False, _)      -> pure []
       (True, Nothing) -> die (report
         ("lips can't read the generation record at " <> T.pack recPath <> ",")
