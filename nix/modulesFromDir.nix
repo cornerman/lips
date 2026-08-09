@@ -88,10 +88,17 @@ let
             cp ${worldDir p.language world + "/${world}.world"} ${p.language}/${world}/${world}.world
           '' + lib.optionalString (builtins.pathExists genFile)
             "cp ${genFile} ${p.language}/${world}/${p.language}.generation\n";
+        # A mint covering SEVERAL worlds files one record at the language level,
+        # beside the grammar it wrote; a world minted alone files its own. Both
+        # travel, because every minted line's stamp must name a record that is
+        # here to re-hash (invariant 6).
+        jointRecord = langDir p.language + "/${p.language}.generation";
     in pkgs.runCommand "lips-${p.instance}-module" { } ''
       mkdir -p ${p.language}
       cp ${dir + "/${name}"} ${name}
       cp ${langDir p.language + "/${p.language}.grammar"} ${p.language}/${p.language}.grammar
+      ${lib.optionalString (builtins.pathExists jointRecord)
+          "cp ${jointRecord} ${p.language}/${p.language}.generation"}
       ${lib.concatStrings (map stageWorld (worldsOf p.language))}
       ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}/artifacts"}
       # --no-contract: the behavioral gate evaluates the realized module with

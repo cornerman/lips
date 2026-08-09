@@ -1,2 +1,2 @@
-p1 meta lang.pattern.p1 stated "install packages => concept packages \"packages to install into the user profile\"" @gen:ccb0893adad2bc1c
-p2 meta lang.pattern.p2.under.p1 stated "<name> => fact pkg.<name> \"<name>\"" @gen:ccb0893adad2bc1c
+p1 meta lang.pattern.p1 stated "install packages => concept packages \"the packages to install\"" @gen:209db3fd65ec5f42
+p2 meta lang.pattern.p2.under.p1 stated "<name> => fact pkg.<name> \"<name>\"" @gen:209db3fd65ec5f42

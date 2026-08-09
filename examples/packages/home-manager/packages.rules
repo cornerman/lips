@@ -1,2 +1,1 @@
-q1 meta engine.demand.q1 stated "demand pkg.<name> \"which packages should be installed? list one package name per line under 'install packages:'\"" @gen:ccb0893adad2bc1c
-r1 meta engine.rule.r1 stated "match fact pkg.<name> => home.packages \"[ <value:pkg> ]\"" @gen:ccb0893adad2bc1c
+r2 meta engine.rule.r2 stated "match fact pkg.<name> => home.packages \"[ <value:pkg> ]\"" @gen:209db3fd65ec5f42

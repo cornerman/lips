@@ -1056,9 +1056,18 @@ writeWorld dir rep lang rec reportBody gaps single world wr = do
   -- The world travels WITH the engine: the record pins this copy by hash, and
   -- compile reads the copy, never the search path.
   TIO.writeFile (worldPathIn (worldDirIn dir w) w) (wRaw world)
-  when single $ do
-    TIO.writeFile (generationPathIn dir w rep) rec
-    TIO.writeFile (readmePathIn dir w) (renderReadme (T.pack lang) reportBody gaps)
+  if single
+    then do
+      TIO.writeFile (generationPathIn dir w rep) rec
+      TIO.writeFile (readmePathIn dir w) (renderReadme (T.pack lang) reportBody gaps)
+    -- A joint mint files its record and its account at the language level, so
+    -- any per-world pair left by an earlier single-world mint now describes an
+    -- event that did NOT write these rules. Removed rather than left to be
+    -- preferred by the next reader (invariant 6: a line's stamp must name the
+    -- generation that wrote it).
+    else do
+      removePathForcibly (generationPathIn dir w rep)
+      removePathForcibly (readmePathIn dir w)
   -- A refusal artifact describes a run that produced no engine, so it is a lie
   -- once one exists.
   removePathForcibly (gapPathIn dir w rep)
