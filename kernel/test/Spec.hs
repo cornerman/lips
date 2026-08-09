@@ -30,6 +30,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
+import Lips.Report                 (unportableReport)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
@@ -4956,6 +4957,19 @@ main = hspec $ do
     it "keeps the grammar's own outputs world-free" $ do
       decisionsPath prog `shouldBe` "examples/backup/out/ledger.decisions"
       artifactsPath prog `shouldBe` "examples/backup/artifacts"
+
+  -- With several worlds the ordinary "rebuild the setup" remedy becomes false:
+  -- re-minting nixos cannot make a kubenix-only line land in nixos.
+  describe "a world a program does not reach (Lips.Report.unportableReport)" $ do
+    let d = case readDecision "d1 fact services.thing.enable stated \"yes\"" of
+              Right x -> x
+              Left e  -> error (show e)
+        t = unportableReport "api.web.lips" "nixos" [d]
+    it "names the world, not the program" $ do
+      t `shouldSatisfy` T.isInfixOf "world nixos"
+      t `shouldSatisfy` T.isInfixOf "services thing enable"
+    it "does not send the reader to generate" $
+      t `shouldNotSatisfy` T.isInfixOf "lips generate"
 
   describe "a language's worlds (Lips.Language)" $ do
     let withDir act = do

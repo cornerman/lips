@@ -28,6 +28,7 @@ module Lips.Report
   , demandGenerateFail
   , validationReport
   , renderParseError
+  , unportableReport
   , niceSubject
   , loc
   ) where
@@ -205,6 +206,26 @@ failureReport file (FailRun err) = case err of
                [ loc d <> ": " <> niceSubject (dSubject d) | d <- ds ]
   Unrealizable rs ->
     reportHead ("the setup lips built for " <> T.pack file <> " can't be turned into a module:") rs
+
+-- | One world's verdict that a program does not reach it: the language READS
+-- these lines (they crystallize, under the grammar every world shares), and
+-- this world's rules place none of them.
+--
+-- A separate message from 'failureReport'\'s @Unmapped@ arm, which says "asks
+-- for things its setup can't do" and whose remedy is @lips generate@. With one
+-- world that is right. With several it is false: re-minting nixos cannot make a
+-- kubenix-only line land in nixos, so following that remedy burns a model call
+-- to learn nothing. What is true is smaller and is what this says -- the
+-- program is not portable to THIS world, and the reader either compiles the
+-- world it is for or states the placement this one needs.
+unportableReport :: FilePath -> Text -> [Decision] -> Text
+unportableReport file world ds =
+  reportHead (T.pack file <> " does not reach the world " <> world
+                <> ": its language reads these lines, and " <> world
+                <> " places none of them:")
+             [ loc d <> ": " <> niceSubject (dSubject d) | d <- ds ]
+    <> "\n\n\8594 compile the world this program is for, or state what " <> world
+    <> " needs to place them."
 
 -- | The full message for a print/run failure: the diagnosis plus the action
 -- that fits it -- edit the program (unanswered questions, a contradiction) or

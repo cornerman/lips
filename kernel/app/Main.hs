@@ -36,7 +36,7 @@ import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getEnvironment, lookupEnv)
-import           System.Exit        (ExitCode (..))
+import           System.Exit        (ExitCode (..), exitWith)
 import           GHC.IO.Encoding     (setLocaleEncoding)
 import           System.IO          (BufferMode (..), hClose, hGetContents,
                                      hIsEOF, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
@@ -64,7 +64,7 @@ import           Lips.Report            (Failure (..), demandGenerateFail, failu
                                          gapArtifact, nixEvalFailed, nixMissing, plural,
                                          printFail, refusalReport, renderDiagnosis,
                                          renderParseError, unanswerableReport,
-                                         uncheckableReport, unreadable, validationReport)
+                                         uncheckableReport, unportableReport, unreadable, validationReport)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
@@ -140,7 +140,8 @@ main = do
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
-      | otherwise  -> () <$ checkLoose True True (ceLangDir co) (ceFile co)
+      | otherwise  -> checkLoose True True (ceLangDir co) (ceFile co)
+                        >>= exitUnlessEveryWorldHeld (ceFile co)
     Options oo  -> do
       -- A lookup has no program, so a house world is resolved against the
       -- directory the human stands in (or --worlds).
@@ -208,7 +209,21 @@ compileLoose mout mLangDir noContract file = do
   -- @--no-contract@ is the one caller that cannot gate (a compile inside a nix
   -- derivation has no nix to evaluate with); it still crystallizes and realizes.
   rls <- checkLoose (not noContract) (not noContract) mLangDir file
-  forM_ rls (compileWorld mout dir file)
+  forM_ [ (w, rl) | (w, Right rl) <- rls ] (compileWorld mout dir file)
+  exitUnlessEveryWorldHeld file rls
+
+-- | Stop with a failing exit code when any world did not hold, after the ones
+-- that did have been reported and written. Deliberate: you get the artifact you
+-- can have, and CI still cannot mistake a program that reaches only some of its
+-- worlds for one that reaches them all.
+exitUnlessEveryWorldHeld :: FilePath -> [(Text, Either Text Realization)] -> IO ()
+exitUnlessEveryWorldHeld file rls = case [ w | (w, Left _) <- rls ] of
+  []   -> pure ()
+  bad  -> do
+    say ""
+    say (T.pack file <> " does not reach " <> T.intercalate ", " bad
+           <> "; the other worlds above hold.")
+    exitWith (ExitFailure 1)
 
 -- | Materialize ONE world's module directory from the realization @check@
 -- already validated. Every world the language was minted into is written, each
@@ -331,7 +346,10 @@ readRecordedWorld dir w file = do
 -- for it alone, because a per-call VM boot would block a mint on a machine
 -- without KVM. Everything before both -- crystallization, the open questions,
 -- the staged-source check -- runs either way, because none of it needs nix.
-checkLoose :: Bool -> Bool -> Maybe FilePath -> FilePath -> IO [(Text, Realization)]
+-- Per world, the verdict is an 'Either': a world the program does not reach
+-- fails alone (see 'unportableReport'), so the worlds that DO hold are still
+-- reported, and still compiled.
+checkLoose :: Bool -> Bool -> Maybe FilePath -> FilePath -> IO [(Text, Either Text Realization)]
 checkLoose contract claims mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
@@ -351,12 +369,19 @@ checkLoose contract claims mLangDir file = do
     -- genuinely differ: a line answered by one world's rules can stay open in
     -- another's, and only the pattern half of the diagnosis is shared.
     say ("world " <> w <> ":")
-    rl <- checkWorld contract claims dir w file program
-    pure (w, rl)
+    r <- checkWorld contract claims dir w file program
+    case r of
+      Left why -> say why
+      Right _  -> pure ()
+    pure (w, r)
 
 -- | One world's verdict on a program: its rules read on top of the shared
 -- grammar, its diagnosis, its contract, its claims.
-checkWorld :: Bool -> Bool -> FilePath -> Text -> FilePath -> Text -> IO Realization
+-- The one non-fatal defect is the world's own: ground decisions no rule of THIS
+-- world places. Every other failure is a fact about the PROGRAM (a conflict, an
+-- unanswered demand, a line no pattern reads) and holds in every world, so it
+-- stays fatal -- reporting it once per world would repeat one defect N times.
+checkWorld :: Bool -> Bool -> FilePath -> Text -> FilePath -> Text -> IO (Either Text Realization)
 checkWorld contract claims dir w file program = do
   eng <- loadLangOrDie dir w file
   step ("crystallize " <> T.pack file) $ do
@@ -389,17 +414,24 @@ checkWorld contract claims dir w file program = do
                    "→ answer them by stating the detail in the program.")
           uds -> die (unanswerableReport file uds)
         else pure ()
-  rl <- expectGate contract claims dir w file eng program
-  -- What vouches for each assertion, always printed. An unvouched assertion
-  -- (foreign text in an artifact argument, a staged source tree) is the one
-  -- thing lips cannot check, so the count is stated on every run rather than
-  -- discovered later by a reviewer reading generated code.
-  mapM_ note (groundingReport (rlGrounding rl))
-  -- A staged tree's size is the one thing the kernel cannot report: it is pure
-  -- and owns no filesystem, so the path counts as one word while the file behind
-  -- it may hold seventy lines nobody reviewed. The caller that stages measures.
-  mapM_ note =<< stagedSizes dir file (rlGrounding rl)
-  pure rl
+  -- Validated ONCE, here, so the two readings of the outcome (is this world
+  -- reachable, and does its contract hold) judge the same run.
+  case validate file eng program of
+    Left (FailRun (Unmapped ds)) -> pure (Left (unportableReport file w ds))
+    Left ff -> die (printFail file ff)
+    Right rl0 -> do
+      rl <- expectGate contract claims dir w file eng program rl0
+      -- What vouches for each assertion, always printed. An unvouched assertion
+      -- (foreign text in an artifact argument, a staged source tree) is the one
+      -- thing lips cannot check, so the count is stated on every run rather than
+      -- discovered later by a reviewer reading generated code.
+      mapM_ note (groundingReport (rlGrounding rl))
+      -- A staged tree's size is the one thing the kernel cannot report: it is
+      -- pure and owns no filesystem, so the path counts as one word while the
+      -- file behind it may hold seventy lines nobody reviewed. The caller that
+      -- stages measures.
+      mapM_ note =<< stagedSizes dir file (rlGrounding rl)
+      pure (Right rl)
   where
     escapes Matched{} = False
     escapes _         = True
@@ -463,7 +495,9 @@ checkDraft file = do
       -- .generation (a draft HAS no generation), so there is nothing to find by
       -- looking, and generate already said which world it is minting into.
       program <- readProgramOrDie file
-      rl <- checkWorld True False (dtLangDir t) (dtWorld t) file program
+      -- A draft is judged for ONE world, so a world it does not reach is that
+      -- draft's whole verdict, and fatal here.
+      rl <- either die pure =<< checkWorld True False (dtLangDir t) (dtWorld t) file program
       world <- draftWorldOrDefault
       clauseClaimGate world file rl
       note "the command claim gate and the artifact build were NOT run"
@@ -495,9 +529,8 @@ draftWorld = do
 -- Validates once, up front: the module, its artifacts and the paths it names
 -- all come from that one run, so the staged-source gate below and the contract
 -- judge the same realization.
-expectGate :: Bool -> Bool -> FilePath -> Text -> FilePath -> EngineData -> Text -> IO Realization
-expectGate contract claims dir w file eng program = do
-  rl <- either (die . printFail file) pure (validate file eng program)
+expectGate :: Bool -> Bool -> FilePath -> Text -> FilePath -> EngineData -> Text -> Realization -> IO Realization
+expectGate contract claims dir w file eng program rl = do
   stagedGate (stageBeside dir file rl) file rl
   sourceSpecGate dir w file eng program
   expSrc <- if contract then tryRead (expectPathIn dir w file) else pure Nothing
