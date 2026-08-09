@@ -4932,6 +4932,19 @@ main = hspec $ do
       generationPathIn dir prog `shouldBe` "services/a/backup/backup.generation"
       artifactsPathIn  dir prog `shouldBe` "services/a/backup/artifacts"
 
+  describe "the world layer of the layout (Lips.Identity)" $ do
+    let prog = "examples/ledger.backup.lips"
+        dir  = langDir prog
+    it "puts a world's files in its own folder beside the shared grammar" $ do
+      grammarPathIn dir prog `shouldBe` "examples/backup/backup.grammar"
+      worldDirIn dir "nixos" `shouldBe` "examples/backup/nixos"
+      rulesPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.rules"
+      worldPathIn (worldDirIn dir "nixos") "nixos"
+        `shouldBe` "examples/backup/nixos/nixos.world"
+    it "keeps the grammar's own outputs world-free" $ do
+      decisionsPath prog `shouldBe` "examples/backup/out/ledger.decisions"
+      artifactsPath prog `shouldBe` "examples/backup/artifacts"
+
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $
       readDecision "d1 fact x supreme \"a\"" `shouldSatisfy` isLeft

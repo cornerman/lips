@@ -54,6 +54,9 @@ module Lips.Identity
   , resolveLangDir
   , requireProgram
   , langPathIn
+  , grammarPathIn
+  , worldDirIn
+  , rulesPathIn
   , expectPathIn
   , generationPathIn
   , artifactsPathIn
@@ -166,7 +169,9 @@ artifactsPath :: FilePath -> FilePath
 artifactsPath file = langDir file </> "artifacts"
 
 -- | The per-instance crystal witness (derived, gitignored), named after the
--- instance so instances never collide:
+-- instance so instances never collide. It is not split by world: the witness
+-- records how the GRAMMAR read a program, taken before any rule runs, so every
+-- world sees the same one.
 -- @examples/backup/out/ledger.decisions@.
 decisionsPath :: FilePath -> FilePath
 decisionsPath file = outDir file </> T.unpack (instanceName file) <.> "decisions"
@@ -187,6 +192,28 @@ langLevelIn dir ext file = dir </> languageName file <.> ext
 -- | 'langPath', reading from an explicitly given directory.
 langPathIn :: FilePath -> FilePath -> FilePath
 langPathIn dir = langLevelIn dir "lang"
+
+-- | The shared grammar: @services\/a\/backup\/backup.grammar@. It sits at the
+-- LANGUAGE level, above every world folder, because the patterns are the
+-- language's whole cross-world contract: one reading of a program, the same in
+-- every world it is lowered into. Each world's rules are read as a
+-- concatenation with it, which is why the two halves may live in separate
+-- files at all (a @.lang@ is a flat list of decisions, split by subject).
+grammarPathIn :: FilePath -> FilePath -> FilePath
+grammarPathIn dir = langLevelIn dir "grammar"
+
+-- | A world's own folder inside the language folder:
+-- @services\/a\/backup\/nixos@. Named by the world, so a listing of the
+-- language folder is the list of worlds it was minted into.
+worldDirIn :: FilePath -> Text -> FilePath
+worldDirIn dir world = dir </> T.unpack world
+
+-- | One world's lowering of the language:
+-- @services\/a\/backup\/nixos\/backup.rules@. Keeps the language prefix inside
+-- the world folder for the same reason every other minted file does: a
+-- basename stays self-describing in an editor tab or a grep hit.
+rulesPathIn :: FilePath -> Text -> FilePath -> FilePath
+rulesPathIn dir world = langLevelIn (worldDirIn dir world) "rules"
 
 -- | 'expectPath', reading from an explicitly given directory.
 expectPathIn :: FilePath -> FilePath -> FilePath
