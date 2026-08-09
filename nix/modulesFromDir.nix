@@ -65,25 +65,34 @@ let
                     + language + " belongs under.");
 
   # Reproduce the on-disk shape in the build cwd -- program at top level, the
-  # shared grammar in the language folder, this world's files in its own -- so
+  # shared grammar in the language folder, every world's files in its own -- so
   # `lips compile` finds them by the same paths and stages the artifacts itself.
-  # One world is staged, so compile writes exactly one world's directory.
-  realize = name: p: world:
+  # EVERY world is staged, not just the one an output reads: the shared
+  # grammar's lines name whichever mint wrote them, so a one-world staging
+  # leaves lips unable to re-hash the record a grammar line points at
+  # (invariant 6). compile then writes one directory per world in one run, and
+  # each output below points into the one it wants.
+  realize = name: p:
     let artifactsSrc = langDir p.language + "/artifacts";
         hasArtifacts = builtins.pathExists artifactsSrc;
-        genFile = worldDir p.language world + "/${p.language}.generation";
-    in pkgs.runCommand "lips-${p.instance}-${world}-module" { } ''
-      mkdir -p ${p.language}/${world}
+        # The .generation record and the world file travel with the rules: the
+        # record names the world, the world file IS the physics compile
+        # assembles the flake from. Without them compile refuses, which is the
+        # point -- a compiled directory can only come from the world its engine
+        # was minted into.
+        stageWorld = world: let
+            genFile = worldDir p.language world + "/${p.language}.generation";
+          in ''
+            mkdir -p ${p.language}/${world}
+            cp ${worldDir p.language world + "/${p.language}.rules"} ${p.language}/${world}/${p.language}.rules
+            cp ${worldDir p.language world + "/${world}.world"} ${p.language}/${world}/${world}.world
+          '' + lib.optionalString (builtins.pathExists genFile)
+            "cp ${genFile} ${p.language}/${world}/${p.language}.generation\n";
+    in pkgs.runCommand "lips-${p.instance}-module" { } ''
+      mkdir -p ${p.language}
       cp ${dir + "/${name}"} ${name}
       cp ${langDir p.language + "/${p.language}.grammar"} ${p.language}/${p.language}.grammar
-      cp ${worldDir p.language world + "/${p.language}.rules"} ${p.language}/${world}/${p.language}.rules
-      # The .generation record and the world file travel too: the record names
-      # the world, the world file IS the physics compile assembles the flake
-      # from. Without them compile refuses, which is the point -- a compiled
-      # directory can only come from the world its engine was minted into.
-      ${lib.optionalString (builtins.pathExists genFile)
-          "cp ${genFile} ${p.language}/${world}/${p.language}.generation"}
-      cp ${worldDir p.language world + "/${world}.world"} ${p.language}/${world}/${world}.world
+      ${lib.concatStrings (map stageWorld (worldsOf p.language))}
       ${lib.optionalString hasArtifacts "cp -r ${artifactsSrc} ${p.language}/artifacts"}
       # --no-contract: the behavioral gate evaluates the realized module with
       # nix, which a compile INSIDE a nix build cannot do (no recursive nix). The
@@ -93,15 +102,16 @@ let
     '';
 
   # One entry per (instance, world) pair: the same program minted into two
-  # worlds is two modules, under two attributes.
+  # worlds is two modules, under two attributes, out of one compile.
   built = lib.concatMap (name:
     let p = parse name;
+        compiled = realize name p;
     in map (world: {
          instance = p.instance;
          moduleAttr = moduleAttrOf p.language world;
          # compile splits its output directory by world, so the module sits one
          # level in, under the world's own name.
-         module = "${realize name p world}/${world}";
+         module = "${compiled}/${world}";
        }) (worldsOf p.language)) (lib.attrNames entries);
 
   # The PUBLIC value must be importable exactly as the README shows it
