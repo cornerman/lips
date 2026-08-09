@@ -63,6 +63,7 @@ module Lips.Identity
   , readmePathIn
   , languageRecordPathIn
   , languageReadmePathIn
+  , languageGapPathIn
   , gapPathIn
   , artifactsPathIn
   , worldPathIn
@@ -219,6 +220,12 @@ languageRecordPathIn dir = langLevelIn dir "generation"
 -- is; a single-world mint writes 'readmePathIn' instead.
 languageReadmePathIn :: FilePath -> FilePath
 languageReadmePathIn dir = dir </> "README.md"
+
+-- | The refusal artifact of a mint that covered the whole language:
+-- @backup/backup.gap@. Filed at the scope of the event, like its record: a call
+-- writing for several worlds refuses as a whole.
+languageGapPathIn :: FilePath -> FilePath -> FilePath
+languageGapPathIn dir = langLevelIn dir "gap"
 
 -- | One world's machine-readable refusal artifact:
 -- @services\/a\/backup\/nixos\/backup.gap@. Written only when @generate@

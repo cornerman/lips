@@ -30,7 +30,7 @@ import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (forM, forM_, unless, when, void)
 import           Data.IORef         (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import           Data.Bifunctor     (first)
-import           Data.List          (intercalate, tails)
+import           Data.List          (intercalate)
 import           Data.Maybe         (fromMaybe)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -40,7 +40,9 @@ import           System.Exit        (ExitCode (..), exitWith)
 import           GHC.IO.Encoding     (setLocaleEncoding)
 import           System.IO          (BufferMode (..), hClose, hGetContents,
                                      hIsEOF, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
-import           System.Directory   (createDirectoryIfMissing, doesFileExist,
+import           Control.Monad.Trans.Class  (lift)
+import           Control.Monad.Trans.Except (runExceptT, throwE)
+import           System.Directory   (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
                                      doesPathExist, listDirectory, removePathForcibly)
 import           System.FilePath    (dropExtension, takeDirectory, takeExtension, (</>))
 import           System.Process     (CreateProcess (..), StdStream (..), createProcess, proc,
@@ -49,7 +51,7 @@ import           System.Process     (CreateProcess (..), StdStream (..), createP
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
-import           Lips.Identity                 (requireProgram, readmePathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
+import           Lips.Identity                 (requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (grammarIsFrozen, mintedWorlds)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
@@ -68,11 +70,11 @@ import           Lips.Report            (Failure (..), demandGenerateFail, failu
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), appendOnlyViolations, assemble, carriesEngineMeaning, mergeGrammar, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, itemsFor, sharedFileViolations, carriesEngineMeaning, mergeGrammar, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Record   (corpusText, genId, record,
-                                         recordedSchema, recordedWorld, renderStampFault, stampFaults, worldHash)
+                                         recordedSchemaFor, recordedWorld, renderStampFault, stampFaults, worldHash)
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), bindSelfExpect, compatSlug, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
@@ -137,15 +139,13 @@ main = do
                    (f : _) -> takeDirectory f
                    []      -> "."
       worlds <- mapM (resolveWorldOrDie base (goWorlds go)) (goTarget go)
-      -- One model call per world, left to right. Sequential rather than
-      -- combined because a world's preamble is absolute prose about the one
-      -- namespace to emit into: concatenating four of them contradicts itself.
-      -- Each world is paired with the worlds still upcoming, ITSELF INCLUDED:
-      -- a world being minted right now does not inherit its own committed
-      -- grammar, or a re-mint could never change a pattern.
-      forM_ (zip worlds (tails (goTarget go))) $ \(world, upcoming) -> do
-        inherited <- inheritedGrammar upcoming (goFiles go)
-        generate world inherited (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+      -- ONE model call for the whole language. The patterns are shared by every
+      -- world, so the call that writes them must see every world: a call that
+      -- sees one bakes that world's spelling into the shared half, and the next
+      -- world -- which cannot convert a value, the grammar having no
+      -- computation -- can only refuse. Measured 2026-08-09.
+      inherited <- inheritedGrammar (goTarget go) (goFiles go)
+      generate worlds inherited (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
@@ -654,13 +654,6 @@ assertStamps dir ws file = do
       ("\8594 re-mint it: lips generate " <> T.pack file
         <> " (a minted file is never hand-edited)."))
 
--- | One line of a rendered engine, by its id, for a message that has to show
--- what changed. Absent means the mint dropped it.
-lineOf :: Text -> Text -> Text
-lineOf i src = case [ l | l <- T.lines src, take 1 (T.words l) == [i] ] of
-  (l : _) -> l
-  []      -> "(dropped)"
-
 -- | Read the program file, or fail with a plain message instead of a raw
 -- exception when the path is wrong (a common typo at the shell).
 readProgramOrDie :: FilePath -> IO Text
@@ -686,12 +679,14 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- The inherited grammar, when there is one, is both an INPUT (the mint is told
 -- to reuse it, so it enters the prompt and the record) and a GUARD (what comes
 -- back is checked against it).
-generate :: World -> Maybe Text -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
+generate :: [World] -> Maybe Text -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
 generate _ _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate world inherited mschema confidence compat verbose mmodel thinking files@(rep : _) = do
-  let lang = languageName rep
+generate worlds inherited mschema confidence compat verbose mmodel thinking files@(rep : _) = do
+  let lang   = languageName rep
+      dir    = langDir rep
+      wnames = map wName worlds
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
   case [ f | f <- files, languageName f /= lang ] of
@@ -703,50 +698,54 @@ generate world inherited mschema confidence compat verbose mmodel thinking files
   progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
   -- Owner taste is language-level (shared); read once from the language path.
   direction <- tryRead (directionPath rep)
-  let prompt = promptWithDirection direction inherited [world]
+  let prompt = promptWithDirection direction inherited worlds
       -- The mint sees the whole example set at once, so the grammar generalizes
       -- across them (anti-unification): tokens that vary between examples become
       -- holes, tokens that agree stay literal. One program is the corpus-of-one
       -- case. The same set is the regeneration corpus below.
       corpus = corpusText progs
-  -- Resolve the grounding schema BEFORE the model runs: it is an input of the
-  -- generation event (it decides which rules are admissible), it is recorded as
-  -- such, and a schema that cannot be built must not cost an AI call first.
-  (schemaPath, schemaPin) <- ensureOptionSchema world mschema ("generate " <> T.pack rep)
+  -- Resolve EVERY world's grounding schema BEFORE the model runs: a schema is an
+  -- input of the generation event (it decides which rules are admissible), it is
+  -- recorded as such, and a schema that cannot be built must not cost an AI call
+  -- first -- which has to hold for the last world as much as the first.
+  grounds <- forM worlds $ \w -> do
+    (p, pin) <- ensureOptionSchema w mschema ("generate " <> T.pack rep)
+    pure (w, p, pin)
   -- A re-mint grounds against the pin this binary carries (or --schema), NOT
   -- against the one the committed record names: fresh grounding is the point of
   -- re-minting, and replaying an old one is impossible anyway. The only hole
   -- that leaves is silence, so say it -- a re-ground engine is a different
   -- engine, and the reader deserves to learn that here rather than from the
   -- .generation diff afterwards.
-  oldPin <- (>>= recordedSchema) <$> tryRead (generationPathIn (langDir rep) (wName world) rep)
-  case oldPin of
-    Just p | p /= schemaPin -> do
-      note ("re-grounding: the committed engine was minted against " <> p)
-      note ("this run grounds against " <> schemaPin)
-    _ -> pure ()
+  forM_ grounds $ \(w, _, pin) -> do
+    old <- (>>= (`recordedSchemaFor` wName w)) <$> governingRecord dir (wName w) rep
+    case old of
+      Just p | p /= pin -> do
+        note ("re-grounding " <> wName w <> ": the committed engine was minted against " <> p)
+        note ("this run grounds against " <> pin)
+      _ -> pure ()
   -- The mint's validation tool judges a draft against the contract that will
   -- actually gate it: the committed .expect on a regeneration, the draft's own
   -- minted expects on a first mint or under --compat none. That rule is
   -- generate's (it is read again below, where the gate itself uses it), so the
   -- tool is told the answer instead of re-deriving it and drifting into a false
-  -- green.
-  committedExpectPath <- if compat == None
-    then pure Nothing
-    else do
-      let p = expectPathIn (langDir rep) (wName world) rep
-      there <- doesFileExist p
-      pure (if there then Just p else Nothing)
+  -- green. One entry per world, because a contract is a world's.
+  committedExpects <- if compat == None then pure [] else fmap concat $ forM worlds $ \w -> do
+    let p = expectPathIn dir (wName w) rep
+    there <- doesFileExist p
+    pure [ (wName w, p) | there ]
   (reply, model, transcript) <-
-    step ("mint ." <> T.pack lang <> " from " <> plural (length files) "program") $
-      callPi verbose mmodel thinking prompt corpus world files committedExpectPath schemaPath
+    step ("mint ." <> T.pack lang <> " from " <> plural (length files) "program"
+            <> " for " <> T.intercalate ", " wnames) $
+      callPi verbose mmodel thinking prompt corpus worlds files committedExpects
+             [ (wName w, p) | (w, p, _) <- grounds ]
   note ("minted by " <> model <> ", thinking " <> T.pack thinking)
   -- --verbose: echo the model's raw reply verbatim before parsing, so the
   -- whole minted engine is inspectable even when it validates cleanly (a
   -- refusal already shows the offending lines).
   when verbose $ say (T.unlines
     [ "--- raw model reply (" <> model <> ") ---", reply, "--- end reply ---" ])
-  let (errs, candidates) = parseEngineCandidates [wName world] reply
+  let (errs, candidates) = parseEngineCandidates wnames reply
       -- A because-note explains a low-confidence item; keyed by shared id, it
       -- never gates the build and never enters the engine.
       notes = [(icId c, r) | c <- candidates, ItemNote r <- [icItem c]]
@@ -755,24 +754,26 @@ generate world inherited mschema confidence compat verbose mmodel thinking files
       unsure = [c | c <- candidates, carriesEngineMeaning (icItem c)
                   , let Confidence x = icConfidence c, x < confidence]
       gaps = gapsOf (map icItem candidates)
+      -- The whole event, pinning every world it aimed at. Built before the
+      -- gates because a refusal is pinned exactly as an acceptance would be.
+      rec = record model [ (wName w, worldHash w, pin) | (w, _, pin) <- grounds ]
+                   (T.pack thinking) confidence prompt corpus transcript reply
   if not (null errs) || not (null unsure)
     then do
       -- Machine-readable twin of the on-screen refusal: the cross-repo
       -- escalation workflow (DESIGN Doctrine) needs a shippable artifact, not
-      -- only text that scrolls off a terminal. Same fields, same fingerprint
-      -- scheme as a successful '.generation' record (built the same way, from
-      -- the same in-scope values), so a refusal is pinned exactly as an
-      -- acceptance would have been.
-      let rec = record model [(wName world, worldHash world, schemaPin)] (T.pack thinking) confidence prompt corpus transcript reply
-      -- The refusal is the first thing written for a world, so its directory
-      -- (<language>/<world>/) need not exist yet.
-      createDirectoryIfMissing True (worldDirIn (langDir rep) (wName world))
-      let gap = gapPathIn (langDir rep) (wName world) rep
+      -- only text that scrolls off a terminal.
+      -- Filed at the scope of the event: one call covering several worlds
+      -- refused as a whole, so its gap sits at the language level.
+      let gap = case wnames of
+                  [w] -> gapPathIn dir w rep
+                  _   -> languageGapPathIn dir rep
+      createDirectoryIfMissing True (takeDirectory gap)
       TIO.writeFile gap (gapArtifact rec errs unsure gaps)
       die (refusalReport rep gap confidence errs unsure notes gaps)
     else do
       -- A mint without an explanation is incomplete: the human's review
-      -- artifact is the report, not the .lang. A structural guard, so the
+      -- artifact is the report, not the engine. A structural guard, so the
       -- channel cannot rot into an optional pleasantry the model skips.
       reportBody <- case reportOf (map icItem candidates) of
         Just b | not (T.null (T.strip b)) -> pure b
@@ -780,70 +781,13 @@ generate world inherited mschema confidence compat verbose mmodel thinking files
           ("the mint for ." <> T.pack lang <> " came back without a report block.")
           ["lips needs the language explained in plain words before it commits it."]
           ("\8594 run generate again: lips generate " <> T.pack rep))
-      let eng0 = assemble (map icItem candidates)
-      -- Validate the engine EXACTLY as it will be persisted: render to .lang and
-      -- read it back, so any render/read round-trip drift is caught at mint
-      -- time, not on a later `print`. The read-back engine is what we write.
-      eng <- case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
-        Left es -> die (validationReport rep ("the setup can't be saved and reloaded cleanly:\n" <> T.unlines (map renderParseError es)))
-        Right e -> pure e
-      -- The schema-free gates, the same ones check runs over an engine already
-      -- committed. Only the first is shown: it is what dying on the first gate
-      -- has always done, and a later verdict is rarely meaningful once an
-      -- earlier one rejected the engine.
-      case engineViolations eng of
-        []      -> pure ()
-        (v : _) -> die (validationReport rep v)
-      -- Before any gate that costs a build: a later world may only APPEND to
-      -- the grammar its predecessors wrote, because their committed rules were
-      -- lowered from exactly those patterns and this run does not re-mint them.
-      case inherited of
-        Nothing -> pure ()
-        Just g  -> let fresh = fst (splitEngine
-                         (renderLang (FromSource (SourceLoc "lang" 0)) eng))
-                   in case appendOnlyViolations g fresh of
-          []  -> pure ()
-          ids -> do
-            held <- mintedWorlds (langDir rep) rep
-            die (report
-              ("the " <> wName world <> " mint changed " <> plural (length ids) "pattern"
-                <> " the language's other worlds are built on:")
-              -- Both lines, not just the id: what the change WAS is the whole
-              -- question a reader has here, and neither file holds the new one
-              -- (this mint writes nothing).
-              (concat [ [ i <> " committed: " <> lineOf i g
-                        , i <> " minted:    " <> lineOf i fresh ] | i <- ids ])
-              ("\8594 re-mint every world together, so they agree: lips generate --target "
-                <> T.intercalate "," (held ++ [ wName world | wName world `notElem` held ])
-                <> " " <> T.pack rep))
-      assertOptionsAdmissible world schemaPath rep eng
-      -- Every program must crystallize, run, and parse as Nix under the shared
-      -- engine: the example set is the regeneration corpus.
-      validated <- forM progs $ \(f, t) -> case validate f eng t of
-        -- An unmet demand at generate is ambiguous by construction (the kernel
-        -- is domain-blind): name both remedies rather than blame one side.
-        Left (FailRun (OpenQuestions qs)) -> die (demandGenerateFail f qs)
-        Left ff -> die (validationReport f (failureReport f ff))
-        Right rl -> do
-          nixCheck <- nixParses (rlModule rl)
-          case nixCheck of
-            Left (NixToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
-            Left (NixInvalid why)   -> die (validationReport f ("the configuration lips produced isn't valid Nix:\n" <> why))
-            Right ()                -> pure (f, rl)
       -- Sources are minted in memory; stage them (not yet on disk) so a staged
       -- @src = ./artifacts/<name>@ resolves during the behavioral eval and so
       -- the staged-source gate below judges the tree this mint actually writes.
-      -- The artifact itself is BUILT by 'artifactGate' further down, which is the
-      -- only way to learn what the build contains: nothing lips evaluates forces
-      -- a derivation (the contract cannot assert one, 'uncheckableExpects'
-      -- forbids it, and nix is lazy), so before that gate a malformed builder or
-      -- a binary named differently by the source shipped and failed at the
-      -- user's `nix run`.
+      -- The tree is the LANGUAGE's: one program's source, shared by every world
+      -- that runs it, which is why only a call that saw every world may write it.
       let minted = sourcesOf (map icItem candidates)
-      -- The contract is language-level. On regeneration the COMMITTED contract
-      -- governs (the stable spec regeneration may not silently break); on first
-      -- generation the minted assertions bootstrap it.
-          mintedExpects = expectsOf (map icItem candidates)
+          stage rl root = writeSources (root </> "artifacts") minted >> void (writeSite root rl)
       -- A source tree is written under the artifact name the block gives, so a
       -- name still holding a hole makes a directory called "<self>" and the
       -- module's src points at nothing. Refused here, where the mint is still
@@ -856,195 +800,279 @@ generate world inherited mschema confidence compat verbose mmodel thinking files
           [ sfArtifact sf <> "/" <> sfPath sf | sf <- bad ]
           ("\8594 a baked source tree needs the concrete name this program gives it"
             <> " (the RULE keeps the hole); run generate again."))
+      -- The patterns are shared, so the append-only guard runs ONCE over the
+      -- grammar this reply renders, before any gate that costs a build: a mint
+      -- that does not own the language level may only add to what the worlds it
+      -- is not re-minting were built on.
+      -- Patterns are shared, so ANY world's engine renders the same grammar; the
+      -- first is taken because the CLI parser guarantees at least one world.
+      let sharedEng = assemble (itemsFor (T.concat (take 1 wnames)) candidates)
+          freshGrammar = fst (splitEngine (renderLang (FromSource (SourceLoc "lang" 0)) sharedEng))
+      case inherited of
+        Nothing -> pure ()
+        Just g -> do
+          committedSources <- readTree (artifactsPath rep)
+          case sharedFileViolations g freshGrammar committedSources minted of
+            []   -> pure ()
+            bad  -> do
+              held <- mintedWorlds dir rep
+              die (report
+                ("this mint would rewrite what the language's other worlds are built on:")
+                bad
+                ("\8594 re-mint every world together, so they agree: lips generate --target "
+                  <> T.intercalate "," (held ++ [ w | w <- wnames, w `notElem` held ])
+                  <> " " <> T.pack rep))
+      -- Every world is gated on its own engine (the shared grammar plus its own
+      -- rules) and answers for itself: a world that cannot serve the program
+      -- fails alone, and the worlds that hold are still written.
+      results <- forM grounds $ \(w, schemaPath, _) ->
+        (,) w <$> gateOneWorld compat rep progs candidates stage w schemaPath
+      let held = [ (w, r) | (w, Right r) <- results ]
+          failed = [ (wName w, why) | (w, Left why) <- results ]
       -- Where an engine BAKES source, the module text says nothing about what
       -- that code does, so without one stated observable nothing holds the
       -- implementation -- or any future re-mint -- to the author's own words.
-      --
-      -- REFUSED, not said (changed 2026-08-04). It was a warning, on the argument
-      -- that an otherwise-correct engine is worth having and a witness cannot be
-      -- conjured. `logscan` spent months as the counter-example: 76 lines of Go,
-      -- roughly fifteen traceable, a silent `continue` against fail-loud doctrine,
-      -- two mints disagreeing about what the program did, and every gate green
-      -- throughout. The cost of refusing is a re-mint, which the message names.
-      -- A pure-configuration mint is unaffected, and so is an engine whose
-      -- behaviour is clauses with a claim over them.
-      --
-      -- Addressed to the MINT, not to the author (measured 2026-08-06): opus-5
-      -- minted `examples/function.lips` unmodified, with no witness sentence in
-      -- it, and deduced four claims from the program's own words. Deducing the
-      -- observable is the mint's job; the author states one only where the mint
-      -- reports it cannot.
-      -- Clauses nothing observes are refused one tier down, by
-      -- 'Lips.Kernel.Realize.realizeClauseClaims', which knows the actual clause
-      -- set and can require every definition to be REACHED by a claim rather than
-      -- merely accompanied by one. So the validation above has already refused it,
-      -- for every verb, and this door only has to answer for baked source.
-      let allClaims = concatMap (rlClaims . snd) validated
-          unobserved = claimlessBakedSource minted allClaims
-      when unobserved $ die (report
-        (T.pack rep <> " builds a program from source, and nothing observes what"
-          <> " that program does:")
-        [ sfArtifact sf <> "/" <> sfPath sf | sf <- minted ]
-        ("\8594 the mint must deduce an example from the program's own words --"
-          <> " what it is given and what it prints -- and file a claim over it;"
-          <> " mint again: lips generate " <> T.pack rep
-          <> ". State the example in the program only where the mint reports it"
-          <> " cannot deduce one."))
-      case unplaceableClaims (wClaims world) allClaims of
-        []  -> pure ()
-        ids -> die (report
-          (T.pack rep <> ": " <> plural (length ids) "claim"
-            <> " must be observed in a booted machine, and the " <> wName world
-            <> " world has none.")
-          ids
-          ("\8594 state the observable over the program's own binary, which needs no"
-            <> " machine, and mint again: lips generate " <> T.pack rep))
-      -- Which contract governs is one word from the human (--compat), applied
-      -- to the committed set and this run's minted one. Every correctness gate
-      -- above and the behavioral gate below still run whatever the word, so a
-      -- bad mint still writes nothing.
-      committed <- tryRead (expectPathIn (langDir rep) (wName world) rep)
-      committedExpects <- case maybe (Right []) readExpect committed of
-        Left es -> die (report
-          (T.pack (expectPathIn (langDir rep) (wName world) rep)
-            <> " is unreadable, so lips can't verify against it:")
-          [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
-          ("→ fix or delete " <> T.pack (expectPathIn (langDir rep) (wName world) rep)
-            <> ", then run generate again."))
-        Right xs -> pure xs
-      expects <- case rebless compat (edRules eng) committedExpects mintedExpects of
-        Right xs  -> pure xs
-        Left kept -> die (report
-          (T.pack rep <> ": this run drops " <> plural (length kept) "check"
-            <> " the engine still fills, which --compat forwards does not permit:")
-          [ renderAttrPath (exPath e) | e <- kept ]
-          ("→ keep them (drop --compat forwards), or accept the loss deliberately: "
-            <> "lips generate --compat none " <> T.pack rep))
-      case uncheckableExpects (edRules eng) expects of
-        bad@(_ : _) -> die (uncheckableReport rep bad)
-        []          -> pure ()
-      -- Every relative path a module names must be in the tree this mint stages:
-      -- a mint that emits `src ./artifacts/<name>` but writes its source under
-      -- another name is refused here instead of shipping a broken build.
-      forM_ validated $ \(f, rl) ->
-        stagedGate (\root -> writeSources (root </> "artifacts") minted
-                               >> void (writeSite root rl)) f rl
-      -- The shared contract gates every program, each bound to its own <self>.
-      step ("contract: " <> plural (length expects) "check") $ forM_ validated $ \(f, rl) -> do
-        gate <- runExpects (\root -> writeSources (root </> "artifacts") minted
-                                      >> void (writeSite root rl))
-                           (map (bindSelfExpect (instanceName f)) expects) rl
-        case gate of
-          Left (ToolMissing e) -> die (nixMissing f "verify the output" "generate" e)
-          Left (EvalFailed e)  -> die (nixEvalFailed f "generate" e)
-          Left (Violations fs broken) -> die (report
-            ("lips built a setup for " <> T.pack f <> ", but it doesn't produce what the program promises:")
-            fs
-            -- Name the SMALLEST mode that would admit this change: an assertion
-            -- on an option the engine stopped filling may simply leave
-            -- (forwards), while one the engine still fills is a real behaviour
-            -- change and takes the whole word (none).
-            ("→ run generate again. If you changed the program on purpose, accept "
-              <> "the new behavior: lips generate --compat "
-              <> compatSlug (smallestCompat (edRules eng) broken) <> " " <> T.pack rep
-              <> " (rewrites " <> T.pack (expectPathIn (langDir rep) (wName world) rep) <> ")."))
-          Right () -> pure ()
-      -- Last gate, and the only one that observes rather than reads: build each
-      -- artifact and look inside it. Deliberately after the cheap gates, so a
-      -- mint that fails for a readable reason never pays a build.
-      when (any (not . null . snd . rlArtifact . snd) validated) $ do
-        nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
-        forM_ validated $ \(f, rl) ->
-          artifactGate nixpkgs (\root -> writeSources (root </> "artifacts") minted
-                                          >> void (writeSite root rl)) f rl
-      -- And the gate that observes what the program DOES: run every claim the
-      -- mint stated. Against the pinned nixpkgs, so the mint observes the world
-      -- it was grounded against.
-      -- The clause claims first: they are the ONLY contract a clause program has
-      -- (a clause is no option, so .expect can pin nothing about it), and they
-      -- cost a small derivation rather than a boot. Without this the mint would
-      -- write an engine whose stated behaviour was never observed.
-      forM_ validated $ \(f, rl) -> clauseClaimGate world f rl
-      when (not (null allClaims)) $ do
-        nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
-        forM_ validated $ \(f, rl) ->
-          mintClaimGate nixpkgs (\root -> writeSources (root </> "artifacts") minted
-                                           >> void (writeSite root rl)) f rl
-      -- All held: write the shared language once, a crystal per instance. Every
-      -- engine line is stamped with the content id of the .generation record,
-      -- checkable by re-hashing it.
-      let rec = record model [(wName world, worldHash world, schemaPin)] (T.pack thinking) confidence prompt corpus transcript reply
-          dir  = langDir rep
-          w    = wName world
-          (minted', rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) eng)
-          -- An inherited grammar is written back verbatim, with only this
-          -- mint's additions appended: the lines belong to the mint that wrote
-          -- them, and the other worlds' rules were lowered from those bytes.
-          grammarText = maybe minted' (`mergeGrammar` minted') inherited
-      step ("write " <> T.pack (worldDirIn dir w)) $ do
-        -- The language folder holds every minted and derived file, and the
-        -- world's folder everything this lowering owns; create both (and the
-        -- derived out/ subtree) before writing, so a first mint beside a bare
-        -- program just works.
-        createDirectoryIfMissing True (worldDirIn dir w)
-        -- The grammar is the language's, shared by every world; the rules are
-        -- this world's alone. Rendered as one engine and split by subject, so
-        -- the two halves read back as the engine that was validated.
-        TIO.writeFile (grammarPathIn dir rep) grammarText
-        TIO.writeFile (rulesPathIn dir w rep) rulesText
-        -- The world travels WITH the engine: the record pins this copy by
-        -- hash, and compile reads the copy, never the search path. So a
-        -- committed engine carries the physics it was minted into, and a
-        -- checkout on another machine compiles the same way.
-        TIO.writeFile (worldPathIn (worldDirIn dir w) w) (wRaw world)
-        TIO.writeFile (generationPathIn dir w rep) rec
-        TIO.writeFile (readmePathIn dir w) (renderReadme (T.pack lang) reportBody gaps)
-        -- A refusal artifact describes a run that produced no engine, so it is a
-        -- lie once one exists: the accepted mint deletes the .gap an earlier
-        -- refused attempt left behind.
-        removePathForcibly (gapPathIn dir w rep)
-        -- The artifacts tree is machine-owned and minted whole, so REPLACE it: a
-        -- previous mint's tree under another artifact name would otherwise stay
-        -- committed forever, dead source nothing builds (the http re-mint left a
-        -- helloserver/ tree beside its new hello/ one).
-        removePathForcibly (artifactsPath rep)
-        writeSources (artifactsPath rep) minted
-        forM_ validated $ \(f, rl) -> do
-          ensureDerived f
-          TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
-        -- Write the contract the mode settled on, and only when it differs from
-        -- what is committed: --compat full writes nothing (the default keeps the
-        -- committed spec byte-identical), a first mint bootstraps, and the two
-        -- relaxing modes leave the .expect diff as the semantic changelog.
-        let contract = renderExpect expects
-        when (committed /= Just contract) $ TIO.writeFile (expectPathIn dir w rep) contract
-        mapM_ note $
-          [ T.pack (grammarPathIn dir rep) <> "  the language, "
-              <> plural (length (edPatterns eng)) "pattern"
-          , T.pack (rulesPathIn dir w rep) <> "  the " <> w <> " lowering, "
-              <> plural (length (edRules eng)) "rule"
-          , T.pack (expectPathIn dir w rep) <> "  the contract, " <> plural (length expects) "check"
-          , T.pack (readmePathIn dir w) <> "  what the language means, in plain words"
-          , T.pack (generationPathIn dir w rep) <> "  how it was made" ]
-          ++ [ T.pack (artifactsPath rep) <> "  " <> plural (length minted) "source file"
-             | not (null minted) ]
+      -- Refused, not warned (2026-08-04): `logscan` spent months as the
+      -- counter-example, 76 lines of Go with every gate green throughout.
+      -- Addressed to the MINT, not the author: deducing the observable from the
+      -- program's own words is the mint's job (measured 2026-08-06, opus-5 on
+      -- examples/function.lips). The source tree is the LANGUAGE's, so a claim
+      -- in ANY world observes it, and this gate is the whole run's.
+      when (claimlessBakedSource minted (concatMap (concatMap (rlClaims . snd) . wrValidated . snd) held)) $
+        die (report
+          (T.pack rep <> " builds a program from source, and nothing observes what"
+            <> " that program does:")
+          [ sfArtifact sf <> "/" <> sfPath sf | sf <- minted ]
+          ("\8594 the mint must deduce an example from the program's own words --"
+            <> " what it is given and what it prints -- and file a claim over it;"
+            <> " mint again: lips generate " <> T.pack rep
+            <> ". State the example in the program only where the mint reports it"
+            <> " cannot deduce one."))
+      -- Nothing is written for a world that failed, and the account of the
+      -- event is filed at the scope of the event: one call covering several
+      -- worlds writes one README at the language level.
+      let (freshGrammarStamped, _) = splitEngine (renderLang (FromGeneration (genId rec)) sharedEng)
+          grammarText = maybe freshGrammarStamped (`mergeGrammar` freshGrammarStamped) inherited
+      unless (null held) $
+        step ("write " <> T.pack dir) $ do
+          createDirectoryIfMissing True dir
+          -- Shared, and written only by a call that owns the language level:
+          -- the grammar every world reads, the source tree they all build, the
+          -- record of this event and its account.
+          -- The grammar is always written: frozen means APPEND-ONLY, so a mint
+          -- that added a pattern must land it, and 'mergeGrammar' keeps every
+          -- inherited line's own bytes and stamp.
+          TIO.writeFile (grammarPathIn dir rep) grammarText
+          when (inherited == Nothing) $ do
+            -- The artifacts tree is machine-owned and minted whole, so REPLACE
+            -- it: a previous mint's tree under another artifact name would
+            -- otherwise stay committed forever, dead source nothing builds.
+            removePathForcibly (artifactsPath rep)
+            writeSources (artifactsPath rep) minted
+          case wnames of
+            [_] -> pure ()   -- a single-world mint files its record in its world folder
+            _   -> do
+              TIO.writeFile (languageRecordPathIn dir rep) rec
+              TIO.writeFile (languageReadmePathIn dir) (renderReadme (T.pack lang) reportBody gaps)
+          forM_ held $ \(w, wr) ->
+            writeWorld dir rep lang rec reportBody gaps (length wnames == 1) w wr
+          forM_ [ (f, rl) | (_, wr) <- held, (f, rl) <- wrValidated wr ] $ \(f, rl) -> do
+            ensureDerived f
+            TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
       -- The account of the mint, in the mint's own words: the first lines of the
-      -- report, then where to read the rest. Not the engine and not the module --
-      -- both are files now, and a human reads them there.
+      -- report, then where to read the rest.
       say ""
-      say ("✓ ." <> T.pack lang <> " holds for " <> plural (length files) "program"
-             <> " as a " <> wName world <> " configuration.")
-      say ""
-      mapM_ say (take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ])
+      unless (null held) $ do
+        say ("✓ ." <> T.pack lang <> " holds for " <> plural (length files) "program"
+               <> " in " <> T.intercalate ", " [ wName w | (w, _) <- held ] <> ".")
+        say ""
+        mapM_ say (take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ])
+      let account = case wnames of
+                      [w] -> readmePathIn dir w
+                      _   -> languageReadmePathIn dir
       unless (null gaps) $ do
         say ""
-        say ("lips could not do these, and says why in "
-               <> T.pack (readmePathIn (langDir rep) (wName world)) <> ":")
+        say ("lips could not do these, and says why in " <> T.pack account <> ":")
         mapM_ (\g -> note ("- " <> gapSlug g)) gaps
+      unless (null held) $ do
+        say ""
+        say ("→ read the whole account: " <> T.pack account)
+        mapM_ (\f -> say ("→ build it:              lips compile " <> T.pack f)) files
+      -- A world that could not be served is reported last, after everything that
+      -- held is on disk, and it still fails the run: CI must not mistake a
+      -- language that reaches some of its worlds for one that reaches them all.
+      unless (null failed) $ do
+        forM_ failed $ \(w, why) -> say ("\n" <> w <> ": " <> why)
+        exitWith (ExitFailure 1)
 
-      say ""
-      say ("→ read the whole account: " <> T.pack (readmePathIn (langDir rep) (wName world)))
-      mapM_ (\(f, _) -> say ("→ build it:              lips compile " <> T.pack f)) validated
+-- | What one world's mint produced, once every gate over it held. Kept so the
+-- write step below can file each world's own files without re-running anything.
+data WorldResult = WorldResult
+  { wrEngine    :: EngineData
+  , wrValidated :: [(FilePath, Realization)]
+  , wrExpects   :: [Expect]
+  , wrCommitted :: Maybe Text   -- ^ the contract as committed, to write only on change
+  }
+
+-- | Every gate one world must pass, over its own engine: the shared grammar
+-- plus the rules tagged for it. A refusal is returned, not thrown, because a
+-- world that cannot serve the program is that world's failure alone -- the
+-- others are still written (the measurement's case: kubernetes needs a
+-- container image the program never states, NixOS does not).
+--
+-- Two gates stay fatal for the whole run, deliberately. An option path that
+-- exists in no schema means the mint hallucinated a name, and a mint that
+-- invents is not a mint half of whose output should be kept; and the nixpkgs
+-- lookup behind the artifact build is a tool failure, not a verdict.
+gateOneWorld :: Compat -> FilePath -> [(FilePath, Text)] -> [ItemCandidate]
+             -> (Realization -> FilePath -> IO ()) -> World -> FilePath
+             -> IO (Either Text WorldResult)
+gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ do
+  let wn   = wName world
+      eng0 = assemble (itemsFor wn candidates)
+  -- Validate the engine EXACTLY as it will be persisted: render and read it
+  -- back, so any round-trip drift is caught at mint time rather than on a later
+  -- compile. The read-back engine is what gets written.
+  eng <- case readLang (renderLang (FromSource (SourceLoc "lang" 0)) eng0) of
+    Left es -> throwE (validationReport rep ("the setup can't be saved and reloaded cleanly:\n"
+                        <> T.unlines (map renderParseError es)))
+    Right e -> pure e
+  case engineViolations eng of
+    []      -> pure ()
+    (v : _) -> throwE (validationReport rep v)
+  lift (assertOptionsAdmissible world schemaPath rep eng)
+  -- Every program must crystallize, run, and parse as Nix under this world's
+  -- engine: the example set is the regeneration corpus.
+  validated <- forM progs $ \(f, t) -> case validate f eng t of
+    Left (FailRun (Unmapped ds))      -> throwE (unportableReport f wn ds)
+    Left (FailRun (OpenQuestions qs)) -> throwE (demandGenerateFail f qs)
+    Left ff                           -> throwE (validationReport f (failureReport f ff))
+    Right rl -> do
+      nixCheck <- lift (nixParses (rlModule rl))
+      case nixCheck of
+        Left (NixToolMissing e) -> lift (die (nixMissing f "verify the output" "generate" e))
+        Left (NixInvalid why)   -> throwE (validationReport f ("the configuration lips produced isn't valid Nix:\n" <> why))
+        Right ()                -> pure (f, rl)
+  let claims = concatMap (rlClaims . snd) validated
+  case unplaceableClaims (wClaims world) claims of
+    []  -> pure ()
+    ids -> throwE (report
+      (T.pack rep <> ": " <> plural (length ids) "claim"
+        <> " must be observed in a booted machine, and the " <> wn <> " world has none.")
+      ids
+      ("\8594 state the observable over the program's own binary, which needs no"
+        <> " machine, and mint again: lips generate " <> T.pack rep))
+  -- Which contract governs is one word from the human (--compat), applied to the
+  -- committed set and this run's minted one, per world: a contract pins option
+  -- paths, and an option path exists inside one world's namespace only.
+  committed <- lift (tryRead (expectPathIn (langDir rep) wn rep))
+  committedExps <- case maybe (Right []) readExpect committed of
+    Left es -> throwE (report
+      (T.pack (expectPathIn (langDir rep) wn rep) <> " is unreadable, so lips can't verify against it:")
+      [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
+      ("→ fix or delete " <> T.pack (expectPathIn (langDir rep) wn rep) <> ", then run generate again."))
+    Right xs -> pure xs
+  expects <- case rebless compat (edRules eng) committedExps (expectsOf (itemsFor wn candidates)) of
+    Right xs  -> pure xs
+    Left kept -> throwE (report
+      (T.pack rep <> ": this run drops " <> plural (length kept) "check"
+        <> " the " <> wn <> " engine still fills, which --compat forwards does not permit:")
+      [ renderAttrPath (exPath e) | e <- kept ]
+      ("→ keep them (drop --compat forwards), or accept the loss deliberately: "
+        <> "lips generate --compat none " <> T.pack rep))
+  case uncheckableExpects (edRules eng) expects of
+    bad@(_ : _) -> throwE (uncheckableReport rep bad)
+    []          -> pure ()
+  -- Every relative path a module names must be in the tree this mint stages: a
+  -- mint that emits `src ./artifacts/<name>` but writes its source under another
+  -- name is refused here instead of shipping a broken build.
+  forM_ validated $ \(f, rl) -> lift (stagedGate (stage rl) f rl)
+  -- A phase line rather than a `step`: a world may refuse here while the others
+  -- hold, and a step that printed a tick for a refusal would say the contract
+  -- held when it did not.
+  lift (note (wn <> " contract: " <> plural (length expects) "check"))
+  forM_ validated $ \(f, rl) -> do
+    gate <- lift (runExpects (stage rl) (map (bindSelfExpect (instanceName f)) expects) rl)
+    case gate of
+      Left (ToolMissing e) -> lift (die =<< pure (nixMissing f "verify the output" "generate" e))
+      Left (EvalFailed e)  -> throwE (nixEvalFailed f "generate" e)
+      Left (Violations fs broken) -> throwE (report
+        ("lips built a " <> wn <> " setup for " <> T.pack f
+          <> ", but it doesn't produce what the program promises:")
+        fs
+        -- Name the SMALLEST mode that would admit this change.
+        ("→ run generate again. If you changed the program on purpose, accept "
+          <> "the new behavior: lips generate --compat "
+          <> compatSlug (smallestCompat (edRules eng) broken) <> " " <> T.pack rep
+          <> " (rewrites " <> T.pack (expectPathIn (langDir rep) wn rep) <> ")."))
+      Right () -> pure ()
+  -- The gates that observe rather than read, last, so a mint that fails for a
+  -- readable reason never pays a build.
+  when (any (not . null . snd . rlArtifact . snd) validated) $ lift $ do
+    nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
+    forM_ validated $ \(f, rl) -> artifactGate nixpkgs (stage rl) f rl
+  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world f rl)
+  unless (null claims) $ lift $ do
+    nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
+    forM_ validated $ \(f, rl) -> mintClaimGate nixpkgs (stage rl) f rl
+  pure WorldResult { wrEngine = eng, wrValidated = validated
+                   , wrExpects = expects, wrCommitted = committed }
+
+-- | Write one world's own files. The record and the account are written here
+-- only when the event covered this world ALONE; a call covering several files
+-- both at the language level, where its outputs are.
+writeWorld :: FilePath -> FilePath -> String -> Text -> Text -> [Gap] -> Bool
+           -> World -> WorldResult -> IO ()
+writeWorld dir rep lang rec reportBody gaps single world wr = do
+  let w = wName world
+      (_, rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) (wrEngine wr))
+  createDirectoryIfMissing True (worldDirIn dir w)
+  TIO.writeFile (rulesPathIn dir w rep) rulesText
+  -- The world travels WITH the engine: the record pins this copy by hash, and
+  -- compile reads the copy, never the search path.
+  TIO.writeFile (worldPathIn (worldDirIn dir w) w) (wRaw world)
+  when single $ do
+    TIO.writeFile (generationPathIn dir w rep) rec
+    TIO.writeFile (readmePathIn dir w) (renderReadme (T.pack lang) reportBody gaps)
+  -- A refusal artifact describes a run that produced no engine, so it is a lie
+  -- once one exists.
+  removePathForcibly (gapPathIn dir w rep)
+  -- Write the contract the mode settled on, and only when it differs from what
+  -- is committed: --compat full writes nothing, a first mint bootstraps, and the
+  -- two relaxing modes leave the .expect diff as the semantic changelog.
+  let contract = renderExpect (wrExpects wr)
+  when (wrCommitted wr /= Just contract) $ TIO.writeFile (expectPathIn dir w rep) contract
+  mapM_ note
+    [ T.pack (rulesPathIn dir w rep) <> "  the " <> w <> " lowering, "
+        <> plural (length (edRules (wrEngine wr))) "rule"
+    , T.pack (expectPathIn dir w rep) <> "  its contract, "
+        <> plural (length (wrExpects wr)) "check" ]
+
+-- | The record that governs a world: its own, when it was minted alone, else
+-- the language-level record of the call that covered it.
+governingRecord :: FilePath -> Text -> FilePath -> IO (Maybe Text)
+governingRecord dir w file = do
+  own <- tryRead (generationPathIn dir w file)
+  case own of
+    Just r  -> pure (Just r)
+    Nothing -> tryRead (languageRecordPathIn dir file)
+
+-- | Every file of a committed source tree, as (path relative to the tree,
+-- contents). Read so a frozen mint can be held to the tree the other worlds
+-- were built on.
+readTree :: FilePath -> IO [(FilePath, Text)]
+readTree root = do
+  there <- doesDirectoryExist root
+  if not there then pure [] else go ""
+  where
+    go rel = do
+      entries <- listDirectory (root </> rel)
+      fmap concat $ forM entries $ \e -> do
+        let p = rel </> e
+        isDir <- doesDirectoryExist (root </> p)
+        if isDir then go p else do
+          c <- tryRead (root </> p)
+          pure [ (p, t) | Just t <- [c] ]
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.
@@ -1094,8 +1122,9 @@ nixParses nixModule = do
 -- omitted and pi's own configured default applies. Either way the json stream
 -- reports the model actually used, which the caller records, so provenance
 -- stays concrete without a model baked into the deliverable.
-callPi :: Bool -> Maybe String -> String -> Text -> Text -> World -> [FilePath] -> Maybe FilePath -> FilePath -> IO (Text, Text, Text)
-callPi verbose mmodel thinking system userPrompt world files mExpect schemaPath = do
+callPi :: Bool -> Maybe String -> String -> Text -> Text -> [World] -> [FilePath]
+       -> [(Text, FilePath)] -> [(Text, FilePath)] -> IO (Text, Text, Text)
+callPi verbose mmodel thinking system userPrompt worlds files expects schemas = do
   -- The mint's tools ship with the binary; without them a mint would have to
   -- recall option names instead of looking them up, and could not check a draft
   -- before answering -- the guessing this whole path exists to prevent. So a
@@ -1118,12 +1147,15 @@ callPi verbose mmodel thinking system userPrompt world files mExpect schemaPath 
   -- that is not being minted), the governing contract, and the schema this run
   -- was grounded against.
   parentEnv <- getEnvironment
-  let ours = [ ("LIPS_MINT_WORLD",    T.unpack (wName world))
+  -- One entry per world, because one call may write for several: the tool asks
+  -- about the world it names, and a draft is judged in every world it is for.
+  let pairs xs = intercalate "\n" [ T.unpack w <> "=" <> p | (w, p) <- xs ]
+      ours = [ ("LIPS_MINT_WORLDS",   intercalate "," (map (T.unpack . wName) worlds))
              , ("LIPS_MINT_PROGRAMS", intercalate "\n" files)
              -- Empty means "the draft's own minted expects govern", which is a
              -- first mint or --renew.
-             , ("LIPS_MINT_EXPECT",   fromMaybe "" mExpect)
-             , ("LIPS_MINT_SCHEMA",   schemaPath)
+             , ("LIPS_MINT_EXPECTS",  pairs expects)
+             , ("LIPS_MINT_SCHEMAS",  pairs schemas)
              ]
       childEnv = ours ++ filter ((`notElem` map fst ours) . fst) parentEnv
       -- Hermetic by explicit subtraction: -nbt drops pi's built-in tools (read,

@@ -23,6 +23,7 @@ module Lips.Generate.Record
   , recordedSchema
   , recordedWorld
   , recordedWorldPin
+  , recordedSchemaFor
   , StampFault (..)
   , stampFaults
   , renderStampFault
@@ -233,6 +234,21 @@ recordedWorldPin src world = listToMaybe
   [ (n, Just h)
   | l <- T.lines src, Just rest <- [T.stripPrefix "world:" l]
   , (n : h : _) <- [T.words (T.strip rest)], n == world ]
+
+-- | The schema one world was grounded against, in a record that may cover
+-- several: the @schema:@ line that follows that world's @world:@ line. A joint
+-- mint grounds each world separately, so a re-mint can say which world is being
+-- re-grounded and against what.
+recordedSchemaFor :: Text -> Text -> Maybe Text
+recordedSchemaFor src world = listToMaybe
+  [ T.strip sch
+  | (l, rest) <- zip ls (drop 1 (tails' ls))
+  , Just wrest <- [T.stripPrefix "world:" l]
+  , (n : _) <- [T.words (T.strip wrest)], n == world
+  , Just sch <- [listToMaybe [ r | x <- take 1 rest, Just r <- [T.stripPrefix "schema:" x] ]] ]
+  where
+    ls = T.lines src
+    tails' xs = case xs of { [] -> [[]]; (_ : t) -> xs : tails' t }
 
 recordedWorld :: Text -> Either Text (Text, Maybe Text)
 recordedWorld src

@@ -38,12 +38,14 @@ module Lips.Generate.Minting
   , unplaceableClaims
   , appendOnlyViolations
   , mergeGrammar
+  , sharedFileViolations
   ) where
 
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 import           Data.FileEmbed  (embedStringFile)
+import qualified System.FilePath as FP
 
 import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), MergeSpec,
                                      parseDemandBody, parseMergeBody, parseRuleBody)
@@ -272,6 +274,28 @@ appendOnlyViolations old new =
              , let DecisionId i = dId d ]
     -- One provenance for both sides, so the comparison cannot see the field.
     anywhere = FromSource (SourceLoc "" 0)
+
+-- | What a mint may NOT change when it does not own the language level: the
+-- grammar the other worlds' rules were lowered from, and the source tree they
+-- all build. Returns one line per violation, empty when the mint only appends.
+--
+-- The grammar may be APPENDED to (a pattern for a line no world could read
+-- before cannot break a world that already holds, since every committed program
+-- already crystallizes and an overlap is refused). The source tree may not
+-- change at all: it is one program's source, shared by the worlds that run it,
+-- and a world minted later replacing it would silently delete the code an
+-- earlier world's rules reference.
+sharedFileViolations :: Text -> Text -> [(FilePath, Text)] -> [SourceFile] -> [Text]
+sharedFileViolations old new committed minted =
+  [ "pattern " <> i <> " changed, and other worlds are built on it"
+  | i <- appendOnlyViolations old new ]
+  ++ [ "artifacts/" <> T.pack p <> " would be rewritten"
+     | (p, t) <- committed, lookup p mintedTree /= Just t ]
+  ++ [ "artifacts/" <> T.pack p <> " would be added"
+     | (p, _) <- mintedTree, p `notElem` map fst committed ]
+  where
+    mintedTree = [ (T.unpack (sfArtifact sf) FP.</> T.unpack (sfPath sf), sfContent sf)
+                 | sf <- minted ]
 
 -- | The grammar to WRITE when a later world appends to an inherited one: every
 -- committed line verbatim, then the ids this mint added. Verbatim because an
