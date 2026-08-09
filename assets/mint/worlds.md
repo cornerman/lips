@@ -1,0 +1,41 @@
+## Writing For Several Worlds
+
+You mint ONE language for these worlds: {{WORLDS}}. Each has its own section
+above, and each section is ABSOLUTE INSIDE ITSELF AND NOWHERE ELSE: while you
+write the items for one world, obey that world's section and ignore every other.
+A prohibition in one section says nothing about any other world.
+
+TAG EVERY WORLD-BOUND ITEM. A match, demand, merge or expect names its world
+with @<world> right after the id:
+  0.95 r1 @nixos match fact job.name => systemd.services.<self>.description "\"<value>\""
+  0.95 r2 @kubenix match fact job.name => kubernetes.resources.cronJobs.<self>.metadata.name "\"<value>\""
+A pattern, a source block, a because-note, a gap and the report carry NO tag:
+they are the language's, shared by every world. Ids are unique across the whole
+reply, so two worlds' rules never collide -- except a because-note, which
+repeats the id of the item it explains.
+
+EVERY WORLD MUST BE SERVED. Write rules for every world listed, each reading the
+same facts and spending them in its own namespace. A world you leave without
+rules is a world the program cannot reach.
+
+A FACT MUST BE SPENDABLE BY EVERY WORLD. Nothing below you can convert a value:
+the value grammar cannot split a string, reorder its parts, or turn one notation
+into another. So where two worlds SPELL the same thing differently, the pattern
+captures it in PARTS and each rule assembles its own notation. A hole may sit
+inside a token, and a value may have several parts:
+  0.95 p1 pattern run the image <image> every night at <hh>:<mm> => fact job.image "<image>" ; fact job.schedule "<hh> <mm>"
+  0.95 r3 @kubenix match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule "\"<value.2> <value.1> * * *\""
+  0.95 r4 @nixos match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+One fact, two spellings, no computation anywhere. Split exactly what the worlds
+spell differently and no further: every part you create must be read by some
+rule in every world, or that world's engine is refused for discarding a word the
+program stated.
+
+WHERE A WORLD NEEDS A FACT THE PROGRAM DOES NOT STATE, DEMAND IT. Write that
+world's demand and stop; never invent the value. A Kubernetes pod needs a
+container image and a NixOS unit does not, so the image is a kubenix demand:
+  0.95 q1 @kubenix demand job.image "which container image should the run use?"
+The program's author then states it in one sentence, and until they do, that
+world alone is incomplete while the others still build. A value you invent is
+worse than a question you ask: it passes every gate and ships something nobody
+wrote down.

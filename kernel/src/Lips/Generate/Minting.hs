@@ -163,20 +163,48 @@ directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 grammarDoc :: Text
 grammarDoc = T.pack $(embedStringFile "../assets/mint/grammar.md")
 
--- | The wrapper telling a mint that other worlds follow it, so the grammar it
--- writes is shared and must stay neutral. Appended only when a world actually
--- follows, by the same rule as the two docs above.
-sharedDoc :: Text
-sharedDoc = T.pack $(embedStringFile "../assets/mint/shared.md")
+-- | The rules that only apply when one mint writes for SEVERAL worlds: the
+-- per-item world tag, the neutrality a shared fact needs, and demanding rather
+-- than inventing what one world needs and the program does not state. Appended
+-- only when there is more than one world, by the same rule as the two docs
+-- above.
+worldsDoc :: Text
+worldsDoc = T.pack $(embedStringFile "../assets/mint/worlds.md")
 
--- | The mint prompt for a target world: a world-steering preamble naming the
--- option namespaces to emit into, then the world-neutral body. The preamble is
--- the ONLY thing that differs per world; the body's grammar (patterns, rules,
--- typed holes, artifacts, expects) is identical.
--- The preamble comes from the world's own file, so the world-steering half of
--- the prompt is data a house world supplies exactly as a shipped one does.
-systemPromptFor :: World -> Text
-systemPromptFor w = wPreamble w <> "\n" <> promptBody
+-- | The mint prompt for the worlds one call writes for: each world's steering
+-- preamble naming the option namespaces to emit into, then the world-neutral
+-- body, then (with several worlds) the rules for writing across them. A
+-- preamble comes from the world's own file, so the world-steering half of the
+-- prompt is data a house world supplies exactly as a shipped one does.
+--
+-- ONE world keeps exactly the old shape, so every committed engine's prompt is
+-- unchanged. SEVERAL worlds are each fenced into their own section, because a
+-- preamble is absolute prose about one namespace ("never emit a NixOS option
+-- here") and two of them read as one text contradict each other; the fence and
+-- the sentence above it are what scope each to itself. Measured 2026-08-09: with
+-- the fence, opus-5 wrote nixos and kubenix rules with no leakage either way.
+systemPromptFor :: [World] -> Text
+systemPromptFor [w] = wPreamble w <> "\n" <> promptBody
+systemPromptFor ws  = scopedPreambles ws <> "\n" <> promptBody
+                        <> "\n" <> T.replace "{{WORLDS}}" (T.intercalate ", " (map wName ws)) worldsDoc
+
+-- | Every world's preamble, each fenced into its own section and introduced by
+-- the sentence that scopes it.
+scopedPreambles :: [World] -> Text
+scopedPreambles ws = T.unlines $
+  [ "YOU MINT ONE LANGUAGE FOR SEVERAL WORLDS: " <> T.intercalate ", " (map wName ws) <> "."
+  , ""
+  , "The PATTERNS you write are shared: one reading of the program, the same in"
+  , "every world. The RULES, DEMANDS and EXPECTS are per world, and each world"
+  , "has its own section below."
+  , ""
+  , "Each section is ABSOLUTE INSIDE ITSELF AND NOWHERE ELSE. While you write the"
+  , "items for one world, obey that world's section and ignore every other"
+  , "section. A prohibition in one section says nothing about any other world."
+  , "" ]
+  ++ concat [ [ "--- world " <> wName w <> " ---"
+              , T.strip (wPreamble w)
+              , "--- end world " <> wName w <> " ---", "" ] | w <- ws ]
 
 -- | The body with the contract set substituted in. The list is rendered from the
 -- shipped vocabulary rather than written into the markdown, so the prompt cannot
@@ -202,17 +230,10 @@ contractList = T.unlines
 -- second world's mint may only append to what the first one wrote, so it has to
 -- see it. Absent on a first mint, and then the section is not there at all.
 --
--- @later@ names the worlds this run mints AFTER this one. A mint that has
--- successors is writing a grammar it does not own alone, and must be told:
--- without that it bakes its own world's value syntax into the shared patterns
--- (systemd calendar syntax, measured on the first live two-world mint), and the
--- next world -- which cannot convert it, the value grammar having no
--- computation -- can only refuse.
-promptWithDirection :: Maybe Text -> Maybe Text -> [Text] -> World -> Text
-promptWithDirection md mg later w =
-  systemPromptFor w <> section (Just (T.intercalate ", " later)) sharedDoc "{{WORLDS}}"
-                    <> section mg grammarDoc "{{GRAMMAR}}"
-                    <> section md directionDoc "{{DIRECTION}}"
+promptWithDirection :: Maybe Text -> Maybe Text -> [World] -> Text
+promptWithDirection md mg ws =
+  systemPromptFor ws <> section mg grammarDoc "{{GRAMMAR}}"
+                     <> section md directionDoc "{{DIRECTION}}"
   where
     -- Each doc carries the fixed wrapper text with a single placeholder line;
     -- substituting it (rather than building the wrapper as a Haskell literal)

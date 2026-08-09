@@ -3734,27 +3734,27 @@ main = hspec $ do
 
   describe "the mint prompt states the claim grammar" $ do
     it "names the head and its closed section set" $ do
-      let p = systemPromptFor (shippedWorld "nixos")
+      let p = systemPromptFor [shippedWorld "nixos"]
       p `shouldSatisfy` T.isInfixOf "claim.<id>.run"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.stdin"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.stdout"
       p `shouldSatisfy` T.isInfixOf "claim.<id>.exit"
 
     it "forbids inventing a witness and asks for one where source is baked" $ do
-      let p = systemPromptFor (shippedWorld "nixos")
+      let p = systemPromptFor [shippedWorld "nixos"]
       p `shouldSatisfy` T.isInfixOf "NEVER INVENT A WITNESS"
       p `shouldSatisfy` T.isInfixOf "STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE"
 
     it "states the exact-comparison rule" $
-      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
+      systemPromptFor [shippedWorld "nixos"] `shouldSatisfy` T.isInfixOf "COMPARISON IS EXACT"
 
     it "states the world limit where there is no machine to boot" $ do
-      systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "no machine to\nboot"
-      systemPromptFor (shippedWorld "terranix") `shouldSatisfy` T.isInfixOf "no machine to\nboot"
-      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor [shippedWorld "kubenix"] `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor [shippedWorld "terranix"] `shouldSatisfy` T.isInfixOf "no machine to\nboot"
+      systemPromptFor [shippedWorld "home-manager"] `shouldSatisfy` T.isInfixOf "no machine to\nboot"
 
     it "offers the booted machine only in the world that has one" $
-      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
+      systemPromptFor [shippedWorld "nixos"] `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
 
   describe "the mint is asked for an observable where it bakes source" $ do
     let src = SourceFile { sfArtifact = "tool", sfPath = "main.go", sfContent = "package main" }
@@ -4769,36 +4769,36 @@ main = hspec $ do
     it "names the tool and when to reach for it, in every world" $
       mapM_ (\p -> mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
               [ "query_options", "look it up", "grounds NAMES, never VALUES" ])
-            [ systemPromptFor (shippedWorld "nixos"), systemPromptFor (shippedWorld "home-manager"), systemPromptFor (shippedWorld "kubenix")
-            , systemPromptFor (shippedWorld "terranix") ]
+            [ systemPromptFor [shippedWorld "nixos"], systemPromptFor [shippedWorld "home-manager"], systemPromptFor [shippedWorld "kubenix"]
+            , systemPromptFor [shippedWorld "terranix"] ]
     it "repeats that a confirmed option is not a licence to invent its value" $
-      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "refusal beats invention"
+      systemPromptFor [shippedWorld "nixos"] `shouldSatisfy` T.isInfixOf "refusal beats invention"
 
   -- The optional per-program .direction file steers mint taste. It must ride
   -- on top of the fixed prompt (so it enters genId) and carry the guard that
   -- keeps it advisory, never an obligation channel.
   describe "direction file (optional mint taste)" $ do
     it "absent or blank direction leaves the prompt untouched" $ do
-      promptWithDirection Nothing Nothing [] (shippedWorld "nixos") `shouldBe` systemPrompt
-      promptWithDirection (Just "   \n  ") Nothing [] (shippedWorld "nixos") `shouldBe` systemPrompt
+      promptWithDirection Nothing Nothing [shippedWorld "nixos"] `shouldBe` systemPrompt
+      promptWithDirection (Just "   \n  ") Nothing [shippedWorld "nixos"] `shouldBe` systemPrompt
     it "steers kubenix to the resource alias every kubenix example writes" $ do
-      systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "kubernetes.resources."
-      systemPromptFor (shippedWorld "kubenix") `shouldSatisfy` T.isInfixOf "kubenix"
+      systemPromptFor [shippedWorld "kubenix"] `shouldSatisfy` T.isInfixOf "kubernetes.resources."
+      systemPromptFor [shippedWorld "kubenix"] `shouldSatisfy` T.isInfixOf "kubenix"
     it "steers terranix to the terraform namespaces, and says grounding stops there" $ do
-      let p = systemPromptFor (shippedWorld "terranix")
+      let p = systemPromptFor [shippedWorld "terranix"]
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "terranix", "resource.<type>.<self>", "data.", "provider.", "output." ]
     it "steers home-manager to its namespaces, nixos to system options" $ do
-      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "home-manager"
-      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "systemd.user.services"
-      systemPromptFor (shippedWorld "home-manager") `shouldSatisfy` T.isInfixOf "home.packages"
-      systemPromptFor (shippedWorld "nixos") `shouldSatisfy` T.isInfixOf "NixOS"
+      systemPromptFor [shippedWorld "home-manager"] `shouldSatisfy` T.isInfixOf "home-manager"
+      systemPromptFor [shippedWorld "home-manager"] `shouldSatisfy` T.isInfixOf "systemd.user.services"
+      systemPromptFor [shippedWorld "home-manager"] `shouldSatisfy` T.isInfixOf "home.packages"
+      systemPromptFor [shippedWorld "nixos"] `shouldSatisfy` T.isInfixOf "NixOS"
     it "present direction is appended verbatim atop the fixed prompt" $ do
-      let p = promptWithDirection (Just "prefer restic, no docker") Nothing [] (shippedWorld "nixos")
+      let p = promptWithDirection (Just "prefer restic, no docker") Nothing [shippedWorld "nixos"]
       systemPrompt `shouldSatisfy` (`T.isInfixOf` p)
       p `shouldSatisfy` T.isInfixOf "prefer restic, no docker"
     it "states the advisory-not-obligation guard when direction is present" $ do
-      let p = promptWithDirection (Just "prefer systemd timers") Nothing [] (shippedWorld "nixos")
+      let p = promptWithDirection (Just "prefer systemd timers") Nothing [shippedWorld "nixos"]
       mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
         [ "PREFERENCE, not requirement"
         , "never let it override a value the program states"
@@ -4808,29 +4808,33 @@ main = hspec $ do
   -- where it learns that it may only append to it.
   describe "inherited grammar in the prompt" $ do
     it "is absent on a first mint" $
-      promptWithDirection Nothing Nothing [] (shippedWorld "nixos")
+      promptWithDirection Nothing Nothing [shippedWorld "nixos"]
         `shouldNotSatisfy` T.isInfixOf "begin grammar"
     it "carries the committed patterns verbatim, and the rule about them" $ do
       let g = "p1 meta lang.pattern.p1 stated \"a <x> => fact f \\\"<x>\\\"\" @gen:aaaa"
-          p = promptWithDirection Nothing (Just g) [] (shippedWorld "kubenix")
+          p = promptWithDirection Nothing (Just g) [shippedWorld "kubenix"]
       p `shouldSatisfy` T.isInfixOf g
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "must come back in your reply exactly", "You may ADD a pattern", "Refuse" ]
 
-  -- A mint with worlds after it writes a grammar it does not own alone. Without
-  -- being told, it bakes its own world's value syntax into the shared patterns
-  -- (systemd calendar syntax, measured on the first live two-world mint) and
-  -- the next world can only refuse: nothing below the mint can convert a value.
-  describe "worlds still to come, in the prompt" $ do
-    it "is absent when this world is the only one, or the last" $
-      promptWithDirection Nothing Nothing [] (shippedWorld "nixos")
-        `shouldNotSatisfy` T.isInfixOf "ALSO BEING MINTED"
-    it "names the worlds that follow, and asks for neutral facts" $ do
-      let p = promptWithDirection Nothing Nothing ["kubenix", "terranix"] (shippedWorld "nixos")
-      p `shouldSatisfy` T.isInfixOf "kubenix, terranix"
+  -- One call writes for every world, so the prompt carries every preamble. Each
+  -- is fenced into its own section: two preambles read as one text contradict
+  -- each other ("never emit a NixOS option here" beside "emit services.*").
+  describe "several worlds in one prompt" $ do
+    it "scopes each world's preamble to its own section" $ do
+      let p = systemPromptFor [shippedWorld "nixos", shippedWorld "kubenix"]
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
-        [ "they are frozen once this", "never your world's syntax"
-        , "<value.1> and <value.2>" ]
+        [ "--- world nixos ---", "--- end world nixos ---"
+        , "--- world kubenix ---", "ABSOLUTE INSIDE ITSELF AND NOWHERE ELSE" ]
+    it "says nothing about several worlds when there is one" $ do
+      let p = systemPromptFor [shippedWorld "nixos"]
+      p `shouldNotSatisfy` T.isInfixOf "--- world nixos ---"
+      p `shouldNotSatisfy` T.isInfixOf "TAG EVERY WORLD-BOUND ITEM"
+    it "states the tag, the neutral fact and the demand rule" $ do
+      let p = systemPromptFor [shippedWorld "nixos", shippedWorld "kubenix"]
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "TAG EVERY WORLD-BOUND ITEM", "@nixos match", "nixos, kubenix"
+        , "<value.2> <value.1>", "DEMAND IT", "never invent the value" ]
 
   -- Examples teach the grammar, so a stale one teaches a grammar that no longer
   -- exists. Extract every ```lips-engine block from the prompt and require the
@@ -6587,7 +6591,7 @@ shippedWorld n = maybe (error ("no built-in world " <> T.unpack n)) id (builtinW
 -- The NixOS prompt, which most prompt cases are stated over: one world's
 -- preamble plus the world-neutral body.
 systemPrompt :: Text
-systemPrompt = systemPromptFor (shippedWorld "nixos")
+systemPrompt = systemPromptFor [shippedWorld "nixos"]
 
 emptyRealization :: Realization
 emptyRealization = Realization
