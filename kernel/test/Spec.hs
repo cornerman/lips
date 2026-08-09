@@ -75,7 +75,7 @@ import Lips.Kernel.Source
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
-import Lips.Language               (mintedWorlds)
+import Lips.Language               (grammarIsFrozen, mintedWorlds)
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -5041,6 +5041,18 @@ main = hspec $ do
         TIO.writeFile (d </> "nixos" </> "other.rules") ""
         mintedWorlds d "x/ledger.backup.lips")
         `shouldReturn` []
+    -- Which run may still rewrite the shared grammar. The current world must be
+    -- counted as upcoming, or a plain re-mint would refuse to change its own
+    -- patterns (it did, on the first live two-world mint).
+    it "frees a first mint and a re-mint of every world, freezes the rest" $ do
+      grammarIsFrozen [] ["nixos", "kubenix"] `shouldBe` False
+      grammarIsFrozen ["nixos"] ["nixos"] `shouldBe` False
+      grammarIsFrozen ["nixos"] ["nixos", "kubenix"] `shouldBe` False
+      grammarIsFrozen ["nixos", "kubenix"] ["nixos", "kubenix"] `shouldBe` False
+      -- world two of the same run: world one is committed and behind us
+      grammarIsFrozen ["nixos"] ["kubenix"] `shouldBe` True
+      grammarIsFrozen ["nixos", "kubenix"] ["nixos"] `shouldBe` True
+
     -- An engine written by hand carries no generation record, and must still be
     -- a world lips finds: the record is provenance, the rules are the world.
     it "finds a world whose rules carry no record" $

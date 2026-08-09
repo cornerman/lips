@@ -17,6 +17,7 @@
 -- @artifacts\/@ are excluded for free, since neither holds a rules file.
 module Lips.Language
   ( mintedWorlds
+  , grammarIsFrozen
   ) where
 
 import           Control.Monad    (filterM)
@@ -25,6 +26,21 @@ import           Data.Text        (Text)
 import qualified Data.Text        as T
 import           Lips.Identity    (rulesPathIn, worldDirIn)
 import           System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+
+-- | May a mint still change the shared grammar, given the worlds a language
+-- already holds and the worlds a run is still going to mint (the current one
+-- included)?
+--
+-- Frozen exactly when some committed world will NOT be minted in the rest of
+-- the run: its rules were lowered from these patterns and nothing is going to
+-- rewrite them, so the patterns must stay as they are. One test covers both
+-- cases -- a world minted earlier in the same run is already committed and no
+-- longer upcoming, so the second world of @--target a,b@ inherits from the
+-- first. A first mint, and a re-mint of every world the language holds, are
+-- both free, which is why the remedy for a refused change is to name every
+-- world in one @--target@.
+grammarIsFrozen :: [Text] -> [Text] -> Bool
+grammarIsFrozen committed upcoming = any (`notElem` upcoming) committed
 
 -- | The worlds a committed language folder holds, sorted so output order is
 -- the same on every machine and in every run. A missing folder holds none.

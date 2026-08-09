@@ -50,7 +50,7 @@ import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
-import           Lips.Language                 (mintedWorlds)
+import           Lips.Language                 (grammarIsFrozen, mintedWorlds)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
@@ -140,8 +140,11 @@ main = do
       -- One model call per world, left to right. Sequential rather than
       -- combined because a world's preamble is absolute prose about the one
       -- namespace to emit into: concatenating four of them contradicts itself.
-      forM_ (zip worlds (drop 1 (tails (goTarget go)))) $ \(world, later) -> do
-        inherited <- inheritedGrammar later (goFiles go)
+      -- Each world is paired with the worlds still upcoming, ITSELF INCLUDED:
+      -- a world being minted right now does not inherit its own committed
+      -- grammar, or a re-mint could never change a pattern.
+      forM_ (zip worlds (tails (goTarget go))) $ \(world, upcoming) -> do
+        inherited <- inheritedGrammar upcoming (goFiles go)
         generate world inherited (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
@@ -157,27 +160,16 @@ main = do
     Lsp         -> runLsp
 
 -- | The committed grammar a mint must REUSE, or 'Nothing' when it is free to
--- write its own. Read fresh before each world of a run, so world two inherits
--- what world one just wrote.
---
--- Frozen exactly when some committed world will NOT be minted in the rest of
--- this run: its rules were lowered from these patterns and nothing is going to
--- rewrite them, so the patterns must stay as they are. That covers both cases
--- with one test -- a world minted earlier in this same run is already committed
--- and no longer upcoming, so the second world of @--target a,b@ inherits from
--- the first. A first mint, and a re-mint of every world the language holds, are
--- both free, which is why the remedy for a refused change is to name every
--- world in one @--target@.
---
+-- write its own ('Lips.Language.grammarIsFrozen' decides which). Read fresh
+-- before each world of a run, so world two inherits what world one just wrote.
 -- @upcoming@ is the worlds still to be minted, this one included.
 inheritedGrammar :: [Text] -> [FilePath] -> IO (Maybe Text)
 inheritedGrammar _ []                = pure Nothing
 inheritedGrammar upcoming (rep : _)  = do
   let dir = langDir rep
   committed <- mintedWorlds dir rep
-  case filter (`notElem` upcoming) committed of
-    [] -> pure Nothing
-    _  -> tryRead (grammarPathIn dir rep)
+  if grammarIsFrozen committed upcoming then tryRead (grammarPathIn dir rep)
+                                        else pure Nothing
 
 -- | Resolve a world name or die naming the remedy. The one door: every verb
 -- that takes @--target@ comes through here, so a name means the same thing
