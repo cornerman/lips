@@ -14,6 +14,7 @@ module Lips.Cli
   , CheckOpts (..)
   , OptionsOpts (..)
   , cliParserInfo
+  , cliPrefs
   , generateOpts
   , compileOpts
   , checkOpts
@@ -120,6 +121,12 @@ data Command
 -- production; tests pass their own to pin behavior independent of that
 -- constant). @<**> helper@ wires up @--help@ (and, transitively via
 -- @execParser@, @--bash\/--zsh\/--fish-completion-script@).
+-- | Help is laid out for 120 columns, not optparse-applicative's default 80:
+-- lips' option help is written in whole sentences, and at 80 every one of them
+-- broke mid-phrase into a ragged stack.
+cliPrefs :: ParserPrefs
+cliPrefs = prefs (columns 120)
+
 cliParserInfo :: Double -> ParserInfo Command
 cliParserInfo defConf = info (cliParser defConf <**> helper) $
   fullDesc <> progDesc

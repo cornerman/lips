@@ -53,7 +53,7 @@ import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAt
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (grammarIsFrozen, mintedWorlds)
-import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
+import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
                                         clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
@@ -67,7 +67,7 @@ import           Lips.Report            (Failure (..), demandGenerateFail, failu
                                          printFail, refusalReport, renderDiagnosis,
                                          renderParseError, unanswerableReport, unansweredReport,
                                          uncheckableReport, unportableReport, unreadable, validationReport)
-import           Options.Applicative    (execParser)
+import           Options.Applicative    (customExecParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, itemsFor, sharedFileViolations, carriesEngineMeaning, mergeGrammar, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
@@ -126,7 +126,7 @@ main = do
   -- silent where a reader treats "unreadable" as "absent", and it compiled a
   -- kubenix program into a NixOS flake. Pin it once, here.
   setLocaleEncoding utf8
-  cmd <- execParser (cliParserInfo defaultConfidence)
+  cmd <- customExecParser cliPrefs (cliParserInfo defaultConfidence)
   case cmd of
     Generate go -> do
       -- Every world is resolved before anything else runs: a name that names
