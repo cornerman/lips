@@ -73,6 +73,7 @@ import Lips.Kernel.Source
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
+import Lips.Language               (mintedWorlds)
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -4944,6 +4945,33 @@ main = hspec $ do
     it "keeps the grammar's own outputs world-free" $ do
       decisionsPath prog `shouldBe` "examples/backup/out/ledger.decisions"
       artifactsPath prog `shouldBe` "examples/backup/artifacts"
+
+  describe "a language's worlds (Lips.Language)" $ do
+    let withDir act = do
+          tmp <- getTemporaryDirectory
+          let root = tmp </> "lips-language-spec"
+          createDirectoryIfMissing True root
+          r <- act root
+          removeDirectoryRecursive root
+          pure r
+    it "finds every world folder holding this language's record, sorted" $
+      withDir (\d -> do
+        createDirectoryIfMissing True (d </> "nixos")
+        createDirectoryIfMissing True (d </> "kubenix")
+        createDirectoryIfMissing True (d </> "out")
+        createDirectoryIfMissing True (d </> "artifacts")
+        TIO.writeFile (d </> "nixos" </> "backup.generation") "format: 1\n"
+        TIO.writeFile (d </> "kubenix" </> "backup.generation") "format: 1\n"
+        mintedWorlds d "x/ledger.backup.lips")
+        `shouldReturn` ["kubenix", "nixos"]
+    it "finds none in a folder with no world at all" $
+      withDir (\d -> mintedWorlds d "x/ledger.backup.lips") `shouldReturn` []
+    it "ignores a folder holding another language's record" $
+      withDir (\d -> do
+        createDirectoryIfMissing True (d </> "nixos")
+        TIO.writeFile (d </> "nixos" </> "other.generation") "format: 1\n"
+        mintedWorlds d "x/ledger.backup.lips")
+        `shouldReturn` []
 
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $
