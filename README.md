@@ -150,8 +150,8 @@ file, both embedded into the binary at build time.
 
 You pick the world at mint time. `--target nixos` (the default),
 `--target home-manager`, `--target kubenix` or `--target terranix` picks the
-world the engine is born into, and `--target nixos,kubenix` picks several: one
-model call per world, left to right. A world is DATA, not a lips feature: each of
+world the engine is born into, and `--target nixos,kubenix` picks several in ONE
+model call. A world is DATA, not a lips feature: each of
 those names a `<world>.world` file lips ships (`lips world` lists them, `lips
 world nixos` prints one), and a `<name>.world` file beside your program is
 resolved the same way, so a world lips never heard of works with no change to
@@ -180,14 +180,25 @@ world file. So `compile` writes one module directory per world
 (`out/ledger/nixos`, `out/ledger/kubenix`) and `check` reports one verdict per
 world.
 
-The grammar is what the worlds agree on, so a mint that lands after another may
-only ADD to it, never change a pattern the other worlds' rules were lowered
-from; lips refuses the change and names the remedy, which is to re-mint every
-world together (`--target nixos,kubenix`). This costs the first mint some care:
-a fact must carry what the program says in pieces every world can spend, since
-nothing below the mint can convert one notation into another. Where a program
-reaches one world and not another, only that world fails, by name, and the
-worlds that hold are still written.
+One call writes all of it, because the patterns are what the worlds agree on and
+the call that writes them has to see every world. A fact must carry what the
+program says in pieces every world can spend: nothing below the mint converts
+one notation into another, so a daily `03:00` becomes an hour and a minute, and
+each world's rule assembles its own spelling (`*-*-* 03:00:00` for a systemd
+timer, `00 03 * * *` for a Kubernetes CronJob). In the reply each rule, demand
+and contract line names its world; the patterns name none, because they belong
+to the language.
+
+Minting one world LATER, against a language that already holds others, is the
+same command with that world's name. Then the language level is frozen: the
+grammar may only be added to and the shared `artifacts/` tree may not change at
+all, since the other worlds' rules were lowered from exactly those bytes. lips
+refuses a change and names the remedy, which is to mint every world together.
+
+Worlds answer for themselves. One that needs a fact the program does not state
+demands it by name (a Kubernetes pod needs a container image; a systemd unit
+does not), one the program cannot reach fails alone, and the worlds that hold
+are still written, with the run still exiting nonzero.
 
 **Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
 your text into a directory holding `default.nix` (the Nix module, for import
@@ -373,8 +384,9 @@ listing shows what you own and nothing else:
     backup.direction            <- yours (optional taste for the mint)
     backup/                     <- the machine's, all of it
       backup.grammar            <- how every program is read, shared by the worlds
+      backup.generation README.md   <- the mint that wrote them, and its account
       nixos/                    <- one folder per world it was minted into
-        backup.rules backup.expect backup.generation nixos.world README.md
+        backup.rules backup.expect nixos.world
       artifacts/
       out/                      <- derived; lips writes out/.gitignore itself
         ledger.decisions  ledger/nixos/
@@ -391,9 +403,9 @@ instance and per world, derived, and safe to delete.
 | `backup/backup.grammar` | AI, once | the patterns: how a program is read, shared by every world | yes |
 | `backup/nixos/backup.rules` | AI, once | one world's lowering: rules and demands | yes |
 | `backup/nixos/backup.expect` | AI, once | that world's behavioral tests, which gate regeneration | yes |
-| `backup/nixos/README.md` | AI, once | the language explained in plain words, your review artifact | yes |
+| `backup/README.md` | AI, once | the language explained in plain words, your review artifact | yes |
 | `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
-| `backup/nixos/backup.generation` | machine | receipt of the exact AI call and the world it pins | yes |
+| `backup/backup.generation` | machine | receipt of the exact AI call and every world it pins | yes |
 | `backup/nixos/nixos.world` | machine | the world that mint was aimed at, copied verbatim | yes |
 | `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
 | `backup/out/ledger/nixos/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |

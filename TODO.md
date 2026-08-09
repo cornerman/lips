@@ -6,31 +6,35 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-0. **A grammar neutral enough for a world it has not seen** (opened 2026-08-09
-   by the multi-world work landing, DESIGN §13).
+0. **A fact only one world needs** (opened 2026-08-09 by the first live joint
+   mint; design sketched, not settled).
 
-   Multi-world builds are BUILT: one grammar, one folder per world, `--target
-   a,b`, per-world compile and per-world failure. What the first live mints
-   exposed is the one thing the mechanism cannot do for you. A pattern's facts
-   are shared, and nothing below the mint can convert a value from one world's
-   notation into another's (the value grammar has no computation, by
-   construction). So a program stating `every day at 03:00` can serve nixos and
-   kubenix only if the FIRST mint splits the time into parts a rule can
-   reassemble (`<hour>:<minute>`, spent as `<value.1>`/`<value.2>`).
-   `assets/mint/shared.md` now tells a mint with worlds after it exactly that,
-   with the mechanism named. Three live mints of `examples/nightly.timer.lips`
-   still spelled the time whole, and the kubenix mint refused, correctly, with a
-   gap naming the conversion it could not make.
+   One mint for many worlds is BUILT (DESIGN §13), and the neutrality problem it
+   was built for is closed: one call decomposes a notation-divergent value
+   because the same answer writes the rule that spends it. What the live run
+   then exposed is the other half. `examples/nightly.timer.lips` states a
+   command and a time; kubenix also needs a container image, and demanded one,
+   correctly. But once the program states that image, NixOS has nothing to do
+   with it, and a ground decision no rule of a world places makes that world
+   report the program unportable. So a program cannot state a fact that only one
+   of its worlds needs -- which is exactly what genuinely different worlds ask
+   for.
 
-   So the open question is the mint's, not the kernel's: can a first world
-   reliably write a grammar neutral enough for a world it has not seen, or does
-   a notation-divergent value need the human to say so? Two things to try before
-   deciding: mint the two worlds' preambles into ONE call after all (rejected
-   while planning because absolute prose contradicts itself, but a shared
-   grammar is exactly the thing that wants one reading), or let a refusing
-   second world hand back a proposed grammar the human re-mints both worlds
-   with. Do not add a conversion form to the value grammar; that is the
-   computation the design forbids.
+   Sketch, in the shape the design already uses: the world's own rules DECLARE
+   what they knowingly ignore, as data, with the reason.
+
+       0.9 i1 @nixos ignore fact job.image "a machine runs the script directly, so there is no image"
+
+   Then the kernel rule stands unchanged in spirit (every ground decision is
+   placed OR explicitly ignored), nothing is silent, the review artifact says
+   which world drops which word and why, and the knowledge stays in the engine
+   rather than the kernel. It needs a closed grammar arm in `Lips.Kernel.Run`
+   (an ignore set beside the rules and demands) and one item kind in the reply.
+
+   Rejected while sketching: tolerating an unmapped decision when some other
+   world places it (silent, and it removes the guarantee that every word reaches
+   an output), and letting the program name the world a line is for (the program
+   states intent, never deployment).
 
 1. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
    by the meaning-dimension work, DESIGN §13).
@@ -313,6 +317,19 @@ tracks only what is still open.
       named functions.
 
 ## Backlog (larger / deferred by design)
+
+- **Demand duplication across worlds** (accepted 2026-08-09). Two worlds needing
+  the same fact write the same demand twice, and the diagnosis prints the open
+  question once per world. A shared demand would break the rule that a line's
+  subject prefix decides which file it lives in. Left until it costs more than
+  that rule.
+
+- **Reply size at many worlds** (accepted 2026-08-09). One call answers with the
+  grammar plus one rule set, one contract and one report per world, which will
+  strain output limits at four or five. The staged path already exists: mint two
+  now, add the third later against a frozen language level. Measure before
+  building anything.
+
 
 - **Nothing records WHICH lips wrote a language folder, or what format its
   engine files are in** (raised 2026-08-09, immediately after worlds became

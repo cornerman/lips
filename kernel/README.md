@@ -48,8 +48,8 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Generate.Harness` | section 5 | the `Confidence` unit the deduce-or-fail gate speaks in (the resampling harness was removed as speculative) |
 | `Lips.Generate.PiJson` | section 5 | parsing pi's json event stream: the reply, the model used, and the tool transcript |
 | `Lips.Generate.Record` | section 5 | the pinned generation record and its content id; every minted line is stamped `@gen:<id>`, and must name one of its language's records (one per world) |
-| `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt + whole-engine candidate parser (pure) |
-| `Lips.Generate.Readme` | section 5 | the mint's `report` and `gap` blocks rendered as `<language>/<world>/README.md`, the human's review artifact |
+| `Lips.Generate.Minting` | section 5 | the model-facing half of `generate`: system prompt (every world's preamble, each scoped) + whole-engine candidate parser, each item tagged with the world it is for (pure) |
+| `Lips.Generate.Readme` | section 5 | the mint's `report` and `gap` blocks rendered as README.md, filed at the scope of the event (the language folder for a call covering several worlds, the world's folder for one minted alone) |
 
 ## The Loop
 

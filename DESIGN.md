@@ -877,6 +877,64 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **One mint, many worlds: the call that discovers a cross-world defect is the
+  one that may fix it.** Multi-world builds shipped with one model call per
+  world, left to right, so the shared grammar was written by the FIRST call --
+  a party that sees one world authoring the contract between all of them.
+  Measured three times on `examples/nightly.timer.lips`: every mint wrote `fact
+  job.schedule "<time>"`, spelling a daily 03:00 as one atom. NixOS accepts that
+  (`OnCalendar` contains `03:00` verbatim); a Kubernetes CronJob does not
+  (`0 3 * * *`), and nothing below the mint converts one into the other, by
+  construction. So kubenix refused, correctly -- and the remedy the refusal
+  prints ("re-mint every world together") ran the nixos call first with the same
+  information as before and wrote the same coarse grammar. A remedy lips prints
+  and cannot honour is invariant 4's case: fix the physics, not the wording.
+
+  `generate --target a,b` is now ONE call for the language. It carries every
+  world's preamble, each fenced into its own section (a preamble is absolute
+  prose about one namespace, so two read as one text contradict each other), and
+  answers with one engine: patterns and source blocks shared, rules, demands,
+  merges and expects each tagged `@<world>`. `Lips.Generate.Minting.itemsFor`
+  splits one reply into one engine per world over the shared grammar; ids are
+  unique across the reply except a `because` note, which repeats the id it
+  explains. `query_options` now takes the world it asks about (validated against
+  the run's list, so a lookup can never be answered from another world's
+  schema), and `check --draft` materializes every world the draft names and runs
+  the committed verifier over each -- which is what lets a model see
+  `<value.2> out of range` while it can still change the PATTERN.
+
+  Measured before it was built (2026-08-09, hand-composed prompt, opus-5): the
+  answer decomposed the time first try (`at <hh>:<mm>` into `fact job.schedule
+  "<hh> <mm>"`, then `"*-*-* <value.1>:<value.2>:00"` for nixos and
+  `"<value.2> <value.1> * * *"` for kubenix), tagged every item correctly, and
+  leaked no option between worlds -- the one risk here that fails silently
+  rather than loudly. `examples/install.packages.lips` is now minted for nixos
+  and home-manager in one call, one grammar, one record, `environment.
+  systemPackages` and `home.packages` from one program.
+
+  Consequences the shape forces. Shared files have one author: the grammar, the
+  `artifacts/` tree, the record and the account are written only by a call that
+  saw every world, and freeze together when it did not
+  (`sharedFileViolations`) -- which closed a live clobber where a second world's
+  mint replaced `artifacts/` wholesale and deleted the source the first world's
+  rules point at. One event writes ONE record, at the language level, pinning
+  every world by name, hash and schema (`recordedWorldPin`); a world minted
+  alone still writes its own, and a joint mint removes the stale per-world pair
+  it supersedes, so a reader can never prefer a record that did not write the
+  lines it stamps. The account is filed at the scope of the event, so no
+  committed example moved. And an unanswered demand became a WORLD's fact
+  (`unansweredReport`): demands live in a world's rules, so a program that
+  satisfies nixos while leaving kubenix's image demand open fails kubenix alone.
+  A conflict stays fatal, being refinement over the shared grammar.
+
+  Two findings from the live runs are recorded rather than fixed. A mint told
+  nothing invents where it should demand (it wrote `busybox:latest` at
+  confidence 0.8, above the threshold, so it would have shipped); the prompt now
+  says to demand, never invent. And an expect over a split fact must name its
+  part (`from job.schedule#1`), since a several-part value read whole is its
+  parts joined by a space, which no world's notation contains -- the contract
+  gate caught exactly that on the first live joint mint of the timer.
+
 - **One program, several worlds: a shared grammar plus one folder per world.**
   A language folder used to hold one engine for one world, so serving a program
   to both NixOS and Kubernetes meant two languages, two readings of the same
@@ -895,9 +953,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   record, because an engine written by hand carries no record and must still be
   a world lips finds.
 
-  `generate --target a,b` is one run and one model call per world, left to
-  right: sequential because a world's preamble is absolute prose about the one
-  namespace to emit into, so concatenating two of them contradicts itself. Each
+  `generate --target a,b` was one run and one model call per world, left to
+  right (superseded 2026-08-09 by the entry above, which makes it one call for
+  the language: sequential minting left the shared grammar to a call that saw
+  one world). Each
   world gets its own record, and `stampFaults` now takes the language's records
   as a LIST -- a line is sound when it names one of them, which is as strict as
   before (every id still has to come from a record that re-hashes). A mint that

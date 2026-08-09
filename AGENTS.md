@@ -47,7 +47,9 @@ kernel bug; a missing domain fact is the engine's job.
   their concatenation. AI-minted, disposable, regenerable. There is no
   per-problem engine *code*.
 - **generate / compile / check**: generate is the only AI door (via `pi` print
-  mode). compile and check are deterministic and offline, always. Running is
+  mode), ONE call per language: it writes the shared grammar and every world's
+  rules at once, because the call that writes the patterns must see every world
+  they serve. compile and check are deterministic and offline, always. Running is
   not a lips verb: `compile` prints the stock `nix` commands over the compiled
   directory.
 
