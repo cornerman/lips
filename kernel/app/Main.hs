@@ -959,7 +959,7 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
     -- again so a rule fills it), so the existing message stands; what several
     -- worlds add is WHICH world is asking, since the kubernetes lowering wants
     -- an image the NixOS one does not.
-    Left (FailRun (OpenQuestions qs)) -> throwE (wn <> ": " <> demandGenerateFail f qs)
+    Left (FailRun (OpenQuestions qs)) -> throwE (demandGenerateFail f qs)
     Left ff                           -> throwE (validationReport f (failureReport f ff))
     Right rl -> do
       nixCheck <- lift (nixParses (rlModule rl))

@@ -31,6 +31,14 @@ spell differently and no further: every part you create must be read by some
 rule in every world, or that world's engine is refused for discarding a word the
 program stated.
 
+AN EXPECT OVER A SPLIT FACT NAMES THE PART. A contract compares the option's
+text against the value the fact carries, and a several-part value read WHOLE is
+its parts joined by a space -- which no world's notation contains, so the
+contract cannot hold. Name the part with #N, one expect per part:
+  0.95 a1 @nixos expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#1
+  0.95 a2 @nixos expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#2
+Each says its part reaches the option, which is exactly what the rule promised.
+
 WHERE A WORLD NEEDS A FACT THE PROGRAM DOES NOT STATE, DEMAND IT. Write that
 world's demand and stop; never invent the value. A Kubernetes pod needs a
 container image and a NixOS unit does not, so the image is a kubenix demand:
