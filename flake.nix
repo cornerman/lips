@@ -381,19 +381,24 @@
             # The engine lives in the language folder beside the program
             # (Lips.Identity), so reproduce that shape in the build cwd.
             realized = pkgs.runCommand "lips-backup-module" { } ''
-              mkdir -p backup
+              mkdir -p backup/nixos
               cp ${./examples/ledger.backup.lips} ledger.backup.lips
-              cp ${./examples/backup/backup.lang} backup/backup.lang
+              # The shared grammar sits at the language level, the world's rules
+              # in its own folder: the shape Lips.Identity names and compile reads.
+              cp ${./examples/backup/backup.grammar} backup/backup.grammar
+              cp ${./examples/backup/nixos/backup.rules} backup/nixos/backup.rules
               # Staged for the same reason as the artifact check below, so both
               # look like a real language folder even though this one bakes no
               # source and so never consults it.
-              cp ${./examples/backup/backup.generation} backup/backup.generation
+              cp ${./examples/backup/nixos/backup.generation} backup/nixos/backup.generation
               # The world file travels too: it IS the physics compile assembles
               # the flake from, and compile requires the copy the record names.
-              cp ${./examples/backup/nixos.world} backup/nixos.world
+              cp ${./examples/backup/nixos/nixos.world} backup/nixos/nixos.world
               # --no-contract: the gate needs nix to evaluate the module, which
               # a compile inside a nix build has not got; `lips check` gates in
               # the repo (see just check-expect).
+              # compile splits its output by world, so the module lands in
+              # $out/nixos; the check below imports it from there.
               ${lips}/bin/lips compile --no-contract --out "$out" ledger.backup.lips
             '';
           in
@@ -402,7 +407,7 @@
             nodes.machine = { ... }: {
               # "${...}": import the derivation's OUTPUT PATH; a bare derivation
               # in `imports` is misread as an inline attrset module.
-              imports = [ "${realized}" ];
+              imports = [ "${realized}/nixos" ];
             };
             testScript = ''
               machine.wait_for_unit("multi-user.target")
@@ -450,17 +455,19 @@
             # Realize into a DIRECTORY: the module plus its source tree, so the
             # module's relative `src = ./artifacts/<name>` resolves at import.
             realized = pkgs.runCommand "lips-website-module" { } ''
-              mkdir -p website
+              mkdir -p website/nixos
               cp ${./examples/website.lips} website.lips
-              cp ${./examples/website/website.lang} website/website.lang
+              cp ${./examples/website/website.grammar} website/website.grammar
+              cp ${./examples/website/nixos/website.rules} website/nixos/website.rules
+              # The artifacts tree is the LANGUAGE's, shared by every world.
               cp -r ${./examples/website/artifacts} website/artifacts
               # The generation record travels with the language, exactly as it
               # does in a real language folder: where a language BAKES source,
               # compile reads it to check the program still states the
               # specification that source was written from, and refuses rather
               # than skip when it cannot.
-              cp ${./examples/website/website.generation} website/website.generation
-              cp ${./examples/website/nixos.world} website/nixos.world
+              cp ${./examples/website/nixos/website.generation} website/nixos/website.generation
+              cp ${./examples/website/nixos/nixos.world} website/nixos/nixos.world
               # --no-contract: the gate needs nix to evaluate the module, which
               # a compile inside a nix build has not got; `lips check` gates in
               # the repo (see just check-expect).
@@ -470,7 +477,7 @@
           pkgs.testers.runNixOSTest {
             name = "lips-artifact-service-answers";
             nodes.machine = { pkgs, ... }: {
-              imports = [ "${realized}/default.nix" ];
+              imports = [ "${realized}/nixos/default.nix" ];
               environment.systemPackages = [ pkgs.curl ];
             };
             testScript = ''
@@ -495,18 +502,19 @@
           let
             lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
             realized = pkgs.runCommand "lips-hello-module" { } ''
-              mkdir -p http
+              mkdir -p http/nixos
               cp ${./examples/hello.http.lips} hello.http.lips
-              cp ${./examples/http/http.lang} http/http.lang
-              cp ${./examples/http/http.generation} http/http.generation
-              cp ${./examples/http/nixos.world} http/nixos.world
+              cp ${./examples/http/http.grammar} http/http.grammar
+              cp ${./examples/http/nixos/http.rules} http/nixos/http.rules
+              cp ${./examples/http/nixos/http.generation} http/nixos/http.generation
+              cp ${./examples/http/nixos/nixos.world} http/nixos/nixos.world
               ${lips}/bin/lips compile --no-contract --out "$out" hello.http.lips
             '';
           in
           pkgs.testers.runNixOSTest {
             name = "lips-nginx-routes-answer";
             nodes.machine = { pkgs, ... }: {
-              imports = [ "${realized}/default.nix" ];
+              imports = [ "${realized}/nixos/default.nix" ];
               environment.systemPackages = [ pkgs.curl ];
             };
             testScript = ''
