@@ -1135,6 +1135,38 @@ main = hspec $ do
       runReplace 100 engine [] withHeading `shouldBe` Right expected
 
   describe "generate minting (engine-synthesis plan: whole-engine candidates)" $ do
+    -- One mint writes for several worlds, so a rule must say which world it is
+    -- for; the patterns above it are the language's and say nothing.
+    it "reads the world tag that follows an item's id" $ do
+      let (errs, cs) = parseEngineCandidates ["nixos", "kubenix"] (T.unlines
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.i \"<secs>\""
+            , "0.95 r1 @nixos match fact watch.i => systemd.services.w.environment.S \"<value:int>\""
+            , "0.95 r2 @kubenix match fact watch.i => kubernetes.resources.pods.w.spec.hostname \"\\\"<value>\\\"\"" ])
+      errs `shouldBe` []
+      map icWorld cs `shouldBe` [Nothing, Just "nixos", Just "kubenix"]
+
+    it "defaults an untagged rule to the one world, and refuses it when there are several" $ do
+      let one = "0.95 r1 match fact watch.i => systemd.services.w.environment.S \"<value:int>\""
+      map icWorld (snd (parseEngineCandidates ["nixos"] one)) `shouldBe` [Just "nixos"]
+      fst (parseEngineCandidates ["nixos", "kubenix"] one)
+        `shouldSatisfy` any (T.isInfixOf "names no world")
+
+    it "refuses a tag naming a world this mint does not write" $
+      fst (parseEngineCandidates ["nixos"] "0.95 r1 @kubenix match fact watch.i => a.b \"<value:int>\"")
+        `shouldSatisfy` any (T.isInfixOf "kubenix")
+
+    it "refuses a tag on a shared item, which belongs to no single world" $
+      fst (parseEngineCandidates ["nixos", "kubenix"]
+            "0.95 p1 @nixos pattern watch <secs> seconds => fact watch.i \"<secs>\"")
+        `shouldSatisfy` any (T.isInfixOf "shared")
+
+    it "keeps a because-note with the item it explains, tag and all" $ do
+      let (errs, cs) = parseEngineCandidates ["nixos", "kubenix"] (T.unlines
+            [ "0.8 r1 @kubenix match fact watch.i => a.b \"<value:int>\""
+            , "0.8 r1 because \"the program does not say\"" ])
+      errs `shouldBe` []
+      map icId cs `shouldBe` ["r1", "r1"]
+
     it "parses the three item forms and assembles an engine" $ do
       let reply = T.unlines
             [ "0.95 p1 pattern the bank drops files into <loc> => fact feed.source \"<loc>\""
@@ -1142,7 +1174,7 @@ main = hspec $ do
             , "0.85 q1 demand feed.source \"where do the files arrive?\""
             , "0.95 a1 expect systemd.services.i.environment.INBOX from feed.source"
             ]
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       map icConfidence cs `shouldBe` map Confidence [0.95, 0.9, 0.85, 0.95]
       let eng = assemble (map icItem cs)
@@ -1155,7 +1187,7 @@ main = hspec $ do
       -- every gate. Only \" and \\ are transport escapes; anything else belongs
       -- to the value grammar inside, which reads \n as a newline.
       let reply = "0.9 r1 match fact p => environment.etc.pair.text \"\\\"<value.1>\\n<value.2>\\\"\""
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       case [ emRhs e | ItemRule r <- map icItem cs, e <- mrEmits r ] of
         [VStr [PHole "value.1", PLit "\n", PHole "value.2"]] -> pure ()
@@ -1172,14 +1204,14 @@ main = hspec $ do
             , "0.9 p1 pattern serve <n> => fact svc.name \"<n>\""
             , "Now that the draft passes every gate, I'll give the final answer."
             ]
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       length cs `shouldBe` 1
 
     it "still refuses a line that could be an item with a mangled confidence" $ do
       -- 'pattern' is right there in the third token, so this is an item the model
       -- meant, not a sentence: it must fail loud rather than vanish.
-      let (errs, cs) = parseEngineCandidates "O.9 p1 pattern serve <n> => fact svc.name \"<n>\""
+      let (errs, cs) = parseEngineCandidates ["nixos"] "O.9 p1 pattern serve <n> => fact svc.name \"<n>\""
       cs `shouldBe` []
       errs `shouldSatisfy` any (T.isInfixOf "bad confidence")
 
@@ -1188,7 +1220,7 @@ main = hspec $ do
       -- like "match" must mint as a pattern, not be misrouted to the rule
       -- parser. The leading 'pattern' keyword makes the kind explicit.
       let reply = "0.95 p1 pattern match <a> to <b> => fact link.p \"<a> <b>\""
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       case map icItem cs of
         [ItemPattern _] -> pure ()
@@ -1202,7 +1234,7 @@ main = hspec $ do
             , "0.9 r9 match fact feed.x => a.b \"<mystery>\""  -- unknown emit hole
             , "```"
             ]
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       length cs `shouldBe` 1
       length errs `shouldBe` 2
 
@@ -1218,7 +1250,7 @@ main = hspec $ do
             , "lips>>>"
             , "0.95 a1 expect systemd.services.srv.serviceConfig.ExecStart from srv.run"
             ]
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       case sourcesOf (map icItem cs) of
         [SourceFile a p c] -> do
@@ -1229,7 +1261,7 @@ main = hspec $ do
 
     it "a report block carries the mint's prose verbatim" $ do
       let reply = "0.9 d1 report <<<lips\n# The backup language\n\nreads two shapes.\nlips>>>\n"
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       reportOf (map icItem cs) `shouldBe` Just "# The backup language\n\nreads two shapes."
       assemble (map icItem cs) `shouldBe` assemble []
@@ -1241,7 +1273,7 @@ main = hspec $ do
             , "source heredocs have no holes, so a per-route body cannot reach the source."
             , "lips>>>"
             ]
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       map gapSlug (gapsOf (map icItem cs)) `shouldBe` ["templated-source"]
 
@@ -1261,7 +1293,7 @@ main = hspec $ do
 
     it "reports an unterminated source block" $ do
       let reply = T.unlines [ "0.9 s1 source srv main.rs <<<lips", "content with no closer" ]
-          (errs, _) = parseEngineCandidates reply
+          (errs, _) = parseEngineCandidates ["nixos"] reply
       length errs `shouldBe` 1
 
     it "parses a because-note (reason keyed to its item's id, no engine meaning)" $ do
@@ -1271,7 +1303,7 @@ main = hspec $ do
             [ "0.4 r1 match fact art.hash => artifact.a.args.vendorHash \"\\\"<value>\\\"\""
             , "0.4 r1 because \"the program never states the vendor hash\""
             ]
-          (errs, cs) = parseEngineCandidates reply
+          (errs, cs) = parseEngineCandidates ["nixos"] reply
       errs `shouldBe` []
       [icId c | c <- cs] `shouldBe` ["r1", "r1"]
       [r | c <- cs, ItemNote r <- [icItem c]]
@@ -4812,7 +4844,7 @@ main = hspec $ do
     it "every lips-engine block in the prompt parses" $ do
       let blocks = fencedBlocks "lips-engine" systemPrompt
       blocks `shouldSatisfy` (not . null)
-      mapM_ (\b -> fst (parseEngineCandidates b) `shouldBe` []) blocks
+      mapM_ (\b -> fst (parseEngineCandidates ["nixos"] b) `shouldBe` []) blocks
 
   -- The model is not baked into lips: generate omits --model so pi's own
   -- default applies, then reads the model back from the json stream to keep
@@ -6446,7 +6478,7 @@ genProv = oneof
 -- the surface syntax instead of assembling records by hand. Reply format, not
 -- .lang format: it is what a draft arrives in, and it is far shorter to read.
 engineFromLang :: [Text] -> EngineData
-engineFromLang ls = case parseEngineCandidates (T.unlines ls) of
+engineFromLang ls = case parseEngineCandidates ["nixos"] (T.unlines ls) of
   (errs@(_ : _), _) -> error ("test engine does not parse: " <> show errs)
   ([], cands)       -> assemble (map icItem cands)
 

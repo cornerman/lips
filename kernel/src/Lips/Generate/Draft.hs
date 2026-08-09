@@ -54,7 +54,7 @@ data DraftTree = DraftTree
 -- The folder is NAMED after the language, because 'Lips.Identity.resolveLangDir'
 -- refuses a folder whose basename is not the program's language.
 materializeDraft :: FilePath -> Text -> FilePath -> Text -> Maybe Text -> Either [Text] DraftTree
-materializeDraft root world file reply governing = case parseEngineCandidates reply of
+materializeDraft root world file reply governing = case parseEngineCandidates [world] reply of
   (errs@(_ : _), _) -> Left errs
   ([], cands) ->
     let items = map icItem cands

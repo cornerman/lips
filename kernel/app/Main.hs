@@ -746,7 +746,7 @@ generate world inherited later mschema confidence compat verbose mmodel thinking
   -- refusal already shows the offending lines).
   when verbose $ say (T.unlines
     [ "--- raw model reply (" <> model <> ") ---", reply, "--- end reply ---" ])
-  let (errs, candidates) = parseEngineCandidates reply
+  let (errs, candidates) = parseEngineCandidates [wName world] reply
       -- A because-note explains a low-confidence item; keyed by shared id, it
       -- never gates the build and never enters the engine.
       notes = [(icId c, r) | c <- candidates, ItemNote r <- [icItem c]]

@@ -131,6 +131,10 @@ data ItemCandidate = ItemCandidate
   , icConfidence :: Confidence
   , icLine       :: Text
   , icId         :: Text     -- ^ the line's id token, so a note pairs to its item
+  -- | Which world this item is for, written @\@\<world\>@ after the id.
+  -- 'Nothing' is SHARED: a pattern, a source block, the report, a gap and a
+  -- because-note belong to the language, not to one of its worlds.
+  , icWorld      :: Maybe Text
   }
   deriving (Eq, Show)
 
@@ -262,8 +266,13 @@ mergeGrammar old new = old <> T.unlines
 -- Single-item lines parse individually; a @source@ block spans multiple lines
 -- (a heredoc between @<<<lips@ and a closing @lips>>>@) so generated source can
 -- contain anything. Outside a block, blank\/comment\/fence lines are ignored.
-parseEngineCandidates :: Text -> ([Text], [ItemCandidate])
-parseEngineCandidates reply = go (T.lines reply) [] []
+-- The world list is what the run is minting. It decides two things a line
+-- cannot decide alone: whether a tag names a world at all, and whether a tag may
+-- be left off (with one world there is nothing to disambiguate, so a reply
+-- written for a single world is byte-identical to what mints wrote before tags
+-- existed).
+parseEngineCandidates :: [Text] -> Text -> ([Text], [ItemCandidate])
+parseEngineCandidates worlds reply = go (T.lines reply) [] []
   where
     -- A reply carrying no item at all is a failure, never an empty engine: with
     -- prose ignored, a model that answered in sentences alone would otherwise
@@ -280,7 +289,7 @@ parseEngineCandidates reply = go (T.lines reply) [] []
                   Right c -> go rest' errs (c : cands)
       | ignorable (T.strip l) = go ls errs cands
       | prose (T.strip l) = go ls errs cands
-      | otherwise = case parseLine (T.strip l) of
+      | otherwise = case parseLine worlds (T.strip l) of
           -- Echo the raw line the model wrote, so a refusal naming an item by
           -- id ("...(item p1)") also shows what p1 actually was. Without it the
           -- id is a dead reference: the reply is discarded on refusal.
@@ -334,7 +343,8 @@ mkBlock prefix rawHeader content = do
     _ -> Left ("block header must be '<confidence> <id> source <name> <relpath>', \
                \'<confidence> <id> report' or '<confidence> <id> gap <slug>', \
                \followed by '<<<lips': " <> rawHeader)
-  Right (ItemCandidate item (Confidence conf) rawHeader idTok)
+  -- A block is always shared: source, report and gap are the language's.
+  Right (ItemCandidate item (Confidence conf) rawHeader idTok Nothing)
 
 -- | Group parsed items into an engine (the @.lang@ artifact). Expects are not
 -- part of the engine; see 'expectsOf'.
@@ -433,11 +443,16 @@ placeSlug :: ClaimPlace -> Text
 placeSlug PlaceMachine    = "machine"
 placeSlug PlaceDerivation = "sandbox"
 
-parseLine :: Text -> Either Text ItemCandidate
-parseLine line = do
+parseLine :: [Text] -> Text -> Either Text ItemCandidate
+parseLine worlds line = do
   (confTok, r1) <- firstToken line "empty item line"
-  (idTok, body0) <- firstToken r1 ("no id after confidence: " <> line)
+  (idTok, r2) <- firstToken r1 ("no id after confidence: " <> line)
   conf <- parseConfidence confTok
+  -- The tag sits between the id and the kind, marked by @ so it can never be
+  -- mistaken for a keyword or a template word.
+  (tag, body0) <- case firstToken r2 "" of
+    Right (t, rest) | Just w <- T.stripPrefix "@" t -> Right (Just w, rest)
+    _                                               -> Right (Nothing, r2)
   let body = T.strip body0
       -- Name the offending item by id, not by echoing the whole raw line
       -- (which may carry a multi-line escaped script and reads as noise).
@@ -457,9 +472,47 @@ parseLine line = do
     other     -> Left ("unknown item kind '" <> other
                         <> "' (want pattern|match|merge|demand|expect|because) in: "
                         <> line)
-  Right (ItemCandidate item (Confidence conf) line idTok)
+  -- Deduce-or-fail on the tag, once the kind is known: a shared item may not
+  -- claim a world, a world-bound item may not name one this mint does not
+  -- write, and it may only be left untagged where there is a single world to
+  -- mean.
+  world <- case (tag, shared item) of
+    (Just w, True)  -> Left ("item " <> idTok <> " is tagged @" <> w
+                              <> ", but a " <> kindWord item <> " is shared by every world")
+    (Just w, False) | w `notElem` worlds ->
+      Left ("item " <> idTok <> " is tagged @" <> w
+              <> ", which is not a world this mint writes for ("
+              <> T.intercalate ", " worlds <> ")")
+    (Just w, False) -> Right (Just w)
+    (Nothing, True) -> Right Nothing
+    (Nothing, False) -> case worlds of
+      [w] -> Right (Just w)
+      _   -> Left ("item " <> idTok <> " names no world, and this mint writes for "
+                     <> T.intercalate ", " worlds
+                     <> " (tag it @<world> right after the id)")
+  Right (ItemCandidate item (Confidence conf) line idTok world)
   where
     firstWord t = case T.words t of { (w : _) -> w; [] -> "" }
+    -- A shared item is the language's own: how a program is READ, the source it
+    -- bakes, and the prose about it. Everything else names an option path, and
+    -- an option path exists only inside one world's namespace.
+    shared it = case it of
+      ItemPattern _ -> True
+      ItemNote _    -> True
+      ItemReport _  -> True
+      ItemGap _     -> True
+      ItemSource _  -> True
+      _             -> False
+    kindWord it = case it of
+      ItemPattern _ -> "pattern"
+      ItemNote _    -> "because-note"
+      ItemReport _  -> "report"
+      ItemGap _     -> "gap"
+      ItemSource _  -> "source block"
+      ItemRule _    -> "rule"
+      ItemDemand _  -> "demand"
+      ItemMerge _   -> "merge"
+      ItemExpect _  -> "expect"
     afterKeyword = T.stripStart . T.drop (T.length ("pattern" :: Text)) . T.stripStart
 
 -- | The reason inside a @because "<reason>"@ line: the single quoted string
