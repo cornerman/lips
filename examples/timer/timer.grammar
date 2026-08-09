@@ -1,0 +1,2 @@
+p1 meta lang.pattern.p1 stated "run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"<time>\"" @gen:f5fd6e2e20173096
+p2 meta lang.pattern.p2 stated "name the job <name> => fact job.name \"<name>\"" @gen:f5fd6e2e20173096

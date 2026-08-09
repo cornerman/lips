@@ -82,15 +82,19 @@ test-draft:
       -outputdir /tmp/lips-build-cli -o /tmp/lips-cli'
     lips=/tmp/lips-cli
     tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-    mkdir -p "$tmp/watch"
+    # The committed shape: a shared grammar at the language level, one world's
+    # rules in its own folder. Hand-written, so no .generation beside them.
+    mkdir -p "$tmp/watch/nixos"
     printf 'watch 30 seconds\n' > "$tmp/one.watch.lips"
-    cat > "$tmp/watch/watch.lang" <<'EOF'
+    cat > "$tmp/watch/watch.grammar" <<'EOF'
     p1 meta lang.pattern.p1 stated "watch <secs> seconds => fact watch.a \"<secs>\""
     p2 meta lang.pattern.p2 stated "watch <n> seconds => fact watch.b \"<n>\""
+    EOF
+    cat > "$tmp/watch/nixos/watch.rules" <<'EOF'
     r1 meta engine.rule.r1 stated "match fact watch.a => systemd.services.w.environment.A \"<value:int>\""
     r2 meta engine.rule.r2 stated "match fact watch.b => systemd.services.w.environment.B \"<value:int>\""
     EOF
-    sed -i 's/^    //' "$tmp/watch/watch.lang"
+    sed -i 's/^    //' "$tmp/watch/watch.grammar" "$tmp/watch/nixos/watch.rules"
     # A committed engine unsound on its own terms must be refused, not diagnosed.
     if "$lips" check "$tmp/one.watch.lips" > "$tmp/out" 2>&1; then
       echo "FAIL: check accepted an engine whose patterns are not orthogonal"; cat "$tmp/out"; exit 1

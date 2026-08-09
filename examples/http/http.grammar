@@ -1,0 +1,4 @@
+p1 meta lang.pattern.p1 stated "serve http on port <port> => fact server.port \"<port>\"" @gen:095860b24c7f2ebf
+p2 meta lang.pattern.p2 stated "run it as a systemd service named <name> => concept server.<name> \"the http server this program describes\" ; fact service.<name>.alias \"<name>\"" @gen:095860b24c7f2ebf
+p3 meta lang.pattern.p3 stated "routes => concept routes \"the routes this server answers\"" @gen:095860b24c7f2ebf
+p4 meta lang.pattern.p4.under.p2 stated "- <path> answers with the text <body> => fact route.<name>.<path>.text \"<body>\"" @gen:095860b24c7f2ebf

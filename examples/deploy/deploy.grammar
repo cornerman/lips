@@ -1,0 +1,4 @@
+p1 meta lang.pattern.p1 stated "run <count> replicas of the image <image> => fact deploy.replicas \"<count>\" ; fact deploy.image \"<image>\"" @gen:ee69471aaf31b559
+p2 meta lang.pattern.p2 stated "listen on container port <port> => fact deploy.port \"<port>\"" @gen:ee69471aaf31b559
+p3 meta lang.pattern.p3 stated "expose it in the cluster on port <port> => fact service.port \"<port>\"" @gen:ee69471aaf31b559
+p4 meta lang.pattern.p4 stated "deploy into the namespace <ns> => fact deploy.namespace \"<ns>\"" @gen:ee69471aaf31b559

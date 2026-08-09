@@ -1,0 +1,4 @@
+p1 meta lang.pattern.p1 stated "run the image <image> every night at <hh>:<mm> => fact job.image \"<image>\" ; fact job.schedule \"<hh> <mm>\"" @gen:4ee11db906680e99
+p2 meta lang.pattern.p2 stated "the command is <cmd.words> => fact job.command \"<cmd>\"" @gen:4ee11db906680e99
+p3 meta lang.pattern.p3 stated "keep <count> finished runs in the history => fact job.history \"<count>\"" @gen:4ee11db906680e99
+p4 meta lang.pattern.p4 stated "give up on a run after <secs> seconds => fact job.timeout \"<secs>\"" @gen:4ee11db906680e99

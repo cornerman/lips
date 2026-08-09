@@ -14,9 +14,11 @@
 module Lips.Generate.Draft
   ( DraftTree (..)
   , materializeDraft
+  , splitEngine
   ) where
 
 import           Data.Text (Text)
+import qualified Data.Text as T
 
 import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile, assemble, expectsOf,
                                          parseEngineCandidates, sourcesOf)
@@ -31,7 +33,9 @@ import           System.FilePath        ((</>))
 -- draft reads them, and a draft has no generation to record.
 data DraftTree = DraftTree
   { dtLangDir :: FilePath     -- ^ the folder to point check at
-  , dtLang    :: Text         -- ^ rendered .lang
+  , dtWorld   :: Text         -- ^ the world this draft is minted into
+  , dtGrammar :: Text         -- ^ the shared grammar, at the language level
+  , dtRules   :: Text         -- ^ this world's lowering, inside its folder
   , dtExpect  :: Text         -- ^ the GOVERNING contract (see 'materializeDraft')
   , dtSources :: [SourceFile] -- ^ the baked source tree, staged under artifacts/
   }
@@ -49,16 +53,39 @@ data DraftTree = DraftTree
 --
 -- The folder is NAMED after the language, because 'Lips.Identity.resolveLangDir'
 -- refuses a folder whose basename is not the program's language.
-materializeDraft :: FilePath -> FilePath -> Text -> Maybe Text -> Either [Text] DraftTree
-materializeDraft root file reply governing = case parseEngineCandidates reply of
+materializeDraft :: FilePath -> Text -> FilePath -> Text -> Maybe Text -> Either [Text] DraftTree
+materializeDraft root world file reply governing = case parseEngineCandidates reply of
   (errs@(_ : _), _) -> Left errs
   ([], cands) ->
     let items = map icItem cands
+        -- A draft has no generation id to stamp with, and says so in the
+        -- provenance rather than inventing one that would not re-hash.
+        (grammar, rules) = splitEngine (renderLang (FromSource (SourceLoc "draft" 0)) (assemble items))
      in Right DraftTree
           { dtLangDir = root </> languageName file
-          -- A draft has no generation id to stamp with, and says so in the
-          -- provenance rather than inventing one that would not re-hash.
-          , dtLang    = renderLang (FromSource (SourceLoc "draft" 0)) (assemble items)
+          , dtWorld   = world
+          , dtGrammar = grammar
+          , dtRules   = rules
           , dtExpect  = maybe (renderExpect (expectsOf items)) id governing
           , dtSources = sourcesOf items
           }
+
+-- | Split a rendered engine into the shared grammar (the pattern lines) and one
+-- world's rules. The subject prefix already carries the split -- @lang.*@ is the
+-- language reading a program, @engine.*@ is its lowering into a world -- so this
+-- is a partition of the same canonical text, and
+-- 'Lips.Kernel.Lang.Store.readLang' reads the two back by concatenation.
+--
+-- One function, used by the draft path and by @generate@'s write step, because
+-- a draft is judged as the committed engine will be read.
+splitEngine :: Text -> (Text, Text)
+splitEngine src = (unlines' isLang, unlines' (not . isLang))
+  where
+    ls = T.lines src
+    unlines' p = T.unlines (filter p ls)
+    -- Field 3 of a decision line is its subject; a rendered engine has no blank
+    -- or comment lines, so a line too short to have one cannot occur and is
+    -- kept with the rules, where readLang reports it.
+    isLang l = case drop 2 (T.words l) of
+      (subj : _) -> "lang." `T.isPrefixOf` subj
+      []         -> False

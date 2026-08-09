@@ -1,0 +1,3 @@
+r1 meta engine.rule.r1 stated "match fact gateway.enable => services.nginx.enable \"true\"" @gen:12f0ddc9b5d70ad3
+r2 meta engine.rule.r2 stated "match fact host.<domain>.location.<path>.proxy => services.nginx.virtualHosts.<domain>.locations.<path>.proxyPass \"\\\"<value>\\\"\"" @gen:12f0ddc9b5d70ad3
+r3 meta engine.rule.r3 stated "match fact host.<domain>.location.<path>.root => services.nginx.virtualHosts.<domain>.locations.<path>.root \"\\\"<value>\\\"\"" @gen:12f0ddc9b5d70ad3

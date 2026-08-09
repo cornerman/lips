@@ -3,13 +3,13 @@
 -- | The language-server shell: a minimal LSP over stdio (JSON-RPC framed by
 -- @Content-Length@). It is domain-blind -- one @lips lsp@ process serves every
 -- lips language, because the language is data: for each document it loads the
--- @.lang@ from the language folder beside it (@ledger.backup.lips@ ->
--- @backup/backup.lang@, resolved by 'Lips.Identity.langPath') and derives
+-- grammar from the language folder beside it (@ledger.backup.lips@ ->
+-- @backup/backup.grammar@, resolved by 'Lips.Identity.grammarPathIn') and derives
 -- completion and diagnostics from
 -- that (via 'Lips.Lsp.Derive', reusing the same 'diagnose' as @lips check@).
 --
 -- Deliberately small: full-text sync, completion, hover, and push diagnostics. No
--- caching (each event re-reads the @.lang@ from disk, so a regenerate is picked
+-- caching (each event re-reads the grammar from disk, so a regenerate is picked
 -- up for free) and no model, ever -- the server is pure of AI, like @run@.
 module Lips.Lsp.Server
   ( runLsp
@@ -39,8 +39,8 @@ import           System.Exit             (exitSuccess)
 import           System.IO
 import           Text.Read               (readMaybe)
 
-import Lips.Identity              (artifactsPathIn, instanceName, langPath,
-                                   resolveLangDir)
+import Lips.Identity              (artifactsPathIn, grammarPathIn, instanceName,
+                                   langDir, resolveLangDir)
 import Lips.Kernel.Claim         (claimRooted)
 import Lips.Kernel.Engine.Data   (Emit (..), MapRule (..))
 import Lips.Kernel.Lang.Diagnose (diagnose)
@@ -251,14 +251,15 @@ lineText mtext n = case mtext of
 leadingCol :: Text -> Int
 leadingCol = T.length . T.takeWhile isSpace
 
--- | Load the program's shared language, resolved by extension (a program
--- @ledger.backup.lips@ reads @backup/backup.lang@ beside it), matching the CLI
--- because both call 'Lips.Identity.langPath'. Completion
--- and diagnostics are pattern-level (front half), so no @<self>@ binding is
--- needed here.
+-- | Load the program's shared grammar, resolved by extension (a program
+-- @ledger.backup.lips@ reads @backup/backup.grammar@ beside it), matching the
+-- CLI because both call 'Lips.Identity.grammarPathIn'. Completion and
+-- diagnostics are pattern-level (front half), so the grammar alone is the whole
+-- answer: no world's rules and no @\<self\>@ binding are needed, and the editor
+-- sees the same language whichever worlds the folder was minted into.
 loadLang :: FilePath -> IO (Maybe EngineData)
 loadLang path = do
-  msrc <- tryReadFile (langPath path)
+  msrc <- tryReadFile (grammarPathIn (langDir path) path)
   pure $ case msrc of
     Just src -> either (const Nothing) Just (readLang src)
     Nothing  -> Nothing

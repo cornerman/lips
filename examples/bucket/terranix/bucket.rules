@@ -1,0 +1,4 @@
+q1 meta engine.demand.q1 stated "demand store.region \"in which aws region should the files be stored?\"" @gen:2b1348d2881ce638
+r1 meta engine.rule.r1 stated "match fact store.region => provider.aws.region \"\\\"<value>\\\"\" ; resource.aws_s3_bucket.<self>.force_destroy \"false\"" @gen:2b1348d2881ce638
+r2 meta engine.rule.r2 stated "match fact store.versioning => resource.aws_s3_bucket_versioning.<self>.bucket \"\\\"\\\\${aws_s3_bucket.<self>.id}\\\"\" ; resource.aws_s3_bucket_versioning.<self>.versioning_configuration.status \"\\\"<value>\\\"\"" @gen:2b1348d2881ce638
+r3 meta engine.rule.r3 stated "match fact store.report => output.<self>.value \"\\\"\\\\${aws_s3_bucket.<self>.id}\\\"\" ; output.<self>.description \"\\\"<value>\\\"\"" @gen:2b1348d2881ce638

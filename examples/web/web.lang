@@ -1,9 +1,0 @@
-p1 meta lang.pattern.p1 stated "serve http on port <port> => fact server.port \"<port>\"" @gen:f446955bdddcf45d
-p2 meta lang.pattern.p2 stated "run it as a systemd service named <name> => fact service.name \"<name>\"" @gen:f446955bdddcf45d
-p3 meta lang.pattern.p3 stated "routes => concept routes \"http routes to serve\"" @gen:f446955bdddcf45d
-p4 meta lang.pattern.p4 stated "- <path> returns status <status> with body <body> => fact route.<path>.spec \"<status> <body>\"" @gen:f446955bdddcf45d
-q1 meta engine.demand.q1 stated "demand server.port \"what port should the http server listen on?\"" @gen:f446955bdddcf45d
-q2 meta engine.demand.q2 stated "demand service.name \"what name identifies this web service?\"" @gen:f446955bdddcf45d
-r1 meta engine.rule.r1 stated "match fact server.port => services.nginx.enable \"true\" ; services.nginx.virtualHosts.<self>.listen \"[ { addr = \\\"0.0.0.0\\\"; port = <value:int>; } ]\" ; services.nginx.virtualHosts.<self>.default \"true\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\"" @gen:f446955bdddcf45d
-r2 meta engine.rule.r2 stated "match fact service.name => services.nginx.virtualHosts.<self>.serverName \"\\\"<value>\\\"\"" @gen:f446955bdddcf45d
-r3 meta engine.rule.r3 stated "match fact route.<path>.spec => services.nginx.virtualHosts.<self>.locations.<path>.extraConfig \"\\\"return <value.1> '<value.2>';\\\"\"" @gen:f446955bdddcf45d

@@ -1,0 +1,7 @@
+p1 meta lang.pattern.p1 stated "website running on port <port> => fact site.port \"<port>\"" @gen:8c2942c4e29ca22d
+p2 meta lang.pattern.p2 stated "canvas <name> => fact canvas.<n:index> \"<name>\"" @gen:8c2942c4e29ca22d
+p3 meta lang.pattern.p3.under.p2 stated "content: shows <what.words> => fact <k:key>.content \"<what>\"" @gen:8c2942c4e29ca22d
+p4 meta lang.pattern.p4 stated "button <label> => fact button.<n:index> \"<label>\"" @gen:8c2942c4e29ca22d
+p5 meta lang.pattern.p5.under.p4 stated "on click: new random painting in canvas <target> => fact <k:key>.action \"paint\" ; fact <k:key>.target \"<target>\"" @gen:8c2942c4e29ca22d
+p6 meta lang.pattern.p6.under.p4 stated "on click: erase everything in canvas <target> => fact <k:key>.action \"clear\" ; fact <k:key>.target \"<target>\"" @gen:8c2942c4e29ca22d
+p7 meta lang.pattern.p7.under.p4 stated "on click: download the picture from canvas <target> => fact <k:key>.action \"download\" ; fact <k:key>.target \"<target>\"" @gen:8c2942c4e29ca22d

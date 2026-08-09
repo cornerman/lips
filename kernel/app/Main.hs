@@ -49,7 +49,8 @@ import           System.Process     (CreateProcess (..), StdStream (..), createP
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
-import           Lips.Identity                 (requireProgram, readmePath, gapPath, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPath, expectPathIn, generationPath, generationPathIn, instanceName, langDir, langPath, langPathIn, languageName, outDir, resolveLangDir, worldPathIn)
+import           Lips.Identity                 (requireProgram, readmePathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
+import           Lips.Language                 (mintedWorlds)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
@@ -66,7 +67,7 @@ import           Lips.Report            (Failure (..), demandGenerateFail, failu
                                          uncheckableReport, unreadable, validationReport)
 import           Options.Applicative    (execParser)
 import           Lips.Generate.Harness  (Confidence (..))
-import           Lips.Generate.Draft    (DraftTree (..), materializeDraft)
+import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
 import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, carriesEngineMeaning, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
@@ -206,9 +207,19 @@ compileLoose mout mLangDir noContract file = do
   -- very output the contract judged (and the pipeline runs once, not twice).
   -- @--no-contract@ is the one caller that cannot gate (a compile inside a nix
   -- derivation has no nix to evaluate with); it still crystallizes and realizes.
-  rl  <- checkLoose (not noContract) (not noContract) mLangDir file
-  world   <- readRecordedWorld dir file
-  let outDirPath = maybe (compiledPath file) id mout
+  rls <- checkLoose (not noContract) (not noContract) mLangDir file
+  forM_ rls (compileWorld mout dir file)
+
+-- | Materialize ONE world's module directory from the realization @check@
+-- already validated. Every world the language was minted into is written, each
+-- into its own directory: a compiled module is a world's shape, so two worlds
+-- sharing one directory would leave only the last one written.
+compileWorld :: Maybe FilePath -> FilePath -> FilePath -> (Text, Realization) -> IO ()
+compileWorld mout dir file (w, rl) = do
+  world   <- readRecordedWorld dir w file
+  -- An explicit @--out@ splits by world too, for the same reason the default
+  -- path does: the flag names where the outputs go, not which one survives.
+  let outDirPath = maybe (compiledPath file w) (</> T.unpack w) mout
   (artNames, rungs) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
     createDirectoryIfMissing True outDirPath
@@ -260,9 +271,9 @@ ensureDerived file = do
 -- now and the shipped one may have moved on. When the record carries a pin, the
 -- copy must hash to it, so a compiled flake can never come from physics the
 -- record does not name.
-readRecordedWorld :: FilePath -> FilePath -> IO World
-readRecordedWorld dir file = do
-  let path = generationPathIn dir file
+readRecordedWorld :: FilePath -> Text -> FilePath -> IO World
+readRecordedWorld dir w file = do
+  let path = generationPathIn dir w file
   there <- doesPathExist path
   m <- tryRead path
   src <- case (there, m) of
@@ -280,7 +291,9 @@ readRecordedWorld dir file = do
       ("lips can't compile " <> T.pack file <> ": " <> why <> ".")
       [T.pack path <> " is the record it read."]
       "\8594 re-mint it: lips generate <program>.")) pure (recordedWorld src)
-  let wpath = worldPathIn dir name
+  -- The copy lives in the world's own folder, which is NAMED after the world
+  -- the record declares, so the two cannot disagree about which world this is.
+  let wpath = worldPathIn (worldDirIn dir name) name
   mraw <- tryRead wpath
   raw <- case mraw of
     Just r  -> pure r
@@ -318,15 +331,34 @@ readRecordedWorld dir file = do
 -- for it alone, because a per-call VM boot would block a mint on a machine
 -- without KVM. Everything before both -- crystallization, the open questions,
 -- the staged-source check -- runs either way, because none of it needs nix.
-checkLoose :: Bool -> Bool -> Maybe FilePath -> FilePath -> IO Realization
+checkLoose :: Bool -> Bool -> Maybe FilePath -> FilePath -> IO [(Text, Realization)]
 checkLoose contract claims mLangDir file = do
   dir     <- either die pure (resolveLangDir file mLangDir)
   program <- readProgramOrDie file
-  eng     <- loadLangOrDie dir file
-  -- Provenance before content: an engine whose lines do not name the record
-  -- beside them is not the engine that record produced, so every later verdict
-  -- would be about an unidentified file (invariant 6).
-  assertStamps dir file
+  ws      <- mintedWorlds dir file
+  when (null ws) $ die (report
+    (T.pack file <> " isn't set up yet (" <> T.pack dir <> " holds no world).")
+    []
+    ("\8594 create it: lips generate " <> T.pack file))
+  -- Provenance before content: an engine whose lines do not name a record
+  -- beside it is not the engine those records produced, so every later verdict
+  -- would be about an unidentified file (invariant 6). Once for the language,
+  -- because the grammar and every world's rules are stamped against the same
+  -- set of records.
+  assertStamps dir ws file
+  forM ws $ \w -> do
+    -- Each world is judged on its own and says so, because the verdicts
+    -- genuinely differ: a line answered by one world's rules can stay open in
+    -- another's, and only the pattern half of the diagnosis is shared.
+    say ("world " <> w <> ":")
+    rl <- checkWorld contract claims dir w file program
+    pure (w, rl)
+
+-- | One world's verdict on a program: its rules read on top of the shared
+-- grammar, its diagnosis, its contract, its claims.
+checkWorld :: Bool -> Bool -> FilePath -> Text -> FilePath -> Text -> IO Realization
+checkWorld contract claims dir w file program = do
+  eng <- loadLangOrDie dir w file
   step ("crystallize " <> T.pack file) $ do
     -- An engine unsound on its own terms makes every later verdict meaningless
     -- (an ambiguous line reads as the author's problem when it is the engine's),
@@ -357,7 +389,7 @@ checkLoose contract claims mLangDir file = do
                    "→ answer them by stating the detail in the program.")
           uds -> die (unanswerableReport file uds)
         else pure ()
-  rl <- expectGate contract claims dir file eng program
+  rl <- expectGate contract claims dir w file eng program
   -- What vouches for each assertion, always printed. An unvouched assertion
   -- (foreign text in an artifact argument, a staged source tree) is the one
   -- thing lips cannot check, so the count is stated on every run rather than
@@ -401,13 +433,18 @@ checkDraft file = do
   governing <- lookupEnv "LIPS_MINT_EXPECT" >>= \m -> case m of
     Just p | not (null p) -> tryRead p
     _                     -> pure Nothing
-  withTempDir $ \root -> case materializeDraft root file reply governing of
+  -- The world the draft is minted into decides where its rules go, so the
+  -- throwaway folder has the shape check reads: generate states it, and a draft
+  -- for a world lips cannot name is unjudgeable.
+  draftW <- wName <$> draftWorldOrDefault
+  withTempDir $ \root -> case materializeDraft root draftW file reply governing of
     Left errs -> die (validationReport file ("the draft cannot be read as an engine:\n"
                         <> T.unlines [ "  - " <> e | e <- errs ]))
     Right t   -> do
-      createDirectoryIfMissing True (dtLangDir t)
-      TIO.writeFile (langPathIn (dtLangDir t) file) (dtLang t)
-      TIO.writeFile (expectPathIn (dtLangDir t) file) (dtExpect t)
+      createDirectoryIfMissing True (worldDirIn (dtLangDir t) (dtWorld t))
+      TIO.writeFile (grammarPathIn (dtLangDir t) file) (dtGrammar t)
+      TIO.writeFile (rulesPathIn (dtLangDir t) (dtWorld t) file) (dtRules t)
+      TIO.writeFile (expectPathIn (dtLangDir t) (dtWorld t) file) (dtExpect t)
       writeSources (artifactsPathIn (dtLangDir t) file) (dtSources t)
       -- The schema gate cannot live in check, which stays nixpkgs-free so a
       -- committed engine is judged offline. The draft path runs on the mint
@@ -419,10 +456,14 @@ checkDraft file = do
       case mschema of
         Just p | not (null p) -> do
           world <- draftWorld
-          eng <- loadLangOrDie (dtLangDir t) file
+          eng <- loadLangOrDie (dtLangDir t) (dtWorld t) file
           assertOptionsAdmissible world p file eng
         _ -> pure ()
-      rl <- checkLoose True False (Just (dtLangDir t)) file
+      -- One world, named rather than discovered: a draft folder holds no
+      -- .generation (a draft HAS no generation), so there is nothing to find by
+      -- looking, and generate already said which world it is minting into.
+      program <- readProgramOrDie file
+      rl <- checkWorld True False (dtLangDir t) (dtWorld t) file program
       world <- draftWorldOrDefault
       clauseClaimGate world file rl
       note "the command claim gate and the artifact build were NOT run"
@@ -454,18 +495,18 @@ draftWorld = do
 -- Validates once, up front: the module, its artifacts and the paths it names
 -- all come from that one run, so the staged-source gate below and the contract
 -- judge the same realization.
-expectGate :: Bool -> Bool -> FilePath -> FilePath -> EngineData -> Text -> IO Realization
-expectGate contract claims dir file eng program = do
+expectGate :: Bool -> Bool -> FilePath -> Text -> FilePath -> EngineData -> Text -> IO Realization
+expectGate contract claims dir w file eng program = do
   rl <- either (die . printFail file) pure (validate file eng program)
   stagedGate (stageBeside dir file rl) file rl
-  sourceSpecGate dir file eng program
-  expSrc <- if contract then tryRead (expectPathIn dir file) else pure Nothing
+  sourceSpecGate dir w file eng program
+  expSrc <- if contract then tryRead (expectPathIn dir w file) else pure Nothing
   case expSrc of
     -- A skipped or absent contract is stated, never rendered as a pass: the
     -- step's own ✓ would otherwise claim a gate that did not run.
     Nothing | not contract ->
       note "contract skipped (--no-contract): nix is needed to evaluate it"
-    Nothing  -> note ("no contract yet: " <> T.pack (expectPathIn dir file)
+    Nothing  -> note ("no contract yet: " <> T.pack (expectPathIn dir w file)
                         <> " is written by generate")
     Just src -> case readExpect src of
       Left es       -> die (unreadable file ".expect" es)
@@ -485,24 +526,37 @@ expectGate contract claims dir file eng program = do
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
   when claims $ do
-    world <- readRecordedWorld dir file
+    world <- readRecordedWorld dir w file
     claimGate world dir file rl
   pure rl
 
--- | Load and parse a program's @.lang@ (found under @dir@), or fail loud
--- naming @generate@.
-loadLangOrDie :: FilePath -> FilePath -> IO EngineData
-loadLangOrDie dir file = do
-  let langFile = langPathIn dir file
-  msrc <- tryRead langFile
-  case msrc of
-    Nothing  -> die (report
-      (T.pack file <> " isn't set up yet (" <> T.pack langFile <> " is missing).")
+-- | Load and parse one world's engine: the shared grammar plus that world's
+-- rules, read as the concatenation they are rendered from. Fails loud naming
+-- @generate@ -- a missing grammar means the language was never minted, a
+-- missing rules file means it was never minted INTO THIS WORLD, so the remedy
+-- names the world.
+loadLangOrDie :: FilePath -> Text -> FilePath -> IO EngineData
+loadLangOrDie dir w file = do
+  let grammarFile = grammarPathIn dir file
+      rulesFile   = rulesPathIn dir w file
+  mgrammar <- tryRead grammarFile
+  grammar  <- case mgrammar of
+    Nothing -> die (report
+      (T.pack file <> " isn't set up yet (" <> T.pack grammarFile <> " is missing).")
       []
       ("→ create it: lips generate " <> T.pack file))
-    Just src -> case readLang src of
-      Left es  -> die (unreadable file ".lang" es)
-      Right eng -> pure eng
+    Just g  -> pure g
+  mrules <- tryRead rulesFile
+  rules  <- case mrules of
+    Nothing -> die (report
+      (T.pack file <> " is not minted for the world " <> w <> " ("
+        <> T.pack rulesFile <> " is missing).")
+      []
+      ("→ mint it there: lips generate --target " <> w <> " " <> T.pack file))
+    Just r  -> pure r
+  case readLang (grammar <> rules) of
+    Left es  -> die (unreadable file ".lang" es)
+    Right eng -> pure eng
 
 -- | Invariant 6, enforced at the door every committed engine passes: re-hash
 -- the @.generation@ beside the engine and refuse a @\@gen:@ stamp that
@@ -516,23 +570,35 @@ loadLangOrDie dir file = do
 -- it may claim no generation. A record that EXISTS and cannot be read is a loud
 -- failure rather than the no-record reading, exactly as 'readRecordedWorld'
 -- treats it -- guessing there would turn a broken repository into a green check.
-assertStamps :: FilePath -> FilePath -> IO ()
-assertStamps dir file = do
-  let recPath = generationPathIn dir file
-  there <- doesPathExist recPath
-  mrec  <- tryRead recPath
-  when (there && mrec == Nothing) $ die (report
-    ("lips can't read the generation record at " <> T.pack recPath <> ",")
-    ["so it cannot tell which generation wrote this engine."]
-    "\8594 restore the file, or re-mint: lips generate <program>.")
-  msrc <- tryRead (langPathIn dir file)
-  case stampFaults (maybe [] (: []) mrec) <$> msrc of
-    Just fs@(_ : _) -> die (report
-      (T.pack (langPathIn dir file) <> " does not name the generation that wrote it:")
-      (map renderStampFault fs)
+assertStamps :: FilePath -> [Text] -> FilePath -> IO ()
+assertStamps dir ws file = do
+  recs <- fmap concat $ forM ws $ \w -> do
+    let recPath = generationPathIn dir w file
+    there <- doesPathExist recPath
+    mrec  <- tryRead recPath
+    case (there, mrec) of
+      -- A world with no record at all is a hand-written engine, judged by the
+      -- inverted rule (no line may claim a generation). A record that EXISTS
+      -- and cannot be read is the other case entirely: reading it as absent is
+      -- what would turn a damaged repository green.
+      (False, _)      -> pure []
+      (True, Nothing) -> die (report
+        ("lips can't read the generation record at " <> T.pack recPath <> ",")
+        ["so it cannot tell which generation wrote this engine."]
+        "\8594 restore the file, or re-mint: lips generate <program>.")
+      (True, Just r)  -> pure [r]
+  -- File by file, so a reported line number is that file's own; a grammar line
+  -- may name any world's mint, which is why every record is offered to each.
+  faults <- forM (grammarPathIn dir file : [ rulesPathIn dir w file | w <- ws ]) $ \p -> do
+    msrc <- tryRead p
+    pure [ (p, f) | f <- maybe [] (stampFaults recs) msrc ]
+  case concat faults of
+    [] -> pure ()
+    bad -> die (report
+      (T.pack file <> "'s engine does not name the generations that wrote it:")
+      [ T.pack p <> ": " <> renderStampFault f | (p, f) <- bad ]
       ("\8594 re-mint it: lips generate " <> T.pack file
-        <> " (a .lang is never hand-edited)."))
-    _ -> pure ()
+        <> " (a minted file is never hand-edited)."))
 
 -- | Read the program file, or fail with a plain message instead of a raw
 -- exception when the path is wrong (a common typo at the shell).
@@ -589,7 +655,7 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
   -- that leaves is silence, so say it -- a re-ground engine is a different
   -- engine, and the reader deserves to learn that here rather than from the
   -- .generation diff afterwards.
-  oldPin <- (>>= recordedSchema) <$> tryRead (generationPath rep)
+  oldPin <- (>>= recordedSchema) <$> tryRead (generationPathIn (langDir rep) (wName world) rep)
   case oldPin of
     Just p | p /= schemaPin -> do
       note ("re-grounding: the committed engine was minted against " <> p)
@@ -604,8 +670,9 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
   committedExpectPath <- if compat == None
     then pure Nothing
     else do
-      there <- doesFileExist (expectPath rep)
-      pure (if there then Just (expectPath rep) else Nothing)
+      let p = expectPathIn (langDir rep) (wName world) rep
+      there <- doesFileExist p
+      pure (if there then Just p else Nothing)
   (reply, model, transcript) <-
     step ("mint ." <> T.pack lang <> " from " <> plural (length files) "program") $
       callPi verbose mmodel thinking prompt corpus world files committedExpectPath schemaPath
@@ -633,11 +700,12 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
       -- the same in-scope values), so a refusal is pinned exactly as an
       -- acceptance would have been.
       let rec = record model (wName world) (worldHash world) schemaPin (T.pack thinking) confidence prompt corpus transcript reply
-      -- The refusal is the first thing written for a language, so its directory
-      -- (<language>/, home of .lang/.expect/.generation) need not exist yet.
-      createDirectoryIfMissing True (langDir rep)
-      TIO.writeFile (gapPath rep) (gapArtifact rec errs unsure gaps)
-      die (refusalReport rep (gapPath rep) confidence errs unsure notes gaps)
+      -- The refusal is the first thing written for a world, so its directory
+      -- (<language>/<world>/) need not exist yet.
+      createDirectoryIfMissing True (worldDirIn (langDir rep) (wName world))
+      let gap = gapPathIn (langDir rep) (wName world) rep
+      TIO.writeFile gap (gapArtifact rec errs unsure gaps)
+      die (refusalReport rep gap confidence errs unsure notes gaps)
     else do
       -- A mint without an explanation is incomplete: the human's review
       -- artifact is the report, not the .lang. A structural guard, so the
@@ -749,12 +817,14 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
       -- to the committed set and this run's minted one. Every correctness gate
       -- above and the behavioral gate below still run whatever the word, so a
       -- bad mint still writes nothing.
-      committed <- tryRead (expectPath rep)
+      committed <- tryRead (expectPathIn (langDir rep) (wName world) rep)
       committedExpects <- case maybe (Right []) readExpect committed of
         Left es -> die (report
-          (T.pack (expectPath rep) <> " is unreadable, so lips can't verify against it:")
+          (T.pack (expectPathIn (langDir rep) (wName world) rep)
+            <> " is unreadable, so lips can't verify against it:")
           [ "line " <> tshow (peLine e) <> ": " <> peMessage e | e <- es ]
-          ("→ fix or delete " <> T.pack (expectPath rep) <> ", then run generate again."))
+          ("→ fix or delete " <> T.pack (expectPathIn (langDir rep) (wName world) rep)
+            <> ", then run generate again."))
         Right xs -> pure xs
       expects <- case rebless compat (edRules eng) committedExpects mintedExpects of
         Right xs  -> pure xs
@@ -791,7 +861,7 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
             ("→ run generate again. If you changed the program on purpose, accept "
               <> "the new behavior: lips generate --compat "
               <> compatSlug (smallestCompat (edRules eng) broken) <> " " <> T.pack rep
-              <> " (rewrites " <> T.pack (expectPath rep) <> ")."))
+              <> " (rewrites " <> T.pack (expectPathIn (langDir rep) (wName world) rep) <> ")."))
           Right () -> pure ()
       -- Last gate, and the only one that observes rather than reads: build each
       -- artifact and look inside it. Deliberately after the cheap gates, so a
@@ -818,23 +888,31 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
       -- engine line is stamped with the content id of the .generation record,
       -- checkable by re-hashing it.
       let rec = record model (wName world) (worldHash world) schemaPin (T.pack thinking) confidence prompt corpus transcript reply
-      step ("write " <> T.pack (langDir rep)) $ do
-        -- The language folder holds every minted and derived file; create it (and
-        -- its derived out/ subtree) before writing, so a first mint beside a bare
+          dir  = langDir rep
+          w    = wName world
+          (grammarText, rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) eng)
+      step ("write " <> T.pack (worldDirIn dir w)) $ do
+        -- The language folder holds every minted and derived file, and the
+        -- world's folder everything this lowering owns; create both (and the
+        -- derived out/ subtree) before writing, so a first mint beside a bare
         -- program just works.
-        createDirectoryIfMissing True (langDir rep)
-        TIO.writeFile (langPath rep) (renderLang (FromGeneration (genId rec)) eng)
+        createDirectoryIfMissing True (worldDirIn dir w)
+        -- The grammar is the language's, shared by every world; the rules are
+        -- this world's alone. Rendered as one engine and split by subject, so
+        -- the two halves read back as the engine that was validated.
+        TIO.writeFile (grammarPathIn dir rep) grammarText
+        TIO.writeFile (rulesPathIn dir w rep) rulesText
         -- The world travels WITH the engine: the record pins this copy by
         -- hash, and compile reads the copy, never the search path. So a
         -- committed engine carries the physics it was minted into, and a
         -- checkout on another machine compiles the same way.
-        TIO.writeFile (worldPathIn (langDir rep) (wName world)) (wRaw world)
-        TIO.writeFile (generationPath rep) rec
-        TIO.writeFile (readmePath rep) (renderReadme (T.pack lang) reportBody gaps)
+        TIO.writeFile (worldPathIn (worldDirIn dir w) w) (wRaw world)
+        TIO.writeFile (generationPathIn dir w rep) rec
+        TIO.writeFile (readmePathIn dir w) (renderReadme (T.pack lang) reportBody gaps)
         -- A refusal artifact describes a run that produced no engine, so it is a
         -- lie once one exists: the accepted mint deletes the .gap an earlier
         -- refused attempt left behind.
-        removePathForcibly (gapPath rep)
+        removePathForcibly (gapPathIn dir w rep)
         -- The artifacts tree is machine-owned and minted whole, so REPLACE it: a
         -- previous mint's tree under another artifact name would otherwise stay
         -- committed forever, dead source nothing builds (the http re-mint left a
@@ -849,13 +927,15 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
         -- committed spec byte-identical), a first mint bootstraps, and the two
         -- relaxing modes leave the .expect diff as the semantic changelog.
         let contract = renderExpect expects
-        when (committed /= Just contract) $ TIO.writeFile (expectPath rep) contract
+        when (committed /= Just contract) $ TIO.writeFile (expectPathIn dir w rep) contract
         mapM_ note $
-          [ T.pack (langPath rep) <> "  the language, " <> plural (length (edPatterns eng)) "pattern"
-              <> ", " <> plural (length (edRules eng)) "rule"
-          , T.pack (expectPath rep) <> "  the contract, " <> plural (length expects) "check"
-          , T.pack (readmePath rep) <> "  what the language means, in plain words"
-          , T.pack (generationPath rep) <> "  how it was made" ]
+          [ T.pack (grammarPathIn dir rep) <> "  the language, "
+              <> plural (length (edPatterns eng)) "pattern"
+          , T.pack (rulesPathIn dir w rep) <> "  the " <> w <> " lowering, "
+              <> plural (length (edRules eng)) "rule"
+          , T.pack (expectPathIn dir w rep) <> "  the contract, " <> plural (length expects) "check"
+          , T.pack (readmePathIn dir w) <> "  what the language means, in plain words"
+          , T.pack (generationPathIn dir w rep) <> "  how it was made" ]
           ++ [ T.pack (artifactsPath rep) <> "  " <> plural (length minted) "source file"
              | not (null minted) ]
       -- The account of the mint, in the mint's own words: the first lines of the
@@ -868,11 +948,12 @@ generate world mschema confidence compat verbose mmodel thinking files@(rep : _)
       mapM_ say (take 5 [ l | l <- T.lines (T.strip reportBody), not (T.null (T.strip l)) ])
       unless (null gaps) $ do
         say ""
-        say ("lips could not do these, and says why in " <> T.pack (readmePath rep) <> ":")
+        say ("lips could not do these, and says why in "
+               <> T.pack (readmePathIn (langDir rep) (wName world)) <> ":")
         mapM_ (\g -> note ("- " <> gapSlug g)) gaps
 
       say ""
-      say ("→ read the whole account: " <> T.pack (readmePath rep))
+      say ("→ read the whole account: " <> T.pack (readmePathIn (langDir rep) (wName world)))
       mapM_ (\(f, _) -> say ("→ build it:              lips compile " <> T.pack f)) validated
 
 -- | Crystallize and fully run the program with a candidate engine; on success

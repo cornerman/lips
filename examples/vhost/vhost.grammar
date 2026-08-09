@@ -1,0 +1,4 @@
+p1 meta lang.pattern.p1 stated "serve these sites over http with nginx => fact gateway.enable \"true\"" @gen:12f0ddc9b5d70ad3
+p2 meta lang.pattern.p2 stated "host <domain> => concept host.<domain> \"a virtual host for <domain>\"" @gen:12f0ddc9b5d70ad3
+p3 meta lang.pattern.p3.under.p2 stated "- <path> proxies to <url> => fact host.<domain>.location.<path>.proxy \"<url>\"" @gen:12f0ddc9b5d70ad3
+p4 meta lang.pattern.p4.under.p2 stated "- <path> serves files from <dir> => fact host.<domain>.location.<path>.root \"<dir>\"" @gen:12f0ddc9b5d70ad3

@@ -1,0 +1,3 @@
+p1 meta lang.pattern.p1 stated "serve the static files in <root> at <host> => fact site.root \"<root>\" ; fact site.host \"<host>\"" @gen:d1916b604c650915
+p2 meta lang.pattern.p2 stated "enable https with a let's encrypt certificate => fact site.https \"true\"" @gen:d1916b604c650915
+p3 meta lang.pattern.p3 stated "the let's encrypt account email is <email> => fact acme.email \"<email>\"" @gen:d1916b604c650915

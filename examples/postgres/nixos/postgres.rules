@@ -1,0 +1,5 @@
+q1 meta engine.demand.q1 stated "demand db.<name> \"what database should be provisioned?\"" @gen:dbfa594d3d09f937
+q2 meta engine.demand.q2 stated "demand user.<user>.owner \"which database does user <user> own?\"" @gen:dbfa594d3d09f937
+r1 meta engine.rule.r1 stated "match fact postgres.enable => services.postgresql.enable \"true\"" @gen:dbfa594d3d09f937
+r2 meta engine.rule.r2 stated "match fact db.<name> => services.postgresql.ensureDatabases \"[ \\\"<value>\\\" ]\"" @gen:dbfa594d3d09f937
+r3 meta engine.rule.r3 stated "match fact user.<user>.owner => services.postgresql.ensureUsers \"[ { name = \\\"<value.1>\\\"; ensureDBOwnership = true; } ]\" ; services.postgresql.ensureDatabases \"[ \\\"<value.2>\\\" ]\"" @gen:dbfa594d3d09f937

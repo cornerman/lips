@@ -1,0 +1,3 @@
+p1 meta lang.pattern.p1 stated "store files in the aws region <region> => fact store.region \"<region>\"" @gen:2b1348d2881ce638
+p2 meta lang.pattern.p2 stated "keep every version of a file => fact store.versioning \"Enabled\"" @gen:2b1348d2881ce638
+p3 meta lang.pattern.p3 stated "report the bucket name after apply => fact store.report \"bucket name\"" @gen:2b1348d2881ce638

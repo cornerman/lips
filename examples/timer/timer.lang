@@ -1,5 +1,0 @@
-p1 meta lang.pattern.p1 stated "run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"<time>\"" @gen:f5fd6e2e20173096
-p2 meta lang.pattern.p2 stated "name the job <name> => fact job.name \"<name>\"" @gen:f5fd6e2e20173096
-r1 meta engine.rule.r1 stated "match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"" @gen:f5fd6e2e20173096
-r2 meta engine.rule.r2 stated "match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"" @gen:f5fd6e2e20173096
-r3 meta engine.rule.r3 stated "match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"" @gen:f5fd6e2e20173096

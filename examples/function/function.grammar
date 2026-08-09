@@ -1,0 +1,2 @@
+p1 meta lang.pattern.p1 stated "function <fname>(x: string) => fact func.<fname>.name \"<fname>\"" @gen:53a8653a42213e79
+p2 meta lang.pattern.p2.under.p1 stated "<fname>(\"<text>\") => fact stmt.<fname>.<n:index>.text \"<text>\"" @gen:53a8653a42213e79

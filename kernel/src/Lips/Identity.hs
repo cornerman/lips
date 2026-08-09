@@ -15,15 +15,22 @@
 -- >   photos.backup.lips        <- yours
 -- >   backup.direction          <- yours (taste steering the mint, optional)
 -- >   backup/                   <- everything the machine writes
--- >     backup.lang backup.expect backup.generation
+-- >     backup.grammar          <- the shared reading of every program
+-- >     nixos/                  <- one folder per world it is minted into
+-- >       backup.rules backup.expect backup.generation nixos.world README.md
+-- >     kubenix/
+-- >       backup.rules backup.expect backup.generation kubenix.world README.md
 -- >     artifacts/
 -- >     out/                    <- derived, gitignored by one rule
 -- >       ledger.decisions
--- >       ledger/               <- compiled module dir (default.nix, flake.nix)
+-- >       ledger/nixos/         <- compiled module dir (default.nix, flake.nix)
 --
 -- The split is the point: a listing separates what a human owns from what the
--- machine wrote, and the path says which is which. Inside the
--- folder the four language files keep the language prefix, so a basename stays
+-- machine wrote, and the path says which is which. A second split runs inside
+-- the machine's folder: the grammar is the language's cross-world contract and
+-- sits at the top, while everything that depends on WHERE a program lands
+-- (rules, contract, record, the world file itself) sits in the world's own
+-- folder. Every minted file keeps the language prefix, so a basename stays
 -- self-describing in an editor tab or a grep hit; the instance-derived names
 -- under @out/@ drop it, because the folder already supplies it.
 --
@@ -40,12 +47,7 @@
 module Lips.Identity
   ( languageName
   , instanceName
-  , langPath
-  , expectPath
-  , generationPath
-  , gapPath
   , directionPath
-  , readmePath
   , langDir
   , outDir
   , artifactsPath
@@ -53,12 +55,13 @@ module Lips.Identity
   , compiledPath
   , resolveLangDir
   , requireProgram
-  , langPathIn
   , grammarPathIn
   , worldDirIn
   , rulesPathIn
   , expectPathIn
   , generationPathIn
+  , readmePathIn
+  , gapPathIn
   , artifactsPathIn
   , worldPathIn
   ) where
@@ -120,33 +123,6 @@ langDir file = takeDirectory file </> languageName file
 outDir :: FilePath -> FilePath
 outDir file = langDir file </> "out"
 
--- | A language-level sidecar path, named by the language and shared by every
--- program in it: @examples/ledger.backup.lips@ + @lang@ ->
--- @examples/backup/backup.lang@.
-langLevel :: String -> FilePath -> FilePath
-langLevel ext file = langDir file </> languageName file <.> ext
-
--- | The shared grammar: @examples/backup/backup.lang@.
-langPath :: FilePath -> FilePath
-langPath = langLevel "lang"
-
--- | The shared behavioral contract: @examples/backup/backup.expect@.
-expectPath :: FilePath -> FilePath
-expectPath = langLevel "expect"
-
--- | The shared mint record: @examples/backup/backup.generation@.
-generationPath :: FilePath -> FilePath
-generationPath = langLevel "generation"
-
--- | The machine-readable refusal artifact: @examples/backup/backup.gap@.
--- Written only when @generate@ refuses (never on a successful mint, where a
--- mint-reported gap already lands inside 'readmePath'); the point is the
--- cross-repo escalation workflow (DESIGN Doctrine) -- a refusal a user hits in
--- their OWN repo must be a shippable, git-committable artifact, not only
--- on-screen text that scrolls away.
-gapPath :: FilePath -> FilePath
-gapPath = langLevel "gap"
-
 -- | The owner's taste steering the mint: @examples/backup.direction@. A human
 -- writes it, so it sits at the TOP level with the programs, not in the machine's
 -- folder -- the one rule that governs this layout is that a directory listing
@@ -154,13 +130,6 @@ gapPath = langLevel "gap"
 -- every instance), hence named by the language rather than the instance.
 directionPath :: FilePath -> FilePath
 directionPath file = takeDirectory file </> languageName file <.> "direction"
-
--- | The language explained in the mint's own words: @examples/backup/README.md@.
--- Named README rather than @<language>.md@ because it is prose for a human, and
--- README is the one filename every reader and forge already resolves to "read
--- this first"; its first line warns that the next mint overwrites it.
-readmePath :: FilePath -> FilePath
-readmePath file = langDir file </> "README.md"
 
 -- | The shared minted-source directory: @examples/backup/artifacts@. A
 -- directory inside the language folder, so it needs no prefix to stay
@@ -177,21 +146,19 @@ decisionsPath :: FilePath -> FilePath
 decisionsPath file = outDir file </> T.unpack (instanceName file) <.> "decisions"
 
 -- | Where @compile@ materializes the module directory by default (derived,
--- gitignored): @examples/backup/out/ledger@, so the address a user runs is
--- @path:examples/backup/out/ledger#vm@.
-compiledPath :: FilePath -> FilePath
-compiledPath file = outDir file </> T.unpack (instanceName file)
+-- gitignored): @examples/backup/out/ledger/nixos@, so the address a user runs
+-- is @path:examples/backup/out/ledger/nixos#vm@. Split by world, because two
+-- worlds compile the same instance into two different modules and a single
+-- directory could hold only the last one written.
+compiledPath :: FilePath -> Text -> FilePath
+compiledPath file world = outDir file </> T.unpack (instanceName file) </> T.unpack world
 
--- | An explicit-directory variant of 'langLevel': the caller supplies the
+-- | An explicit-directory variant of 'langLevelIn': the caller supplies the
 -- directory (already resolved, e.g. via 'resolveLangDir') instead of it being
 -- re-derived from @file@. Used by @compile@\/@check@ when @--lang@
 -- overrides the sibling convention.
 langLevelIn :: FilePath -> String -> FilePath -> FilePath
 langLevelIn dir ext file = dir </> languageName file <.> ext
-
--- | 'langPath', reading from an explicitly given directory.
-langPathIn :: FilePath -> FilePath -> FilePath
-langPathIn dir = langLevelIn dir "lang"
 
 -- | The shared grammar: @services\/a\/backup\/backup.grammar@. It sits at the
 -- LANGUAGE level, above every world folder, because the patterns are the
@@ -215,13 +182,37 @@ worldDirIn dir world = dir </> T.unpack world
 rulesPathIn :: FilePath -> Text -> FilePath -> FilePath
 rulesPathIn dir world = langLevelIn (worldDirIn dir world) "rules"
 
--- | 'expectPath', reading from an explicitly given directory.
-expectPathIn :: FilePath -> FilePath -> FilePath
-expectPathIn dir = langLevelIn dir "expect"
+-- | One world's behavioral contract:
+-- @services\/a\/backup\/nixos\/backup.expect@. Per world, because it pins
+-- option paths, and an option path only exists inside one world's namespace.
+expectPathIn :: FilePath -> Text -> FilePath -> FilePath
+expectPathIn dir world = langLevelIn (worldDirIn dir world) "expect"
 
--- | 'generationPath', reading from an explicitly given directory.
-generationPathIn :: FilePath -> FilePath -> FilePath
-generationPathIn dir = langLevelIn dir "generation"
+-- | One world's mint record:
+-- @services\/a\/backup\/nixos\/backup.generation@. Per world, because a
+-- language is minted once per world and each event has its own inputs, its own
+-- id and its own stamps.
+generationPathIn :: FilePath -> Text -> FilePath -> FilePath
+generationPathIn dir world = langLevelIn (worldDirIn dir world) "generation"
+
+-- | One world's language explained in the mint's own words:
+-- @services\/a\/backup\/nixos\/README.md@. Named README rather than
+-- @\<language\>.md@ because it is prose for a human, and README is the one
+-- filename every reader and forge already resolves to "read this first"; its
+-- first line warns that the next mint overwrites it. Per world, because it is
+-- one mint's account of one lowering.
+readmePathIn :: FilePath -> Text -> FilePath
+readmePathIn dir world = worldDirIn dir world </> "README.md"
+
+-- | One world's machine-readable refusal artifact:
+-- @services\/a\/backup\/nixos\/backup.gap@. Written only when @generate@
+-- refuses (never on a successful mint, where a mint-reported gap already lands
+-- inside 'readmePathIn'); the point is the cross-repo escalation workflow
+-- (DESIGN Doctrine) -- a refusal a user hits in their OWN repo must be a
+-- shippable, git-committable artifact, not only on-screen text that scrolls
+-- away. Per world: a refusal is one world's mint failing, not the language's.
+gapPathIn :: FilePath -> Text -> FilePath -> FilePath
+gapPathIn dir world = langLevelIn (worldDirIn dir world) "gap"
 
 -- | The world file copied beside an engine, named after the world it is. Named
 -- by the WORLD rather than by the language: a language folder holds one engine

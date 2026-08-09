@@ -1,0 +1,1 @@
+p1 meta lang.pattern.p1 stated "proxy requests for <host> to <upstream> => fact proxy.host \"<host>\" ; fact proxy.upstream \"<upstream>\"" @gen:ea8a3f7bf90216e5

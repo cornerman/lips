@@ -1,0 +1,3 @@
+p1 meta lang.pattern.p1 stated "sage <text> auf dem terminal => fact say.gruss \"<text>\"" @gen:a78d016daa665101
+p2 meta lang.pattern.p2 stated "warte auf input für den <var> => fact input.<var> \"<var>\"" @gen:a78d016daa665101
+p3 meta lang.pattern.p3 stated "sage <text> mit dem <var> => fact say.abschied.<var> \"<text>\"" @gen:a78d016daa665101

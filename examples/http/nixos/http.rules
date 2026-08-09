@@ -1,0 +1,5 @@
+q1 meta engine.demand.q1 stated "demand server.port \"which TCP port should the http server listen on?\"" @gen:095860b24c7f2ebf
+q2 meta engine.demand.q2 stated "demand service.<name>.alias \"what should the systemd service be called?\"" @gen:095860b24c7f2ebf
+r1 meta engine.rule.r1 stated "match fact server.port => services.nginx.enable \"true\" ; services.nginx.defaultHTTPListenPort \"<value:int>\" ; networking.firewall.allowedTCPPorts \"[ <value:int> ]\"" @gen:095860b24c7f2ebf
+r2 meta engine.rule.r2 stated "match fact service.<name>.alias => systemd.services.nginx.aliases \"[ \\\"<value>.service\\\" ]\"" @gen:095860b24c7f2ebf
+r3 meta engine.rule.r3 stated "match fact route.<name>.<path>.text => services.nginx.virtualHosts.<name>.locations.<path>.extraConfig \"\\\"default_type text/plain; return 200 '<value>';\\\"\"" @gen:095860b24c7f2ebf

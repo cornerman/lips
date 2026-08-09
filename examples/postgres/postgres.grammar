@@ -1,0 +1,3 @@
+p1 meta lang.pattern.p1 stated "run a postgresql database server => fact postgres.enable \"enabled\"" @gen:dbfa594d3d09f937
+p2 meta lang.pattern.p2 stated "provision a database named <name> => fact db.<name> \"<name>\"" @gen:dbfa594d3d09f937
+p3 meta lang.pattern.p3 stated "provision a user named <user> who owns the <db> database => fact user.<user>.owner \"<user> <db>\"" @gen:dbfa594d3d09f937

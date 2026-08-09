@@ -1,0 +1,9 @@
+q1 meta engine.demand.q1 stated "demand deploy.image \"which container image, including its tag, should run?\"" @gen:ee69471aaf31b559
+q2 meta engine.demand.q2 stated "demand deploy.replicas \"how many replicas of the image should run?\"" @gen:ee69471aaf31b559
+q3 meta engine.demand.q3 stated "demand deploy.port \"which port does the container itself listen on?\"" @gen:ee69471aaf31b559
+q4 meta engine.demand.q4 stated "demand service.port \"which port should the service expose inside the cluster?\"" @gen:ee69471aaf31b559
+r1 meta engine.rule.r1 stated "match fact deploy.replicas => kubernetes.resources.deployments.<self>.spec.replicas \"<value:int>\"" @gen:ee69471aaf31b559
+r2 meta engine.rule.r2 stated "match fact deploy.image => kubernetes.resources.deployments.<self>.spec.template.spec.containers.app.image \"\\\"<value>\\\"\" ; kubernetes.resources.deployments.<self>.spec.template.metadata.labels.<self> \"\\\"app\\\"\" ; kubernetes.resources.deployments.<self>.spec.selector.matchLabels.<self> \"\\\"app\\\"\"" @gen:ee69471aaf31b559
+r3 meta engine.rule.r3 stated "match fact deploy.port => kubernetes.resources.deployments.<self>.spec.template.spec.containers.app.ports.http.containerPort \"<value:int>\" ; kubernetes.resources.services.<self>.spec.ports.http.targetPort \"<value:int>\"" @gen:ee69471aaf31b559
+r4 meta engine.rule.r4 stated "match fact service.port => kubernetes.resources.services.<self>.spec.ports.http.port \"<value:int>\" ; kubernetes.resources.services.<self>.spec.type \"\\\"ClusterIP\\\"\" ; kubernetes.resources.services.<self>.spec.selector.<self> \"\\\"app\\\"\"" @gen:ee69471aaf31b559
+r5 meta engine.rule.r5 stated "match fact deploy.namespace => kubernetes.namespace \"\\\"<value>\\\"\"" @gen:ee69471aaf31b559

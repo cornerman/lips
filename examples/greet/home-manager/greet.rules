@@ -1,0 +1,2 @@
+q1 meta engine.demand.q1 stated "demand cmd.<name>.msg \"what message should the greet command print?\"" @gen:afc3e6ce7773b7db
+r1 meta engine.rule.r1 stated "match fact cmd.<name>.msg => artifact.<name>.builder \"\\\"writeShellApplication\\\"\" ; artifact.<name>.args.name \"\\\"<name>\\\"\" ; artifact.<name>.args.text \"\\\"echo \\\\\\\"<value>\\\\\\\"\\\"\" ; home.packages \"[ ${artifact.<name>} ]\"" @gen:afc3e6ce7773b7db

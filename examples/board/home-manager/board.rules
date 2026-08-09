@@ -1,0 +1,6 @@
+q1 meta engine.demand.q1 stated "demand board.columns \"what are the board's columns, in order?\"" @gen:c0cb5c1eeaaf9751
+q2 meta engine.demand.q2 stated "demand install.command.<cmd> \"what command should the tool be installed as?\"" @gen:c0cb5c1eeaaf9751
+q3 meta engine.demand.q3 stated "demand board.example.<cmd> \"give a 'given ... print ...' example to verify the tool's output\"" @gen:c0cb5c1eeaaf9751
+r1 meta engine.rule.r1 stated "match fact install.command.<cmd> => artifact.<self>.builder \"\\\"stdenv.mkDerivation\\\"\" ; artifact.<self>.args.pname \"\\\"<cmd>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.dontBuild \"true\" ; artifact.<self>.args.installPhase \"\\\"install -Dm755 board.sh $out/bin/<cmd>\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"" @gen:c0cb5c1eeaaf9751
+r2 meta engine.rule.r2 stated "match fact board.columns => artifact.<self>.fill.columns \"\\\"<value>\\\"\"" @gen:c0cb5c1eeaaf9751
+r3 meta engine.rule.r3 stated "match fact board.example.<cmd> => claim.<cmd>.run \"\\\"${artifact.<self>}/bin/<cmd>\\\"\" ; claim.<cmd>.stdin \"\\\"<value.1>\\\\n<value.2>\\\\n<value.3>\\\\n<value.4>\\\\n<value.5>\\\"\" ; claim.<cmd>.stdout \"\\\"<value.6>\\\\n<value.7>\\\\n<value.8>\\\"\"" @gen:c0cb5c1eeaaf9751

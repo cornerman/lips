@@ -426,13 +426,15 @@ artifactNixpkgs remedy = do
 --
 -- What the programs said at mint time is read from the committed @.generation@
 -- record, which stores the corpus verbatim, so this stays offline and
--- deterministic (no AI, no nix). A language with no baked source is untouched: a
+-- deterministic (no AI, no nix). One world's record, because each world's mint
+-- saw its own corpus: the source a world bakes was written from the programs
+-- THAT mint read. A language with no baked source is untouched: a
 -- concept there is a heading, and a heading must stay freely editable.
-sourceSpecGate :: FilePath -> FilePath -> EngineData -> Text -> IO ()
-sourceSpecGate dir file eng program = do
+sourceSpecGate :: FilePath -> Text -> FilePath -> EngineData -> Text -> IO ()
+sourceSpecGate dir world file eng program = do
   baked <- doesDirectoryExist (artifactsPathIn dir file)
   when baked $ do
-    mrec <- readIfPresent (generationPathIn dir file)
+    mrec <- readIfPresent (generationPathIn dir world file)
     case mrec of
       -- A baked tree whose record cannot be read cannot be judged at all, and an
       -- unjudged specification must never pass as a judged one.
@@ -440,7 +442,7 @@ sourceSpecGate dir file eng program = do
         (T.pack file <> ": the language bakes source, but its generation record"
           <> " is missing or unreadable, so the specification that source was"
           <> " written from cannot be read.")
-        [T.pack (generationPathIn dir file)]
+        [T.pack (generationPathIn dir world file)]
         ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))
       Just rec -> case crystallize file (edPatterns eng) program of
         Left _    -> pure ()  -- the current program's own read errors are reported by the caller
@@ -448,7 +450,7 @@ sourceSpecGate dir file eng program = do
           let sections = recordedPrograms rec
               cryst t  = crystallize file (edPatterns eng) t
               staleRecord = die (report
-                ("the program recorded in " <> T.pack (generationPathIn dir file)
+                ("the program recorded in " <> T.pack (generationPathIn dir world file)
                   <> " no longer crystallizes with the committed language.")
                 []
                 ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))

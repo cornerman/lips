@@ -1,0 +1,2 @@
+r1 meta engine.rule.r1 stated "match fact func.<fname>.name => clause.print-line \"(define (print-line line) (emit line))\" ; site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\" ; claim.<fname>.call \"(begin (main) (equal? (emitted) (arguments)))\" ; claim.<fname>.equals \"#t\"" @gen:53a8653a42213e79
+r2 meta engine.rule.r2 stated "match fact stmt.<fname>.<n>.text => clause.main \"[ (define (main) (print-line \\\"#<value>\\\")) ]\" ; claim.<fname>.args \"[ \\\"<value>\\\" ]\"" @gen:53a8653a42213e79

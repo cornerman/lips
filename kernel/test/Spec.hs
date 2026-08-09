@@ -28,7 +28,7 @@ import Lips.Kernel.Run
 import Lips.Kernel.Engine.Answerable
 import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations)
-import Lips.Generate.Draft (DraftTree (..), materializeDraft)
+import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
@@ -4880,28 +4880,21 @@ main = hspec $ do
       languageName "examples/backup.lips" `shouldBe` "backup"
       instanceName "examples/backup.lips" `shouldBe` "backup"
     it "puts every machine-written file in one folder named by the language" $ do
-      langPath       prog `shouldBe` "examples/backup/backup.lang"
-      expectPath     prog `shouldBe` "examples/backup/backup.expect"
-      generationPath prog `shouldBe` "examples/backup/backup.generation"
+      grammarPathIn (langDir prog) prog `shouldBe` "examples/backup/backup.grammar"
       artifactsPath  prog `shouldBe` "examples/backup/artifacts"
-    it "the language's minted explanation is the folder's README.md" $ do
-      readmePath prog          `shouldBe` "examples/backup/README.md"
-      readmePath "examples/backup.lips" `shouldBe` "examples/backup/README.md"
-    it "a refused mint's shippable artifact sits beside the other language-level files" $ do
-      gapPath prog `shouldBe` "examples/backup/backup.gap"
-      gapPath "examples/backup.lips" `shouldBe` "examples/backup/backup.gap"
     it "keeps the human-written direction at the top level, beside the programs" $ do
       directionPath prog `shouldBe` "examples/backup.direction"
       directionPath "examples/photos.backup.lips" `shouldBe` directionPath prog
-      langPath "examples/photos.backup.lips" `shouldBe` langPath prog
+      langDir "examples/photos.backup.lips" `shouldBe` langDir prog
     it "keeps derived output under out/, so one gitignore rule covers it" $ do
       decisionsPath prog `shouldBe` "examples/backup/out/ledger.decisions"
-      compiledPath  prog `shouldBe` "examples/backup/out/ledger"
-    it "never collides between instances of one language" $ do
-      compiledPath "examples/photos.backup.lips"
-        `shouldNotBe` compiledPath prog
+      compiledPath  prog "nixos" `shouldBe` "examples/backup/out/ledger/nixos"
+    it "never collides between instances of one language, nor between worlds" $ do
+      compiledPath "examples/photos.backup.lips" "nixos"
+        `shouldNotBe` compiledPath prog "nixos"
+      compiledPath prog "kubenix" `shouldNotBe` compiledPath prog "nixos"
     it "the shorthand puts the singleton under the language's own name" $
-      compiledPath "examples/backup.lips" `shouldBe` "examples/backup/out/backup"
+      compiledPath "examples/backup.lips" "nixos" `shouldBe` "examples/backup/out/backup/nixos"
 
   -- Nothing used to check the marker, so every other function here read a
   -- non-program path as if it were one: x.backup.txt became language "backup"
@@ -4940,10 +4933,11 @@ main = hspec $ do
   describe "explicit-directory path functions (Lips.Identity.*In)" $ do
     let prog = "services/b/photos.backup.lips"
         dir  = "services/a/backup"
-    it "reads the four committed files from the given directory, not the sibling" $ do
-      langPathIn       dir prog `shouldBe` "services/a/backup/backup.lang"
-      expectPathIn     dir prog `shouldBe` "services/a/backup/backup.expect"
-      generationPathIn dir prog `shouldBe` "services/a/backup/backup.generation"
+    it "reads the committed files from the given directory, not the sibling" $ do
+      grammarPathIn    dir prog `shouldBe` "services/a/backup/backup.grammar"
+      rulesPathIn      dir "nixos" prog `shouldBe` "services/a/backup/nixos/backup.rules"
+      expectPathIn     dir "nixos" prog `shouldBe` "services/a/backup/nixos/backup.expect"
+      generationPathIn dir "nixos" prog `shouldBe` "services/a/backup/nixos/backup.generation"
       artifactsPathIn  dir prog `shouldBe` "services/a/backup/artifacts"
 
   describe "the world layer of the layout (Lips.Identity)" $ do
@@ -4953,6 +4947,10 @@ main = hspec $ do
       grammarPathIn dir prog `shouldBe` "examples/backup/backup.grammar"
       worldDirIn dir "nixos" `shouldBe` "examples/backup/nixos"
       rulesPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.rules"
+      expectPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.expect"
+      generationPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.generation"
+      gapPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.gap"
+      readmePathIn dir "nixos" `shouldBe` "examples/backup/nixos/README.md"
       worldPathIn (worldDirIn dir "nixos") "nixos"
         `shouldBe` "examples/backup/nixos/nixos.world"
     it "keeps the grammar's own outputs world-free" $ do
@@ -4967,24 +4965,32 @@ main = hspec $ do
           r <- act root
           removeDirectoryRecursive root
           pure r
-    it "finds every world folder holding this language's record, sorted" $
+    it "finds every world folder holding this language's rules, sorted" $
       withDir (\d -> do
         createDirectoryIfMissing True (d </> "nixos")
         createDirectoryIfMissing True (d </> "kubenix")
         createDirectoryIfMissing True (d </> "out")
         createDirectoryIfMissing True (d </> "artifacts")
-        TIO.writeFile (d </> "nixos" </> "backup.generation") "format: 1\n"
-        TIO.writeFile (d </> "kubenix" </> "backup.generation") "format: 1\n"
+        TIO.writeFile (d </> "nixos" </> "backup.rules") ""
+        TIO.writeFile (d </> "kubenix" </> "backup.rules") ""
         mintedWorlds d "x/ledger.backup.lips")
         `shouldReturn` ["kubenix", "nixos"]
     it "finds none in a folder with no world at all" $
       withDir (\d -> mintedWorlds d "x/ledger.backup.lips") `shouldReturn` []
-    it "ignores a folder holding another language's record" $
+    it "ignores a folder holding another language's rules" $
       withDir (\d -> do
         createDirectoryIfMissing True (d </> "nixos")
-        TIO.writeFile (d </> "nixos" </> "other.generation") "format: 1\n"
+        TIO.writeFile (d </> "nixos" </> "other.rules") ""
         mintedWorlds d "x/ledger.backup.lips")
         `shouldReturn` []
+    -- An engine written by hand carries no generation record, and must still be
+    -- a world lips finds: the record is provenance, the rules are the world.
+    it "finds a world whose rules carry no record" $
+      withDir (\d -> do
+        createDirectoryIfMissing True (d </> "nixos")
+        TIO.writeFile (d </> "nixos" </> "backup.rules") ""
+        mintedWorlds d "x/ledger.backup.lips")
+        `shouldReturn` ["nixos"]
 
   describe "reader fails loud on malformed lines (spec: no silent parse)" $ do
     it "rejects an unknown strength" $
@@ -5381,30 +5387,52 @@ main = hspec $ do
     -- resolveLangDir refuses a folder whose basename is not the language, so a
     -- draft that landed in the temp root itself could never be checked.
     it "puts the draft in a folder named after the language" $
-      case materializeDraft "/tmp/x" "one.watch.lips" reply Nothing of
+      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
         Right t -> dtLangDir t `shouldBe` "/tmp/x/watch"
 
     it "renders the draft as a .lang the ordinary reader accepts" $
-      case materializeDraft "/tmp/x" "one.watch.lips" reply Nothing of
+      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
-        Right t -> readLang (dtLang t) `shouldSatisfy` isRight
+        Right t -> readLang (dtGrammar t <> dtRules t) `shouldSatisfy` isRight
+
+    -- The shared grammar is the language's cross-world contract, so a draft is
+    -- split the same way a committed engine is: patterns above, one world's
+    -- lowering below.
+    it "materializes a draft as a shared grammar plus one world's rules" $
+      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
+        Left es -> expectationFailure ("draft did not materialize: " <> show es)
+        Right t -> do
+          dtWorld t `shouldBe` "nixos"
+          dtGrammar t `shouldSatisfy` T.isInfixOf "lang.pattern.p1"
+          dtGrammar t `shouldNotSatisfy` T.isInfixOf "engine.rule.r1"
+          dtRules t `shouldSatisfy` T.isInfixOf "engine.rule.r1"
+          dtRules t `shouldNotSatisfy` T.isInfixOf "lang.pattern.p1"
+
+    it "splits a rendered engine by subject, losing no line" $ do
+      let src = T.unlines
+            [ "p1 meta lang.pattern.p1 stated \"a\" @gen:aaaa"
+            , "r1 meta engine.rule.r1 stated \"b\" @gen:aaaa"
+            , "q1 meta engine.demand.q1 stated \"c\" @gen:aaaa" ]
+          (g, r) = splitEngine src
+      g <> r `shouldBe` src
+      T.lines g `shouldBe` take 1 (T.lines src)
 
     -- On a regeneration the committed contract governs (invariant 5). Handing
     -- the model its own freshly written promises would always pass and the real
     -- gate would then refuse: a false green is worse than no tool.
     it "writes the governing contract, not the draft's own, when one is given" $
-      case materializeDraft "/tmp/x" "one.watch.lips" reply (Just "the committed contract") of
+      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply (Just "the committed contract") of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
         Right t -> dtExpect t `shouldBe` "the committed contract"
 
     it "falls back to the draft's own expects, which is a first mint" $
-      case materializeDraft "/tmp/x" "one.watch.lips" reply Nothing of
+      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
         Right t -> dtExpect t `shouldSatisfy` T.isInfixOf "watch.interval"
 
     it "reports the parse errors of an unreadable draft rather than guessing" $
-      case materializeDraft "/tmp/x" "one.watch.lips" "not an engine line" Nothing of
+      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" "not an engine line" Nothing of
         Left es -> es `shouldNotBe` []
         Right _ -> expectationFailure "an unreadable draft must not materialize"
 

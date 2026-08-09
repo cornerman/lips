@@ -1,0 +1,8 @@
+q1 meta engine.demand.q1 stated "demand habit.mark.logged \"which character marks a day the habit was logged?\"" @gen:d21d2d78f2af1e38
+q2 meta engine.demand.q2 stated "demand habit.mark.missing \"which character marks a day the habit was not logged?\"" @gen:d21d2d78f2af1e38
+q3 meta engine.demand.q3 stated "demand cmd.<name>.install \"what command name should the tool be installed as?\"" @gen:d21d2d78f2af1e38
+q4 meta engine.demand.q4 stated "demand witness.<name>.<q> \"give one example log and the characters the tool must print for it\"" @gen:d21d2d78f2af1e38
+r6 meta engine.rule.r6 stated "match fact habit.mark.logged => artifact.<self>.fill.mark_logged \"\\\"<value>\\\"\"" @gen:d21d2d78f2af1e38
+r7 meta engine.rule.r7 stated "match fact habit.mark.missing => artifact.<self>.fill.mark_missing \"\\\"<value>\\\"\"" @gen:d21d2d78f2af1e38
+r8 meta engine.rule.r8 stated "match fact cmd.<name>.install => artifact.<self>.builder \"\\\"buildGoModule\\\"\" ; artifact.<self>.args.pname \"\\\"<value>\\\"\" ; artifact.<self>.args.version \"\\\"0.1.0\\\"\" ; artifact.<self>.args.src \"./artifacts/<self>\" ; artifact.<self>.args.vendorHash \"null\" ; artifact.<self>.fill.name \"\\\"<value>\\\"\" ; home.packages \"[ ${artifact.<self>} ]\"" @gen:d21d2d78f2af1e38
+r9 meta engine.rule.r9 stated "match fact witness.<name>.<q> => claim.<q>.run \"\\\"${artifact.<self>}/bin/<name> <q>\\\"\" ; claim.<q>.stdin \"\\\"<value.1>\\\\t<value.2>\\\\n<value.3>\\\\t<value.4>\\\\n<value.5>\\\\t<value.6>\\\\n\\\"\" ; claim.<q>.stdout \"\\\"<value.7>\\\"\" ; claim.<q>.exit \"0\"" @gen:d21d2d78f2af1e38

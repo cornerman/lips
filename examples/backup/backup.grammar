@@ -1,0 +1,3 @@
+p1 meta lang.pattern.p1 stated "back up <source> to <dest> <schedule> => fact backup.source \"<source>\" ; fact backup.dest \"<dest>\" ; fact backup.schedule \"<schedule>\"" @gen:ee1f645b199db5b6
+p2 meta lang.pattern.p2 stated "keep <count> <period> snapshots => fact backup.retention \"<count> <period>\"" @gen:ee1f645b199db5b6
+p3 meta lang.pattern.p3 stated "credentials come from <path> => fact backup.credentials \"<path>\"" @gen:ee1f645b199db5b6
