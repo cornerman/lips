@@ -26,6 +26,7 @@ module Lips.Generate.Minting
   , ItemCandidate (..)
   , parseEngineCandidates
   , assemble
+  , itemsFor
   , expectsOf
   , sourcesOf
   , unnamedSources
@@ -345,6 +346,16 @@ mkBlock prefix rawHeader content = do
                \followed by '<<<lips': " <> rawHeader)
   -- A block is always shared: source, report and gap are the language's.
   Right (ItemCandidate item (Confidence conf) rawHeader idTok Nothing)
+
+-- | The items one world's engine is built from: every SHARED item, plus the
+-- items tagged for that world. The grammar is the shared half, so two worlds'
+-- engines differ only below it.
+--
+-- Source blocks are deliberately not filtered here: 'sourcesOf' takes every
+-- item, because a baked source tree is one program's source, shared by the
+-- worlds that run it, and only a mint that saw every world may write it.
+itemsFor :: Text -> [ItemCandidate] -> [EngineItem]
+itemsFor world = map icItem . filter (\c -> icWorld c `elem` [Nothing, Just world])
 
 -- | Group parsed items into an engine (the @.lang@ artifact). Expects are not
 -- part of the engine; see 'expectsOf'.

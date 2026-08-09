@@ -59,7 +59,7 @@ import System.FilePath ((</>))
 import Data.List (nubBy, sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), systemPromptFor, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), itemsFor, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
 import Lips.Kernel.Claim
@@ -1166,6 +1166,16 @@ main = hspec $ do
             , "0.8 r1 because \"the program does not say\"" ])
       errs `shouldBe` []
       map icId cs `shouldBe` ["r1", "r1"]
+
+    it "builds each world's engine from the shared items plus its own" $ do
+      let (_, cs) = parseEngineCandidates ["nixos", "kubenix"] (T.unlines
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.i \"<secs>\""
+            , "0.95 r1 @nixos match fact watch.i => systemd.services.w.environment.S \"<value:int>\""
+            , "0.95 r2 @kubenix match fact watch.i => a.b \"<value:int>\"" ])
+          nixosEng = assemble (itemsFor "nixos" cs)
+      length (edPatterns nixosEng) `shouldBe` 1
+      map mrId (edRules nixosEng) `shouldBe` ["r1"]
+      map mrId (edRules (assemble (itemsFor "kubenix" cs))) `shouldBe` ["r2"]
 
     it "parses the three item forms and assembles an engine" $ do
       let reply = T.unlines
