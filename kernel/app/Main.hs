@@ -654,6 +654,13 @@ assertStamps dir ws file = do
       ("\8594 re-mint it: lips generate " <> T.pack file
         <> " (a minted file is never hand-edited)."))
 
+-- | One line of a rendered engine, by its id, for a message that has to show
+-- what changed. Absent means the mint dropped it.
+lineOf :: Text -> Text -> Text
+lineOf i src = case [ l | l <- T.lines src, take 1 (T.words l) == [i] ] of
+  (l : _) -> l
+  []      -> "(dropped)"
+
 -- | Read the program file, or fail with a plain message instead of a raw
 -- exception when the path is wrong (a common typo at the shell).
 readProgramOrDie :: FilePath -> IO Text
@@ -792,15 +799,20 @@ generate world inherited later mschema confidence compat verbose mmodel thinking
       -- lowered from exactly those patterns and this run does not re-mint them.
       case inherited of
         Nothing -> pure ()
-        Just g  -> case appendOnlyViolations g (fst (splitEngine
-                          (renderLang (FromSource (SourceLoc "lang" 0)) eng))) of
+        Just g  -> let fresh = fst (splitEngine
+                         (renderLang (FromSource (SourceLoc "lang" 0)) eng))
+                   in case appendOnlyViolations g fresh of
           []  -> pure ()
           ids -> do
             held <- mintedWorlds (langDir rep) rep
             die (report
               ("the " <> wName world <> " mint changed " <> plural (length ids) "pattern"
                 <> " the language's other worlds are built on:")
-              ids
+              -- Both lines, not just the id: what the change WAS is the whole
+              -- question a reader has here, and neither file holds the new one
+              -- (this mint writes nothing).
+              (concat [ [ i <> " committed: " <> lineOf i g
+                        , i <> " minted:    " <> lineOf i fresh ] | i <- ids ])
               ("\8594 re-mint every world together, so they agree: lips generate --target "
                 <> T.intercalate "," (held ++ [ wName world | wName world `notElem` held ])
                 <> " " <> T.pack rep))

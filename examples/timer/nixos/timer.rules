@@ -1,6 +1,6 @@
-q1 meta engine.demand.q1 stated "demand job.command \"which command should the job run?\"" @gen:117d4e4d1c12e0b8
-q2 meta engine.demand.q2 stated "demand job.schedule \"when should the job run?\"" @gen:117d4e4d1c12e0b8
-q3 meta engine.demand.q3 stated "demand job.name \"what is the job called?\"" @gen:117d4e4d1c12e0b8
-r1 meta engine.rule.r1 stated "match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"" @gen:117d4e4d1c12e0b8
-r2 meta engine.rule.r2 stated "match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"<value>\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"" @gen:117d4e4d1c12e0b8
-r3 meta engine.rule.r3 stated "match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"" @gen:117d4e4d1c12e0b8
+q1 meta engine.demand.q1 stated "demand job.command \"which command should the job run?\"" @gen:6421f476eea3b028
+q2 meta engine.demand.q2 stated "demand job.schedule \"at what time of day should the job run, as HH:MM?\"" @gen:6421f476eea3b028
+q3 meta engine.demand.q3 stated "demand job.name \"what should the job be called?\"" @gen:6421f476eea3b028
+r1 meta engine.rule.r1 stated "match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"" @gen:6421f476eea3b028
+r2 meta engine.rule.r2 stated "match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"" @gen:6421f476eea3b028
+r3 meta engine.rule.r3 stated "match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"" @gen:6421f476eea3b028

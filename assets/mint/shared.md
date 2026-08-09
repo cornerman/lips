@@ -11,11 +11,17 @@ below you: the value grammar cannot split a string, reorder its parts or convert
 one notation into another, so a fact shaped for your world's notation is a fact
 the next world cannot use at all, and its mint has to refuse.
 
-Concretely: emit the program's own words and numbers as facts, and assemble a
-world's notation in the RULE, where it belongs. A time the program writes as
-03:00 becomes an hour and a minute, not one world's calendar expression; a size,
-a path, a name stay as stated. Where your own rule needs the assembled form,
-assemble it there.
+You have everything you need for this already, in the pattern language above.
+A hole may sit INSIDE a token, so a value with internal structure is captured in
+its parts: 'every day at <hour>:<minute>' reads 'every day at 03:00' as
+hour='03' and minute='00'. Emit those parts as ONE fact with a multi-part
+assertion (each part quoted, in a fixed order), and every world's rule spends
+them with <value.1> and <value.2> in whatever notation it needs:
+  fact job.schedule "\"<hour>\" \"<minute>\""
+  match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+A number, a name, a path that every world spells the same way needs no such
+split -- state it once, as the program states it. Split exactly what the worlds
+spell differently.
 
 Everything else is unchanged: this mint owns its rules, demands and contract,
 and answers for its own world alone.

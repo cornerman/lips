@@ -4788,7 +4788,7 @@ main = hspec $ do
       p `shouldSatisfy` T.isInfixOf "kubenix, terranix"
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "they are frozen once this", "never your world's syntax"
-        , "notation in the RULE" ]
+        , "<value.1> and <value.2>" ]
 
   -- Examples teach the grammar, so a stale one teaches a grammar that no longer
   -- exists. Extract every ```lips-engine block from the prompt and require the
