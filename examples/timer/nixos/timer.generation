@@ -1058,11 +1058,17 @@ below you: the value grammar cannot split a string, reorder its parts or convert
 one notation into another, so a fact shaped for your world's notation is a fact
 the next world cannot use at all, and its mint has to refuse.
 
-Concretely: emit the program's own words and numbers as facts, and assemble a
-world's notation in the RULE, where it belongs. A time the program writes as
-03:00 becomes an hour and a minute, not one world's calendar expression; a size,
-a path, a name stay as stated. Where your own rule needs the assembled form,
-assemble it there.
+You have everything you need for this already, in the pattern language above.
+A hole may sit INSIDE a token, so a value with internal structure is captured in
+its parts: 'every day at <hour>:<minute>' reads 'every day at 03:00' as
+hour='03' and minute='00'. Emit those parts as ONE fact with a multi-part
+assertion (each part quoted, in a fixed order), and every world's rule spends
+them with <value.1> and <value.2> in whatever notation it needs:
+  fact job.schedule "\"<hour>\" \"<minute>\""
+  match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+A number, a name, a path that every world spells the same way needs no such
+split -- state it once, as the program states it. Split exactly what the worlds
+spell differently.
 
 Everything else is unchanged: this mint owns its rules, demands and contract,
 and answers for its own world alone.
@@ -1087,44 +1093,27 @@ run /var/lib/scripts/cleanup.sh every day at 03:00.
 name the job cleanup.
 
 --- tool transcript ---
--> query_options "systemd.services.&lt;name&gt;.serviceConfig"
--> query_options "systemd.timers"
+-> query_options "systemd.services.<name>.serviceConfig"
+-> query_options "systemd.timers.<name>."
 <- query_options
-systemd.services.&lt;name&gt;.serviceConfig is below systemd.services : attribute set of (submodule)
+systemd.services.<name>.serviceConfig is below systemd.services : attribute set of (submodule)
 That option is free-form: every path under it is accepted, and none of
-them is checked -- this schema cannot confirm the name systemd.services.&lt;name&gt;.serviceConfig.
+them is checked -- this schema cannot confirm the name systemd.services.<name>.serviceConfig.
 Emit it only from documentation you actually have; otherwise refuse.
 
 <- query_options
-systemd.timers : attribute set of (submodule)
-systemd.timers.*.after : list of string
-systemd.timers.*.aliases : list of string
-systemd.timers.*.before : list of string
-systemd.timers.*.bindsTo : list of string
-systemd.timers.*.conflicts : list of string
-systemd.timers.*.description : (optionally newline-terminated) single-line string
-systemd.timers.*.documentation : list of string
-systemd.timers.*.enable : boolean
-systemd.timers.*.name : string
-systemd.timers.*.onFailure : list of string
-systemd.timers.*.onSuccess : list of string
-systemd.timers.*.overrideStrategy : one of "asDropinIfExists", "asDropin"
-systemd.timers.*.partOf : list of string
-systemd.timers.*.reloadTriggers : list of (systemd option)
-systemd.timers.*.requiredBy : list of string
-systemd.timers.*.requires : list of string
-systemd.timers.*.requisite : list of string
-systemd.timers.*.restartTriggers : list of unspecified value
-systemd.timers.*.startLimitBurst : integer
-systemd.timers.*.startLimitIntervalSec : integer
-systemd.timers.*.timerConfig : attribute set of (systemd option)
-systemd.timers.*.unitConfig : attribute set of (systemd option)
-systemd.timers.*.upheldBy : list of string
-systemd.timers.*.upholds : list of string
-systemd.timers.*.wantedBy : list of string
-systemd.timers.*.wants : list of string
+systemd.timers.<name>. is below systemd.timers : attribute set of (submodule)
+That option is free-form: every path under it is accepted, and none of
+them is checked -- this schema cannot confirm the name systemd.timers.<name>..
+Emit it only from documentation you actually have; otherwise refuse.
 
--> query_options "systemd.services."
+-> query_options "systemd.services"
+<- query_options
+systemd.services.* (47 options)
+systemd.services (1 option)
+Ask again with one of these paths to see its options.
+
+-> query_options "systemd.services.*"
 <- query_options
 systemd.services.*.confinement (5 options)
 systemd.services.*.after (1 option)
@@ -1169,39 +1158,86 @@ systemd.services.*.upheldBy (1 option)
 … and 3 more namespaces.
 Ask again with one of these paths to see its options.
 
--> check_draft "0.95 p1 pattern run <cmd> every day at <hh>:<mm> => fact job.command \"<cmd>\" ; fact job.daily \"<hh> <mm>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.daily => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.85 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.daily \"at what time of day should the job run?\"\n0.9 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.85 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.daily#1\n0.85 a3 expect systemd.timers.<self>.timerConfig.OnCalendar from job.daily#2\n0.9 a4 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\ntest\nlips>>>"
+-> query_options "systemd.timers.*"
+<- query_options
+systemd.timers.*.after : list of string
+systemd.timers.*.aliases : list of string
+systemd.timers.*.before : list of string
+systemd.timers.*.bindsTo : list of string
+systemd.timers.*.conflicts : list of string
+systemd.timers.*.description : (optionally newline-terminated) single-line string
+systemd.timers.*.documentation : list of string
+systemd.timers.*.enable : boolean
+systemd.timers.*.name : string
+systemd.timers.*.onFailure : list of string
+systemd.timers.*.onSuccess : list of string
+systemd.timers.*.overrideStrategy : one of "asDropinIfExists", "asDropin"
+systemd.timers.*.partOf : list of string
+systemd.timers.*.reloadTriggers : list of (systemd option)
+systemd.timers.*.requiredBy : list of string
+systemd.timers.*.requires : list of string
+systemd.timers.*.requisite : list of string
+systemd.timers.*.restartTriggers : list of unspecified value
+systemd.timers.*.startLimitBurst : integer
+systemd.timers.*.startLimitIntervalSec : integer
+systemd.timers.*.timerConfig : attribute set of (systemd option)
+systemd.timers.*.unitConfig : attribute set of (systemd option)
+systemd.timers.*.upheldBy : list of string
+systemd.timers.*.upholds : list of string
+systemd.timers.*.wantedBy : list of string
+systemd.timers.*.wants : list of string
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"\\\"<hour>\\\" \\\"<minute>\\\"\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.85 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
 <- check_draft
-examples/nightly.timer.lips: 2 of 2 lines crystallize.
-  line 1  ok        p1  job.command, job.daily
-  line 2  ok        p2  job.name
+· crystallize examples/nightly.timer.lips
+✗ crystallize examples/nightly.timer.lips  (0.0s)
+lips built a setup for examples/nightly.timer.lips, but it didn't hold up:
+
+it reads words from the program and then discards them:
+  - pattern p1 binds <minute>, which reaches job.schedule, and rule r2 emits it nowhere: editing that word changes no output
+
+Each one wants one of three fixes: use the word (a <value>/<value.N>
+hole, or the capture aligned with the subject segment it fills); or, if
+it SELECTS a mechanism no value can carry (a builder, a service), spell
+it as a literal token of the template, so editing it stops the line
+matching and asks for a fresh language instead of governing nothing; or,
+if the line truly carries no value, read it as a concept.
+
+→ run generate again. If it keeps failing the same way, it's a lips bug;
+  please report it with the text above.
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"\\\"<hour>\\\" \\\"<minute>\\\"\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"<value.1> <value.2>\\\"\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
+<- check_draft
+· crystallize examples/nightly.timer.lips
+✗ crystallize examples/nightly.timer.lips  (0.0s)
+lips built a setup for examples/nightly.timer.lips, but it didn't hold up:
+
+it reads words from the program and then discards them:
+  - pattern p1 binds <minute>, which reaches job.schedule, and rule r2 emits it nowhere: editing that word changes no output
+
+Each one wants one of three fixes: use the word (a <value>/<value.N>
+hole, or the capture aligned with the subject segment it fills); or, if
+it SELECTS a mechanism no value can carry (a builder, a service), spell
+it as a literal token of the template, so editing it stops the line
+matching and asks for a fresh language instead of governing nothing; or,
+if the line truly carries no value, read it as a concept.
+
+→ run generate again. If it keeps failing the same way, it's a lips bug;
+  please report it with the text above.
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"<hour> <minute>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"<value.1> <value.2>\\\"\"\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
+<- check_draft
+examples/nightly.timer.lips: 1 of 2 lines crystallize.
+  line 1  ok        p1  job.command, job.schedule
+  line 2  no match  "name the job cleanup."
 
 · crystallize examples/nightly.timer.lips
-✓ crystallize examples/nightly.timer.lips  (0.0s)
-· contract: 3 checks
-✗ contract: 3 checks  (0.0s)
-examples/nightly.timer.lips no longer produces what it promised:
+✗ crystallize examples/nightly.timer.lips  (0.0s)
+examples/nightly.timer.lips has lines its language cannot read yet.
 
-  lips can't match a check to the program: expect a2: no decision with subject job.schedule
+→ grow the language: lips generate examples/nightly.timer.lips
 
-→ if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
-
--> check_draft "0.95 p1 pattern run <cmd> every day at <hh>:<mm> => fact job.command \"<cmd>\" ; fact job.daily \"<hh> <mm>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.daily => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.85 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.daily \"at what time of day should the job run?\"\n0.9 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.85 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.daily\n0.9 a4 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\ntest\nlips>>>"
-<- check_draft
-examples/nightly.timer.lips: 2 of 2 lines crystallize.
-  line 1  ok        p1  job.command, job.daily
-  line 2  ok        p2  job.name
-
-· crystallize examples/nightly.timer.lips
-✓ crystallize examples/nightly.timer.lips  (0.0s)
-· contract: 3 checks
-✗ contract: 3 checks  (0.0s)
-examples/nightly.timer.lips no longer produces what it promised:
-
-  lips can't match a check to the program: expect a2: no decision with subject job.schedule
-
-→ if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
-
--> check_draft "0.95 p1 pattern run <cmd> every day at <hh>:<mm> => fact job.command \"<cmd>\" ; fact job.schedule \"<hh> <mm>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.85 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.9 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.85 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule\n0.9 a4 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\ntest\nlips>>>"
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"<hour> <minute>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.timerConfig.Persistent \"true\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run, as a path?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.85 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.services.<self>.description from job.name\n0.9 a3 expect systemd.timers.<self>.description from job.name\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
 <- check_draft
 examples/nightly.timer.lips: 2 of 2 lines crystallize.
   line 1  ok        p1  job.command, job.schedule
@@ -1217,7 +1253,7 @@ examples/nightly.timer.lips no longer produces what it promised:
 
 → if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
 
--> check_draft "0.95 p1 pattern run <cmd> every day at <hh>:<mm> => fact job.command \"<cmd>\" ; fact job.schedule \"<hh> <mm>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.85 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.9 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#1\n0.9 a3 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#2\n0.9 a4 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\ntest\nlips>>>"
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"<hour> <minute>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.timerConfig.Persistent \"true\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run, as a path?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.85 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.services.<self>.description from job.name\n0.9 a3 expect systemd.timers.<self>.description from job.name\n0.9 a4 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#1\n0.9 a5 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#2\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
 <- check_draft
 examples/nightly.timer.lips: 2 of 2 lines crystallize.
   line 1  ok        p1  job.command, job.schedule
@@ -1233,7 +1269,7 @@ examples/nightly.timer.lips no longer produces what it promised:
 
 → if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
 
--> check_draft "0.95 p1 pattern run <cmd> every day at <hh>:<mm> => fact job.command \"<cmd>\" ; fact job.schedule \"<hh>:<mm>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.85 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.9 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule\n0.9 a4 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\ntest\nlips>>>"
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"<hour> <minute>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
 <- check_draft
 examples/nightly.timer.lips: 2 of 2 lines crystallize.
   line 1  ok        p1  job.command, job.schedule
@@ -1245,11 +1281,78 @@ examples/nightly.timer.lips: 2 of 2 lines crystallize.
 ✗ contract: 3 checks  (0.0s)
 examples/nightly.timer.lips no longer produces what it promised:
 
-  systemd.timers.nightly.timerConfig.OnCalendar: should contain 03 :"00", but is "*-*-* 03::\"00\":00"
+  systemd.timers.nightly.timerConfig.OnCalendar: should contain 03 00, but is "*-*-* 03:00:00"
 
 → if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
 
--> check_draft "0.95 p1 pattern run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"<time>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.85 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.SyslogIdentifier \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.9 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule\n0.9 a3 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\ntest\nlips>>>"
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"<hour> <minute>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.services.<self>.environment.JOB_SCHEDULE \"\\\"<value.1> <value.2>\\\"\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
+<- check_draft
+examples/nightly.timer.lips: 2 of 2 lines crystallize.
+  line 1  ok        p1  job.command, job.schedule
+  line 2  ok        p2  job.name
+
+· crystallize examples/nightly.timer.lips
+✓ crystallize examples/nightly.timer.lips  (0.0s)
+· contract: 3 checks
+✗ contract: 3 checks  (0.0s)
+examples/nightly.timer.lips no longer produces what it promised:
+
+  systemd.timers.nightly.timerConfig.OnCalendar: should contain 03 00, but is "*-*-* 03:00:00"
+
+→ if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"<hour>:<minute>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
+<- check_draft
+examples/nightly.timer.lips: 2 of 2 lines crystallize.
+  line 1  ok        p1  job.command, job.schedule
+  line 2  ok        p2  job.name
+
+· crystallize examples/nightly.timer.lips
+✓ crystallize examples/nightly.timer.lips  (0.0s)
+· contract: 3 checks
+✗ contract: 3 checks  (0.0s)
+examples/nightly.timer.lips no longer produces what it promised:
+
+  systemd.timers.nightly.timerConfig.OnCalendar: should contain 03 :"00", but is "*-*-* 03 :\"00\":00"
+
+→ if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule \"<hour> <minute>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"<value.1>:<value.2>\\\"\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
+<- check_draft
+examples/nightly.timer.lips: 2 of 2 lines crystallize.
+  line 1  ok        p1  job.command, job.schedule
+  line 2  ok        p2  job.name
+
+· crystallize examples/nightly.timer.lips
+✓ crystallize examples/nightly.timer.lips  (0.0s)
+· contract: 3 checks
+✗ contract: 3 checks  (0.0s)
+examples/nightly.timer.lips no longer produces what it promised:
+
+  systemd.timers.nightly.timerConfig.OnCalendar: should contain 03 00, but is "03:00"
+
+→ if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <hour>:<minute> => fact job.command \"<cmd>\" ; fact job.schedule.<hour> \"<minute>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\"\n0.95 r2 match fact job.schedule.<hour> => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <hour>:<value>:00\\\"\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
+<- check_draft
+examples/nightly.timer.lips: 2 of 2 lines crystallize.
+  line 1  ok        p1  job.command, job.schedule.03
+  line 2  ok        p2  job.name
+
+· crystallize examples/nightly.timer.lips
+✓ crystallize examples/nightly.timer.lips  (0.0s)
+· contract: 3 checks
+✗ contract: 3 checks  (0.0s)
+examples/nightly.timer.lips no longer produces what it promised:
+
+  lips can't match a check to the program: expect a2: no decision with subject job.schedule
+
+→ if you changed the program on purpose, rebuild: lips generate examples/nightly.timer.lips
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"<time>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run (an absolute path)?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run, as HH:MM?\"\n0.85 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule\n0.9 a3 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\nplaceholder\nlips>>>"
+<- check_draft
+the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
+-> check_draft "0.95 p1 pattern run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"<time>\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.9 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run (an absolute path)?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run, as HH:MM?\"\n0.85 q3 demand job.name \"what should the job be called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.9 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule\n0.9 a3 expect systemd.services.<self>.description from job.name\n0.9 r2 because \"the time of day is kept as one HH:MM token; splitting it into hour and minute parts is refused by the contract check, so a world spelling schedules differently cannot re-split it\"\n0.6 g1 gap multipart-fact-not-contiguous <<<lips\nblocked line: run /var/lib/scripts/cleanup.sh every day at 03:00.\nwanted: fact job.schedule \"<hour> <minute>\" spent as\n  systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\"\nthe derived contract check demands the assertion's parts appear contiguously,\njoined by a single space, inside one emitted option value:\n  OnCalendar: should contain 03 00, but is \"*-*-* 03:00:00\"\nno systemd calendar spelling can put the two parts side by side, so the\ndocumented \"split what worlds spell differently\" shape cannot be used here.\nlips>>>\n0.95 d1 report <<<lips\nThis language describes one scheduled job per program file. It reads exactly\ntwo sentences.\n\n`run <command> every day at <time>.` states the command to run (an absolute\npath, taken verbatim) and the time of day it runs, written HH:MM.\n\n`name the job <name>.` states what the job is called; the name becomes the\ndescription of both units.\n\nMechanism: each program becomes a systemd service plus a systemd timer, both\nkeyed by the program's own instance name (the file basename), so two such\nprograms compose in one configuration without collision. The service is a\n`oneshot` whose `ExecStart` is the command as given -- nothing is built, the\npath is expected to exist on the machine. The timer drives it with\n`timerConfig.OnCalendar = \"*-*-* HH:MM:00\"` (systemd calendar syntax, derived\nfrom the stated time) and is pulled in by `timers.target`, which is what makes\nit start at boot.\n\nWhat I had to decide, since the program is silent about it: the unit type\n(`oneshot`, the right shape for a script that runs and exits), and that the\ntimer is not `Persistent` -- a missed run (machine off at 03:00) is skipped\nrather than caught up. Change that by re-minting if catch-up is wanted.\n\nThe time is captured as ONE token, `03:00`, rather than as separate hour and\nminute parts; the contract check refuses a fact whose parts are spent apart,\nand no systemd spelling puts them side by side. This is filed as a gap: a\nworld that writes schedules in another notation (a cron field order, say)\nwould need the parts and cannot re-split this token.\n\nAny program in this language must state both sentences: a program missing one\nis asked for the command, the time, or the name.\n\nContract: the command reaches `ExecStart`, the time reaches `OnCalendar`, and\nthe name reaches the service description.\nlips>>>"
 <- check_draft
 the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
 
@@ -1258,60 +1361,57 @@ the draft passes every gate lips can run before you answer. Answer with those li
 0.95 p2 pattern name the job <name> => fact job.name "<name>"
 0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart "\"<value>\"" ; systemd.services.<self>.serviceConfig.Type "\"oneshot\""
 0.9 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value>:00\"" ; systemd.timers.<self>.wantedBy "[ \"timers.target\" ]"
-0.85 r3 match fact job.name => systemd.services.<self>.description "\"<value>\"" ; systemd.timers.<self>.description "\"<value>\"" ; systemd.services.<self>.serviceConfig.SyslogIdentifier "\"<value>\""
-0.85 r3 because "the program says to name the job but not what the name governs; it is realized as the unit descriptions and the syslog identifier rather than as a unit filename rename, which would change the unit names a machine already refers to"
-0.9 q1 demand job.command "which command should the job run?"
+0.9 r3 match fact job.name => systemd.services.<self>.description "\"<value>\"" ; systemd.timers.<self>.description "\"<value>\""
+0.9 q1 demand job.command "which command should the job run (an absolute path)?"
 0.9 q2 demand job.schedule "at what time of day should the job run, as HH:MM?"
-0.9 q3 demand job.name "what should the job be called?"
+0.85 q3 demand job.name "what should the job be called?"
 0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command
 0.9 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule
 0.9 a3 expect systemd.services.<self>.description from job.name
+0.9 r2 because "the time of day is kept as one HH:MM token; splitting it into hour and minute parts is refused by the contract check, so a world spelling schedules differently cannot re-split it"
+0.6 g1 gap multipart-fact-not-contiguous <<<lips
+blocked line: run /var/lib/scripts/cleanup.sh every day at 03:00.
+wanted: fact job.schedule "<hour> <minute>" spent as
+  systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+the derived contract check demands the assertion's parts appear contiguously,
+joined by a single space, inside one emitted option value:
+  OnCalendar: should contain 03 00, but is "*-*-* 03:00:00"
+no systemd calendar spelling can put the two parts side by side, so the
+documented "split what worlds spell differently" shape cannot be used here.
+lips>>>
 0.95 d1 report <<<lips
-This language describes one scheduled job per program, in two sentences.
+This language describes one scheduled job per program file. It reads exactly
+two sentences.
 
-**Line shapes it accepts**
+`run <command> every day at <time>.` states the command to run (an absolute
+path, taken verbatim) and the time of day it runs, written HH:MM.
 
-- `run <command> every day at <HH:MM>.` — the command is a path (or any
-  single token) that will be executed, and the time is the daily wall-clock
-  time it runs at. Both are holes: edit either word and recompile, and the
-  machine follows.
-- `name the job <name>.` — a single word naming the job.
+`name the job <name>.` states what the job is called; the name becomes the
+description of both units.
 
-**Mechanism**
+Mechanism: each program becomes a systemd service plus a systemd timer, both
+keyed by the program's own instance name (the file basename), so two such
+programs compose in one configuration without collision. The service is a
+`oneshot` whose `ExecStart` is the command as given -- nothing is built, the
+path is expected to exist on the machine. The timer drives it with
+`timerConfig.OnCalendar = "*-*-* HH:MM:00"` (systemd calendar syntax, derived
+from the stated time) and is pulled in by `timers.target`, which is what makes
+it start at boot.
 
-Each program becomes a systemd service plus a systemd timer, both keyed by
-the program's own instance name (`nightly.timer.lips` → `systemd.services.nightly`
-and `systemd.timers.nightly`), so two such programs compose in one
-configuration without colliding, and the timer drives the service of the
-same name.
+What I had to decide, since the program is silent about it: the unit type
+(`oneshot`, the right shape for a script that runs and exits), and that the
+timer is not `Persistent` -- a missed run (machine off at 03:00) is skipped
+rather than caught up. Change that by re-minting if catch-up is wanted.
 
-- the command goes to `serviceConfig.ExecStart`, and the unit is
-  `Type = "oneshot"` — the right shape for a job that runs, finishes and
-  exits rather than staying resident.
-- the time becomes systemd calendar syntax in
-  `timers.<self>.timerConfig.OnCalendar`: `03:00` is written out as
-  `*-*-* 03:00:00`, i.e. every day at that hour and minute. The timer is
-  pulled in by `timers.target` so it is actually active after a rebuild.
-  Only the daily form is read; a weekly or hourly sentence would be a new
-  line shape and needs a fresh mint.
-- the job name is carried into the `Description` of both units and into
-  `SyslogIdentifier` on the service, so `systemctl status` and the journal
-  show the human's word for the job. I deliberately did **not** rename the
-  unit files after it: the unit names come from the program's filename, and
-  making them follow a sentence would silently change the names an operator
-  and other units already refer to.
+The time is captured as ONE token, `03:00`, rather than as separate hour and
+minute parts; the contract check refuses a fact whose parts are spent apart,
+and no systemd spelling puts them side by side. This is filed as a gap: a
+world that writes schedules in another notation (a cron field order, say)
+would need the parts and cannot re-split this token.
 
-**What I had to decide myself**
+Any program in this language must state both sentences: a program missing one
+is asked for the command, the time, or the name.
 
-`Type = "oneshot"` and the `timers.target` wiring are mechanism constants —
-the programs never mention them and no reasonable program would. The
-schedule is kept as the program's own `HH:MM` text in the decision
-`job.schedule`, and the systemd calendar expression is assembled in the
-rule, not in the program.
-
-**Contract**
-
-Three checks are pinned on every future compile: the command reaches
-`ExecStart`, the stated time appears in `OnCalendar`, and the job name
-appears in the service `Description`.
+Contract: the command reaches `ExecStart`, the time reaches `OnCalendar`, and
+the name reaches the service description.
 lips>>>

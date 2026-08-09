@@ -52,6 +52,8 @@ import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Runtime                 (schemeVocabulary)
 import Lips.World            (World (..))
 import Lips.Kernel.Capture      (nameTokens)
+import Lips.Kernel.Decision     (Decision (..), DecisionId (..), Provenance (..), SourceLoc (..))
+import Lips.Kernel.Reader       (readDecision)
 import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
 import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody)
 import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
@@ -219,13 +221,16 @@ promptWithDirection md mg later w =
 -- of pattern lines it changed or dropped. Empty means it only appended, which
 -- is the only move a later world may make.
 --
--- Compared statement by statement -- everything a line says except its @\@gen:@
--- stamp -- because the stamp is not the mint's to keep: a reply carries no
--- provenance, and lips stamps every line it renders with the record of the run
--- that rendered it, so an inherited pattern coming back out of world B's mint
--- necessarily carries B's id. What must not move is what the pattern SAYS. The
--- written grammar keeps world A's bytes anyway (see 'mergeGrammar'), so A's
--- stamps still re-hash against A's own record.
+-- Compared decision by decision with the PROVENANCE set aside, because the
+-- provenance is not the mint's to keep: a reply carries none, and lips stamps
+-- every line it renders with the origin of the run that rendered it, so an
+-- inherited pattern coming back out of world B's mint carries B's stamp (or a
+-- draft's @\@lang:0@ before a record exists). What must not move is what the
+-- pattern SAYS. The written grammar keeps world A's bytes anyway (see
+-- 'mergeGrammar'), so A's stamps still re-hash against A's own record.
+--
+-- Parsed rather than string-trimmed: the provenance token is the one field to
+-- ignore, and the reader is what knows where it ends.
 --
 -- Being this strict about the statement is safe: every committed program
 -- already crystallizes under the old grammar, and two patterns reading one line
@@ -234,9 +239,13 @@ promptWithDirection md mg later w =
 -- holds.
 appendOnlyViolations :: Text -> Text -> [Text]
 appendOnlyViolations old new =
-  [ i | (i, l) <- byId old, lookup i (byId new) /= Just l ]
+  [ i | (i, d) <- byId old, lookup i (byId new) /= Just d ]
   where
-    byId t = [ (i, statement l) | l <- T.lines t, (i : _) <- [T.words l] ]
+    byId t = [ (i, d { dProv = anywhere })
+             | l <- T.lines t, Right d <- [readDecision (T.strip l)]
+             , let DecisionId i = dId d ]
+    -- One provenance for both sides, so the comparison cannot see the field.
+    anywhere = FromSource (SourceLoc "" 0)
 
 -- | The grammar to WRITE when a later world appends to an inherited one: every
 -- committed line verbatim, then the ids this mint added. Verbatim because an
@@ -248,12 +257,6 @@ mergeGrammar old new = old <> T.unlines
   [ l | l <- T.lines new, idOf l `notElem` map idOf (T.lines old) ]
   where idOf l = take 1 (T.words l)
 
--- | A rendered decision line without its provenance stamp: what it states,
--- separated from which generation wrote it down.
-statement :: Text -> Text
-statement l = case T.breakOnEnd " @gen:" l of
-  ("", _)  -> l
-  (pre, _) -> T.stripEnd (T.dropEnd 6 pre)
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
 -- Single-item lines parse individually; a @source@ block spans multiple lines

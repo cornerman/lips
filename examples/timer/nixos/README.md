@@ -2,50 +2,51 @@
 
 # The `timer` language
 
-This language describes one scheduled job per program, in two sentences.
+This language describes one scheduled job per program file. It reads exactly
+two sentences.
 
-**Line shapes it accepts**
+`run <command> every day at <time>.` states the command to run (an absolute
+path, taken verbatim) and the time of day it runs, written HH:MM.
 
-- `run <command> every day at <HH:MM>.` — the command is a path (or any
-  single token) that will be executed, and the time is the daily wall-clock
-  time it runs at. Both are holes: edit either word and recompile, and the
-  machine follows.
-- `name the job <name>.` — a single word naming the job.
+`name the job <name>.` states what the job is called; the name becomes the
+description of both units.
 
-**Mechanism**
+Mechanism: each program becomes a systemd service plus a systemd timer, both
+keyed by the program's own instance name (the file basename), so two such
+programs compose in one configuration without collision. The service is a
+`oneshot` whose `ExecStart` is the command as given -- nothing is built, the
+path is expected to exist on the machine. The timer drives it with
+`timerConfig.OnCalendar = "*-*-* HH:MM:00"` (systemd calendar syntax, derived
+from the stated time) and is pulled in by `timers.target`, which is what makes
+it start at boot.
 
-Each program becomes a systemd service plus a systemd timer, both keyed by
-the program's own instance name (`nightly.timer.lips` → `systemd.services.nightly`
-and `systemd.timers.nightly`), so two such programs compose in one
-configuration without colliding, and the timer drives the service of the
-same name.
+What I had to decide, since the program is silent about it: the unit type
+(`oneshot`, the right shape for a script that runs and exits), and that the
+timer is not `Persistent` -- a missed run (machine off at 03:00) is skipped
+rather than caught up. Change that by re-minting if catch-up is wanted.
 
-- the command goes to `serviceConfig.ExecStart`, and the unit is
-  `Type = "oneshot"` — the right shape for a job that runs, finishes and
-  exits rather than staying resident.
-- the time becomes systemd calendar syntax in
-  `timers.<self>.timerConfig.OnCalendar`: `03:00` is written out as
-  `*-*-* 03:00:00`, i.e. every day at that hour and minute. The timer is
-  pulled in by `timers.target` so it is actually active after a rebuild.
-  Only the daily form is read; a weekly or hourly sentence would be a new
-  line shape and needs a fresh mint.
-- the job name is carried into the `Description` of both units and into
-  `SyslogIdentifier` on the service, so `systemctl status` and the journal
-  show the human's word for the job. I deliberately did **not** rename the
-  unit files after it: the unit names come from the program's filename, and
-  making them follow a sentence would silently change the names an operator
-  and other units already refer to.
+The time is captured as ONE token, `03:00`, rather than as separate hour and
+minute parts; the contract check refuses a fact whose parts are spent apart,
+and no systemd spelling puts them side by side. This is filed as a gap: a
+world that writes schedules in another notation (a cron field order, say)
+would need the parts and cannot re-split this token.
 
-**What I had to decide myself**
+Any program in this language must state both sentences: a program missing one
+is asked for the command, the time, or the name.
 
-`Type = "oneshot"` and the `timers.target` wiring are mechanism constants —
-the programs never mention them and no reasonable program would. The
-schedule is kept as the program's own `HH:MM` text in the decision
-`job.schedule`, and the systemd calendar expression is assembled in the
-rule, not in the program.
+Contract: the command reaches `ExecStart`, the time reaches `OnCalendar`, and
+the name reaches the service description.
 
-**Contract**
+## Known Gaps
 
-Three checks are pinned on every future compile: the command reaches
-`ExecStart`, the stated time appears in `OnCalendar`, and the job name
-appears in the service `Description`.
+### multipart-fact-not-contiguous
+
+blocked line: run /var/lib/scripts/cleanup.sh every day at 03:00.
+wanted: fact job.schedule "<hour> <minute>" spent as
+  systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+the derived contract check demands the assertion's parts appear contiguously,
+joined by a single space, inside one emitted option value:
+  OnCalendar: should contain 03 00, but is "*-*-* 03:00:00"
+no systemd calendar spelling can put the two parts side by side, so the
+documented "split what worlds spell differently" shape cannot be used here.
+
