@@ -31,7 +31,7 @@ import Lips.Kernel.Engine.Gate (engineViolations)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
 import Lips.Report                 (unansweredReport, unportableReport)
-import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar)
+import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, sharedFileViolations)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
@@ -5106,6 +5106,27 @@ main = hspec $ do
     it "points at the program, and says the other worlds still hold" $ do
       t `shouldSatisfy` T.isInfixOf "api.web.lips"
       t `shouldSatisfy` T.isInfixOf "worlds that already hold"
+
+  -- The language level belongs to every world at once, so a mint that is not
+  -- re-minting them all may only add to it. Without this, a second world's mint
+  -- replaced the shared artifacts/ tree wholesale and deleted the source the
+  -- first world's rules point at.
+  describe "the shared files are frozen together (Lips.Generate.Minting)" $ do
+    let g = "p1 meta lang.pattern.p1 stated \"a\" @gen:aaaa\n"
+        committed = [("hello/main.go", "old")]
+        minted = [SourceFile "hello" "main.go" "new"]
+        kept   = [SourceFile "hello" "main.go" "old"]
+    it "accepts a mint that changes nothing shared" $
+      sharedFileViolations g g committed kept `shouldBe` []
+    it "accepts an appended pattern, which cannot break a world that holds" $
+      sharedFileViolations g (g <> "p2 meta lang.pattern.p2 stated \"b\" @gen:bbbb\n")
+                           committed kept `shouldBe` []
+    it "refuses a rewritten source file, naming it" $
+      sharedFileViolations g g committed minted
+        `shouldSatisfy` any (T.isInfixOf "hello/main.go")
+    it "refuses a changed pattern, naming it" $
+      sharedFileViolations g (T.replace "\"a\"" "\"b\"" g) committed kept
+        `shouldSatisfy` any (T.isInfixOf "p1")
 
   describe "a language's worlds (Lips.Language)" $ do
     let withDir act = do
