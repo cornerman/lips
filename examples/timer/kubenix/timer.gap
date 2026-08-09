@@ -1,26 +1,56 @@
+# lips generate refusal report. Machine-readable; rewritten on every refusal, never hand-edited.
+# fingerprint: 09bc2dafe77646eb (re-hash the record below with the same function '.generation' uses to verify)
+
+--- refused lines (a line the AI wrote that lips's grammar can't express) ---
+(none)
+
+--- underspecified (the program didn't pin these down with enough confidence) ---
+- 0.4 r2 match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule "\"<value>\""
+- 0.4 a2 expect kubernetes.resources.cronJobs.<self>.spec.schedule from job.schedule
+
+--- missing capability (the mint's own words; each names its blocked line and a repro) ---
+- systemd-calendar-in-cron-world
+    blocked line: run /var/lib/scripts/cleanup.sh every day at 03:00.
+    pattern p1 emits fact job.schedule "*-*-* <time>:00", a systemd calendar
+    expression. This world renders Kubernetes manifests, where a CronJob's
+    spec.schedule accepts only five-field cron ("0 3 * * *"). The value grammar
+    has no way to split "03:00" on ":" or reorder its parts, and p1 is fixed, so
+    the time the program states cannot be lowered correctly here.
+    what this world needs: p1 should emit the time in a neutral form the rules can
+    spend, e.g. two facts job.schedule.hour "<hh>" and job.schedule.minute "<mm>"
+    (or a quoted-hole template capturing hour and minute separately), so each
+    world can assemble its own schedule syntax. That change touches every world
+    built on this grammar and must be re-minted together.
+
+--- generation record (model, target, schema, thinking, confidence, system prompt, program, tool transcript, raw reply) ---
 format: 1
 model: claude-opus-5
-world: nixos 5e05ee4ab3cd7ea3
-schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
+world: kubenix 935646d04beacac1
+schema: github:hall/kubenix/e3e9a30fa0684ab21cd6d757c856d2e0a32d15a9?narHash=sha256-bgk22C9rMi%2BMsWJ0qUSyJAIHGTOBCDKw3taBKMJzMtI%3D
 thinking: medium
 confidence-threshold: 0.7
 --- system prompt ---
-TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
-evaluated as root, so every option you emit affects the system as a whole,
-never one user's session alone. Its namespaces include services.* (system
-services), systemd.services.* and systemd.timers.* (units and timers),
-environment.* (system-wide packages and files), networking.*, and users.*.
-<self> keys an attrsOf-submodule instance name wherever this world's schema
-offers one -- systemd.services.<self>, or a service family's own instance
-table (an option shaped like services.<name>.<instances>.<self>).
-query_options searches exactly this world's pinned schema: the NixOS
-option tree, nothing narrower and nothing wider.
+TARGET WORLD: kubenix. A kubenix configuration renders KUBERNETES
+MANIFESTS: nothing is installed and no machine is configured, so never emit
+a NixOS or home-manager option here (no services.*, no systemd.*, no
+environment.*). Its namespace is kubernetes.resources.<kindPlural>.<name>.*
+-- the plural, lower-camel kind name, then the resource's own name, then the
+fields of the Kubernetes API object itself
+(kubernetes.resources.deployments.<self>.spec.replicas,
+kubernetes.resources.services.<self>.spec.ports). <self> keys the resource
+name, so one program's resources all carry its instance name and a sibling
+instance composes without collision. Beside the resources, this world offers
+kubernetes.namespace (the namespace resources land in) and kubenix.project
+(a label put on every object). query_options searches exactly this world's
+pinned schema: the kubenix option tree, whose resource fields come from the
+Kubernetes API, nothing else. Write the alias path
+(kubernetes.resources.*), never the kubernetes.api.resources.* spelling
+behind it.
 
-A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
-command that reaches beyond the program's own artifacts (a systemctl call, a
-curl against a running service) is run inside the booted module. It costs a
-boot, so prefer an observable over the program's own binary where the
-behaviour lives in a binary.
+A CLAIM MUST NAME THE PROGRAM'S OWN ARTIFACT here: there is no machine to
+boot in this world, so an observable is a command over ${artifact.<name>}
+and literal text, run in the build sandbox. A claim reaching anything else is
+refused.
 
 ## Where You Are
 
@@ -1045,6 +1075,31 @@ express. Prefer clauses every time you can: a source file is traceable to no
 program line, is rewritten wholesale on the next mint, and is the one thing lips
 cannot check.
 
+THE GRAMMAR YOU INHERIT (this language is already minted for another world).
+
+The pattern lines below are the language's shared reading of its programs, and
+they are FIXED. Every one of them must come back in your reply exactly as it
+stands here -- same id, same template, same emitted subjects, character for
+character. They are what the other worlds were built on: change one and you
+break a world you cannot see.
+
+What you write fresh is the RULES and DEMANDS: the same subjects lowered into
+YOUR world's option namespace. Read each pattern for what it emits, and map it
+where your world puts that thing.
+
+You may ADD a pattern, but only for a line the grammar below genuinely cannot
+read. A new pattern must not overlap an existing one (two patterns matching one
+line fails the build), so prefer reusing what is there.
+
+If a pattern below is wrong for your world -- if you cannot lower what it emits
+without changing what it reads -- do NOT rewrite it. Refuse, with a gap naming
+the pattern id and what your world needs instead. A human then re-mints every
+world together, which is the only way that change can be made safely.
+--- begin grammar ---
+p1 meta lang.pattern.p1 stated "run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"*-*-* <time>:00\"" @gen:117d4e4d1c12e0b8
+p2 meta lang.pattern.p2 stated "name the job <name> => fact job.name \"<name>\"" @gen:117d4e4d1c12e0b8
+--- end grammar ---
+
 DIRECTION (the owner's taste for THIS program; optional, advisory).
 The text below is PREFERENCE, not requirement. It says how to prefer
 building the engine: mechanism choices only (which package, which
@@ -1065,116 +1120,149 @@ run /var/lib/scripts/cleanup.sh every day at 03:00.
 name the job cleanup.
 
 --- tool transcript ---
--> query_options "systemd.timers."
--> query_options "systemd.services."
+-> query_options "kubernetes.resources.cronJobs"
+-> query_options "kubenix.project"
 <- query_options
-systemd.timers.*.after : list of string
-systemd.timers.*.aliases : list of string
-systemd.timers.*.before : list of string
-systemd.timers.*.bindsTo : list of string
-systemd.timers.*.conflicts : list of string
-systemd.timers.*.description : (optionally newline-terminated) single-line string
-systemd.timers.*.documentation : list of string
-systemd.timers.*.enable : boolean
-systemd.timers.*.name : string
-systemd.timers.*.onFailure : list of string
-systemd.timers.*.onSuccess : list of string
-systemd.timers.*.overrideStrategy : one of "asDropinIfExists", "asDropin"
-systemd.timers.*.partOf : list of string
-systemd.timers.*.reloadTriggers : list of (systemd option)
-systemd.timers.*.requiredBy : list of string
-systemd.timers.*.requires : list of string
-systemd.timers.*.requisite : list of string
-systemd.timers.*.restartTriggers : list of unspecified value
-systemd.timers.*.startLimitBurst : integer
-systemd.timers.*.startLimitIntervalSec : integer
-systemd.timers.*.timerConfig : attribute set of (systemd option)
-systemd.timers.*.unitConfig : attribute set of (systemd option)
-systemd.timers.*.upheldBy : list of string
-systemd.timers.*.upholds : list of string
-systemd.timers.*.wantedBy : list of string
-systemd.timers.*.wants : list of string
-
-<- query_options
-systemd.services.*.confinement (5 options)
-systemd.services.*.after (1 option)
-systemd.services.*.aliases (1 option)
-systemd.services.*.before (1 option)
-systemd.services.*.bindsTo (1 option)
-systemd.services.*.conflicts (1 option)
-systemd.services.*.description (1 option)
-systemd.services.*.documentation (1 option)
-systemd.services.*.enable (1 option)
-systemd.services.*.enableDefaultPath (1 option)
-systemd.services.*.enableStrictShellChecks (1 option)
-systemd.services.*.environment (1 option)
-systemd.services.*.name (1 option)
-systemd.services.*.notSocketActivated (1 option)
-systemd.services.*.onFailure (1 option)
-systemd.services.*.onSuccess (1 option)
-systemd.services.*.overrideStrategy (1 option)
-systemd.services.*.partOf (1 option)
-systemd.services.*.path (1 option)
-systemd.services.*.postStart (1 option)
-systemd.services.*.postStop (1 option)
-systemd.services.*.preStart (1 option)
-systemd.services.*.preStop (1 option)
-systemd.services.*.reload (1 option)
-systemd.services.*.reloadIfChanged (1 option)
-systemd.services.*.reloadTriggers (1 option)
-systemd.services.*.requiredBy (1 option)
-systemd.services.*.requires (1 option)
-systemd.services.*.requisite (1 option)
-systemd.services.*.restartIfChanged (1 option)
-systemd.services.*.restartTriggers (1 option)
-systemd.services.*.script (1 option)
-systemd.services.*.scriptArgs (1 option)
-systemd.services.*.serviceConfig (1 option)
-systemd.services.*.startAt (1 option)
-systemd.services.*.startLimitBurst (1 option)
-systemd.services.*.startLimitIntervalSec (1 option)
-systemd.services.*.stopIfChanged (1 option)
-systemd.services.*.unitConfig (1 option)
-systemd.services.*.upheldBy (1 option)
-… and 3 more namespaces.
+kubernetes.resources.cronJobs.* (972 options)
 Ask again with one of these paths to see its options.
 
--> check_draft "0.95 p1 pattern run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"*-*-* <time>:00\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"\n0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"<value>\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"\n0.9 r3 match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\" ; systemd.timers.<self>.description \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.schedule \"when should the job run?\"\n0.9 q3 demand job.name \"what is the job called?\"\n0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command\n0.95 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule\n0.9 a3 expect systemd.services.<self>.description from job.name\n0.95 d1 report <<<lips\nThis language describes one scheduled job per program file.\n\nTwo line shapes are accepted:\n\n- `run <command> every day at <HH:MM>.` — the command to run and the time of\n  day it runs. The command is taken verbatim as a path string; the time is\n  turned into the systemd calendar expression `*-*-* HH:MM:00`.\n- `name the job <name>.` — a human-readable name, used as the description of\n  both units.\n\nMechanism: each program becomes a systemd service plus a systemd timer, both\nnamed after the program's own instance name (the file's basename), so several\njob programs compose in one machine without colliding. The service is\n`Type=oneshot` with the stated command as `ExecStart`; the timer carries\n`OnCalendar` and is pulled in by `timers.target`. Nothing is built from\nsource — the command is given as a path that must already exist on the\nmachine.\n\nThe daily shape is fixed by the wording `every day at <time>`; a program that\nneeds another cadence (hourly, weekly) has no line shape for it yet and would\nneed a fresh mint.\nlips>>>"
+<- query_options
+kubenix.project : string
+
+-> query_options "kubernetes.resources.cronJobs.<name>.spec.schedule"
+-> query_options "cronJobs.<name>.spec.jobTemplate.spec.template.spec.containers"
+<- query_options
+no option matches kubernetes.resources.cronJobs.<name>.spec.schedule
+Try a shorter query, or a different word for the same thing.
+
+<- query_options
+no option matches cronJobs.<name>.spec.jobTemplate.spec.template.spec.containers
+Try a shorter query, or a different word for the same thing.
+
+-> query_options "cronJobs.cleanup.spec"
+-> query_options "schedule"
+<- query_options
+no option matches cronJobs.cleanup.spec
+Try a shorter query, or a different word for the same thing.
+
+<- query_options
+kubernetes.resources.apps.v1.DaemonSet.*.spec.template.spec.schedulerName : string
+kubernetes.resources.apps.v1.DaemonSet.*.status.numberMisscheduled : integer
+kubernetes.resources.apps.v1.Deployment.*.spec.template.spec.schedulerName : string
+kubernetes.resources.apps.v1.ReplicaSet.*.spec.template.spec.schedulerName : string
+kubernetes.resources.apps.v1.StatefulSet.*.spec.template.spec.schedulerName : string
+kubernetes.resources.batch.v1.CronJob.*.spec.jobTemplate.spec.template.spec.schedulerName : string
+kubernetes.resources.batch.v1.CronJob.*.spec.schedule : string
+kubernetes.resources.batch.v1.Job.*.spec.template.spec.schedulerName : string
+kubernetes.resources.core.v1.Pod.*.spec.schedulerName : string
+kubernetes.resources.core.v1.PodTemplate.*.template.spec.schedulerName : string
+kubernetes.resources.core.v1.ReplicationController.*.spec.template.spec.schedulerName : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.schedulerName : string
+kubernetes.resources.cronJobs.*.spec.schedule : string
+kubernetes.resources.daemonSets.*.spec.template.spec.schedulerName : string
+kubernetes.resources.daemonSets.*.status.numberMisscheduled : integer
+kubernetes.resources.deployments.*.spec.template.spec.schedulerName : string
+kubernetes.resources.jobs.*.spec.template.spec.schedulerName : string
+kubernetes.resources.podTemplates.*.template.spec.schedulerName : string
+kubernetes.resources.pods.*.spec.schedulerName : string
+kubernetes.resources.replicaSets.*.spec.template.spec.schedulerName : string
+kubernetes.resources.replicationControllers.*.spec.template.spec.schedulerName : string
+kubernetes.resources.statefulSets.*.spec.template.spec.schedulerName : string
+
+-> query_options "kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers"
+<- query_options
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.* (161 options)
+Ask again with one of these paths to see its options.
+
+-> query_options "kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.*.c"
+<- query_options
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.*.command : list of (string)
+
+-> query_options "kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.*.i"
+-> query_options "kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.r"
+<- query_options
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.*.image : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.*.imagePullPolicy : string
+
+<- query_options
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.readinessGates.*.conditionType : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resourceClaims.*._priority : integer
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resourceClaims.*.name : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resourceClaims.*.resourceClaimName : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resourceClaims.*.resourceClaimTemplateName : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resources.claims.*._priority : integer
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resources.claims.*.name : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resources.claims.*.request : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resources.limits : attribute set of (string)
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.resources.requests : attribute set of (string)
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.restartPolicy : string
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.runtimeClassName : string
+
+-> query_options "kubernetes.resources.cronJobs.*.metadata.name"
+-> query_options "kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.*.name"
+<- query_options
+kubernetes.resources.cronJobs.*.metadata.name : string
+
+<- query_options
+kubernetes.resources.cronJobs.*.spec.jobTemplate.spec.template.spec.containers.*.name : string
+
+-> check_draft "0.95 p1 pattern run <cmd> every day at <time> => fact job.command \"<cmd>\" ; fact job.schedule \"*-*-* <time>:00\"\n0.95 p2 pattern name the job <name> => fact job.name \"<name>\"\n0.9 r1 match fact job.command => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.command \"[ \\\"<value>\\\" ]\" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.image \"\\\"debian:stable-slim\\\"\" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.restartPolicy \"\\\"OnFailure\\\"\"\n0.4 r2 match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule \"\\\"<value>\\\"\"\n0.4 r2 because \"the schedule arrives in systemd calendar syntax and a Kubernetes CronJob accepts only five-field cron; nothing in the value grammar can convert 03:00 into '0 3 * * *'\"\n0.9 r3 match fact job.name => kubernetes.resources.cronJobs.<self>.metadata.name \"\\\"<value>\\\"\" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.name \"\\\"<value>\\\"\"\n0.9 q1 demand job.command \"which command should the job run?\"\n0.9 q2 demand job.schedule \"at what time of day should the job run?\"\n0.9 q3 demand job.name \"what should the job be called?\"\n0.9 a1 expect kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.command from job.command\n0.4 a2 expect kubernetes.resources.cronJobs.<self>.spec.schedule from job.schedule\n0.9 a3 expect kubernetes.resources.cronJobs.<self>.metadata.name from job.name\n0.4 g1 gap systemd-calendar-in-cron-world <<<lips\nblocked line: run /var/lib/scripts/cleanup.sh every day at 03:00.\npattern p1 emits fact job.schedule \"*-*-* <time>:00\", a systemd calendar\nexpression. This world renders Kubernetes manifests, where a CronJob's\nspec.schedule accepts only five-field cron (\"0 3 * * *\"). The value grammar\nhas no way to split \"03:00\" on \":\" or reorder its parts, and p1 is fixed, so\nthe time the program states cannot be lowered correctly here.\nwhat this world needs: p1 should emit the time in a neutral form the rules can\nspend, e.g. two facts job.schedule.hour \"<hh>\" and job.schedule.minute \"<mm>\"\n(or a quoted-hole template capturing hour and minute separately), so each\nworld can assemble its own schedule syntax. That change touches every world\nbuilt on this grammar and must be re-minted together.\nlips>>>\n0.9 d1 report <<<lips\nThis language describes one recurring job per program, rendered as a\nKubernetes CronJob rather than as a machine unit -- this world produces\nmanifests, so there is no systemd here.\n\nTwo line shapes are accepted:\n\n- `run <command> every day at <hh:mm>.` -- the command becomes the single\n  container's `command`, and the time becomes the CronJob schedule.\n- `name the job <name>.` -- the name becomes the CronJob's `metadata.name`\n  and the container's name.\n\nThe resource itself is keyed by the program's own instance name, so two\nprograms compose without collision. The container image is a mechanism\nchoice, not something the program states: `debian:stable-slim` is used as a\nplain shell runtime for the given path, and `restartPolicy` is `OnFailure`,\nwhich is what a batch pod needs. If a program should run on another image,\nthat is a line the language does not yet read.\n\nONE THING IS BROKEN AND I DID NOT PAPER OVER IT. The shared grammar hands the\nschedule over already formatted as a systemd calendar expression\n(`*-*-* 03:00:00`). A CronJob accepts only five-field cron (`0 3 * * *`), and\nnothing in the rule grammar can split or reorder the time. Rule r2 therefore\nwrites the calendar string straight into `spec.schedule`, which Kubernetes\nwould reject, and it carries low confidence on purpose: gap\n`systemd-calendar-in-cron-world` says what the shared pattern must emit\ninstead (hour and minute as separate facts) so every world can assemble its\nown schedule syntax. This mint should be refused until that is fixed.\nlips>>>\n"
 <- check_draft
 the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
 
 --- raw reply ---
 0.95 p1 pattern run <cmd> every day at <time> => fact job.command "<cmd>" ; fact job.schedule "*-*-* <time>:00"
 0.95 p2 pattern name the job <name> => fact job.name "<name>"
-0.95 r1 match fact job.command => systemd.services.<self>.serviceConfig.ExecStart "\"<value>\"" ; systemd.services.<self>.serviceConfig.Type "\"oneshot\""
-0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"<value>\"" ; systemd.timers.<self>.wantedBy "[ \"timers.target\" ]"
-0.9 r3 match fact job.name => systemd.services.<self>.description "\"<value>\"" ; systemd.timers.<self>.description "\"<value>\""
+0.9 r1 match fact job.command => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.command "[ \"<value>\" ]" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.image "\"debian:stable-slim\"" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.restartPolicy "\"OnFailure\""
+0.4 r2 match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule "\"<value>\""
+0.4 r2 because "the schedule arrives in systemd calendar syntax and a Kubernetes CronJob accepts only five-field cron; nothing in the value grammar can convert 03:00 into '0 3 * * *'"
+0.9 r3 match fact job.name => kubernetes.resources.cronJobs.<self>.metadata.name "\"<value>\"" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.name "\"<value>\""
 0.9 q1 demand job.command "which command should the job run?"
-0.9 q2 demand job.schedule "when should the job run?"
-0.9 q3 demand job.name "what is the job called?"
-0.95 a1 expect systemd.services.<self>.serviceConfig.ExecStart from job.command
-0.95 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule
-0.9 a3 expect systemd.services.<self>.description from job.name
-0.95 d1 report <<<lips
-This language describes one scheduled job per program file.
+0.9 q2 demand job.schedule "at what time of day should the job run?"
+0.9 q3 demand job.name "what should the job be called?"
+0.9 a1 expect kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.job.command from job.command
+0.4 a2 expect kubernetes.resources.cronJobs.<self>.spec.schedule from job.schedule
+0.9 a3 expect kubernetes.resources.cronJobs.<self>.metadata.name from job.name
+0.4 g1 gap systemd-calendar-in-cron-world <<<lips
+blocked line: run /var/lib/scripts/cleanup.sh every day at 03:00.
+pattern p1 emits fact job.schedule "*-*-* <time>:00", a systemd calendar
+expression. This world renders Kubernetes manifests, where a CronJob's
+spec.schedule accepts only five-field cron ("0 3 * * *"). The value grammar
+has no way to split "03:00" on ":" or reorder its parts, and p1 is fixed, so
+the time the program states cannot be lowered correctly here.
+what this world needs: p1 should emit the time in a neutral form the rules can
+spend, e.g. two facts job.schedule.hour "<hh>" and job.schedule.minute "<mm>"
+(or a quoted-hole template capturing hour and minute separately), so each
+world can assemble its own schedule syntax. That change touches every world
+built on this grammar and must be re-minted together.
+lips>>>
+0.9 d1 report <<<lips
+This language describes one recurring job per program, rendered as a
+Kubernetes CronJob rather than as a machine unit -- this world produces
+manifests, so there is no systemd here.
 
 Two line shapes are accepted:
 
-- `run <command> every day at <HH:MM>.` — the command to run and the time of
-  day it runs. The command is taken verbatim as a path string; the time is
-  turned into the systemd calendar expression `*-*-* HH:MM:00`.
-- `name the job <name>.` — a human-readable name, used as the description of
-  both units.
+- `run <command> every day at <hh:mm>.` -- the command becomes the single
+  container's `command`, and the time becomes the CronJob schedule.
+- `name the job <name>.` -- the name becomes the CronJob's `metadata.name`
+  and the container's name.
 
-Mechanism: each program becomes a systemd service plus a systemd timer, both
-named after the program's own instance name (the file's basename), so several
-job programs compose in one machine without colliding. The service is
-`Type=oneshot` with the stated command as `ExecStart`; the timer carries
-`OnCalendar` and is pulled in by `timers.target`. Nothing is built from
-source — the command is given as a path that must already exist on the
-machine.
+The resource itself is keyed by the program's own instance name, so two
+programs compose without collision. The container image is a mechanism
+choice, not something the program states: `debian:stable-slim` is used as a
+plain shell runtime for the given path, and `restartPolicy` is `OnFailure`,
+which is what a batch pod needs. If a program should run on another image,
+that is a line the language does not yet read.
 
-The daily shape is fixed by the wording `every day at <time>`; a program that
-needs another cadence (hourly, weekly) has no line shape for it yet and would
-need a fresh mint.
+ONE THING IS BROKEN AND I DID NOT PAPER OVER IT. The shared grammar hands the
+schedule over already formatted as a systemd calendar expression
+(`*-*-* 03:00:00`). A CronJob accepts only five-field cron (`0 3 * * *`), and
+nothing in the rule grammar can split or reorder the time. Rule r2 therefore
+writes the calendar string straight into `spec.schedule`, which Kubernetes
+would reject, and it carries low confidence on purpose: gap
+`systemd-calendar-in-cron-world` says what the shared pattern must emit
+instead (hour and minute as separate facts) so every world can assemble its
+own schedule syntax. This mint should be refused until that is fixed.
 lips>>>
+

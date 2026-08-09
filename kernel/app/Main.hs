@@ -145,7 +145,7 @@ main = do
       -- grammar, or a re-mint could never change a pattern.
       forM_ (zip worlds (tails (goTarget go))) $ \(world, upcoming) -> do
         inherited <- inheritedGrammar upcoming (goFiles go)
-        generate world inherited (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+        generate world inherited (drop 1 upcoming) (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
@@ -679,11 +679,11 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- The inherited grammar, when there is one, is both an INPUT (the mint is told
 -- to reuse it, so it enters the prompt and the record) and a GUARD (what comes
 -- back is checked against it).
-generate :: World -> Maybe Text -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
+generate :: World -> Maybe Text -> [Text] -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
-generate _ _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate world inherited mschema confidence compat verbose mmodel thinking files@(rep : _) = do
+generate _ _ _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
+generate world inherited later mschema confidence compat verbose mmodel thinking files@(rep : _) = do
   let lang = languageName rep
   -- One language per invocation: the grammar is shared, so mixed extensions
   -- would mean two languages. Fail loud.
@@ -696,7 +696,7 @@ generate world inherited mschema confidence compat verbose mmodel thinking files
   progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
   -- Owner taste is language-level (shared); read once from the language path.
   direction <- tryRead (directionPath rep)
-  let prompt = promptWithDirection direction inherited world
+  let prompt = promptWithDirection direction inherited later world
       -- The mint sees the whole example set at once, so the grammar generalizes
       -- across them (anti-unification): tokens that vary between examples become
       -- holes, tokens that agree stay literal. One program is the corpus-of-one

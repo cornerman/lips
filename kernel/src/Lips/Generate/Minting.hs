@@ -156,6 +156,12 @@ directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 grammarDoc :: Text
 grammarDoc = T.pack $(embedStringFile "../assets/mint/grammar.md")
 
+-- | The wrapper telling a mint that other worlds follow it, so the grammar it
+-- writes is shared and must stay neutral. Appended only when a world actually
+-- follows, by the same rule as the two docs above.
+sharedDoc :: Text
+sharedDoc = T.pack $(embedStringFile "../assets/mint/shared.md")
+
 -- | The mint prompt for a target world: a world-steering preamble naming the
 -- option namespaces to emit into, then the world-neutral body. The preamble is
 -- the ONLY thing that differs per world; the body's grammar (patterns, rules,
@@ -188,9 +194,18 @@ contractList = T.unlines
 -- The inherited GRAMMAR rides in the same prompt, before the direction: a
 -- second world's mint may only append to what the first one wrote, so it has to
 -- see it. Absent on a first mint, and then the section is not there at all.
-promptWithDirection :: Maybe Text -> Maybe Text -> World -> Text
-promptWithDirection md mg w = systemPromptFor w <> section mg grammarDoc "{{GRAMMAR}}"
-                                                <> section md directionDoc "{{DIRECTION}}"
+--
+-- @later@ names the worlds this run mints AFTER this one. A mint that has
+-- successors is writing a grammar it does not own alone, and must be told:
+-- without that it bakes its own world's value syntax into the shared patterns
+-- (systemd calendar syntax, measured on the first live two-world mint), and the
+-- next world -- which cannot convert it, the value grammar having no
+-- computation -- can only refuse.
+promptWithDirection :: Maybe Text -> Maybe Text -> [Text] -> World -> Text
+promptWithDirection md mg later w =
+  systemPromptFor w <> section (Just (T.intercalate ", " later)) sharedDoc "{{WORLDS}}"
+                    <> section mg grammarDoc "{{GRAMMAR}}"
+                    <> section md directionDoc "{{DIRECTION}}"
   where
     -- Each doc carries the fixed wrapper text with a single placeholder line;
     -- substituting it (rather than building the wrapper as a Haskell literal)
