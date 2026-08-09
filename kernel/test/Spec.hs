@@ -2741,35 +2741,48 @@ main = hspec $ do
           lang gs = T.unlines ("# a comment" : "" : [line i g | (i, g) <- zip [1 ..] gs])
 
       it "accepts an engine every line of which names the record" $
-        stampFaults (Just rec) (lang [" @gen:" <> want, " @gen:" <> want]) `shouldBe` []
+        stampFaults [rec] (lang [" @gen:" <> want, " @gen:" <> want]) `shouldBe` []
 
       it "reports a line stamped with another event" $
-        stampFaults (Just rec) (lang [" @gen:" <> want, " @gen:0123456789abcdef"])
-          `shouldBe` [StaleStamp 4 "0123456789abcdef" want]
+        stampFaults [rec] (lang [" @gen:" <> want, " @gen:0123456789abcdef"])
+          `shouldBe` [StaleStamp 4 "0123456789abcdef" [want]]
 
       it "reports a minted line carrying no stamp at all" $
-        stampFaults (Just rec) (lang [" @gen:" <> want, ""])
-          `shouldBe` [Unstamped 4 want]
+        stampFaults [rec] (lang [" @gen:" <> want, ""])
+          `shouldBe` [Unstamped 4 [want]]
 
       -- A stamp naming a record that is not there vouches for nothing, which is
       -- exactly the state a re-hash is supposed to make impossible.
       it "reports a stamp with no record beside it" $
-        stampFaults Nothing (lang [" @gen:0123456789abcdef"])
+        stampFaults [] (lang [" @gen:0123456789abcdef"])
           `shouldBe` [OrphanStamp 3 "0123456789abcdef"]
 
       it "accepts a hand-written engine that claims no generation" $
-        stampFaults Nothing (lang ["", ""]) `shouldBe` []
+        stampFaults [] (lang ["", ""]) `shouldBe` []
+
+      -- A language is minted once per world, so the grammar's lines name
+      -- whichever mint wrote them and each world's rules name their own.
+      it "accepts a line stamped by ANY of the language's records" $ do
+        let recB = record "m" "kubenix" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+        stampFaults [rec, recB] (lang [" @gen:" <> want, " @gen:" <> genId recB])
+          `shouldBe` []
+
+      it "names every id available when a stamp matches none of them" $ do
+        let recB = record "m" "kubenix" "wh1" "github:o/r/aaa" "high" 0.7 "sp" "prog" "tt" "reply"
+        stampFaults [rec, recB] (lang [" @gen:0123456789abcdef"])
+          `shouldBe` [StaleStamp 3 "0123456789abcdef" [want, genId recB]]
 
       it "names the defect in the words the reader needs" $
         map renderStampFault
-            [ StaleStamp 4 "0123456789abcdef" "cafe0123cafe0123"
-            , Unstamped 7 "cafe0123cafe0123"
+            [ StaleStamp 4 "0123456789abcdef" ["cafe0123cafe0123"]
+            , Unstamped 7 ["cafe0123cafe0123", "beef0123beef0123"]
             , OrphanStamp 9 "0123456789abcdef" ]
           `shouldBe`
-            [ "line 4 is stamped @gen:0123456789abcdef, but the record beside it \
-              \hashes to cafe0123cafe0123"
+            [ "line 4 is stamped @gen:0123456789abcdef, but the records beside it \
+              \hash to cafe0123cafe0123"
             , "line 7 carries no @gen: stamp, so nothing says which generation \
-              \wrote it (the record beside it hashes to cafe0123cafe0123)"
+              \wrote it (the records beside it hash to cafe0123cafe0123, \
+              \beef0123beef0123)"
             , "line 9 is stamped @gen:0123456789abcdef, and there is no \
               \generation record beside it to name"
             ]

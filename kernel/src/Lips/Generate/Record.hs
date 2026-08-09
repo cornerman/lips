@@ -119,12 +119,12 @@ hashBytes = hex . BS.foldl' step offset
 -- | One engine line whose stamp does not name the generation record beside it.
 -- The line number is the @.lang@'s own, so a report points where the fix goes.
 data StampFault
-  = -- | The line names another event than the record hashes to: the stamp and
-    --   the id the record has.
-    StaleStamp Int Text Text
-  | -- | The line carries no stamp, while a record sits beside it.
-    Unstamped Int Text
-  | -- | The line names an event, and there is no record to name.
+  = -- | The line names an event none of the language's records hashes to: the
+    --   stamp it carries, then the ids that ARE available.
+    StaleStamp Int Text [Text]
+  | -- | The line carries no stamp, while records sit beside it.
+    Unstamped Int [Text]
+  | -- | The line names an event, and there is no record at all to name.
     OrphanStamp Int Text
   deriving (Eq, Show)
 
@@ -132,17 +132,23 @@ data StampFault
 -- its own @.generation@ hashes to. Deterministic, offline and domain-blind --
 -- it re-runs 'genId' over the record's bytes and compares.
 --
--- The record is a 'Maybe' because an engine may legitimately have none: a draft
--- lips materializes to judge, or a hand-written one. Then the rule inverts
--- rather than relaxing -- no line may claim a generation, since a stamp naming
--- a record that is not there vouches for nothing, which is the state the
+-- SEVERAL records, because a language is minted once per world: the shared
+-- grammar's lines name whichever mint wrote them, and each world's rules name
+-- their own. A line is sound when it names ONE of them, which is as strict as
+-- the single-record rule was -- every id still has to come from a record that
+-- re-hashes here.
+--
+-- The list may be empty, because an engine may legitimately have no record: a
+-- draft lips materializes to judge, or a hand-written one. Then the rule
+-- inverts rather than relaxing -- no line may claim a generation, since a stamp
+-- naming a record that is not there vouches for nothing, which is the state the
 -- re-hash exists to make impossible.
 --
 -- Lines that are not decisions at all (blank, comment, malformed) are skipped:
 -- 'Lips.Kernel.Lang.Store.readLang' is the door that refuses those, and one
 -- defect should be reported by one gate.
-stampFaults :: Maybe Text -> Text -> [StampFault]
-stampFaults mrec langText =
+stampFaults :: [Text] -> Text -> [StampFault]
+stampFaults recs langText =
   [ f
   | (n, t) <- zip [1 ..] (T.lines langText)
   , Right d <- [readDecision (T.strip t)]
@@ -152,21 +158,24 @@ stampFaults mrec langText =
     stampOf d = case dProv d of
       FromGeneration g -> Just g
       _                -> Nothing
-    fault n found = case (mrec, found) of
-      (Just rec, Just g) | g /= genId rec -> [StaleStamp n g (genId rec)]
-      (Just rec, Nothing)                 -> [Unstamped n (genId rec)]
-      (Nothing,  Just g)                  -> [OrphanStamp n g]
-      _                                   -> []
+    ids = map genId recs
+    fault n found = case (ids, found) of
+      ([], Just g)                      -> [OrphanStamp n g]
+      ([], Nothing)                     -> []
+      (_,  Just g) | g `notElem` ids    -> [StaleStamp n g ids]
+      (_,  Nothing)                     -> [Unstamped n ids]
+      _                                 -> []
 
 -- | One stamp fault in the words its reader needs: which line, what it claims,
 -- and what the record actually says.
 renderStampFault :: StampFault -> Text
 renderStampFault (StaleStamp n g want) =
   "line " <> T.pack (show n) <> " is stamped @gen:" <> g
-    <> ", but the record beside it hashes to " <> want
+    <> ", but the records beside it hash to " <> T.intercalate ", " want
 renderStampFault (Unstamped n want) =
   "line " <> T.pack (show n) <> " carries no @gen: stamp, so nothing says which \
-  \generation wrote it (the record beside it hashes to " <> want <> ")"
+  \generation wrote it (the records beside it hash to "
+    <> T.intercalate ", " want <> ")"
 renderStampFault (OrphanStamp n g) =
   "line " <> T.pack (show n) <> " is stamped @gen:" <> g
     <> ", and there is no generation record beside it to name"

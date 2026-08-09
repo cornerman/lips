@@ -526,7 +526,7 @@ assertStamps dir file = do
     ["so it cannot tell which generation wrote this engine."]
     "\8594 restore the file, or re-mint: lips generate <program>.")
   msrc <- tryRead (langPathIn dir file)
-  case stampFaults mrec <$> msrc of
+  case stampFaults (maybe [] (: []) mrec) <$> msrc of
     Just fs@(_ : _) -> die (report
       (T.pack (langPathIn dir file) <> " does not name the generation that wrote it:")
       (map renderStampFault fs)
