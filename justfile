@@ -82,6 +82,9 @@ test-draft:
       -outputdir /tmp/lips-build-cli -o /tmp/lips-cli'
     lips=/tmp/lips-cli
     tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    # generate states which worlds a draft is judged in; nothing is guessed.
+    export LIPS_MINT_WORLDS=nixos
+    export LIPS_MINT_PROGRAMS="$tmp/one.watch.lips"
     # The committed shape: a shared grammar at the language level, one world's
     # rules in its own folder. Hand-written, so no .generation beside them.
     mkdir -p "$tmp/watch/nixos"
@@ -129,8 +132,8 @@ test-draft:
     0.95 r1 match fact watch.interval => services.ngnix.port "<value:int>"
     EOF
     sed -i 's/^    //' "$tmp/badopt.txt"
-    export LIPS_MINT_SCHEMA="$PWD/kernel/test/fixtures/options-mini.json"
-    export LIPS_MINT_WORLD=nixos
+    export LIPS_MINT_SCHEMAS="nixos=$PWD/kernel/test/fixtures/options-mini.json"
+    export LIPS_MINT_WORLDS=nixos
     if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/badopt.txt" > "$tmp/out4" 2>&1; then
       echo "FAIL: --draft accepted an option that does not exist"; cat "$tmp/out4"; exit 1
     fi
@@ -146,6 +149,36 @@ test-draft:
     "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/goodopt.txt" > "$tmp/out5" 2>&1 \
       || { echo "FAIL: a sound, grounded draft was refused"; cat "$tmp/out5"; exit 1; }
     grep -q "contract: 1 check" "$tmp/out5" || { echo "FAIL: the expect gate did not run on the draft"; cat "$tmp/out5"; exit 1; }
+    # A draft for SEVERAL worlds: the patterns are shared, the rules are tagged,
+    # and every world is judged. This is what one mint answers with.
+    unset LIPS_MINT_SCHEMAS
+    export LIPS_MINT_WORLDS=nixos,home-manager
+    cat > "$tmp/two.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 r1 @nixos match fact watch.interval => systemd.services.w.environment.S "<value:int>"
+    0.95 r2 @home-manager match fact watch.interval => systemd.user.services.w.Service.Environment "\"S=<value>\""
+    EOF
+    sed -i 's/^    //' "$tmp/two.txt"
+    "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/two.txt" > "$tmp/out6" 2>&1 \
+      || { echo "FAIL: a sound two-world draft was refused"; cat "$tmp/out6"; exit 1; }
+    grep -q "world nixos" "$tmp/out6" || { echo "FAIL: nixos was not judged"; cat "$tmp/out6"; exit 1; }
+    grep -q "world home-manager" "$tmp/out6" || { echo "FAIL: home-manager was not judged"; cat "$tmp/out6"; exit 1; }
+    # The signal the whole one-call design exists for: a rule reading a part its
+    # pattern does not produce is named INSIDE the mint's own call, so the model
+    # can still fix the PATTERN. (The engine gate cannot judge this one: a
+    # one-part value's token count comes from the program, not the pattern, so
+    # it is refinement that names it -- which the draft path runs.)
+    cat > "$tmp/parts.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 r1 @nixos match fact watch.interval => systemd.services.w.environment.S "<value:int>"
+    0.95 r2 @home-manager match fact watch.interval => systemd.user.services.w.Service.Environment "\"S=<value.2>\""
+    EOF
+    sed -i 's/^    //' "$tmp/parts.txt"
+    if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/parts.txt" > "$tmp/out7" 2>&1; then
+      echo "FAIL: --draft accepted a rule reading a part that does not exist"; cat "$tmp/out7"; exit 1
+    fi
+    grep -q "<value.2> out of range" "$tmp/out7" \
+      || { echo "FAIL: the refusal did not name the missing part"; cat "$tmp/out7"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

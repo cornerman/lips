@@ -35,7 +35,10 @@ function required(name: string): string {
 }
 
 const bin = required("LIPS_BIN");
-const world = required("LIPS_MINT_WORLD");
+// Comma-separated: one call may mint for several worlds, and every lookup names
+// the one it is about. A world outside this list is refused rather than searched
+// in the wrong schema.
+const worlds = required("LIPS_MINT_WORLDS").split(",").filter(Boolean);
 // Newline-separated, supplied by generate: the model may not choose which
 // programs its draft is judged against, or it could validate against a corpus
 // that is not the one being minted.
@@ -49,20 +52,37 @@ export default function (pi: ExtensionAPI) {
     name: "query_options",
     label: "Options",
     description:
-      "Look up option paths and their types in the pinned schema of the target " +
-      "world. QUERY is a dotted prefix (browse a namespace) or any substring of " +
+      "Look up option paths and their types in the pinned schema of ONE world. " +
+      "WORLD is the world you are asking about. QUERY is a dotted prefix (browse a namespace) or any substring of " +
       "a path (find the namespace from a domain word, e.g. 'backup'). A narrow " +
       "query answers with exact 'path : type' lines; a broad one answers with the " +
       "namespaces holding the matches, the one with the most matches first, which " +
       "you then ask about by name. Every option your rules name must appear here, " +
       "or the mint is rejected.",
     parameters: Type.Object({
+      world: Type.String({
+        description: "Which world's schema to search. One of: " + worlds.join(", "),
+      }),
       query: Type.String({
         description: "A dotted option prefix, or any substring of a path.",
       }),
     }),
-    async execute(_toolCallId: string, params: { query: string }) {
-      const r = spawnSync(bin, ["options", "--target", world, params.query], {
+    async execute(_toolCallId: string, params: { world: string; query: string }) {
+      // Deduce-or-fail: a name outside this mint's worlds is a question lips
+      // cannot answer, and answering it from another world's schema is the
+      // confidently-wrong lookup this tool exists to prevent.
+      if (!worlds.includes(params.world)) {
+        return {
+          content: [{
+            type: "text",
+            text: `${params.world} is not a world this mint writes for. ` +
+              `Ask about one of: ${worlds.join(", ")}`,
+          }],
+          details: {},
+          isError: true,
+        };
+      }
+      const r = spawnSync(bin, ["options", "--target", params.world, params.query], {
         encoding: "utf8",
       });
       // On success the answer alone goes back. lips writes progress to stderr

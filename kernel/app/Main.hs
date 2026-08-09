@@ -91,7 +91,6 @@ import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText,
                                                 runCommands)
 import           Lips.World                     (World (..), parseWorld)
-import           Lips.World.Builtin             (builtinWorld)
 import           Lips.World.Resolve            (builtinNames, resolveWorld)
 import           Lips.Lsp.Server               (runLsp)
 
@@ -386,10 +385,6 @@ checkLoose contract claims mLangDir file = do
   -- set of records.
   assertStamps dir ws file
   forM ws $ \w -> do
-    -- Each world is judged on its own and says so, because the verdicts
-    -- genuinely differ: a line answered by one world's rules can stay open in
-    -- another's, and only the pattern half of the diagnosis is shared.
-    say ("world " <> w <> ":")
     r <- checkWorld contract claims dir w file program
     case r of
       Left why -> say why
@@ -404,6 +399,11 @@ checkLoose contract claims mLangDir file = do
 -- stays fatal -- reporting it once per world would repeat one defect N times.
 checkWorld :: Bool -> Bool -> FilePath -> Text -> FilePath -> Text -> IO (Either Text Realization)
 checkWorld contract claims dir w file program = do
+  -- Each world is judged on its own and says so, because the verdicts genuinely
+  -- differ: a line answered by one world's rules can stay open in another's, and
+  -- only the pattern half of the diagnosis is shared. Said here rather than at
+  -- the caller, so a draft judged in several worlds reads the same way.
+  say ("world " <> w <> ":")
   eng <- loadLangOrDie dir w file
   openQuestions <- step ("crystallize " <> T.pack file) $ do
     -- An engine unsound on its own terms makes every later verdict meaningless
@@ -484,69 +484,76 @@ checkDraft :: FilePath -> IO ()
 checkDraft file = do
   reply <- TIO.getContents
   -- Which contract governs is generate's rule, not this function's: it exports
-  -- the answer (the committed .expect on a regeneration, empty under --renew or
-  -- on a first mint) so the two cannot drift apart.
-  governing <- lookupEnv "LIPS_MINT_EXPECT" >>= \m -> case m of
-    Just p | not (null p) -> tryRead p
-    _                     -> pure Nothing
-  -- The world the draft is minted into decides where its rules go, so the
-  -- throwaway folder has the shape check reads: generate states it, and a draft
-  -- for a world lips cannot name is unjudgeable.
-  draftW <- wName <$> draftWorldOrDefault
-  withTempDir $ \root -> case materializeDraft root draftW file reply governing of
+  -- the answer per world (the committed .expect on a regeneration, absent under
+  -- --renew or on a first mint) so the two cannot drift apart.
+  governing <- envPairs "LIPS_MINT_EXPECTS" >>= \ps ->
+    fmap concat $ forM ps $ \(w, p) -> maybe [] (\t -> [(w, t)]) <$> tryRead p
+  -- The worlds the draft is minted for decide which folders it gets, so the
+  -- throwaway tree has the shape check reads. Named by generate, never guessed:
+  -- a draft judged in the wrong world's namespace is a false verdict.
+  ws <- draftWorlds
+  withTempDir $ \root -> case materializeDraft root (map wName ws) file reply governing of
     Left errs -> die (validationReport file ("the draft cannot be read as an engine:\n"
                         <> T.unlines [ "  - " <> e | e <- errs ]))
     Right t   -> do
-      createDirectoryIfMissing True (worldDirIn (dtLangDir t) (dtWorld t))
+      createDirectoryIfMissing True (dtLangDir t)
       TIO.writeFile (grammarPathIn (dtLangDir t) file) (dtGrammar t)
-      TIO.writeFile (rulesPathIn (dtLangDir t) (dtWorld t) file) (dtRules t)
-      TIO.writeFile (expectPathIn (dtLangDir t) (dtWorld t) file) (dtExpect t)
+      forM_ (dtWorlds t) $ \(w, rules, expect) -> do
+        createDirectoryIfMissing True (worldDirIn (dtLangDir t) w)
+        TIO.writeFile (rulesPathIn (dtLangDir t) w file) rules
+        TIO.writeFile (expectPathIn (dtLangDir t) w file) expect
       writeSources (artifactsPathIn (dtLangDir t) file) (dtSources t)
       -- The schema gate cannot live in check, which stays nixpkgs-free so a
       -- committed engine is judged offline. The draft path runs on the mint
-      -- side, where generate has already built a schema and hands over its
-      -- path, so it runs the gate itself: without it a draft naming an option
-      -- that does not exist would read as clean here and be refused by the
-      -- final gate, which is the false-green direction.
-      mschema <- lookupEnv "LIPS_MINT_SCHEMA"
-      case mschema of
+      -- side, where generate has already built every world's schema and hands
+      -- over the paths, so it runs the gate itself: without it a draft naming an
+      -- option that does not exist would read as clean here and be refused by
+      -- the final gate, which is the false-green direction.
+      schemas <- envPairs "LIPS_MINT_SCHEMAS"
+      forM_ ws $ \w -> case lookup (wName w) schemas of
         Just p | not (null p) -> do
-          world <- draftWorld
-          eng <- loadLangOrDie (dtLangDir t) (dtWorld t) file
-          assertOptionsAdmissible world p file eng
+          eng <- loadLangOrDie (dtLangDir t) (wName w) file
+          assertOptionsAdmissible w p file eng
         _ -> pure ()
-      -- One world, named rather than discovered: a draft folder holds no
-      -- .generation (a draft HAS no generation), so there is nothing to find by
-      -- looking, and generate already said which world it is minting into.
+      -- Every world the draft is for is judged, because the committed engine
+      -- will be judged in every one of them. A world the draft does not reach is
+      -- this draft's verdict, and fatal here: the model is still writing it.
       program <- readProgramOrDie file
-      -- A draft is judged for ONE world, so a world it does not reach is that
-      -- draft's whole verdict, and fatal here.
-      rl <- either die pure =<< checkWorld True False (dtLangDir t) (dtWorld t) file program
-      world <- draftWorldOrDefault
-      clauseClaimGate world file rl
+      forM_ ws $ \w -> do
+        rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
+        clauseClaimGate w file rl
       note "the command claim gate and the artifact build were NOT run"
 
--- | The draft's world where generate stated one, else the default. Used only
--- where a wrong guess is harmless (which flake shape a throwaway directory gets);
--- the schema gate keeps using 'draftWorld', which refuses to guess.
-draftWorldOrDefault :: IO World
-draftWorldOrDefault = do
-  mt <- lookupEnv "LIPS_MINT_WORLD"
-  pure (fromMaybe (fromMaybe (error "lips ships no nixos world") (builtinWorld "nixos"))
-                  (mt >>= builtinWorld . T.pack))
+-- | A @<name>=<value>@ list generate exports, one per line: the per-world
+-- schema paths and governing contracts. Absent or empty is the empty list.
+envPairs :: String -> IO [(Text, FilePath)]
+envPairs name = do
+  raw <- lookupEnv name
+  pure [ (T.pack k, drop 1 v)
+       | l <- maybe [] lines raw, not (null l)
+       , let (k, v) = break (== '=') l, not (null v) ]
 
--- | Which world a draft is grounded against. Read from the environment generate
--- controls, never defaulted: a silent default would ground a mint against the
--- wrong world's schema and report the wrong names as missing.
-draftWorld :: IO World
-draftWorld = do
-  mt <- lookupEnv "LIPS_MINT_WORLD"
-  case mt >>= builtinWorld . T.pack of
-    Just w  -> pure w
-    Nothing -> die (report
-      "lips can't check this draft: the world it is minted for is not stated."
-      ["LIPS_MINT_SCHEMA names a schema, but LIPS_MINT_WORLD is missing or not a world lips ships."]
+-- | Which worlds a draft is judged in. Read from the environment generate
+-- controls, never defaulted: a silent default would judge a draft against the
+-- wrong world's namespace and report the wrong names as missing.
+--
+-- A house world lips does not ship is resolved from the directory the draft's
+-- programs live in, exactly as generate resolved it, so a draft for a house
+-- world is judged by the same physics the mint aimed at.
+draftWorlds :: IO [World]
+draftWorlds = do
+  raw <- lookupEnv "LIPS_MINT_WORLDS"
+  progs <- lookupEnv "LIPS_MINT_PROGRAMS"
+  let names = maybe [] (T.splitOn "," . T.pack) raw
+      base = case maybe [] lines progs of
+               (f : _) -> takeDirectory f
+               []      -> "."
+  case names of
+    [] -> die (report
+      "lips can't check this draft: the worlds it is minted for are not stated."
+      ["LIPS_MINT_WORLDS is missing or empty."]
       "\8594 this is generate's to set; report it as a lips bug.")
+    _  -> mapM (resolveWorldOrDie base Nothing) (filter (not . T.null) names)
 
 -- | The behavioral gate: the committed @.expect@ contract against the realized
 -- module. Reached only after diagnostics confirm the program crystallizes.

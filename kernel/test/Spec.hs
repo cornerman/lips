@@ -5570,27 +5570,33 @@ main = hspec $ do
     -- resolveLangDir refuses a folder whose basename is not the language, so a
     -- draft that landed in the temp root itself could never be checked.
     it "puts the draft in a folder named after the language" $
-      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
+      case materializeDraft "/tmp/x" ["nixos"] "one.watch.lips" reply [] of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
         Right t -> dtLangDir t `shouldBe` "/tmp/x/watch"
 
     it "renders the draft as a .lang the ordinary reader accepts" $
-      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
+      case materializeDraft "/tmp/x" ["nixos"] "one.watch.lips" reply [] of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
-        Right t -> readLang (dtGrammar t <> dtRules t) `shouldSatisfy` isRight
+        Right t -> readLang (dtGrammar t <> T.concat [ r | (_, r, _) <- dtWorlds t ])
+                     `shouldSatisfy` isRight
 
     -- The shared grammar is the language's cross-world contract, so a draft is
-    -- split the same way a committed engine is: patterns above, one world's
-    -- lowering below.
-    it "materializes a draft as a shared grammar plus one world's rules" $
-      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
+    -- split the same way a committed engine is: patterns above, each world's
+    -- lowering in its own folder.
+    it "materializes a draft as a shared grammar plus one folder per world" $ do
+      let two = T.unlines
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
+            , "0.95 r1 @nixos match fact watch.interval => systemd.services.w.environment.S \"<value:int>\""
+            , "0.95 r2 @kubenix match fact watch.interval => a.b \"<value:int>\"" ]
+      case materializeDraft "/tmp/x" ["nixos", "kubenix"] "one.watch.lips" two [] of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
         Right t -> do
-          dtWorld t `shouldBe` "nixos"
+          [ w | (w, _, _) <- dtWorlds t ] `shouldBe` ["nixos", "kubenix"]
           dtGrammar t `shouldSatisfy` T.isInfixOf "lang.pattern.p1"
           dtGrammar t `shouldNotSatisfy` T.isInfixOf "engine.rule.r1"
-          dtRules t `shouldSatisfy` T.isInfixOf "engine.rule.r1"
-          dtRules t `shouldNotSatisfy` T.isInfixOf "lang.pattern.p1"
+          [ r | ("nixos", r, _) <- dtWorlds t ] `shouldSatisfy` all (T.isInfixOf "engine.rule.r1")
+          [ r | ("nixos", r, _) <- dtWorlds t ] `shouldSatisfy` all (not . T.isInfixOf "engine.rule.r2")
+          [ r | ("kubenix", r, _) <- dtWorlds t ] `shouldSatisfy` all (T.isInfixOf "engine.rule.r2")
 
     it "splits a rendered engine by subject, losing no line" $ do
       let src = T.unlines
@@ -5605,17 +5611,17 @@ main = hspec $ do
     -- the model its own freshly written promises would always pass and the real
     -- gate would then refuse: a false green is worse than no tool.
     it "writes the governing contract, not the draft's own, when one is given" $
-      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply (Just "the committed contract") of
+      case materializeDraft "/tmp/x" ["nixos"] "one.watch.lips" reply [("nixos", "the committed contract")] of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
-        Right t -> dtExpect t `shouldBe` "the committed contract"
+        Right t -> [ e | (_, _, e) <- dtWorlds t ] `shouldBe` ["the committed contract"]
 
     it "falls back to the draft's own expects, which is a first mint" $
-      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" reply Nothing of
+      case materializeDraft "/tmp/x" ["nixos"] "one.watch.lips" reply [] of
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
-        Right t -> dtExpect t `shouldSatisfy` T.isInfixOf "watch.interval"
+        Right t -> [ e | (_, _, e) <- dtWorlds t ] `shouldSatisfy` all (T.isInfixOf "watch.interval")
 
     it "reports the parse errors of an unreadable draft rather than guessing" $
-      case materializeDraft "/tmp/x" "nixos" "one.watch.lips" "not an engine line" Nothing of
+      case materializeDraft "/tmp/x" ["nixos"] "one.watch.lips" "not an engine line" [] of
         Left es -> es `shouldNotBe` []
         Right _ -> expectationFailure "an unreadable draft must not materialize"
 

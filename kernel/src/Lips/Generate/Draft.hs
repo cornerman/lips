@@ -20,7 +20,7 @@ module Lips.Generate.Draft
 import           Data.Text (Text)
 import qualified Data.Text as T
 
-import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile, assemble, expectsOf,
+import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile, assemble, expectsOf, itemsFor,
                                          parseEngineCandidates, sourcesOf)
 import           Lips.Identity          (languageName)
 import           Lips.Kernel.Expect     (renderExpect)
@@ -33,10 +33,11 @@ import           System.FilePath        ((</>))
 -- draft reads them, and a draft has no generation to record.
 data DraftTree = DraftTree
   { dtLangDir :: FilePath     -- ^ the folder to point check at
-  , dtWorld   :: Text         -- ^ the world this draft is minted into
   , dtGrammar :: Text         -- ^ the shared grammar, at the language level
-  , dtRules   :: Text         -- ^ this world's lowering, inside its folder
-  , dtExpect  :: Text         -- ^ the GOVERNING contract (see 'materializeDraft')
+  -- | One entry per world the draft is for: its rules and the contract that
+  -- governs it. A draft covers every world its mint writes for, because that is
+  -- what the committed engine will cover.
+  , dtWorlds  :: [(Text, Text, Text)]
   , dtSources :: [SourceFile] -- ^ the baked source tree, staged under artifacts/
   }
 
@@ -53,20 +54,21 @@ data DraftTree = DraftTree
 --
 -- The folder is NAMED after the language, because 'Lips.Identity.resolveLangDir'
 -- refuses a folder whose basename is not the program's language.
-materializeDraft :: FilePath -> Text -> FilePath -> Text -> Maybe Text -> Either [Text] DraftTree
-materializeDraft root world file reply governing = case parseEngineCandidates [world] reply of
+materializeDraft :: FilePath -> [Text] -> FilePath -> Text -> [(Text, Text)] -> Either [Text] DraftTree
+materializeDraft root worlds file reply governing = case parseEngineCandidates worlds reply of
   (errs@(_ : _), _) -> Left errs
   ([], cands) ->
     let items = map icItem cands
         -- A draft has no generation id to stamp with, and says so in the
         -- provenance rather than inventing one that would not re-hash.
-        (grammar, rules) = splitEngine (renderLang (FromSource (SourceLoc "draft" 0)) (assemble items))
+        rendered w = splitEngine (renderLang (FromSource (SourceLoc "draft" 0))
+                                             (assemble (itemsFor w cands)))
+        contractOf w items' = maybe (renderExpect (expectsOf items')) id (lookup w governing)
      in Right DraftTree
           { dtLangDir = root </> languageName file
-          , dtWorld   = world
-          , dtGrammar = grammar
-          , dtRules   = rules
-          , dtExpect  = maybe (renderExpect (expectsOf items)) id governing
+          -- Any world renders the same grammar: the patterns are shared.
+          , dtGrammar = T.concat (take 1 [ fst (rendered w) | w <- worlds ])
+          , dtWorlds  = [ (w, snd (rendered w), contractOf w (itemsFor w cands)) | w <- worlds ]
           , dtSources = sourcesOf items
           }
 
