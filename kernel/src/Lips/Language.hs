@@ -18,14 +18,44 @@
 module Lips.Language
   ( mintedWorlds
   , grammarIsFrozen
+  , orphanIgnores
   ) where
 
 import           Control.Monad    (filterM)
 import           Data.List        (sort)
+import           Data.Maybe       (isJust)
 import           Data.Text        (Text)
 import qualified Data.Text        as T
 import           Lips.Identity    (rulesPathIn, worldDirIn)
+import           Lips.Kernel.Capture      (matchSubject)
+import           Lips.Kernel.Engine.Data   (IgnoreSpec (..), MapRule (..), renderAttrPath)
+import           Lips.Kernel.Lang.Store    (EngineData (..))
 import           System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+
+-- | The ignore declarations no world of the language places: (world, id,
+-- subject). Empty is the sound case.
+--
+-- This is what keeps @ignore@ from being an escape hatch. A world may declare a
+-- fact it cannot place, but only where ANOTHER world spends it: then the
+-- declaration records a real asymmetry between two lowerings. A fact NO world
+-- places is a word the program states and the language throws away, which is
+-- the refusal it has always been, and an @ignore@ must not launder it.
+--
+-- It lives here rather than in the kernel's engine gate because it is a property
+-- OF A LANGUAGE ACROSS ITS WORLDS: no single engine can see it, and it only
+-- became checkable when one mint began writing every world at once.
+orphanIgnores :: [(Text, EngineData)] -> [(Text, Text, Text)]
+orphanIgnores worlds =
+  [ (w, igId ig, renderAttrPath (igSubject ig))
+  | (w, eng) <- worlds, ig <- edIgnores eng, not (placedSomewhere ig) ]
+  where
+    placedSomewhere ig = any (placesIt ig) [ r | (_, eng) <- worlds, r <- edRules eng ]
+    -- The same matching a rule does, both ways round, so a family placed by a
+    -- family counts: `ignore fact pkg.<name>` is placed by a rule matching
+    -- `fact pkg.<name>`, and by one matching `fact pkg.htop`.
+    placesIt ig r = mrKind r == igKind ig
+                      && (isJust (matchSubject (mrSubject r) (igSubject ig))
+                            || isJust (matchSubject (igSubject ig) (mrSubject r)))
 
 -- | May a mint still change the shared grammar, given the worlds a language
 -- already holds and the worlds a run is still going to mint (the current one

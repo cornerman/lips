@@ -75,7 +75,7 @@ import Lips.Kernel.Source
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
-import Lips.Language               (grammarIsFrozen, mintedWorlds)
+import Lips.Language               (grammarIsFrozen, mintedWorlds, orphanIgnores)
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -5193,6 +5193,20 @@ main = hspec $ do
     it "refuses a changed pattern, naming it" $
       sharedFileViolations g (T.replace "\"a\"" "\"b\"" g) committed kept
         `shouldSatisfy` any (T.isInfixOf "p1")
+
+  -- The guard that keeps `ignore` from becoming an escape hatch: a world may
+  -- drop a fact only where another world spends it.
+  describe "an ignore must be placed somewhere (Lips.Language.orphanIgnores)" $ do
+    let ignores   = engineFromLang [ "0.9 i1 ignore fact job.image \"no image here\"" ]
+        places    = engineFromLang [ "0.9 r1 match fact job.image => a.b \"<value:int>\"" ]
+        elsewhere = engineFromLang [ "0.9 r1 match fact job.name => a.b \"<value:int>\"" ]
+    it "accepts an ignore whose fact another world places" $
+      orphanIgnores [("nixos", ignores), ("kubenix", places)] `shouldBe` []
+    it "refuses an ignore no world places, naming the world and the subject" $
+      orphanIgnores [("nixos", ignores), ("kubenix", elsewhere)]
+        `shouldBe` [("nixos", "i1", "job.image")]
+    it "refuses an ignore in a language with one world, which places nothing else" $
+      orphanIgnores [("nixos", ignores)] `shouldBe` [("nixos", "i1", "job.image")]
 
   describe "a language's worlds (Lips.Language)" $ do
     let withDir act = do

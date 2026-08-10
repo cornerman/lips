@@ -52,7 +52,7 @@ import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
-import           Lips.Language                 (grammarIsFrozen, mintedWorlds)
+import           Lips.Language                 (grammarIsFrozen, mintedWorlds, orphanIgnores)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
@@ -392,6 +392,10 @@ checkLoose contract claims mLangDir file = do
   -- because the grammar and every world's rules are stamped against the same
   -- set of records.
   assertStamps dir ws file
+  -- A property of the LANGUAGE, not of one world: a world may declare a fact it
+  -- cannot place only where another world spends it. Judged once, over every
+  -- world's engine, before any verdict about a single world.
+  assertIgnoresPlaced dir ws file
   forM ws $ \w -> do
     r <- checkWorld contract claims dir w file program
     case r of
@@ -601,6 +605,22 @@ expectGate contract claims dir w file eng program rl = do
     world <- readRecordedWorld dir w file
     claimGate world dir file rl
   pure rl
+
+-- | Invariant behind the @ignore@ declaration: every fact a world drops is
+-- placed by some world of the same language. A fact NOBODY places is a word the
+-- program states and the language throws away, and a declaration must not
+-- launder that into silence.
+assertIgnoresPlaced :: FilePath -> [Text] -> FilePath -> IO ()
+assertIgnoresPlaced dir ws file = do
+  engines <- forM ws (\w -> (,) w <$> loadLangOrDie dir w file)
+  case orphanIgnores engines of
+    []  -> pure ()
+    bad -> die (report
+      (T.pack file <> ": " <> plural (length bad) "fact"
+        <> " a world says it cannot place, and no world of this language places:")
+      [ w <> " ignores " <> subj <> " (" <> i <> ")" | (w, i, subj) <- bad ]
+      ("\8594 place it in the world that needs it, or drop the line from "
+        <> T.pack file <> ": an ignored fact must be spent somewhere."))
 
 -- | Load and parse one world's engine: the shared grammar plus that world's
 -- rules, read as the concatenation they are rendered from. Fails loud naming
@@ -843,6 +863,23 @@ generate worlds inherited mschema confidence compat verbose mmodel thinking file
                 ("\8594 re-mint every world together, so they agree: lips generate"
                   <> T.concat [ " -t " <> w | w <- held ++ [ w | w <- wnames, w `notElem` held ] ]
                   <> " " <> T.pack rep))
+      -- The cross-world invariant, before any per-world gate: a fact a world
+      -- declares it cannot place must be placed by some world of the language.
+      -- The reply's worlds plus the committed engines of worlds this run does not
+      -- re-mint, so a single-world mint is held to the same rule as a joint one.
+      committedElsewhere <- do
+        allWorlds <- mintedWorlds dir rep
+        forM [ w | w <- allWorlds, w `notElem` wnames ] $ \w ->
+          (,) w <$> loadLangOrDie dir w rep
+      case orphanIgnores ([ (w, assemble (itemsFor w candidates)) | w <- wnames ]
+                            ++ committedElsewhere) of
+        []  -> pure ()
+        bad -> die (report
+          (T.pack rep <> ": " <> plural (length bad) "fact"
+            <> " a world says it cannot place, and no world of this language places:")
+          [ w <> " ignores " <> subj <> " (" <> i <> ")" | (w, i, subj) <- bad ]
+          ("\8594 place it in the world that needs it, or mint again without the"
+            <> " declaration: an ignored fact must be spent somewhere."))
       -- Every world is gated on its own engine (the shared grammar plus its own
       -- rules) and answers for itself: a world that cannot serve the program
       -- fails alone, and the worlds that hold are still written.
