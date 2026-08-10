@@ -38,9 +38,9 @@ import qualified Data.Map.Strict as Map
 import           Data.Text  (Text)
 import qualified Data.Text  as T
 
-import Lips.Kernel.Engine.Data     (DemandSpec (..), MapRule (..), MergeSpec (..),
-                             parseDemandBody, parseMergeBody, parseRuleBody,
-                             renderDemandBody, renderMergeBody, renderRuleBody)
+import Lips.Kernel.Engine.Data     (DemandSpec (..), IgnoreSpec (..), MapRule (..), MergeSpec (..),
+                             parseDemandBody, parseIgnoreBody, parseMergeBody, parseRuleBody,
+                             renderDemandBody, renderIgnoreBody, renderMergeBody, renderRuleBody)
 import Lips.Kernel.Engine.Value    (parseHoleType)
 import Lips.Kernel.Surface  (breakLastOutsideQuotes, quoteText, splitOutsideQuotes)
 import qualified Lips.Kernel.Surface as Q
@@ -59,6 +59,10 @@ data EngineData = EngineData
   , edMerges   :: [MergeSpec]
     -- ^ per-option aggregation choice (set or list); empty means every list
     -- option is a set, the default reading.
+  , edIgnores  :: [IgnoreSpec]
+    -- ^ the facts THIS world cannot place, each with the reason. Empty for a
+    -- language whose every world lowers everything, which is every engine
+    -- written before the declaration existed.
   }
   deriving (Eq, Show)
 
@@ -73,11 +77,13 @@ renderLang prov ed =
       ++ map ruleToDecision (sortOn mrId (edRules ed))
       ++ map demandToDecision (sortOn dsId (edDemands ed))
       ++ map mergeToDecision (sortOn mgId (edMerges ed))
+      ++ map ignoreToDecision (sortOn igId (edIgnores ed))
   where
     stamp d = d { dProv = prov }
 
 -- | One classified engine line: which group a @.lang@ decision belongs to.
 data EngLine = ELPat Pattern | ELRule MapRule | ELDem DemandSpec | ELMerge MergeSpec
+             | ELIgnore IgnoreSpec
 
 -- | Read an engine from @.lang@ text in one line-aware pass, so every error
 -- (envelope or body sub-grammar) names its real source line, not line 0.
@@ -108,6 +114,7 @@ readLang src =
                , edRules    = sortOn mrId [r | (_, ELRule r) <- oks]
                , edDemands  = sortOn dsId [q | (_, ELDem q)  <- oks]
                , edMerges   = sortOn mgId [m | (_, ELMerge m) <- oks]
+               , edIgnores  = sortOn igId [i | (_, ELIgnore i) <- oks]
                }
         else Left (errs ++ nestErrs)
   where
@@ -134,9 +141,11 @@ classify n d = case dSubject d of
   Subject ["engine", "rule", i]    -> tag ELRule (parseRuleBody   i body)
   Subject ["engine", "demand", i]  -> tag ELDem  (parseDemandBody i body)
   Subject ["engine", "merge", i]    -> tag ELMerge (parseMergeBody i body)
+  Subject ["engine", "ignore", i]   -> tag ELIgnore (parseIgnoreBody i body)
   Subject segs -> Left (ParseError n
     ("unrecognized engine line (subject " <> T.intercalate "." segs
-      <> "): a .lang carries only lang.pattern.*, engine.rule.*, engine.demand.*"))
+      <> "): a .lang carries only lang.pattern.*, engine.rule.*, engine.demand.*,"
+      <> " engine.merge.*, engine.ignore.*"))
   where
     body = case dAssertion d of Assertion a -> a
     tag f = either (Left . ParseError n) (Right . f)
@@ -148,6 +157,10 @@ ruleToDecision r = metaDecision (mrId r) ["engine", "rule", mrId r] (renderRuleB
 -- | Turn a merge declaration into its canonical @meta@ decision.
 mergeToDecision :: MergeSpec -> Decision
 mergeToDecision m = metaDecision (mgId m) ["engine", "merge", mgId m] (renderMergeBody m)
+
+-- | Turn an ignore declaration into its canonical @meta@ decision.
+ignoreToDecision :: IgnoreSpec -> Decision
+ignoreToDecision i = metaDecision (igId i) ["engine", "ignore", igId i] (renderIgnoreBody i)
 
 -- | Turn a demand into its canonical @meta@ decision.
 demandToDecision :: DemandSpec -> Decision

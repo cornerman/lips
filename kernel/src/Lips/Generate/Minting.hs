@@ -47,8 +47,8 @@ import qualified Data.Text.Read  as TR
 import           Data.FileEmbed  (embedStringFile)
 import qualified System.FilePath as FP
 
-import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), MapRule (..), MergeSpec,
-                                     parseDemandBody, parseMergeBody, parseRuleBody)
+import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), IgnoreSpec, MapRule (..), MergeSpec,
+                                     parseDemandBody, parseIgnoreBody, parseMergeBody, parseRuleBody)
 import Lips.Kernel.Engine.Value     (valueRefsDerivation)
 import Lips.Generate.Harness (Confidence (..))
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
@@ -94,6 +94,9 @@ data EngineItem
   -- | How one list-typed option aggregates several lines' contributions (set or
   -- list); absent means set, the default reading.
   | ItemMerge MergeSpec
+  -- | A fact THIS world cannot place, declared with the reason rather than left
+  -- silent. World-bound like a rule: it is a statement about one lowering.
+  | ItemIgnore IgnoreSpec
   | ItemExpect Expect
   | ItemSource SourceFile
   -- | A plain-language reason a low-confidence item is unsure. Carries no
@@ -123,6 +126,7 @@ carriesEngineMeaning i = case i of
   ItemRule _    -> True
   ItemDemand _  -> True
   ItemMerge _   -> True
+  ItemIgnore _  -> True
   ItemExpect _  -> True
   ItemSource _  -> True
 
@@ -363,7 +367,7 @@ prose l = not (isConfidence firstTok) && not (any (`elem` keywords) (take 3 toks
       Right (_, rest) -> T.null rest
       Left _          -> False
     keywords :: [Text]
-    keywords = ["pattern", "match", "merge", "demand", "expect", "because"]
+    keywords = ["pattern", "match", "merge", "demand", "ignore", "expect", "because"]
 
 closeMarker :: Text
 closeMarker = "lips>>>"
@@ -411,6 +415,7 @@ assemble items =
     , edRules    = [r | ItemRule r <- items]
     , edDemands  = [q | ItemDemand q <- items]
     , edMerges   = [m | ItemMerge m <- items]
+    , edIgnores  = [i | ItemIgnore i <- items]
     }
 
 -- | The minted behavioral contract (the @.expect@ artifact).
@@ -523,10 +528,11 @@ parseLine worlds line = do
     "match"   -> ItemRule    <$> located (parseRuleBody   idTok body)
     "demand"  -> ItemDemand  <$> located (parseDemandBody idTok body)
     "merge"   -> ItemMerge   <$> located (parseMergeBody  idTok body)
+    "ignore"  -> ItemIgnore  <$> located (parseIgnoreBody idTok body)
     "expect"  -> ItemExpect  <$> located (parseExpectBody idTok body)
     "because" -> ItemNote    <$> located (parseNoteBody body)
     other     -> Left ("unknown item kind '" <> other
-                        <> "' (want pattern|match|merge|demand|expect|because) in: "
+                        <> "' (want pattern|match|merge|demand|ignore|expect|because) in: "
                         <> line)
   -- Deduce-or-fail on the tag, once the kind is known: a shared item may not
   -- claim a world, a world-bound item may not name one this mint does not
@@ -568,6 +574,7 @@ parseLine worlds line = do
       ItemRule _    -> "rule"
       ItemDemand _  -> "demand"
       ItemMerge _   -> "merge"
+      ItemIgnore _  -> "ignore"
       ItemExpect _  -> "expect"
     afterKeyword = T.stripStart . T.drop (T.length ("pattern" :: Text)) . T.stripStart
 

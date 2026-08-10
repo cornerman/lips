@@ -32,6 +32,9 @@ module Lips.Kernel.Engine.Data
   ( MapRule (..)
   , Emit (..)
   , DemandSpec (..)
+  , IgnoreSpec (..)
+  , parseIgnoreBody
+  , renderIgnoreBody
   , toRule
   , bindSelf
   , toDemand
@@ -88,6 +91,45 @@ data DemandSpec = DemandSpec
   , dsQuestion :: Text
   }
   deriving (Eq, Show)
+
+-- | A fact this world's rules cannot place, declared rather than left silent.
+-- One world of a language may have no meaning for something another world needs
+-- (a container image is a pod's, and a machine that runs the script directly has
+-- no image), and 'Lips.Kernel.Run.runGround' would otherwise refuse the program
+-- for stating a fact nothing here places.
+--
+-- The REASON is required, and that is the whole point of the construct: it is
+-- the sentence a human reviews, in the file that drops the fact. A declaration
+-- without one would be a silent drop with extra steps.
+--
+-- The subject may be a family (@pkg.\<name\>@), matched by
+-- 'Lips.Kernel.Capture.matchSubject' exactly as a rule's or a demand's is.
+data IgnoreSpec = IgnoreSpec
+  { igId      :: Text
+  , igKind    :: Kind
+  , igSubject :: [Text]
+  , igReason  :: Text
+  }
+  deriving (Eq, Show)
+
+renderIgnoreBody :: IgnoreSpec -> Text
+renderIgnoreBody ig =
+  "ignore " <> kindText (igKind ig) <> " " <> renderAttrPath (igSubject ig)
+    <> " " <> quoteText (igReason ig)
+
+parseIgnoreBody :: Text -> Text -> Either Text IgnoreSpec
+parseIgnoreBody iid body = do
+  afterKw <- note (pre <> "expected 'ignore '") (T.stripPrefix "ignore " body)
+  (kindTok, r1) <- firstTok afterKw "ignore needs '<kind> <subject> \"<reason>\"'"
+  (subjTok, r2) <- firstTok r1 "ignore needs '<kind> <subject> \"<reason>\"'"
+  kind <- parseKindTok pre kindTok
+  reason <- parseQuoted pre r2
+  IgnoreSpec iid kind <$> splitAttrPath subjTok <*> pure reason
+  where
+    pre = "ignore " <> iid <> ": "
+    firstTok t msg = case T.words t of
+      (w : _) -> Right (w, T.stripStart (T.drop (T.length w) (T.stripStart t)))
+      []      -> Left (pre <> msg)
 
 -- | How a list-typed option AGGREGATES the contributions of several program
 -- lines. Two readings exist in the target world and the kernel cannot tell them

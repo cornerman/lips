@@ -2534,7 +2534,7 @@ main = hspec $ do
       -- Before blocks, the two host headers were reported "decorative, realizing
       -- nothing -- editing these changes no output", which was false: their word
       -- keys every option their items realize.
-      let eng = EngineData [host, route] [] [] []
+      let eng = EngineData [host, route] [] [] [] []
           src = T.unlines
             [ "host shop.example.com:", "- / proxies to http://localhost:3000."
             , "host blog.example.com:", "- / proxies to http://localhost:4000." ]
@@ -2659,6 +2659,7 @@ main = hspec $ do
                   [ Emit ["services", "x", "enable"] (VBool True) ] ]
           , edDemands = [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?" ]
           , edMerges  = [ MergeSpec "m1" ["environment", "systemPackages"] True ]
+          , edIgnores = []
           }
 
     it "round-trips the whole engine: readLang . renderLang == Right" $
@@ -2688,7 +2689,7 @@ main = hspec $ do
     it "round-trips a struct hole through the .lang" $ do
       let ed = EngineData
             [patOne "p1" [TLit "-", TMulti "s"] Fact
-               [SLit "step.", SHole "n:index", SLit ".command"] [SHole "s"]] [] [] []
+               [SLit "step.", SHole "n:index", SLit ".command"] [SHole "s"]] [] [] [] []
       readLang (renderLang (FromGeneration "cafe0123") ed) `shouldBe` Right ed
 
     it "round-trips a pattern that names the pattern it nests under" $ do
@@ -2702,12 +2703,12 @@ main = hspec $ do
                     [ PatEmit Fact
                         [SLit "host.", SHole "domain", SLit ".route.", SHole "path", SLit ".proxy"]
                         [SHole "up"] ]
-          ed = EngineData [host, route] [] [] []
+          ed = EngineData [host, route] [] [] [] []
       readLang (renderLang (FromGeneration "cafe0123") ed) `shouldBe` Right ed
 
     it "stores the parent in the pattern's subject path" $
       renderLang (FromGeneration "cafe0123")
-        (EngineData [patUnder "p3" "p2" [TLit "x"] [PatEmit Concept [SLit "a"] [SLit "b"]]] [] [] [])
+        (EngineData [patUnder "p3" "p2" [TLit "x"] [PatEmit Concept [SLit "a"] [SLit "b"]]] [] [] [] [])
         `shouldSatisfy` T.isInfixOf "lang.pattern.p3.under.p2"
 
     it "reads a qualified pattern id at the mint door" $
@@ -3001,7 +3002,7 @@ main = hspec $ do
               [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
               , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
               ]
-          , edMerges = []
+          , edMerges = [], edIgnores = []
           }
         loose loc sched = T.unlines
           [ "the bank drops csv files into " <> loc <> "."
@@ -3062,7 +3063,7 @@ main = hspec $ do
               [ DemandSpec "q1" ["feed", "source"] "where do the files arrive?"
               , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
               ]
-          , edMerges = []
+          , edMerges = [], edIgnores = []
           }
 
     it "reports a matched line with the pattern it used and the decision it yields" $ do
@@ -3103,7 +3104,7 @@ main = hspec $ do
       let engT = EngineData
             { edPatterns = [ patOne "p2" [TLit "stored", TLit "in", THole "path"]
                                Fact [SLit "habit.log"] [SHole "path"] ]
-            , edRules = [], edDemands = [], edMerges = [] }
+            , edRules = [], edDemands = [], edMerges = [], edIgnores = [] }
           d = diagnose "f" engT "stored in /tmp/habits.tsv"
       diagMatched d `shouldBe` 1
       parseTplTok "<path:path>" `shouldBe` THole "path"
@@ -3129,7 +3130,7 @@ main = hspec $ do
                             [ Emit ["environment", "etc", "builder", "text"]
                                    (VStr [PLit "buildGoModule"]) ] ]
             , edDemands = []
-            , edMerges = []
+            , edMerges = [], edIgnores = []
             }
       diagDropped (diagnose "f" engD "write the server in go")
         `shouldBe` [(1, "write the server in go", ["lang"])]
@@ -3147,7 +3148,7 @@ main = hspec $ do
             , edRules = [ MapRule "r3" Fact ["http", "port"]
                             [ Emit ["services", "x", "port"] (VHole HInt "value") ] ]
             , edDemands = []
-            , edMerges = []
+            , edMerges = [], edIgnores = []
             }
           d = diagnose "f" engC "serve 8080 for admins"
       -- the line is NOT inert (its other word reaches an option) ...
@@ -3172,7 +3173,7 @@ main = hspec $ do
                             [ Emit ["services", "nginx", "virtualHosts", "<d>", "locations", "<p>", "proxyPass"]
                                    (VStr [PHole "value"]) ] ]
             , edDemands = []
-            , edMerges = []
+            , edMerges = [], edIgnores = []
             }
       diagDecorative (diagnose "f" engH "host shop.example.com\n- /api proxies to http://x")
         `shouldBe` []
@@ -3190,7 +3191,7 @@ main = hspec $ do
                         , MapRule "r4" Fact ["http", "owner"]
                             [ Emit ["services", "x", "user"] (VStr [PHole "value"]) ] ]
             , edDemands = []
-            , edMerges = []
+            , edMerges = [], edIgnores = []
             }
       diagDecorative (diagnose "f" engK "serve 8080 for admins") `shouldBe` []
 
@@ -3203,7 +3204,7 @@ main = hspec $ do
                             [ Emit ["environment", "etc", "builder", "text"]
                                    (VStr [PHole "value"]) ] ]
             , edDemands = []
-            , edMerges = []
+            , edMerges = [], edIgnores = []
             }
       diagDropped (diagnose "f" engK "write the server in go") `shouldBe` []
 
@@ -3306,7 +3307,7 @@ main = hspec $ do
                 , MapRule "r4" Fact ["backup", "retention"]
                     [ Emit ["services", "x", "pruneOpts"] (tval "[ <value.1:int> \"<value.2>\" ]") ]
                 ]
-            , edDemands = [], edMerges = []
+            , edDemands = [], edMerges = [], edIgnores = []
             }
 
       it "names the type in the label and in the detail" $
@@ -3355,7 +3356,7 @@ main = hspec $ do
                 [ MapRule "r1" Fact ["server", "port"]
                     [ Emit ["networking", "firewall", "allowedTCPPorts"] (tval "[ <value:int> ]")
                     , Emit ["artifact", "<self>", "fill", "port"] (tval "\"<value>\"") ] ]
-            , edDemands = [], edMerges = []
+            , edDemands = [], edMerges = [], edIgnores = []
             }
           hoverOn src n = hoverAt engH "hello" (diagnose "f" engH src) n
 
@@ -3397,7 +3398,7 @@ main = hspec $ do
                                Fact [SLit "http.port"] [SHole "port"] ]
             , edRules = [ MapRule "r1" Fact ["http", "port"]
                             [ Emit ["services", "nginx", "listenPort"] (tval "<value:int>") ] ]
-            , edDemands = [], edMerges = []
+            , edDemands = [], edMerges = [], edIgnores = []
             }
 
       it "names the line, the rule and the complaint" $
@@ -3944,7 +3945,7 @@ main = hspec $ do
               ]
           , edRules = []
           , edDemands = []
-          , edMerges = []
+          , edMerges = [], edIgnores = []
           }
         prog = "keep every field\ninstall it as tool"
         d = diagnose "f" engC prog
@@ -5113,6 +5114,26 @@ main = hspec $ do
   -- re-minting them all may only add to it. Without this, a second world's mint
   -- replaced the shared artifacts/ tree wholesale and deleted the source the
   -- first world's rules point at.
+  -- A world may have no meaning for a fact another world needs. It says so, with
+  -- the reason, in its own rules; silence would be the same drop with nothing to
+  -- review.
+  describe "a world declares what it cannot place (engine.ignore)" $ do
+    it "round-trips an ignore declaration through the engine format" $ do
+      let src = "i1 meta engine.ignore.i1 stated \"ignore fact job.image \\\"no image on a machine\\\"\"\n"
+      case readLang src of
+        Left es  -> expectationFailure (show es)
+        Right ed -> do
+          map igId (edIgnores ed) `shouldBe` ["i1"]
+          map igSubject (edIgnores ed) `shouldBe` [["job", "image"]]
+          map igReason (edIgnores ed) `shouldBe` ["no image on a machine"]
+          map igKind (edIgnores ed) `shouldBe` [Fact]
+          renderLang (FromSource (SourceLoc "lang" 0)) ed
+            `shouldSatisfy` T.isInfixOf "engine.ignore.i1"
+    it "refuses a declaration with no reason, which is the whole point of writing it" $
+      parseIgnoreBody "i1" "ignore fact job.image" `shouldSatisfy` isLeft
+    it "refuses a declaration naming no kind" $
+      parseIgnoreBody "i1" "ignore job.image \"why\"" `shouldSatisfy` isLeft
+
   describe "the shared files are frozen together (Lips.Generate.Minting)" $ do
     let g = "p1 meta lang.pattern.p1 stated \"a\" @gen:aaaa\n"
         committed = [("hello/main.go", "old")]
