@@ -198,6 +198,13 @@ targetMetavar = intercalate "|" (map T.unpack builtinNames) <> "|NAME"
 -- | @--worlds@: resolve a world NAME against DIR instead of the program's own
 -- directory. Mirrors @--lang@'s judgment exactly, including the absent short
 -- alias: an occasional, deliberate override, not an everyday flag.
+--
+-- Plural where @--lang@ is singular, and the difference is cardinality, not
+-- taste: a run may name several worlds (@-t@ repeats), so DIR is the library
+-- lips looks a name up in, while a run has exactly ONE language (@generate@
+-- refuses a batch whose programs disagree), so @--lang@ is that one folder
+-- itself. There is no @--langs@ for the same reason: lips would never have a
+-- second name to resolve against it.
 worldsDirOpt :: Parser (Maybe FilePath)
 worldsDirOpt = optional (strOption
   (long "worlds" <> metavar "DIR"
