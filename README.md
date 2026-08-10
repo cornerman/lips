@@ -148,10 +148,10 @@ reviewable artifact, not a secret: the world-neutral half lives as plain
 markdown under `assets/mint/` in this repo, the world's own half in its world
 file, both embedded into the binary at build time.
 
-You pick the world at mint time. `--target nixos` (the default),
-`--target home-manager`, `--target kubenix` or `--target terranix` picks the
-world the engine is born into, and `--target nixos,kubenix` picks several in ONE
-model call. A world is DATA, not a lips feature: each of
+You pick the world at mint time. `-t nixos` (the default), `-t home-manager`,
+`-t kubenix` or `-t terranix` picks the world the engine is born into, and
+repeating the flag (`-t nixos -t kubenix`) picks several in ONE model call,
+minted in the order given. A world is DATA, not a lips feature: each of
 those names a `<world>.world` file lips ships (`lips world` lists them, `lips
 world nixos` prints one), and a `<name>.world` file beside your program is
 resolved the same way, so a world lips never heard of works with no change to

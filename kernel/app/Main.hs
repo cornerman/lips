@@ -840,8 +840,8 @@ generate worlds inherited mschema confidence compat verbose mmodel thinking file
               die (report
                 ("this mint would rewrite what the language's other worlds are built on:")
                 bad
-                ("\8594 re-mint every world together, so they agree: lips generate --target "
-                  <> T.intercalate "," (held ++ [ w | w <- wnames, w `notElem` held ])
+                ("\8594 re-mint every world together, so they agree: lips generate"
+                  <> T.concat [ " -t " <> w | w <- held ++ [ w | w <- wnames, w `notElem` held ] ]
                   <> " " <> T.pack rep))
       -- Every world is gated on its own engine (the shared grammar plus its own
       -- rules) and answers for itself: a world that cannot serve the program

@@ -198,14 +198,16 @@ main = hspec $ do
       goSchema <$> parseArgs ["a.backup.lips"] `shouldBe` Just Nothing
       goSchema <$> parseArgs ["--schema", "github:NixOS/nixpkgs/nixos-24.11", "a.backup.lips"]
         `shouldBe` Just (Just "github:NixOS/nixpkgs/nixos-24.11")
-    -- Several worlds in one run: minted left to right, so the order is data,
-    -- not a set. A repeat would mint one world twice and judge the second pass
-    -- against the first's own grammar, which no caller can have meant.
-    it "reads a comma-separated world list, in order, and refuses a repeat" $ do
-      goTarget <$> parseArgs ["--target", "nixos,kubenix", "a.web.lips"]
+    -- Several worlds in one run: -t repeats, and occurrence order is data, not a
+    -- set, because the mint walks it left to right. A name given twice is the
+    -- same world, so the first occurrence stands.
+    it "repeats -t into a world list, in order, keeping each world once" $ do
+      goTarget <$> parseArgs ["-t", "nixos", "-t", "kubenix", "a.web.lips"]
         `shouldBe` Just ["nixos", "kubenix"]
-      parseArgs ["--target", "nixos,nixos", "a.web.lips"] `shouldBe` Nothing
-      parseArgs ["--target", "nixos,", "a.web.lips"] `shouldBe` Nothing
+      goTarget <$> parseArgs ["-t", "kubenix", "-t", "nixos", "a.web.lips"]
+        `shouldBe` Just ["kubenix", "nixos"]
+      goTarget <$> parseArgs ["-t", "nixos", "-t", "kubenix", "-t", "nixos", "a.web.lips"]
+        `shouldBe` Just ["nixos", "kubenix"]
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 

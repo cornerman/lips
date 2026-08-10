@@ -35,10 +35,10 @@ import           System.Directory (doesDirectoryExist, doesFileExist, listDirect
 -- the run: its rules were lowered from these patterns and nothing is going to
 -- rewrite them, so the patterns must stay as they are. One test covers both
 -- cases -- a world minted earlier in the same run is already committed and no
--- longer upcoming, so the second world of @--target a,b@ inherits from the
+-- longer upcoming, so the second world of @-t a -t b@ inherits from the
 -- first. A first mint, and a re-mint of every world the language holds, are
 -- both free, which is why the remedy for a refused change is to name every
--- world in one @--target@.
+-- world in one call, a @-t@ each.
 grammarIsFrozen :: [Text] -> [Text] -> Bool
 grammarIsFrozen committed upcoming = any (`notElem` upcoming) committed
 

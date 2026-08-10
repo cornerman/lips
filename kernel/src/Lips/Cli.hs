@@ -24,7 +24,7 @@ module Lips.Cli
   ) where
 
 import Control.Monad      (filterM)
-import Data.List          (intercalate, isPrefixOf, isSuffixOf)
+import Data.List          (intercalate, isPrefixOf, isSuffixOf, nub)
 import           Data.Text          (Text)
 import qualified Data.Text as T
 import Options.Applicative
@@ -206,21 +206,19 @@ worldsDirOpt = optional (strOption
 defaultTargetName :: Text
 defaultTargetName = "nixos"
 
--- | @generate --target@'s reader: one world, or several separated by commas.
--- Order is kept, because it is the order the worlds are minted in and every
--- world after the first may only APPEND to the grammar the ones before it
--- wrote. A repeated name is refused rather than deduplicated: it would mint one
--- world twice, and the second pass would be judged against the first's grammar
--- for no reason a caller could have meant.
-targetsReader :: ReadM [Text]
-targetsReader = eitherReader $ \s ->
-  let ws = map T.strip (T.splitOn "," (T.pack s))
-   in if any T.null ws
-        then Left (s <> " has an empty world name between its commas")
-        else case [ w | (w, n) <- counts ws, n > (1 :: Int) ] of
-          (w : _) -> Left (T.unpack w <> " is named twice in " <> s)
-          []      -> Right ws
-  where counts ws = [ (w, length (filter (== w) ws)) | w <- ws ]
+-- | @generate -t@: one world per occurrence, repeatable. Occurrence order is
+-- kept, because it is the order the worlds are minted in and every world after
+-- the first may only APPEND to the grammar the ones before it wrote. A name
+-- given twice names the same world, so it carries no second position a caller
+-- could have meant and the first occurrence stands. No flag at all means the
+-- default world.
+targetsOpt :: Parser [Text]
+targetsOpt = orDefault <$> many (option (T.pack <$> str)
+  (long "target" <> short 't' <> metavar targetMetavar
+    <> help "Which Nix world the configuration is for. Repeat to mint several in one call, left to right (default: nixos)."))
+  where
+    orDefault [] = [defaultTargetName]
+    orDefault ws = nub ws
 
 -- | Every re-bless mode, listed from the type, so a mode added later cannot
 -- leave the help text naming less than the whole set.
@@ -258,10 +256,7 @@ schemaOpt = optional (strOption
 
 generateOpts :: Double -> Parser GenerateOpts
 generateOpts defConf = GenerateOpts
-  <$> option targetsReader
-        (long "target" <> short 't' <> value [defaultTargetName]
-          <> metavar (targetMetavar <> "[,...]")
-          <> help "Which Nix worlds the configuration is for, minted left to right (default: nixos).")
+  <$> targetsOpt
   <*> worldsDirOpt
   <*> schemaOpt
   <*> option confidenceReader

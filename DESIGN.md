@@ -877,6 +877,19 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **`-t` repeats; the comma list is gone.** `generate -t nixos -t kubenix`
+  replaces `--target nixos,kubenix`. The comma syntax needed a reader that split
+  a string and so invented an error class of its own ("empty world name between
+  its commas") on top of the real question, which world a name denotes. A
+  repeated option carries occurrence order for free (`many` preserves it, and
+  order is data here: every world after the first may only append to the
+  grammar), completes per token, and needs no splitting: `Lips.Cli.targetsOpt` is
+  `many` plus the default when the flag is absent. A name given twice denotes the
+  same world, so it states no second position a caller could have meant and the
+  first occurrence stands (`nub`) -- where the comma reader refused the repeat at
+  the door. `--worlds DIR` is untouched: it answers WHERE world files are looked
+  up, mirroring `--lang DIR`, while `-t` names WHICH world, once per occurrence.
+
 - **One mint, many worlds: the call that discovers a cross-world defect is the
   one that may fix it.** Multi-world builds shipped with one model call per
   world, left to right, so the shared grammar was written by the FIRST call --
