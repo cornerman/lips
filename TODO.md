@@ -6,37 +6,50 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-0. **A fact only one world needs** (opened 2026-08-09 by the first live joint
-   mint; design sketched, not settled).
+0. **A contract cannot assert a value the rule reformats** (opened 2026-08-09 by
+   three live mints of `examples/nightly.timer.lips`; the third filed the gap
+   `expect-cannot-assert-a-reformatted-value` itself).
 
-   One mint for many worlds is BUILT (DESIGN §13), and the neutrality problem it
-   was built for is closed: one call decomposes a notation-divergent value
-   because the same answer writes the rule that spends it. What the live run
-   then exposed is the other half. `examples/nightly.timer.lips` states a
-   command and a time; kubenix also needs a container image, and demanded one,
-   correctly. But once the program states that image, NixOS has nothing to do
-   with it, and a ground decision no rule of a world places makes that world
-   report the program unportable. So a program cannot state a fact that only one
-   of its worlds needs -- which is exactly what genuinely different worlds ask
-   for.
+   An expect asserts that an option's text CONTAINS the value a fact carries, or
+   one part of it (`from job.schedule#1`). Where a rule assembles a notation from
+   parts -- `"*-*-* <value.1>:<value.2>:00"` -- the whole value read together is
+   its parts joined by a space (`03 00`), which appears in no notation, so the
+   obvious contract cannot hold. Part-containment CAN hold (`03` is in
+   `*-*-* 03:00:00`) and the prompt says to write it, twice over; opus-5 declined
+   twice and then reported the grammar as insufficient rather than writing a
+   weak assertion. It has a point: `contains "03"` also passes for text that
+   merely happens to contain 03.
 
-   Sketch, in the shape the design already uses: the world's own rules DECLARE
-   what they knowingly ignore, as data, with the reason.
+   Two ways out, and they are not exclusive. STRUCTURAL: refuse the unholdable
+   expect statically, in `engineViolations`, so a mint sees it inside its own
+   call instead of after: an expect whose from-subject carries a several-part
+   value, on a path no rule fills with the WHOLE value, cannot hold -- the same
+   family of check as `partsExist`. EXPRESSIVE: give the contract a form that
+   asserts the assembled value, which today only the module holds; the cheap
+   version is to let an expect name the rule whose emit it mirrors, so the
+   contract and the rule cannot drift.
 
-       0.9 i1 @nixos ignore fact job.image "a machine runs the script directly, so there is no image"
+   Blocks: committing a two-world `timer` example (the ignore milestone's live
+   proof, which is otherwise gated offline in `just test-draft`).
 
-   Then the kernel rule stands unchanged in spirit (every ground decision is
-   placed OR explicitly ignored), nothing is silent, the review artifact says
-   which world drops which word and why, and the knowledge stays in the engine
-   rather than the kernel. It needs a closed grammar arm in `Lips.Kernel.Run`
-   (an ignore set beside the rules and demands) and one item kind in the reply.
+1. **A mint may answer with a draft it never checked** (observed twice,
+   2026-08-09).
 
-   Rejected while sketching: tolerating an unmapped decision when some other
-   world places it (silent, and it removes the guarantee that every word reaches
-   an output), and letting the program name the world a line is for (the program
-   states intent, never deployment).
+   `check_draft` refuses the defect in the model's own call, with the exact
+   message the final gate will use -- and twice now a mint answered with a
+   different draft than the one it checked, so lips caught the same defect a
+   minute later and the whole call was wasted. The prompt already says a clean
+   answer does not guarantee acceptance; that is a plea, and invariant 2 asks for
+   a guard.
 
-1. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
+   Sketch: the tool records the fingerprint of every draft it validates into a
+   file `generate` supplies, and `generate` refuses a reply whose engine lines
+   hash to nothing it recorded. The reply must then be something the model
+   actually ran the gates over. Open: normalizing the reply's lines so a
+   whitespace difference is not a refusal, and what to do about a first-mint
+   reply the model checked in pieces.
+
+2. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
    by the meaning-dimension work, DESIGN §13).
 
    Claims landed and three programs carry one (`logscan`, `board`, `habit`;
@@ -83,7 +96,7 @@ tracks only what is still open.
       section, the dual of `feed`, so an author's example stops freezing its item
       count. Deferred until a third program wants it.
 
-2. **CLI-tool physics -- the record behind item 1** (context: `board`, `habit`,
+3. **CLI-tool physics -- the record behind item 2** (context: `board`, `habit`,
    `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
    were re-minted honest. See DESIGN §13 for what landed getting there.)
 
@@ -129,7 +142,7 @@ tracks only what is still open.
       an option that means something else. Every gate is green. Same shape as
       postgres, same absent remedy.
 
-3. **Which model to budget for a re-mint** (the record left over from the sweep
+4. **Which model to budget for a re-mint** (the record left over from the sweep
    that turned out to be unnecessary; see DESIGN §13, "Invariant 6 held all
    along"). Any re-mint (item 5's plurality edits, item 1a's witnesses) faces the
    same choice, so the datapoints are kept:
@@ -155,9 +168,9 @@ tracks only what is still open.
 
    The old PRECONDITION here (a baked-source program needs a witness sentence
    before it can be re-minted) is void: the mint deduces the observable, and
-   where the re-mint bakes no source it needs none (item 1).
+   where the re-mint bakes no source it needs none (item 2).
 
-4. **The schema pin is recorded, but nothing relates it to the nixpkgs the
+5. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
    "Option-schema grounding"; the mechanism landed cbd3f1f). Three separate
    questions, in the order they hurt:
@@ -190,7 +203,7 @@ tracks only what is still open.
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
 
-5. **The corpus is minted from singleton programs, so its engines understand
+6. **The corpus is minted from singleton programs, so its engines understand
    one instance each** (found 2026-08-02 by the website plurality experiment;
    DESIGN §13 "Plurality is what makes a baked-source hole mean anything" and
    the doctrine entry beside it).
@@ -227,10 +240,10 @@ tracks only what is still open.
    it could join `diagInert` as an LSP diagnostic ("this hole is never
    contrasted, so nothing holds the source to it"). Deliberately deferred: the
    remedy is an author writing a richer program, an advisory report may be
-   enough, and item 1's claims falsify the same defect by observation rather
+   enough, and item 2's claims falsify the same defect by observation rather
    than by counting. Revisit after the re-mints above supply more datapoints.
 
-6. **The contract set reaches stdin-to-stdout text tools and nothing else**
+7. **The contract set reaches stdin-to-stdout text tools and nothing else**
    (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked
    to sweep three directories of files older than 14 days, the mint wrote 97
    lines of Go and never considered clauses: there is no contract for a file, a
@@ -248,7 +261,7 @@ tracks only what is still open.
    filesystem and clock interfaces as the typed authority. Adopting one is a
    design pass, not an errand.
 
-7. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
+8. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
    landed 2026-08-04, when the mint began emitting clauses and `logscan` moved
    from "80 lines vouched by nothing" to 5 clauses and 0 unvouched assertions).
 
@@ -288,7 +301,7 @@ tracks only what is still open.
    recurs, is the twin of `diagInert`: a word whose only landing is a claim is
    inert in the same sense and should be named.
 
-8. **Remaining known gaps on the clause axis** (none blocking).
+9. **Remaining known gaps on the clause axis** (none blocking).
 
    a. **`app/Main.hs` is 990 lines** (2135 before 2026-08-05). Four seams moved
       out: `Lips.Report` (every message it prints, pure -- one voice per defect,

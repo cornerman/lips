@@ -42,7 +42,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Nix.Options` / `Lips.Nix.Flake` | ledger 13 | the `optionsJSON` shape every world's schema parses as, and the `flake.nix` assembled from a world's slots |
 | `Lips.World` / `Lips.World.Builtin` / `Lips.World.Resolve` | ledger 13 | a world as DATA: the `<world>.world` format and its strict parser, the four lips ships (embedded), and how a name becomes one |
 | `Lips.Identity` | ledger 13 | the only place that knows the file layout (`<instance>.<language>.lips` -> language folder, one folder per world, `out/`) |
-| `Lips.Language` | ledger 13 | which worlds a language holds, found by looking: a subdirectory carrying this language's rules |
+| `Lips.Language` | ledger 13 | what holds ACROSS a language's worlds: which worlds it has (a subdirectory carrying this language's rules), whether the shared level is frozen, and that every fact a world ignores is placed by some world |
 | `Lips.Cli` | ledger 13 | the whole CLI grammar as one `optparse-applicative` parser (verbs, flags, completion) |
 | `Lips.Lsp.Derive` / `Lips.Lsp.Server` | ledger 13 | the language server: pure completion/diagnostics core, and its stdio JSON-RPC shell |
 | `Lips.Generate.Harness` | section 5 | the `Confidence` unit the deduce-or-fail gate speaks in (the resampling harness was removed as speculative) |

@@ -200,6 +200,13 @@ demands it by name (a Kubernetes pod needs a container image; a systemd unit
 does not), one the program cannot reach fails alone, and the worlds that hold
 are still written, with the run still exiting nonzero.
 
+The other side of that asymmetry is declared, never silent. Where a world has no
+place for a fact another world needs, its rules say so with the reason
+(`ignore fact job.image "a machine runs the script directly"`), every run prints
+what each world ignores, and lips refuses a declaration no world's rules place:
+a fact nobody spends is a word your program states and the language throws
+away.
+
 **Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
 your text into a directory holding `default.nix` (the Nix module, for import
 and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory

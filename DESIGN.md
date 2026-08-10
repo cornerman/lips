@@ -877,6 +877,58 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A world declares the facts it cannot place, and may not launder a dead one.**
+  Some facts belong to only some worlds: a Kubernetes pod needs a container
+  image, and a machine that runs the script directly has none. Measured on the
+  first live joint mint -- kubenix demanded an image, correctly -- and then the
+  program could not state one, because `runGround` refuses a ground decision no
+  rule places, so NixOS reported the program unportable. A world's rules now
+  declare it, as data, with the reason:
+
+      0.9 i1 @nixos ignore fact job.image "a machine runs the script directly, so there is no image"
+
+  The kernel rule keeps its shape (every ground decision is placed by a rule, is
+  a concept, or is declared here) and gains one closed arm: `IgnoreSpec` in
+  `Lips.Kernel.Engine.Data`, stored as `engine.ignore.<id>`, matched with
+  `matchSubject` so a family declaration covers its members, and filtered in
+  `runGround` beside the concepts. The kernel still knows nothing about images,
+  containers or worlds. The REASON is required, because it is the artifact a
+  human reviews; a declaration without one would be a silent drop with extra
+  steps.
+
+  **The guard is what makes it safe, and it was the whole question.** A world may
+  ignore a fact only where ANOTHER world's rules place it
+  (`Lips.Language.orphanIgnores`): then the declaration records a real asymmetry
+  between two lowerings. A fact NO world places stays the refusal it has always
+  been. So the mint cannot use `ignore` to skip work it does not feel like doing;
+  to drop a fact anywhere it must spend it somewhere, in an option grounded
+  against that world's schema. The check is only possible because one mint now
+  writes every world, and it runs in `check`, in `generate`, and -- the one that
+  matters -- in `check --draft`, the door the model itself checks through.
+  Measured: with the draft door ungated, a draft that declared the same ignore in
+  EVERY world passed, and the program's word reached no output anywhere. With it
+  gated, that draft is refused naming both declarations, and `just test-draft`
+  now carries the case.
+
+  `concept` was the alternative, and it was measured before being rejected. A
+  rule may already match a concept and realize it, so the asymmetry needed no
+  kernel change at all -- but the drop is then expressed by SILENCE (a reviewer of
+  `nixos/timer.rules` sees no trace), no guard is possible (a concept nobody
+  realizes is legitimate, so anything could be marked one), and the diagnosis
+  prints "decorative, realizing nothing" in the world that DOES realize it,
+  because `wordDecorates` reads patterns and never rules. So `concept` keeps
+  meaning "realizes nothing", and a rule matching one is now refused: with two
+  ways to express one asymmetry, only one of them guarded, a mint would find the
+  unguarded one.
+
+  The live example is NOT committed, and the reason is a separate gap this run
+  found (TODO item 0): three mints refused to write a contract over a value their
+  own rule reformats, the third filing the gap
+  `expect-cannot-assert-a-reformatted-value` rather than asserting the parts with
+  `from job.schedule#1`. The mechanism is proven offline instead, and gated in CI
+  by `just test-draft`: nixos ignores the image with its reason printed, kubenix
+  places it, and a fact both worlds ignore is refused.
+
 - **`-t` repeats; the comma list is gone.** `generate -t nixos -t kubenix`
   replaces `--target nixos,kubenix`. The comma syntax needed a reader that split
   a string and so invented an error class of its own ("empty world name between
