@@ -531,6 +531,12 @@ checkDraft file = do
           eng <- loadLangOrDie (dtLangDir t) (wName w) file
           assertOptionsAdmissible w p file eng
         _ -> pure ()
+      -- The cross-world invariant first, over the whole draft: a fact every
+      -- world declares it cannot place is a word the program states and the
+      -- language throws away. Judged HERE, in the door the model checks through,
+      -- because this is the one gate a mint could otherwise walk around by
+      -- declaring the same ignore in every world.
+      assertIgnoresPlaced (dtLangDir t) (map wName ws) file
       -- Every world the draft is for is judged, because the committed engine
       -- will be judged in every one of them. A world the draft does not reach is
       -- this draft's verdict, and fatal here: the model is still writing it.
