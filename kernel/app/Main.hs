@@ -1132,7 +1132,7 @@ validate file eng program =
           -- option, so the engine states it; nothing declared means a set (two
           -- program lines naming one thing name it once).
           assembleList = assembleWith (keepsRepeats (edMerges eng))
-      in first FailRun (runBase modeOf assembleList schemeVocabulary budget rules demands base)
+      in first FailRun (runBase modeOf assembleList schemeVocabulary budget rules demands (edIgnores eng) base)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable

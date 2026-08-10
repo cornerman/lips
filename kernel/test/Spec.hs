@@ -128,11 +128,17 @@ realizeReplace = realize (const Replace) noAssembly
 
 runReplace :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
 runReplace budget rules demands =
-  fmap rlModule . run (const Replace) noAssembly schemeVocabulary budget rules demands
+  fmap rlModule . run (const Replace) noAssembly schemeVocabulary budget rules demands []
 
 runBaseReplace :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
 runBaseReplace budget rules demands =
-  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget rules demands
+  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget rules demands []
+
+-- | 'runBaseReplace' with the ignore declarations a world carries, for the
+-- facts it has no place for.
+runBaseIgnoring :: Int -> [Rule] -> [Demand] -> [IgnoreSpec] -> Base -> Either RunError Text
+runBaseIgnoring budget rules demands ignores =
+  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget rules demands ignores
 
 noAssembly :: [Decision] -> Either Text Decision
 noAssembly _ = Left "assemble unused"
@@ -561,7 +567,7 @@ main = hspec $ do
           modeOf = mergeModeOf [installRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [installRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [installRule]) [] [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" ];"
@@ -581,7 +587,7 @@ main = hspec $ do
           modeOf = mergeModeOf [tailRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" \"tmux\" ];"
@@ -601,7 +607,7 @@ main = hspec $ do
           modeOf = mergeModeOf [tailRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];"
@@ -622,7 +628,7 @@ main = hspec $ do
           modeOf = mergeModeOf [pkgRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [pkgRule]) [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [pkgRule]) [] [] base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.npm pkgs.bun pkgs.scala ];"
@@ -2632,7 +2638,7 @@ main = hspec $ do
           prog = "button \"drück mich\" opens main\n"
       case crystallize "w" [two] prog of
         Left e -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase (mergeModeOf [rule]) assembleSubject schemeVocabulary 100 (map toRule [rule]) [] base of
+        Right base -> case runBase (mergeModeOf [rule]) assembleSubject schemeVocabulary 100 (map toRule [rule]) [] [] base of
           Left e   -> expectationFailure ("run failed: " <> show e)
           Right rl -> do
             rlModule rl `shouldSatisfy` T.isInfixOf "services.x.label = \"drück mich\";"
@@ -5134,6 +5140,33 @@ main = hspec $ do
     it "refuses a declaration naming no kind" $
       parseIgnoreBody "i1" "ignore job.image \"why\"" `shouldSatisfy` isLeft
 
+    -- The point of the declaration: the run no longer refuses the program for
+    -- stating a fact this lowering has no place for.
+    it "an ignored fact is placed, and reaches no option" $ do
+      let pat = patOne "p1" [TLit "image", THole "img"] Fact [SLit "job.image"] [SHole "img"]
+          pat2 = patOne "p2" [TLit "name", THole "n"] Fact [SLit "job.name"] [SHole "n"]
+          rule = MapRule "r1" Fact ["job", "name"]
+                   [Emit ["systemd", "services", "j", "description"] (VStr [PHole "value"])]
+          ign  = IgnoreSpec "i1" Fact ["job", "image"] "a machine runs it directly"
+      case crystallize "f" [pat, pat2] (T.unlines ["image busybox.", "name cleanup."]) of
+        Left e     -> expectationFailure ("crystallize failed: " <> show e)
+        Right base -> do
+          -- without the declaration the fact is unmapped
+          runBaseReplace 100 (map toRule [rule]) [] base `shouldSatisfy` isLeft
+          case runBaseIgnoring 100 (map toRule [rule]) [] [ign] base of
+            Left e  -> expectationFailure ("run failed: " <> show e)
+            Right m -> do
+              m `shouldSatisfy` T.isInfixOf "description = \"cleanup\""
+              m `shouldNotSatisfy` T.isInfixOf "busybox"
+
+    it "a family declaration covers every member of the family" $ do
+      let pat = patUnder "p2" "p1" [THole "n"] [PatEmit Fact [SLit "pkg.", SHole "n"] [SHole "n"]]
+          top = patOne "p1" [TLit "install", TLit "packages"] Concept [SLit "packages"] [SLit "x"]
+          ign = IgnoreSpec "i1" Fact ["pkg", "<name>"] "this world installs nothing"
+      case crystallize "f" [top, pat] (T.unlines ["install packages:", "htop", "ripgrep"]) of
+        Left e     -> expectationFailure ("crystallize failed: " <> show e)
+        Right base -> runBaseIgnoring 100 [] [] [ign] base `shouldSatisfy` isRight
+
   describe "the shared files are frozen together (Lips.Generate.Minting)" $ do
     let g = "p1 meta lang.pattern.p1 stated \"a\" @gen:aaaa\n"
         committed = [("hello/main.go", "old")]
@@ -6121,7 +6154,7 @@ main = hspec $ do
             , (mk "k2" "claim" "(list \"hallo\" \"du\")" Stated)
                 { dSubject = Subject ["claim", "w", "equals"], dKind = Meta } ]
       case runBase (mergeModeOf rules) (assembleWith (const False)) schemeVocabulary 100
-             (map toRule rules) [] base of
+             (map toRule rules) [] [] base of
         Left e   -> expectationFailure (show e)
         Right rl -> fmap (\(t, _, _) -> t) (rlCore rl)
           `shouldSatisfy` maybe False (T.isInfixOf "(emit \"hallo\") (emit \"du\")")

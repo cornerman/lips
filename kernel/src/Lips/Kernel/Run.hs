@@ -17,6 +17,7 @@ module Lips.Kernel.Run
   ) where
 
 import           Data.Bifunctor  (first)
+import           Data.Maybe      (isJust)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -32,6 +33,8 @@ import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, re
                              realizeClauses, siteNameIn, sitePropertiesIn,
                              realizeArtifactFills, realizeArtifactPaths,
                              realizeClaims, realizeStagedPaths)
+import Lips.Kernel.Capture  (matchSubject)
+import Lips.Kernel.Engine.Data (IgnoreSpec (..))
 import Lips.Kernel.Refine
 
 -- | The four run outcomes other than success (spec section 5).
@@ -54,15 +57,16 @@ data RunError
     Unrealizable [Text]
   deriving (Eq, Show)
 
--- | Run a program (canonical-form text) against an engine (its rules and
--- demands). The merge config (derived from the rule emits) and the assembly
+-- | Run a program (canonical-form text) against an engine (its rules, demands
+-- and the facts it declares it cannot place). The merge config (derived from the rule emits) and the assembly
 -- function are injected, keeping run domain-blind. The budget bounds
 -- refinement steps.
 run :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-    -> Vocabulary -> Int -> [Rule] -> [Demand] -> Text -> Either RunError Realization
-run modeOf assemble vocab budget rules demands src = do
+    -> Vocabulary -> Int -> [Rule] -> [Demand] -> [IgnoreSpec] -> Text
+    -> Either RunError Realization
+run modeOf assemble vocab budget rules demands ignores src = do
   base0 <- first ParseRejected (readBase src)
-  runBase modeOf assemble vocab budget rules demands base0
+  runBase modeOf assemble vocab budget rules demands ignores base0
 
 -- | Everything the pipeline projects from ONE ground base: the module, the
 -- buildable artifacts (or 'Nothing' when the program declares none), and the
@@ -132,9 +136,10 @@ data Realization = Realization
 -- what grounds a name in a clause is data a tier above lips ships, and the
 -- kernel stays a reader of it.
 runBase :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-        -> Vocabulary -> Int -> [Rule] -> [Demand] -> Base -> Either RunError Realization
-runBase modeOf assemble vocab budget rules demands base0 = do
-  realizable <- runGround budget rules demands (resolve modeOf assemble base0)
+        -> Vocabulary -> Int -> [Rule] -> [Demand] -> [IgnoreSpec] -> Base
+        -> Either RunError Realization
+runBase modeOf assemble vocab budget rules demands ignores base0 = do
+  realizable <- runGround budget rules demands ignores (resolve modeOf assemble base0)
   let ground = fromList realizable
   first fromRealizeError $ Realization base0 ground
     <$> realize modeOf assemble ground
@@ -155,9 +160,10 @@ runBase modeOf assemble vocab budget rules demands base0 = do
 -- vocabulary (a heading grouping lines) that carries no obligation to realize
 -- and is dropped; a surviving non-'Meta' decision is an unmapped obligation
 -- and fails loud (the program escaped the engine), never emitted as garbage.
-runGround :: Int -> [Rule] -> [Demand] -> Either [ResolveErr] (Map.Map Subject Decision)
+runGround :: Int -> [Rule] -> [Demand] -> [IgnoreSpec]
+          -> Either [ResolveErr] (Map.Map Subject Decision)
           -> Either RunError [Decision]
-runGround budget rules demands resolved = do
+runGround budget rules demands ignores resolved = do
   winners <- first toConflicts resolved
   -- Refine the resolved winners, so overridden defaults never realize.
   let base1 = fromList (Map.elems winners)
@@ -165,7 +171,17 @@ runGround budget rules demands resolved = do
     []        -> Right ()
     questions -> Left (OpenQuestions questions)
   ground  <- first RefineFailed (refine budget rules base1)
-  let realizable = filter ((/= Concept) . dKind) (toList ground)
+  -- Two ways a decision may reach no option and still be sound. A CONCEPT
+  -- realizes nothing anywhere, by definition. An IGNORED decision is a fact this
+  -- lowering has no place for, declared with its reason in this world's own
+  -- rules; another world of the language places it (the shell checks that, since
+  -- one engine cannot see the others). Both are dropped rather than realized:
+  -- neither names an option to fill.
+  let ignored d = any (covers d) ignores
+      covers d ig = igKind ig == dKind d
+                      && isJust (matchSubject (igSubject ig) (segsOf (dSubject d)))
+      segsOf (Subject segs) = segs
+      realizable = filter (\d -> dKind d /= Concept && not (ignored d)) (toList ground)
   case filter ((/= Meta) . dKind) realizable of
     []        -> Right realizable
     leftovers -> Left (Unmapped leftovers)
