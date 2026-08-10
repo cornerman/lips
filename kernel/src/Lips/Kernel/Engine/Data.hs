@@ -288,6 +288,17 @@ parseRuleBody rid body = do
   (kind, subj) <- case T.words matchPart of
     [k, s] -> (,) <$> parseKindTok pre k <*> splitAttrPath s
     _      -> Left (pre <> "match needs '<kind> <subject>'")
+  -- A concept realizes nothing, by definition: it is a heading, the one kind
+  -- exempt from being placed. A rule realizing one would be a SECOND way to say
+  -- what an ignore declaration says (this world has no place for that fact) --
+  -- and the only one of the two with no guard behind it, since a concept nobody
+  -- realizes is legitimate. One shape, so the guard cannot be walked around.
+  if kind == Concept
+    then Left (pre
+      <> "a rule may not match a concept: a concept realizes nothing, by definition."
+      <> " Emit a fact instead, and let a world with no place for it declare"
+      <> " 'ignore fact <subject> \"<why>\"'.")
+    else Right ()
   emits <- mapM (parseEmit . T.strip) (splitOutsideQuotes " ; " emitsPart)
   if null emits
     then Left (pre <> "rule emits nothing")

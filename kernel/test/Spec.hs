@@ -5135,6 +5135,16 @@ main = hspec $ do
           map igKind (edIgnores ed) `shouldBe` [Fact]
           renderLang (FromSource (SourceLoc "lang" 0)) ed
             `shouldSatisfy` T.isInfixOf "engine.ignore.i1"
+    -- Verified 2026-08-09: a rule matching a concept realized it, and a world
+    -- with no such rule was not refused -- a second, unguarded way to express
+    -- the same asymmetry. Closed, so the guard cannot be walked around.
+    it "refuses a rule that matches a concept, which realizes nothing by definition" $
+      case parseRuleBody "r1" "match concept job.image => a.b \"<value:int>\"" of
+        Right _  -> expectationFailure "a concept-matching rule must be refused"
+        Left msg -> do
+          msg `shouldSatisfy` T.isInfixOf "concept"
+          msg `shouldSatisfy` T.isInfixOf "ignore fact"
+
     it "refuses a declaration with no reason, which is the whole point of writing it" $
       parseIgnoreBody "i1" "ignore fact job.image" `shouldSatisfy` isLeft
     it "refuses a declaration naming no kind" $
