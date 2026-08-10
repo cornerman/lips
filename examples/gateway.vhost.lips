@@ -2,7 +2,8 @@ serve these sites over http with nginx.
 host shop.example.com:
 - / proxies to http://localhost:3000.
 - /static serves files from /var/www/shop.
+- /bla serves files from /var/xxx/shop.
 host blog.example.com:
-- / proxies to http://localhost:4100.
+- /static serves files from /var/y/shop.
 host api.example.com:
 - /v1 proxies to http://localhost:5000.

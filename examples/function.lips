@@ -2,5 +2,4 @@ function println_to_stdout(x: String)
 
 println_to_stdout("hallo")
 println_to_stdout("du")
-println_to_stdout("ei")
 println_to_stdout("!")

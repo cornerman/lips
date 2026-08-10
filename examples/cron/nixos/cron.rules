@@ -1,0 +1,8 @@
+q1 meta engine.demand.q1 stated "demand job.image \"which container image should the run use?\"" @gen:72010027659775d5
+q2 meta engine.demand.q2 stated "demand job.command \"which command should the image run?\"" @gen:72010027659775d5
+q3 meta engine.demand.q3 stated "demand job.schedule \"at what time of night should it run?\"" @gen:72010027659775d5
+r1 meta engine.rule.r1 stated "match fact job.image => virtualisation.oci-containers.containers.<self>.image \"\\\"<value>\\\"\" ; virtualisation.oci-containers.containers.<self>.autoStart \"false\"" @gen:72010027659775d5
+r2 meta engine.rule.r2 stated "match fact job.command => virtualisation.oci-containers.containers.<self>.cmd \"[ \\\"/bin/sh\\\" \\\"-c\\\" \\\"<value>\\\" ]\"" @gen:72010027659775d5
+r3 meta engine.rule.r3 stated "match fact job.schedule => systemd.timers.podman-<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.podman-<self>.wantedBy \"[ \\\"timers.target\\\" ]\"" @gen:72010027659775d5
+r4 meta engine.rule.r4 stated "match fact job.history => virtualisation.oci-containers.containers.<self>.labels.history \"\\\"<value>\\\"\"" @gen:72010027659775d5
+r5 meta engine.rule.r5 stated "match fact job.timeout => systemd.services.podman-<self>.serviceConfig.RuntimeMaxSec \"<value:int>\"" @gen:72010027659775d5

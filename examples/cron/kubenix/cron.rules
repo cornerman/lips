@@ -1,7 +1,8 @@
-q1 meta engine.demand.q1 stated "demand job.image \"which container image should the scheduled run use?\"" @gen:4ee11db906680e99
-q2 meta engine.demand.q2 stated "demand job.schedule \"at what time of night should it run (hh:mm)?\"" @gen:4ee11db906680e99
-r1 meta engine.rule.r1 stated "match fact job.image => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.image \"\\\"<value>\\\"\" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.restartPolicy \"\\\"OnFailure\\\"\"" @gen:4ee11db906680e99
-r2 meta engine.rule.r2 stated "match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule \"\\\"<value.2> <value.1> * * *\\\"\"" @gen:4ee11db906680e99
-r3 meta engine.rule.r3 stated "match fact job.command => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.command \"[ \\\"/bin/sh\\\" \\\"-c\\\" \\\"<value>\\\" ]\"" @gen:4ee11db906680e99
-r4 meta engine.rule.r4 stated "match fact job.history => kubernetes.resources.cronJobs.<self>.spec.successfulJobsHistoryLimit \"<value:int>\" ; kubernetes.resources.cronJobs.<self>.spec.failedJobsHistoryLimit \"<value:int>\"" @gen:4ee11db906680e99
-r5 meta engine.rule.r5 stated "match fact job.timeout => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.activeDeadlineSeconds \"<value:int>\"" @gen:4ee11db906680e99
+q4 meta engine.demand.q4 stated "demand job.image \"which container image should the run use?\"" @gen:72010027659775d5
+q5 meta engine.demand.q5 stated "demand job.command \"which command should the image run?\"" @gen:72010027659775d5
+q6 meta engine.demand.q6 stated "demand job.schedule \"at what time of night should it run?\"" @gen:72010027659775d5
+r10 meta engine.rule.r10 stated "match fact job.timeout => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.activeDeadlineSeconds \"<value:int>\"" @gen:72010027659775d5
+r6 meta engine.rule.r6 stated "match fact job.image => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.image \"\\\"<value>\\\"\" ; kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.restartPolicy \"\\\"OnFailure\\\"\"" @gen:72010027659775d5
+r7 meta engine.rule.r7 stated "match fact job.command => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.command \"[ \\\"/bin/sh\\\" \\\"-c\\\" \\\"<value>\\\" ]\"" @gen:72010027659775d5
+r8 meta engine.rule.r8 stated "match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule \"\\\"<value.2> <value.1> * * *\\\"\"" @gen:72010027659775d5
+r9 meta engine.rule.r9 stated "match fact job.history => kubernetes.resources.cronJobs.<self>.spec.successfulJobsHistoryLimit \"<value:int>\" ; kubernetes.resources.cronJobs.<self>.spec.failedJobsHistoryLimit \"<value:int>\"" @gen:72010027659775d5

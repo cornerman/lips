@@ -1,0 +1,6 @@
+a1 expect virtualisation.oci-containers.containers.<self>.image from job.image
+a2 expect systemd.timers.podman-<self>.timerConfig.OnCalendar from job.schedule#1
+a3 expect systemd.timers.podman-<self>.timerConfig.OnCalendar from job.schedule#2
+a4 expect virtualisation.oci-containers.containers.<self>.cmd from job.command
+a5 expect virtualisation.oci-containers.containers.<self>.labels.history from job.history
+a6 expect systemd.services.podman-<self>.serviceConfig.RuntimeMaxSec from job.timeout
