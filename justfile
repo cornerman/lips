@@ -179,6 +179,38 @@ test-draft:
     fi
     grep -q "<value.2> out of range" "$tmp/out7" \
       || { echo "FAIL: the refusal did not name the missing part"; cat "$tmp/out7"; exit 1; }
+    # A world may declare a fact it cannot place, but only where another world
+    # spends it. Declaring it in EVERY world is how a mint could otherwise drop a
+    # word of the program silently, so that is the case this checks.
+    cat > "$tmp/ign.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 p2 pattern with tag <t> => fact watch.tag "<t>"
+    0.95 r1 @nixos match fact watch.interval => systemd.services.w.environment.S "<value:int>"
+    0.95 r2 @home-manager match fact watch.interval => systemd.user.services.w.Service.Environment "\"S=<value>\""
+    0.9 i1 @nixos ignore fact watch.tag "a machine has no tags"
+    0.9 i2 @home-manager ignore fact watch.tag "a user session has no tags"
+    EOF
+    sed -i 's/^    //' "$tmp/ign.txt"
+    printf 'watch 30 seconds\nwith tag nightly\n' > "$tmp/one.watch.lips"
+    if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/ign.txt" > "$tmp/out8" 2>&1; then
+      echo "FAIL: --draft accepted a fact every world ignores"; cat "$tmp/out8"; exit 1
+    fi
+    grep -q "no world of this language places" "$tmp/out8" \
+      || { echo "FAIL: the refusal did not name the unplaced fact"; cat "$tmp/out8"; exit 1; }
+    # The same draft, with one world placing it, holds.
+    cat > "$tmp/ign2.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 p2 pattern with tag <t> => fact watch.tag "<t>"
+    0.95 r1 @nixos match fact watch.interval => systemd.services.w.environment.S "<value:int>"
+    0.95 r2 @home-manager match fact watch.interval => systemd.user.services.w.Service.Environment "\"S=<value>\""
+    0.9 i1 @nixos ignore fact watch.tag "a machine has no tags"
+    0.95 r3 @home-manager match fact watch.tag => systemd.user.services.w.Unit.Description "\"<value>\""
+    EOF
+    sed -i 's/^    //' "$tmp/ign2.txt"
+    "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/ign2.txt" > "$tmp/out9" 2>&1 \
+      || { echo "FAIL: an ignore another world places was refused"; cat "$tmp/out9"; exit 1; }
+    grep -q "nixos ignores watch.tag" "$tmp/out9" \
+      || { echo "FAIL: the run did not say what nixos ignores"; cat "$tmp/out9"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
