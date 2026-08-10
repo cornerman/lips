@@ -4855,11 +4855,20 @@ main = hspec $ do
       let p = systemPromptFor [shippedWorld "nixos"]
       p `shouldNotSatisfy` T.isInfixOf "--- world nixos ---"
       p `shouldNotSatisfy` T.isInfixOf "TAG EVERY WORLD-BOUND ITEM"
-    it "states the tag, the neutral fact and the demand rule" $ do
+    it "states the tag, the neutral fact, the declaration and the demand rule" $ do
       let p = systemPromptFor [shippedWorld "nixos", shippedWorld "kubenix"]
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "TAG EVERY WORLD-BOUND ITEM", "@nixos match", "nixos, kubenix"
-        , "<value.2> <value.1>", "DEMAND IT", "never invent the value" ]
+        , "<value.2> <value.1>", "DEMAND IT", "never invent the value"
+        , "@nixos ignore fact job.image", "may NOT ignore a fact no world places" ]
+
+    it "reads a world-bound ignore item, and gives it to that world alone" $ do
+      let (errs, cs) = parseEngineCandidates ["nixos", "kubenix"]
+            "0.9 i1 @nixos ignore fact job.image \"a machine runs the script directly\"\n"
+      errs `shouldBe` []
+      map icWorld cs `shouldBe` [Just "nixos"]
+      map igSubject (edIgnores (assemble (itemsFor "nixos" cs))) `shouldBe` [["job", "image"]]
+      edIgnores (assemble (itemsFor "kubenix" cs)) `shouldBe` []
 
   -- Examples teach the grammar, so a stale one teaches a grammar that no longer
   -- exists. Extract every ```lips-engine block from the prompt and require the

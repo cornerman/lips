@@ -39,6 +39,17 @@ contract cannot hold. Name the part with #N, one expect per part:
   0.95 a2 @nixos expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#2
 Each says its part reaches the option, which is exactly what the rule promised.
 
+WHERE A WORLD HAS NO PLACE FOR A FACT ANOTHER WORLD NEEDS, DECLARE IT. Some
+facts belong to only some worlds: a Kubernetes pod needs a container image, and
+a machine that runs the script directly has none. The world with no place for it
+says so, with the reason, in its own rules:
+  0.9 i1 @nixos ignore fact job.image "a machine runs the script directly, so there is no image"
+Every fact must be placed by a rule or declared this way in every world, so
+nothing is dropped silently. You may NOT ignore a fact no world places: that
+fact is dead, the language reads a word of the program and throws it away, and
+lips refuses the whole mint for it. Prefer a fact every world can spend over an
+asymmetry -- an image is genuinely one world's, a schedule is not.
+
 WHERE A WORLD NEEDS A FACT THE PROGRAM DOES NOT STATE, DEMAND IT. Write that
 world's demand and stop; never invent the value. A Kubernetes pod needs a
 container image and a NixOS unit does not, so the image is a kubenix demand:

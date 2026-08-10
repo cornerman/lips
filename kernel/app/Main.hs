@@ -49,7 +49,7 @@ import           System.Process     (CreateProcess (..), StdStream (..), createP
                                      readProcessWithExitCode, waitForProcess)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
-import           Lips.Kernel.Engine.Data       (bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
+import           Lips.Kernel.Engine.Data       (IgnoreSpec (..), bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (grammarIsFrozen, mintedWorlds, orphanIgnores)
@@ -467,6 +467,10 @@ checkWorld contract claims dir w file program = do
         -- file behind it may hold seventy lines nobody reviewed. The caller that
         -- stages measures.
         mapM_ note =<< stagedSizes dir file (rlGrounding rl)
+        -- What this world drops, said on every run rather than left for a
+        -- reviewer who opens the rules file: a declaration is cheap to write and
+        -- must not be cheap to overlook.
+        mapM_ note (ignoreNotes w eng)
         pure (Right rl)
   where
     escapes Matched{} = False
@@ -605,6 +609,13 @@ expectGate contract claims dir w file eng program rl = do
     world <- readRecordedWorld dir w file
     claimGate world dir file rl
   pure rl
+
+-- | The facts a world declares it cannot place, in the words of its own
+-- declarations.
+ignoreNotes :: Text -> EngineData -> [Text]
+ignoreNotes w eng =
+  [ w <> " ignores " <> renderAttrPath (igSubject ig) <> ": " <> igReason ig
+  | ig <- edIgnores eng ]
 
 -- | Invariant behind the @ignore@ declaration: every fact a world drops is
 -- placed by some world of the same language. A fact NOBODY places is a word the
@@ -1077,6 +1088,7 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   unless (null claims) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
     forM_ validated $ \(f, rl) -> mintClaimGate nixpkgs (stage rl) f rl
+  lift (mapM_ note (ignoreNotes wn eng))
   pure WorldResult { wrEngine = eng, wrValidated = validated
                    , wrExpects = expects, wrCommitted = committed }
 
