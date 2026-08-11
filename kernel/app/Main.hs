@@ -30,13 +30,13 @@ import           Control.Exception  (IOException, finally, try)
 import           Control.Monad      (forM, forM_, unless, when, void)
 import           Data.IORef         (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import           Data.Bifunctor     (first)
-import           Data.List          (intercalate)
+import           Data.List          (intercalate, nub)
 import           Data.Maybe         (fromMaybe)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Environment (getEnvironment, lookupEnv)
-import           System.Exit        (ExitCode (..), exitWith)
+import           System.Exit        (ExitCode (..), exitFailure, exitWith)
 import           GHC.IO.Encoding     (setLocaleEncoding)
 import           System.IO          (BufferMode (..), hClose, hGetContents,
                                      hIsEOF, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
@@ -44,7 +44,7 @@ import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Except (runExceptT, throwE)
 import           System.Directory   (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
                                      doesPathExist, listDirectory, removePathForcibly)
-import           System.FilePath    (dropExtension, takeDirectory, takeExtension, (</>))
+import           System.FilePath    (takeDirectory, (</>))
 import           System.Process     (CreateProcess (..), StdStream (..), createProcess, proc,
                                      readProcessWithExitCode, waitForProcess)
 
@@ -53,7 +53,7 @@ import           Lips.Kernel.Engine.Data       (IgnoreSpec (..), bindSelf, keeps
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (grammarIsFrozen, mintedWorlds, orphanIgnores)
-import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), cliParserInfo, cliPrefs)
+import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
                                         clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
@@ -92,7 +92,8 @@ import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText,
                                                 runCommands)
 import           Lips.World                     (World (..), parseWorld)
-import           Lips.World.Resolve            (builtinNames, resolveWorld)
+import           Lips.World.Resolve            (builtinNames, localWorldNames, resolveWorld, resolveWorldFrom)
+import           Lips.World.Check               (SlotFault (..), checkNixSlots)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -156,7 +157,7 @@ main = do
       -- directory the human stands in (or --worlds).
       world <- resolveWorldOrDie "." (ooWorlds oo) (ooTarget oo)
       optionsQuery world (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
-    WorldCmd dir mname -> worldVerb dir mname
+    WorldCmd dir what -> worldVerb dir what
     Lsp         -> runLsp
 
 -- | The committed grammar a mint must REUSE, or 'Nothing' when it is free to
@@ -182,23 +183,63 @@ resolveWorldOrDie base override name = do
     Left why -> die (report ("lips can't use the world " <> name <> ":") [why]
                        "\8594 name a world lips ships (lips world), or write one beside the program.")
 
--- | @world@: print the world a name resolves to, or list every world reachable
--- from here. The listing marks which are local, because that is the difference
--- a reader acts on: a local file is theirs to edit, a shipped one is not.
-worldVerb :: Maybe FilePath -> Maybe Text -> IO ()
-worldVerb dir (Just name) = do
+-- | @world@: print the world a name resolves to, list every world reachable
+-- from here, or check that a world file's Nix parses. The listing marks which
+-- are local, because that is the difference a reader acts on: a local file is
+-- theirs to edit, a shipped one is not.
+worldVerb :: Maybe FilePath -> WorldWhat -> IO ()
+worldVerb dir (WorldPrint name) = do
   w <- resolveWorldOrDie "." dir name
   -- On stdout, undecorated: this is what a human redirects into a file to
   -- start a house world, and what the migration one-off writes beside an engine.
   sayAnswer (wRaw w)
-worldVerb dir Nothing = do
+worldVerb dir WorldList = do
   let here = fromMaybe "." dir
-  entries <- listDirectory here
-  let locals = [ T.pack (dropExtension f) | f <- entries, takeExtension f == ".world" ]
+  locals <- localWorldNames here
   sayAnswer (T.unlines
     ([ n <> "   (lips ships it)" | n <- builtinNames ]
       ++ [ n <> "   (" <> T.pack (worldPathIn here n) <> ")"
          | n <- locals, n `notElem` builtinNames ]))
+worldVerb dir (WorldCheck mname) = do
+  let here = fromMaybe "." dir
+  -- Unnamed means every world reachable from here, the same default the listing
+  -- takes. A local file taking a shipped name is INCLUDED: resolution refuses to
+  -- read it, and a check that silently skipped it would call the directory sound.
+  names <- case mname of
+    Just n  -> pure [n]
+    Nothing -> nub . (builtinNames ++) <$> localWorldNames here
+  faults <- concat <$> mapM (checkOneWorld here dir) names
+  mapM_ say faults
+  if null faults
+    then note ("nix parses every slot of " <> plural (length names) "world" <> ".")
+    else exitFailure
+
+-- | One world's verdict as the reports to print: its structural parse (the same
+-- one every verb runs), then nix's own parser over each Nix-bearing slot. Empty
+-- means it held.
+checkOneWorld :: FilePath -> Maybe FilePath -> Text -> IO [Text]
+checkOneWorld here dir name = do
+  r <- resolveWorldFrom here dir name
+  case r of
+    Left why -> pure [report ("lips can't use the world " <> name <> ":") [why]
+                        "\8594 fix that file, or delete it."]
+    Right (w, origin) -> do
+      -- A shipped world has no path; naming it @<name>.world@ keeps nix's
+      -- file:line:column readable and the headline says where it came from.
+      let display = fromMaybe (T.unpack name <> ".world") origin
+          whose = maybe ("the world lips ships for " <> name)
+                        (("the world file " <>) . T.pack) origin
+      slots <- checkNixSlots display (wRaw w)
+      case slots of
+        Left why -> die (report
+          "lips needs nix to check a world file's slots, but couldn't run it:"
+          [why]
+          ("\8594 install nix, or run lips through it: nix run . -- world --check " <> name))
+        Right fs -> pure
+          [ report ("lips can't use " <> whose <> ": its " <> sfSlot f <> " slot is not valid Nix.")
+                   (T.lines (sfNix f))
+                   "\8594 fix that slot; the line nix names is the line in that file."
+          | f <- fs ]
 
 -- | @compile@: verify the program's committed contract, then crystallize +
 -- realize and materialize a DIRECTORY -- default @<language>/out/<instance>/@, or

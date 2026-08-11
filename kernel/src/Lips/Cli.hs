@@ -13,6 +13,8 @@ module Lips.Cli
   , CompileOpts (..)
   , CheckOpts (..)
   , OptionsOpts (..)
+  , WorldWhat (..)
+  , worldWhat
   , cliParserInfo
   , cliPrefs
   , generateOpts
@@ -113,9 +115,25 @@ data Command
   -- here: the seed a house world starts from, and the way to restore a copy
   -- beside an engine. Carries the same @--worlds@ override the other verbs take,
   -- so what it lists is exactly what @--target@ could resolve.
-  | WorldCmd (Maybe FilePath) (Maybe Text)
+  | WorldCmd (Maybe FilePath) WorldWhat
   | Lsp
   deriving (Eq, Show)
+
+-- | What @world@ does. A sum, so "print, but which one?" cannot be written:
+-- printing needs a name, while listing and checking both mean "every world
+-- reachable from here" when no name is given.
+data WorldWhat
+  = WorldList          -- ^ no name, no @--check@: what is reachable from here
+  | WorldPrint Text    -- ^ a name: the file, undecorated, for redirecting
+  | WorldCheck (Maybe Text)
+    -- ^ @--check@: does this world file's Nix parse (all of them, when unnamed)
+  deriving (Eq, Show)
+
+-- | The two flags the parser can offer, folded into the one thing they mean.
+worldWhat :: Maybe Text -> Bool -> WorldWhat
+worldWhat mname True  = WorldCheck mname
+worldWhat (Just n) False = WorldPrint n
+worldWhat Nothing False  = WorldList
 
 -- | The top-level parser info, given the default confidence (0.7 in
 -- production; tests pass their own to pin behavior independent of that
@@ -150,8 +168,11 @@ cliParser defConf = hsubparser
        (info (Options <$> optionsOpts)
              (progDesc "Search the pinned option schema of a Nix world. Reads only, changes nothing."))
   <> command "world"
-       (info (WorldCmd <$> worldsDirOpt <*> optional (strArgument
-                (metavar "NAME" <> help "Which world to print (default: list every world reachable from here).")))
+       (info (WorldCmd <$> worldsDirOpt <*> (worldWhat
+                <$> optional (strArgument
+                      (metavar "NAME" <> help "Which world to print (default: list every world reachable from here)."))
+                <*> switch (long "check"
+                      <> help "Instead of printing: hand every Nix-bearing slot to nix's parser (default: every world reachable from here).")))
              (progDesc "Print a world file, or list the worlds. A house world starts as a copy of one."))
   <> command "lsp"
        (info (pure Lsp)
