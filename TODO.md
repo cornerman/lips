@@ -182,14 +182,6 @@ tracks only what is still open.
       before any program is seen. Revisit if a program wants two differently
       named functions.
 
-7. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
-    ignores and six more; the ignore milestone added the ninth). The next
-    engine axis makes it ten, and no call site is readable now. Fold the
-    engine-owned trio (rules, demands, ignores) into one record -- the run-side
-    twin of what `EngineData` already groups on the storage side. Mechanical,
-    kernel-internal, no behavior change; do it as the FIRST commit of whatever
-    next touches `run`'s signature, not as its own errand.
-
 ## Backlog (larger / deferred by design)
 
 - **Defects no gate can catch** (the residue of the CLI-tool work; see DESIGN

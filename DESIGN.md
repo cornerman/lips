@@ -1014,6 +1014,16 @@ but the loop around it is incomplete; "missing" means specced, not built.
   the record's `--- raw reply ---` is byte-identical to that second submission.
   Under the old protocol the same defect would have cost the whole call.
 
+- **One world's lowering travels as one value.** `Lips.Kernel.Run.run` took
+  rules, demands and ignores as three positional arguments among eight, and the
+  ignore milestone had just added the ninth to `runBase`, so no call site read
+  as anything but an argument count. The trio is one thing (one world's
+  lowering), so it is now one record, `Engine` in `Lips.Kernel.Engine.Data`
+  beside `IgnoreSpec` -- the run-side twin of `EngineData`, which groups the
+  same rulebook in its stored form. `run`, `runBase` and `runGround` take it;
+  the next engine axis extends the record instead of the argument list. No
+  behavior change, the 860-example suite unchanged.
+
 - **A contract may state the whole text a rule assembles.** Where two worlds
   spell one fact differently, the pattern captures it in PARTS and each world's
   rule assembles its own notation (`"*-*-* <value.1>:<value.2>:00"` for a

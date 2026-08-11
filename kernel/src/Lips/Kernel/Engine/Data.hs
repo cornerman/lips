@@ -33,6 +33,7 @@ module Lips.Kernel.Engine.Data
   , Emit (..)
   , DemandSpec (..)
   , IgnoreSpec (..)
+  , Engine (..)
   , parseIgnoreBody
   , renderIgnoreBody
   , toRule
@@ -111,6 +112,19 @@ data IgnoreSpec = IgnoreSpec
   , igReason  :: Text
   }
   deriving (Eq, Show)
+
+-- | The engine as a RUN needs it: what to refine with, what to ask, and what
+-- this world declares it cannot place. The run-side twin of
+-- 'Lips.Kernel.Lang.Store.EngineData', which groups the same rulebook in its
+-- stored form ('MapRule' \/ 'DemandSpec'); here the rules and demands are the
+-- kernel types 'toRule' and 'toDemand' produce. Grouped because the three are
+-- one thing -- one world's lowering -- and travel together through every entry
+-- point of 'Lips.Kernel.Run'.
+data Engine = Engine
+  { enRules   :: [Rule]
+  , enDemands :: [Demand]
+  , enIgnores :: [IgnoreSpec]
+  }
 
 renderIgnoreBody :: IgnoreSpec -> Text
 renderIgnoreBody ig =

@@ -34,7 +34,7 @@ import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, re
                              realizeArtifactFills, realizeArtifactPaths,
                              realizeClaims, realizeStagedPaths)
 import Lips.Kernel.Capture  (matchSubject)
-import Lips.Kernel.Engine.Data (IgnoreSpec (..))
+import Lips.Kernel.Engine.Data (Engine (..), IgnoreSpec (..))
 import Lips.Kernel.Refine
 
 -- | The four run outcomes other than success (spec section 5).
@@ -57,16 +57,16 @@ data RunError
     Unrealizable [Text]
   deriving (Eq, Show)
 
--- | Run a program (canonical-form text) against an engine (its rules, demands
+-- | Run a program (canonical-form text) against an 'Engine' (its rules, demands
 -- and the facts it declares it cannot place). The merge config (derived from the rule emits) and the assembly
 -- function are injected, keeping run domain-blind. The budget bounds
 -- refinement steps.
 run :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-    -> Vocabulary -> Int -> [Rule] -> [Demand] -> [IgnoreSpec] -> Text
+    -> Vocabulary -> Int -> Engine -> Text
     -> Either RunError Realization
-run modeOf assemble vocab budget rules demands ignores src = do
+run modeOf assemble vocab budget eng src = do
   base0 <- first ParseRejected (readBase src)
-  runBase modeOf assemble vocab budget rules demands ignores base0
+  runBase modeOf assemble vocab budget eng base0
 
 -- | Everything the pipeline projects from ONE ground base: the module, the
 -- buildable artifacts (or 'Nothing' when the program declares none), and the
@@ -136,10 +136,10 @@ data Realization = Realization
 -- what grounds a name in a clause is data a tier above lips ships, and the
 -- kernel stays a reader of it.
 runBase :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-        -> Vocabulary -> Int -> [Rule] -> [Demand] -> [IgnoreSpec] -> Base
+        -> Vocabulary -> Int -> Engine -> Base
         -> Either RunError Realization
-runBase modeOf assemble vocab budget rules demands ignores base0 = do
-  realizable <- runGround budget rules demands ignores (resolve modeOf assemble base0)
+runBase modeOf assemble vocab budget eng base0 = do
+  realizable <- runGround budget eng (resolve modeOf assemble base0)
   let ground = fromList realizable
   first fromRealizeError $ Realization base0 ground
     <$> realize modeOf assemble ground
@@ -160,24 +160,24 @@ runBase modeOf assemble vocab budget rules demands ignores base0 = do
 -- vocabulary (a heading grouping lines) that carries no obligation to realize
 -- and is dropped; a surviving non-'Meta' decision is an unmapped obligation
 -- and fails loud (the program escaped the engine), never emitted as garbage.
-runGround :: Int -> [Rule] -> [Demand] -> [IgnoreSpec]
+runGround :: Int -> Engine
           -> Either [ResolveErr] (Map.Map Subject Decision)
           -> Either RunError [Decision]
-runGround budget rules demands ignores resolved = do
+runGround budget eng resolved = do
   winners <- first toConflicts resolved
   -- Refine the resolved winners, so overridden defaults never realize.
   let base1 = fromList (Map.elems winners)
-  case map demQuestion (openQuestions demands base1) of
+  case map demQuestion (openQuestions (enDemands eng) base1) of
     []        -> Right ()
     questions -> Left (OpenQuestions questions)
-  ground  <- first RefineFailed (refine budget rules base1)
+  ground  <- first RefineFailed (refine budget (enRules eng) base1)
   -- Two ways a decision may reach no option and still be sound. A CONCEPT
   -- realizes nothing anywhere, by definition. An IGNORED decision is a fact this
   -- lowering has no place for, declared with its reason in this world's own
   -- rules; another world of the language places it (the shell checks that, since
   -- one engine cannot see the others). Both are dropped rather than realized:
   -- neither names an option to fill.
-  let ignored d = any (covers d) ignores
+  let ignored d = any (covers d) (enIgnores eng)
       covers d ig = igKind ig == dKind d
                       && isJust (matchSubject (igSubject ig) (segsOf (dSubject d)))
       segsOf (Subject segs) = segs

@@ -129,17 +129,17 @@ realizeReplace = realize (const Replace) noAssembly
 
 runReplace :: Int -> [Rule] -> [Demand] -> Text -> Either RunError Text
 runReplace budget rules demands =
-  fmap rlModule . run (const Replace) noAssembly schemeVocabulary budget rules demands []
+  fmap rlModule . run (const Replace) noAssembly schemeVocabulary budget (Engine rules demands [])
 
 runBaseReplace :: Int -> [Rule] -> [Demand] -> Base -> Either RunError Text
 runBaseReplace budget rules demands =
-  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget rules demands []
+  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget (Engine rules demands [])
 
 -- | 'runBaseReplace' with the ignore declarations a world carries, for the
 -- facts it has no place for.
 runBaseIgnoring :: Int -> [Rule] -> [Demand] -> [IgnoreSpec] -> Base -> Either RunError Text
 runBaseIgnoring budget rules demands ignores =
-  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget rules demands ignores
+  fmap rlModule . runBase (const Replace) noAssembly schemeVocabulary budget (Engine rules demands ignores)
 
 noAssembly :: [Decision] -> Either Text Decision
 noAssembly _ = Left "assemble unused"
@@ -604,7 +604,7 @@ main = hspec $ do
           modeOf = mergeModeOf [installRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [installRule]) [] [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (Engine (map toRule [installRule]) [] []) base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" ];"
@@ -624,7 +624,7 @@ main = hspec $ do
           modeOf = mergeModeOf [tailRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (Engine (map toRule [tailRule]) [] []) base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" \"tmux\" ];"
@@ -644,7 +644,7 @@ main = hspec $ do
           modeOf = mergeModeOf [tailRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [tailRule]) [] [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (Engine (map toRule [tailRule]) [] []) base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.htop pkgs.ripgrep pkgs.tmux ];"
@@ -665,7 +665,7 @@ main = hspec $ do
           modeOf = mergeModeOf [pkgRule]
       case crystallize "f" [pat] prog of
         Left e  -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (map toRule [pkgRule]) [] [] base of
+        Right base -> case runBase modeOf assembleSubject schemeVocabulary 100 (Engine (map toRule [pkgRule]) [] []) base of
           Left e     -> expectationFailure ("run failed: " <> show e)
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ pkgs.npm pkgs.bun pkgs.scala ];"
@@ -2746,7 +2746,7 @@ main = hspec $ do
           prog = "button \"drück mich\" opens main\n"
       case crystallize "w" [two] prog of
         Left e -> expectationFailure ("crystallize failed: " <> show e)
-        Right base -> case runBase (mergeModeOf [rule]) assembleSubject schemeVocabulary 100 (map toRule [rule]) [] [] base of
+        Right base -> case runBase (mergeModeOf [rule]) assembleSubject schemeVocabulary 100 (Engine (map toRule [rule]) [] []) base of
           Left e   -> expectationFailure ("run failed: " <> show e)
           Right rl -> do
             rlModule rl `shouldSatisfy` T.isInfixOf "services.x.label = \"drück mich\";"
@@ -6367,7 +6367,7 @@ main = hspec $ do
             , (mk "k2" "claim" "(list \"hallo\" \"du\")" Stated)
                 { dSubject = Subject ["claim", "w", "equals"], dKind = Meta } ]
       case runBase (mergeModeOf rules) (assembleWith (const False)) schemeVocabulary 100
-             (map toRule rules) [] [] base of
+             (Engine (map toRule rules) [] []) base of
         Left e   -> expectationFailure (show e)
         Right rl -> fmap (\(t, _, _) -> t) (rlCore rl)
           `shouldSatisfy` maybe False (T.isInfixOf "(emit \"hallo\") (emit \"du\")")

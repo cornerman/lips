@@ -49,7 +49,7 @@ import           System.Process     (CreateProcess (..), StdStream (..), createP
                                      readProcessWithExitCode, waitForProcess)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
-import           Lips.Kernel.Engine.Data       (IgnoreSpec (..), bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
+import           Lips.Kernel.Engine.Data       (Engine (..), IgnoreSpec (..), bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (grammarIsFrozen, mintedWorlds, orphanIgnores)
@@ -1231,13 +1231,13 @@ validate file eng program =
       let inst       = instanceName file
           boundRules = map (bindSelf inst) (edRules eng)
           modeOf     = mergeModeOf boundRules
-          rules      = map toRule boundRules
-          demands    = map toDemand (edDemands eng)
+          runEngine  = Engine (map toRule boundRules) (map toDemand (edDemands eng))
+                              (edIgnores eng)
           -- Whether a list option keeps repeated elements is knowledge about that
           -- option, so the engine states it; nothing declared means a set (two
           -- program lines naming one thing name it once).
           assembleList = assembleWith (keepsRepeats (edMerges eng))
-      in first FailRun (runBase modeOf assembleList schemeVocabulary budget rules demands (edIgnores eng) base)
+      in first FailRun (runBase modeOf assembleList schemeVocabulary budget runEngine base)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable
