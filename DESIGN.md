@@ -797,6 +797,50 @@ omission.
   or GraphQL (shape without effects), and WIT, the WebAssembly Component Model
   interface language, which "defines only contracts between components" and so
   names behavior without naming an implementation language. Undecided.
+- ~~**Is lips robust against reformulation?**~~ ANSWERED as a stated
+  position, not as a mechanism (raised 2026-08-11 by an outside reader, whose
+  words were: something has to be losing semantics or flexibility somewhere).
+  lips is deliberately NOT robust against paraphrase, and that rigidity is what
+  the deterministic compiler costs. Reading a reworded line as the same line
+  means a model decides at read time, which makes `compile` nondeterministic and
+  takes the reviewable artifact, the edit-and-recompile loop and reproducibility
+  with it. The fuzziness has exactly one door, `generate`; behind it, matching is
+  literal token by token, normalized only by lowercasing (`normalizeToken`, no
+  morphology, punctuation belongs to the token). A reworded line therefore fails
+  loud (`no match`, exit 1, naming `lips generate`), never silently.
+
+  Where the flexibility went, rather than vanished: the value/mechanism
+  distinction above ("Branching on a captured word"). A word that FILLS A VALUE
+  sits in a hole and is edited freely with no mint; a word that SELECTS A
+  MECHANISM is a template literal, and rewording it costs a mint. Regeneration
+  is the branch a flexible language would take at read time.
+
+  Three honest costs, none of them repaired by this answer. (i) Paraphrase by
+  accumulating patterns does not scale for free: two patterns that could match
+  one line are refused statically (`Engine.Overlap`), so synonyms spelled with
+  different literals are cheap while near-paraphrases collide, and
+  `grammarIsFrozen` prices one pattern change as a mint over every world of the
+  language. (ii) The one SILENT case is a sentence whose words never reach the
+  artifact: a behaviour sentence is a specification for the mint, so rewording it
+  without re-minting leaves every gate green (backlog item "Silent concept
+  demotion" (ii), where it is recorded as having no static remedy; claims
+  falsify by observation instead). (iii) Whatever the grammar does not cover is
+  refused, not approximated -- invariant 2. Nothing is lost there, but nothing is
+  sayable either until the next mint.
+
+  The falsifiable half is the next entry: if paraphrase pressure decays on a
+  real growing program, the objection is practically answered; if it plateaus,
+  the objection wins and no kernel work repairs it. The one argument available
+  in the meantime is not evidence: the language inherits its vocabulary from the
+  author's own prompts, so the pressure is bounded by how one author speaks
+  about one domain, not by what the natural language allows.
+- ~~**Can a parameter be a sub-prompt rather than a constant?**~~ ANSWERED by
+  subtraction (2026-08-11): yes, and it needs no kernel physics. The model runs
+  in the RUNTIME OF THE BUILT PROGRAM, reached by name like any other package,
+  so lips only ever sees a string value on a program line and invariant 1 holds
+  untouched. Two residues, both existing items: a claim over such a program
+  cannot state an exact observable, and a paragraph-length prompt has no
+  multi-line value form, since a capture ends at the line.
 - **The mint-decay curve is unmeasured**: the whole economic case (see
   "Position in the field") rests on the ratio of edits that merely `compile` to
   edits that need a fresh mint, falling over time on one real, growing program.
