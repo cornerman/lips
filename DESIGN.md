@@ -918,9 +918,13 @@ but the loop around it is incomplete; "missing" means specced, not built.
   now named inside the call, with the two forms that can hold (`is "<template>"`,
   or `#N` where a world writes one part into an option of its own).
 
-  Not yet proven live: the two-world `timer` example that opened this is still
-  gated offline in `just test-draft`, which exercises both the refusal and the
-  template contract end to end (nix evaluates the module and the equality holds).
+  Proven live on 2026-08-11: `generate -t nixos -t kubenix --compat none
+  examples/nightly.timer.lips` (opus-5) wrote both worlds in one call, and each
+  contract states its own assembled text --
+  `is "*-*-* <value.1>:<value.2>:00"` for the systemd timer,
+  `is "<value.2> <value.1> * * *"` for the CronJob. `just test-draft` carries the
+  offline half: the unholdable form refused naming the remedy, and the template
+  form checked against the evaluated module.
 
 - **A world declares the facts it cannot place, and may not launder a dead one.**
   Some facts belong to only some worlds: a Kubernetes pod needs a container
@@ -966,13 +970,17 @@ but the loop around it is incomplete; "missing" means specced, not built.
   ways to express one asymmetry, only one of them guarded, a mint would find the
   unguarded one.
 
-  The live example is NOT committed, and the reason is a separate gap this run
-  found (TODO item 0): three mints refused to write a contract over a value their
-  own rule reformats, the third filing the gap
-  `expect-cannot-assert-a-reformatted-value` rather than asserting the parts with
-  `from job.schedule#1`. The mechanism is proven offline instead, and gated in CI
-  by `just test-draft`: nixos ignores the image with its reason printed, kubenix
-  places it, and a fact both worlds ignore is refused.
+  The live example is `examples/nightly.timer.lips`, committed 2026-08-11 once
+  the contract could state a value its rule reformats (the entry above). Three
+  earlier mints had refused to write that contract and the third filed the gap
+  `expect-cannot-assert-a-reformatted-value`; with the `is "<template>"` form in
+  the grammar and in the prompt, opus-5 minted both worlds in ONE call, first
+  try: `timer.grammar` captures the time in parts, `nixos/timer.rules` assembles
+  `OnCalendar` and declares `ignore fact job.image` with its reason,
+  `kubenix/timer.rules` places the image and spells the schedule `00 03 * * *`,
+  and each world's contract states the text its own rule assembles. The draft
+  door stays gated in CI by `just test-draft`, where a fact both worlds ignore is
+  refused.
 
 - **`-t` repeats; the comma list is gone.** `generate -t nixos -t kubenix`
   replaces `--target nixos,kubenix`. The comma syntax needed a reader that split

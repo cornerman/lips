@@ -6,25 +6,6 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-0. **The two-world `timer` example is still unminted** (the live proof left over
-   from the contract-over-a-reformatted-value work, which landed 2026-08-11; see
-   DESIGN §13, "A contract may state the whole text a rule assembles").
-
-   Both ways out of that item are built and offline-verified: the contract's
-   template arm (`expect <path> from <subject> is "*-*-* <value.1>:<value.2>:00"`,
-   compared for equality) and the static refusal of the unholdable whole-value
-   expect (`unholdableExpects` in `Kernel/Engine/Gate.hs`, run at the mint gate
-   and on a committed engine). `just test-draft` exercises both end to end, and
-   the mint prompt teaches the form.
-
-   What is left is the live call, plan Task 4
-   (`docs/superpowers/plans/2026-08-09-a-contract-over-a-reformatted-value.md`):
-   restore the image sentence in `examples/nightly.timer.lips`, then
-   `generate -t nixos -t kubenix ... -m anthropic/claude-opus-5`, and commit the
-   example. If the mint STILL refuses to contract the assembled value, read its
-   gap before changing anything -- a fourth distinct objection is a design
-   signal, not a prompt bug.
-
 1. **A mint may answer with a draft it never checked** (observed twice,
    2026-08-09).
 
