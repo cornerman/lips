@@ -3447,6 +3447,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `nginx-vm`, which boots the realized module and asks all three routes. The
   `artifact-vm` check, which watched this example precisely because it baked
   source, now follows `examples/website`, the largest baked tree left.
+- **A seeded generator is a contract, so a re-mint cannot rewrite history**
+  (2026-08-12, asked for by the first application-scale user, a football
+  simulation). A simulation must vary while staying a pure function of its
+  input, and the three ways to get there are not equal. Clauses the mint writes
+  put the multiplier and the modulus in per-program source, where the next mint
+  may rewrite them and every result ever recorded changes with them; a line in
+  the program states arithmetic in words, which is the notation failure the
+  logic axis exists to avoid; a contract is pure, not base notation, and
+  reviewed once for every program, which is exactly the category `json-parse`
+  occupies. So `random-step` joins `assets/runtime/scheme/contracts` with the
+  RECURRENCE FIXED IN THE CONTRACT rather than per adapter (a 32-bit LCG, the
+  value read off the high bits), because runtimes that step differently make a
+  replay disagree with the run it reproduces. Unpredictability is explicitly
+  not its job: a caller who needs it derives each seed outside, from a secret
+  it keeps. Guile implements it in three lines of exact integer arithmetic; a
+  second runtime is what will need a check pinning the shared sequence, and
+  until one exists the pin is a downstream program's own claim.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
