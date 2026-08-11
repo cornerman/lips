@@ -30,7 +30,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
-import Lips.Report                 (unansweredReport, unportableReport)
+import Lips.Report                 (emptySubmission, noSubmission, unansweredReport, unportableReport)
 import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, sharedFileViolations)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
@@ -5206,6 +5206,17 @@ main = hspec $ do
 
   -- A demand lives in one world's rules, so the question it leaves open is that
   -- world's, not the program's: the other worlds may be complete.
+  -- The answer is the draft the mint submitted through its tool, so a mint that
+  -- submitted nothing has no answer at all -- there is no text reply to fall
+  -- back on, by design.
+  describe "a mint that submitted nothing (Lips.Report.noSubmission)" $ do
+    it "names the tool that stages an answer, and the remedy" $ do
+      noSubmission `shouldSatisfy` T.isInfixOf "submit_draft"
+      noSubmission `shouldSatisfy` T.isInfixOf "lips generate"
+    it "blames a staging defect on the tooling, not on the program" $ do
+      emptySubmission `shouldSatisfy` T.isInfixOf "submit_draft"
+      emptySubmission `shouldSatisfy` T.isInfixOf "report this as a lips bug"
+
   describe "a world's own open questions (Lips.Report.unansweredReport)" $ do
     let t = unansweredReport "api.web.lips" "kubenix" ["which image should the run use?"]
     it "names the world that is asking" $ do

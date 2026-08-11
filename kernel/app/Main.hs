@@ -62,7 +62,8 @@ import           Lips.Stage             (fillStagedTree, siteNameOf, stageBeside
                                          stagedSizes, withTempDir, writeSite, writeSources)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
-import           Lips.Report            (Failure (..), demandGenerateFail, failureReport,
+import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission,
+                                         failureReport, noSubmission,
                                          gapArtifact, nixEvalFailed, nixMissing, plural,
                                          printFail, refusalReport, renderDiagnosis,
                                          renderParseError, unanswerableReport, unansweredReport,
@@ -1221,7 +1222,13 @@ nixParses nixModule = do
 -- stays concrete without a model baked into the deliverable.
 callPi :: Bool -> Maybe String -> String -> Text -> Text -> [World] -> [FilePath]
        -> [(Text, FilePath)] -> [(Text, FilePath)] -> IO (Text, Text, Text)
-callPi verbose mmodel thinking system userPrompt worlds files expects schemas = do
+callPi verbose mmodel thinking system userPrompt worlds files expects schemas =
+  -- The answer travels in a file, not in the model's words, so generate owns a
+  -- scratch directory for the whole call and the tool writes into it. The
+  -- directory is created and the file is NOT: its absence is the signal that no
+  -- draft was ever submitted.
+  withTempDir $ \answerDir -> do
+  let answerPath = answerDir </> "answer"
   -- The mint's tools ship with the binary; without them a mint would have to
   -- recall option names instead of looking them up, and could not check a draft
   -- before answering -- the guessing this whole path exists to prevent. So a
@@ -1253,6 +1260,9 @@ callPi verbose mmodel thinking system userPrompt worlds files expects schemas = 
              -- first mint or --renew.
              , ("LIPS_MINT_EXPECTS",  pairs expects)
              , ("LIPS_MINT_SCHEMAS",  pairs schemas)
+             -- Where a checked draft becomes the answer. The tool stages here;
+             -- nothing else lips runs writes this path.
+             , ("LIPS_MINT_ANSWER",   answerPath)
              ]
       childEnv = ours ++ filter ((`notElem` map fst ours) . fst) parentEnv
       -- Hermetic by explicit subtraction: -nbt drops pi's built-in tools (read,
@@ -1283,10 +1293,19 @@ callPi verbose mmodel thinking system userPrompt worlds files expects schemas = 
   (code, out, err) <- streamPi verbose ((proc "pi" args) { env = Just childEnv }) userPrompt
   case code of
     ExitSuccess   -> do
-      let PiReply { prReply = reply, prModel = model, prTranscript = transcript } =
+      let PiReply { prModel = model, prTranscript = transcript } =
             parsePiReply (T.pack out)
-      if T.null reply
-        then die (report "the AI model returned no usable reply." [] "→ run generate again.")
+      -- The engine is what the mint SUBMITTED, never what it said: submit_draft
+      -- stages a draft only once every gate lips can run before the answer
+      -- passes it, so the checked draft and the answer are the same bytes by
+      -- construction. The model's own words stay in the transcript as
+      -- provenance and are read as nothing else.
+      staged <- doesFileExist answerPath
+      reply <- if staged then TIO.readFile answerPath else pure T.empty
+      if not staged
+        then die noSubmission
+        else if T.null reply
+          then die emptySubmission
         -- pi always reports the model; an empty value would break provenance.
         else if T.null model
           then die (report "pi didn't report which model it used, so lips can't record provenance." [] "→ update pi, then run generate again.")

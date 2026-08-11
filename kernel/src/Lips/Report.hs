@@ -30,6 +30,8 @@ module Lips.Report
   , renderParseError
   , unportableReport
   , unansweredReport
+  , noSubmission
+  , emptySubmission
   , niceSubject
   , loc
   ) where
@@ -244,6 +246,28 @@ unansweredReport file world qs =
              qs
     <> "\n\n\8594 state it in " <> T.pack file <> " to reach " <> world
     <> ", or compile the worlds that already hold."
+
+-- | A mint that ran to completion without ever submitting a clean draft. The
+-- answer is the draft the mint staged through @submit_draft@, so there is no
+-- text reply to fall back on: a model that talked instead of submitting has
+-- produced nothing lips can read, and saying so beats reading prose as an
+-- engine.
+noSubmission :: Text
+noSubmission = report
+  "the mint never submitted a draft, so it produced no engine."
+  [ "An engine reaches lips only through the submit_draft tool, which stages the"
+  , "draft it checked. Nothing else the model wrote is read as engine lines." ]
+  "\8594 run it again: lips generate <program>"
+
+-- | The staged answer exists but holds no bytes. The tool writes the file only
+-- after a draft passes every gate it can run, so an empty one is a defect in
+-- the staging path itself, never something a program or a model can cause.
+emptySubmission :: Text
+emptySubmission = report
+  "the mint staged an empty answer, which no draft can be."
+  [ "submit_draft writes the file only after a draft passes, so an empty file"
+  , "means the staging path itself is broken." ]
+  "\8594 report this as a lips bug."
 
 -- | The full message for a print/run failure: the diagnosis plus the action
 -- that fits it -- edit the program (unanswered questions, a contradiction) or
