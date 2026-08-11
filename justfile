@@ -215,6 +215,34 @@ test-draft:
       || { echo "FAIL: an ignore another world places was refused"; cat "$tmp/out9"; exit 1; }
     grep -q "nixos ignores watch.tag" "$tmp/out9" \
       || { echo "FAIL: the run did not say what nixos ignores"; cat "$tmp/out9"; exit 1; }
+    # A contract that can never hold: the fact has two parts, the rule assembles
+    # the option's text out of them, and the expect reads the fact WHOLE -- so
+    # the parts joined by a space appear in the option nowhere. Refused inside
+    # the mint's own call, where the model can still write the form that holds.
+    export LIPS_MINT_WORLDS=nixos
+    printf 'watch 30 seconds\nrun at 03:00\n' > "$tmp/one.watch.lips"
+    cat > "$tmp/whole.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 p2 pattern run at <hh>:<mm> => fact watch.at "<hh> <mm>"
+    0.95 r1 match fact watch.interval => systemd.services.w.environment.S "<value:int>"
+    0.95 r2 match fact watch.at => systemd.timers.w.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+    0.95 a1 expect systemd.timers.w.timerConfig.OnCalendar from watch.at
+    EOF
+    sed -i 's/^    //' "$tmp/whole.txt"
+    if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/whole.txt" > "$tmp/out10" 2>&1; then
+      echo "FAIL: --draft accepted a check that can never hold"; cat "$tmp/out10"; exit 1
+    fi
+    grep -q "appear in it nowhere" "$tmp/out10" \
+      || { echo "FAIL: the refusal did not name the unholdable check"; cat "$tmp/out10"; exit 1; }
+    grep -q 'is "\*-\*-\* <value.1>:<value.2>:00"' "$tmp/out10" \
+      || { echo "FAIL: the refusal did not name the form that holds"; cat "$tmp/out10"; exit 1; }
+    # The same draft, stating the text its rule assembles, holds -- and the
+    # contract really runs against the realized module.
+    sed 's|from watch.at$|from watch.at is "*-*-* <value.1>:<value.2>:00"|' "$tmp/whole.txt" > "$tmp/tpl.txt"
+    "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/tpl.txt" > "$tmp/out11" 2>&1 \
+      || { echo "FAIL: a contract stating the assembled text was refused"; cat "$tmp/out11"; exit 1; }
+    grep -q "contract: 1 check" "$tmp/out11" \
+      || { echo "FAIL: the expect gate did not run on the template draft"; cat "$tmp/out11"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

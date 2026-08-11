@@ -31,13 +31,17 @@ spell differently and no further: every part you create must be read by some
 rule in every world, or that world's engine is refused for discarding a word the
 program stated.
 
-AN EXPECT OVER A SPLIT FACT NAMES THE PART. A contract compares the option's
-text against the value the fact carries, and a several-part value read WHOLE is
-its parts joined by a space -- which no world's notation contains, so the
-contract cannot hold. Name the part with #N, one expect per part:
-  0.95 a1 @nixos expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#1
-  0.95 a2 @nixos expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule#2
-Each says its part reaches the option, which is exactly what the rule promised.
+AN EXPECT OVER A SPLIT FACT STATES THE TEXT ITS OWN WORLD ASSEMBLES. A contract
+compares the option's text against the value the fact carries, and a
+several-part value read WHOLE is its parts joined by a space -- which no world's
+notation contains, so a whole-value expect over a split fact can never hold and
+lips refuses it. Where the rule ASSEMBLES the text, the expect states that same
+text, with the same template, and the two are compared for equality:
+  0.95 a1 @nixos expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule is "*-*-* <value.1>:<value.2>:00"
+  0.95 a2 @kubenix expect kubernetes.resources.cronJobs.<self>.spec.schedule from job.schedule is "<value.2> <value.1> * * *"
+Where a world writes ONE part into an option that holds only that part, name the
+part instead:
+  0.95 a3 @nixos expect systemd.services.<self>.environment.HOUR from job.schedule#1
 
 WHERE A WORLD HAS NO PLACE FOR A FACT ANOTHER WORLD NEEDS, DECLARE IT. Some
 facts belong to only some worlds: a Kubernetes pod needs a container image, and

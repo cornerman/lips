@@ -685,6 +685,7 @@ unanswerable demand is refused.
 EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
+  <confidence> <id> expect <option.path> from <subject> is "<text with <value.N> holes>"
 It asserts the value your patterns capture into <subject> (or its nth
 whitespace token, #n, 1-based) appears at option <option.path> in
 the realized module. Name the SAME option paths your rules assign. Emit
@@ -693,6 +694,15 @@ so realization and configurability are pinned. A VALUE-KEYED expect uses the
 same <capture> on both sides (expect environment.etc.http-routes<path>.text
 from route.<path>.status); it expands to one check per matching item, so
 write ONE family expect, not one per route.
+AN OPTION WHOSE TEXT YOU ASSEMBLE IS STATED WHOLE. Where a rule builds an
+option's text out of a fact's parts, the fact read whole is its parts
+joined by a space, which appears in no such text -- so state the text
+itself, with the same template, and it is compared for equality:
+  0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+  0.95 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule is "*-*-* <value.1>:<value.2>:00"
+A whole-value expect over a several-part fact is refused. The pair is no
+restatement for its own sake: this contract gates the NEXT mint, so an
+engine that later drops the seconds or reorders the fields is refused.
 NO EXPECT FOR A PACKAGE OR BUILD: an option you fill with a package or build
 reference (a derivation -- environment.systemPackages, home.packages, a
 runtimeInputs, an ExecStart holding ${artifact.<name>}) carries no checkable

@@ -3828,6 +3828,22 @@ main = hspec $ do
     it "makes a source block the last resort rather than the first reach" $
       p `shouldSatisfy` T.isInfixOf "A SOURCE BLOCK IS THE LAST RESORT"
 
+  -- Three live mints refused to contract an option whose text their own rule
+  -- assembled, and the third filed the missing form as a gap. The form exists
+  -- now, so the prompt must teach it -- beside the rule it mirrors, since the
+  -- pair is the point.
+  describe "the mint prompt states the contract over an assembled value" $ do
+    it "teaches the template contract beside the assembling rule" $ do
+      let p = systemPromptFor [shippedWorld "nixos"]
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "is \"*-*-* <value.1>:<value.2>:00\"", "joined by a space" ]
+
+    -- The taught line must be one lips reads, not one it merely reads about.
+    it "teaches a contract line the real parser accepts" $
+      parseExpectBody "a2"
+        "expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule is \"*-*-* <value.1>:<value.2>:00\""
+        `shouldSatisfy` isRight
+
   describe "the mint prompt states the claim grammar" $ do
     it "names the head and its closed section set" $ do
       let p = systemPromptFor [shippedWorld "nixos"]
@@ -4931,7 +4947,10 @@ main = hspec $ do
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "TAG EVERY WORLD-BOUND ITEM", "@nixos match", "nixos, kubenix"
         , "<value.2> <value.1>", "DEMAND IT", "never invent the value"
-        , "@nixos ignore fact job.image", "may NOT ignore a fact no world places" ]
+        , "@nixos ignore fact job.image", "may NOT ignore a fact no world places"
+        -- Each world spells the split fact its own way, so each world's
+        -- contract states its own assembled text.
+        , "@kubenix expect", "is \"<value.2> <value.1> * * *\"" ]
 
     it "reads a world-bound ignore item, and gives it to that world alone" $ do
       let (errs, cs) = parseEngineCandidates ["nixos", "kubenix"]
