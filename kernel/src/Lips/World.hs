@@ -14,6 +14,7 @@ module Lips.World
   ( World (..)
   , Rung (..)
   , parseWorld
+  , slotMarker
   , worldFormat
   ) where
 
@@ -27,6 +28,16 @@ import           Text.Read  (readMaybe)
 -- honouring part of it would be a silent half-read.
 worldFormat :: Int
 worldFormat = 1
+
+-- | The slot a line opens, when it is a slot marker (@--- builds ---@). The one
+-- authority on that syntax: 'Lips.World.Check' finds the same regions to hand
+-- each slot to nix's parser, and a second reading of the fences would be a
+-- second answer to "where does this slot start".
+slotMarker :: Text -> Maybe Text
+slotMarker l
+  | "--- " `T.isPrefixOf` s = Just (T.strip (T.dropEnd 3 (T.drop 4 s)))
+  | otherwise = Nothing
+  where s = T.strip l
 
 -- | One line of what @compile@ prints as the ways into a compiled directory:
 -- either a nix command over one flake attribute, or a literal line (an import
@@ -112,10 +123,7 @@ parseWorld raw = do
 
     blank = T.null . T.strip
 
-    isMarker l = "--- " `T.isPrefixOf` T.strip l
-
-    -- The marker's own name, between the two fences.
-    markerName l = T.strip (T.dropEnd 3 (T.drop 4 (T.strip l)))
+    isMarker = (/= Nothing) . slotMarker
 
     headerOf l = case T.breakOn ":" l of
       (k, v) | T.null v -> err ("header line without a colon: " <> l)
@@ -124,8 +132,9 @@ parseWorld raw = do
     -- Group the remaining lines under the marker that introduced them.
     slotsOf [] = Right []
     slotsOf (l : ls)
-      | isMarker l = let (body, rest) = break isMarker ls
-                     in ((markerName l, trimTrailing body) :) <$> slotsOf rest
+      | Just name <- slotMarker l =
+          let (body, rest) = break isMarker ls
+          in ((name, trimTrailing body) :) <$> slotsOf rest
       | otherwise = err ("stray line outside every slot: " <> l)
 
     -- The blank line before the next marker is the file's own spacing, never

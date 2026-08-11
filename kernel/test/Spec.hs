@@ -50,6 +50,7 @@ import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
 import Lips.World
 import Lips.World.Builtin (builtinWorld, builtinWorlds)
+import Lips.World.Check (NixSlice (..), nixSlices)
 import Lips.World.Resolve (resolveWorld)
 import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
@@ -403,6 +404,42 @@ main = hspec $ do
       claimsOf "home-manager" `shouldBe` ["sandbox"]
       claimsOf "kubenix" `shouldBe` ["sandbox"]
       claimsOf "terranix" `shouldBe` ["sandbox"]
+
+    -- The Nix-bearing slots are pasted verbatim into the compiled flake, so a
+    -- typo in a house world surfaces at nix, naming the GENERATED file. `lips
+    -- world --check` hands each slot to nix's own parser first; the pure half
+    -- is which text nix sees, and it is line-aligned with the world file so
+    -- nix's file:line:col points at the line the human wrote.
+    describe "nix slices (Lips.World.Check)" $ do
+      let sliced raw = [ (nsSlot s, T.lines (nsText s)) | s <- nixSlices raw ]
+          world = T.unlines
+            [ "format: 1"                       -- 1
+            , "world: w"                        -- 2
+            , "--- preamble ---"                -- 3
+            , "prose, not nix"                  -- 4
+            , "--- schema ---"                  -- 5
+            , "let np = builtins.getFlake \"<flakeref>\";"  -- 6
+            , "in np"                           -- 7
+            , "--- builds ---"                  -- 8
+            , "      builds = system: null;"    -- 9
+            ]
+      it "slices only the slots that hold nix" $
+        map fst (sliced world) `shouldBe` ["schema", "builds"]
+      it "keeps every slot line on its own line of the file" $
+        lookup "schema" (sliced world)
+          `shouldBe` Just ["", "", "", "", "with {}; ", "let np = builtins.getFlake \"<flakeref>\";", "in np", "", ""]
+      it "wraps a slot that is a fragment, on the marker lines around it" $
+        lookup "builds" (sliced world)
+          `shouldBe` Just ["", "", "", "", "", "", "", "with {}; let", "      builds = system: null;", "in null"]
+      it "skips a slot with nothing in it" $
+        map fst (sliced (world <> "--- packages ---\n\n")) `shouldBe` ["schema", "builds"]
+      it "slices every slot the built-in worlds fill" $
+        -- The suite runs nix-free (its own nix build sandbox has no nix), so
+        -- whether these PARSE is the flake's `world-slots` check, which runs the
+        -- real binary over the shipped worlds and over a broken one.
+        map (map fst . sliced . snd) builtinWorlds `shouldSatisfy`
+          all (\ss -> "schema" `elem` ss
+                        && all (`notElem` ["preamble", "rungs"]) ss)
 
   describe "merge (spec 2.1: strength) " $ do
     it "delta-over-defaults: Stated overrides Default on the same subject" $ do
