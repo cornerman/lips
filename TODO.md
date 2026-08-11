@@ -30,16 +30,8 @@ tracks only what is still open.
    (hash normalization, a draft checked in pieces) dissolve: there is no
    comparison, and only a complete clean draft stages.
 
-2. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
-   by the meaning-dimension work, DESIGN §13).
-
-   Claims landed and three programs carry one (`logscan`, `board`, `habit`;
-   `hello.http` shed its claim with its source on 2026-08-06). `website` bakes
-   source and states no witness, which is no longer a blocker: measured
-   2026-08-06, the mint deduces the observable from the program's own words
-   (opus-5 minted `examples/function.lips` unmodified and deduced four claims;
-   the `http` re-mint needed no witness sentence at all), and the refusal wording
-   now says so.
+2. **Three open questions about claims** (opened 2026-07-31 by the
+   meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
 
    a. Not decided: whether a machine claim should RETRY its observation until it
       holds, bounded. A booted system converges (a unit may not be listening the
@@ -77,81 +69,7 @@ tracks only what is still open.
       section, the dual of `feed`, so an author's example stops freezing its item
       count. Deferred until a third program wants it.
 
-3. **CLI-tool physics -- the record behind item 2** (context: `board`, `habit`,
-   `logscan` are committed, minted CLI engines; `examples/{http,postgres}`
-   were re-minted honest. See DESIGN §13 for what landed getting there.)
-
-   a. **Silent concept demotion -- two cases still open** (`diagInert`,
-      `droppedValues` and `decorativeValues` cover the rest; DESIGN §13):
-      (i) a compiled artifact records no dependency on the program lines its
-      baked source came from. PARTLY CLOSED: a claim now holds the built source
-      to the author's stated observable, so an edit that changes what the program
-      DOES is caught by running it. An edit that changes a specification sentence
-      without changing any observable is caught only where that sentence is a
-      concept (the source-spec gate); a value edit that the source hard-codes
-      independently of its fill remains invisible to both, and no static gate can
-      see it.
-      (ii) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
-      source") puts the algorithm, the format and the protocol in baked source,
-      so a behavior sentence is a specification for the mint and correctly not a
-      decision. Reword a behaviour sentence without re-minting and every gate
-      stays green (the V6 source-specification gate catches DELETION only). No
-      trace can fix this: the words never appear in the code. DECIDED: the reword
-      is caught by source-line provenance (i); claims cannot catch it, since an
-      example written for the old wording still passes.
-      Related, and cheaper where it applies: item 5 (plurality). A singleton
-      behaviour sentence gives the mint no reason to build the dispatch a claim
-      would then verify, so enriching the program removes the defect where a
-      claim would only have detected it.
-
-   b. **An option's own semantics can make an honest engine wrong.** postgres's
-      re-mint emits `ensureUsers = [ { name = "app"; ensureDBOwnership = true;
-      } ]`, but NixOS grants ownership of the database that shares the USER's
-      name, so a program naming a user and a database differently would
-      realize a silently wrong config. The words are spent (the dropped-value
-      guard is satisfied), so lips sees nothing wrong, and the kernel cannot
-      know option semantics either. DECIDED (OBLIGATION): a system claim
-      falsifies both shapes when the author states one (`systemctl is-active
-      api` fails, since nginx runs under the unit `nginx`), so the remedy exists
-      but stays advisory, plus an LSP diagnostic. No static remedy: teaching the
-      target layer what each option MEANS is an open list the kernel would have
-      to enumerate, which the doctrine forbids.
-      Second instance (2026-07-30, `examples/web` re-mint): the program line
-      "run it as a systemd service named api" is spent into
-      `services.nginx.virtualHosts.api.serverName`, but nginx runs under the
-      unit `nginx` and `serverName` is a HOSTNAME, so the sentence is honored by
-      an option that means something else. Every gate is green. Same shape as
-      postgres, same absent remedy.
-
-4. **Which model to budget for a re-mint** (the record left over from the sweep
-   that turned out to be unnecessary; see DESIGN §13, "Invariant 6 held all
-   along"). Any re-mint (item 5's plurality edits, item 1a's witnesses) faces the
-   same choice, so the datapoints are kept:
-
-   - `examples/function` (artifact-bearing): sonnet-5 regressed it twice,
-     dropping the built artifact for `echo` ExecStart lines and demoting the
-     declaration to a concept; opus-5 kept the Go build and generalized further.
-   - The claims re-mints (2026-07-31): opus-4-5 twice prefixed its reply with
-     reasoning prose, which the strict item parser refuses; opus-5 minted
-     `logscan` and `http` cleanly, including a block-nested witness pattern.
-   - `board`/`habit` (2026-08-03): sonnet-5 minted `board` cleanly with three
-     `check_draft` calls, but on `habit` its passing attempt installed the built
-     script twice so the claim's path would exist; opus-5 minted `habit` clean
-     first try.
-
-   Budget opus-5 for anything artifact-bearing. `check_draft` (DESIGN §13) is
-   what makes sonnet-5 worth trying elsewhere: in the one measured A/B it turned
-   a failing artifact-bearing mint into a passing one, but both arms were one
-   run.
-
-   The `http` re-mint (2026-08-06) adds one: opus-5, `--compat none`, one program
-   edit, and the whole Go tree became nginx options in a single attempt.
-
-   The old PRECONDITION here (a baked-source program needs a witness sentence
-   before it can be re-minted) is void: the mint deduces the observable, and
-   where the re-mint bakes no source it needs none (item 2).
-
-5. **The schema pin is recorded, but nothing relates it to the nixpkgs the
+3. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
    "Option-schema grounding"; the mechanism landed cbd3f1f). Three separate
    questions, in the order they hurt:
@@ -184,47 +102,24 @@ tracks only what is still open.
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
 
-6. **The corpus is minted from singleton programs, so its engines understand
-   one instance each** (found 2026-08-02 by the website plurality experiment;
-   DESIGN §13 "Plurality is what makes a baked-source hole mean anything" and
-   the doctrine entry beside it).
+4. **Plurality is not a gate** (the open half of the plurality work, DESIGN §13
+   "Plurality is what makes a baked-source hole mean anything"; every committed
+   program has been enriched, so no candidate is left in the corpus).
 
-   Every program in `examples/` is 1 to 9 lines, and most declare exactly one
-   of whatever the language is about. For an option-backed hole that is fine
-   (nixpkgs grounds it). For a hole reaching BAKED SOURCE it is not: with one
-   instance a hole and a constant are indistinguishable, so the mint folds the
-   words into the source and the resulting engine accepts sentences it cannot
-   honour. `website` was fixed by enriching the program to three buttons and
-   re-minting, which cost no kernel change and produced a closed action enum,
-   a real dispatch, and a loud refusal of an unsupported action.
+   With ONE instance a hole and a constant are indistinguishable, so a mint
+   folds the program's words into baked source and the engine then accepts
+   sentences it cannot honour. That is statically visible and domain-blind -- a
+   baked-source hole binding one distinct value across the whole program -- so it
+   could join `diagInert` as an LSP diagnostic ("this hole is never contrasted,
+   so nothing holds the source to it").
 
-   `board` and `habit` were treated this way on 2026-08-03 (three columns, one of
-   them empty; two contrasted mark characters), together with the feedability
-   they needed, and `logscan` stopped baking source altogether when it was
-   re-minted as clauses. `function` stopped baking source on 2026-08-06 with no
-   program edit at all, once clause sequencing let its three calls compose into
-   one entry point (DESIGN §13). Its plurality was already right, and the reverse
-   experiment is still untried: cutting its three calls to one should demote the
-   call to a constant.
+   Deliberately deferred: the remedy is an author writing a richer program, an
+   advisory report may be enough, and the claims falsify the same defect by
+   observation rather than by counting. One experiment is still untried and
+   would be evidence either way: cutting `function`'s three calls to one should
+   demote the call to a constant.
 
-   `http` was treated on 2026-08-06 and is the sharpest datapoint so far: three
-   contrasted routes instead of one blanket response, and the mint dropped 62
-   lines of Go for nginx locations (DESIGN §13). Plurality did not just harden a
-   hole, it removed the reason to write source at all.
-
-   No plurality candidate is left in the corpus. What still bakes source
-   (`website` 220 lines, `habit` 78, `board` 40) is already plural, so those
-   trees wait on the clause axis (item 6), not on a program edit.
-
-   Not decided: whether to make it a GATE. A baked-source hole binding only one
-   distinct value across the program is statically visible and domain-blind, so
-   it could join `diagInert` as an LSP diagnostic ("this hole is never
-   contrasted, so nothing holds the source to it"). Deliberately deferred: the
-   remedy is an author writing a richer program, an advisory report may be
-   enough, and item 2's claims falsify the same defect by observation rather
-   than by counting. Revisit after the re-mints above supply more datapoints.
-
-7. **The contract set reaches stdin-to-stdout text tools and nothing else**
+5. **The contract set reaches stdin-to-stdout text tools and nothing else**
    (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked
    to sweep three directories of files older than 14 days, the mint wrote 97
    lines of Go and never considered clauses: there is no contract for a file, a
@@ -242,7 +137,7 @@ tracks only what is still open.
    filesystem and clock interfaces as the typed authority. Adopting one is a
    design pass, not an errand.
 
-8. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
+6. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
    landed 2026-08-04, when the mint began emitting clauses and `logscan` moved
    from "80 lines vouched by nothing" to 5 clauses and 0 unvouched assertions).
 
@@ -282,7 +177,7 @@ tracks only what is still open.
    recurs, is the twin of `diagInert`: a word whose only landing is a claim is
    inert in the same sense and should be named.
 
-9. **Remaining known gaps on the clause axis** (none blocking).
+7. **Remaining known gaps on the clause axis** (none blocking).
 
    a. **`app/Main.hs` grew back to 1360 lines** (990 after the 2026-08-05
       extraction, 2135 before it; the worlds arc added the difference). Four
@@ -311,7 +206,7 @@ tracks only what is still open.
       before any program is seen. Revisit if a program wants two differently
       named functions.
 
-10. **A house world's Nix fails at nix, not at lips** (found in the 2026-08-11
+8. **A house world's Nix fails at nix, not at lips** (found in the 2026-08-11
     review of the worlds arc). `parseWorld` is strict about STRUCTURE (unknown
     header, unknown slot, newer format all refuse naming the offender), but the
     Nix-bearing slots (`schema`, `builds`, `packages`, `apps`, `devShells`) are
@@ -329,7 +224,7 @@ tracks only what is still open.
     a hash-pinned copy that already compiled once, and a per-compile nix parse
     of an unchanged file buys nothing. The seam is authoring time, once.
 
-11. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
+9. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
     ignores and six more; the ignore milestone added the ninth). The next
     engine axis makes it ten, and no call site is readable now. Fold the
     engine-owned trio (rules, demands, ignores) into one record -- the run-side
@@ -338,6 +233,52 @@ tracks only what is still open.
     next touches `run`'s signature, not as its own errand.
 
 ## Backlog (larger / deferred by design)
+
+- **Defects no gate can catch** (the residue of the CLI-tool work; see DESIGN
+  §13 for what landed getting there). Accepted, with no remedy: recorded so a
+  later session does not rediscover them as news.
+
+  a. **Silent concept demotion -- two cases still open** (`diagInert`,
+     `droppedValues` and `decorativeValues` cover the rest; DESIGN §13):
+     (i) a compiled artifact records no dependency on the program lines its
+     baked source came from. PARTLY CLOSED: a claim now holds the built source
+     to the author's stated observable, so an edit that changes what the program
+     DOES is caught by running it. An edit that changes a specification sentence
+     without changing any observable is caught only where that sentence is a
+     concept (the source-spec gate); a value edit that the source hard-codes
+     independently of its fill remains invisible to both, and no static gate can
+     see it.
+     (ii) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
+     source") puts the algorithm, the format and the protocol in baked source,
+     so a behavior sentence is a specification for the mint and correctly not a
+     decision. Reword a behaviour sentence without re-minting and every gate
+     stays green (the V6 source-specification gate catches DELETION only). No
+     trace can fix this: the words never appear in the code. DECIDED: the reword
+     is caught by source-line provenance (i); claims cannot catch it, since an
+     example written for the old wording still passes.
+     Related, and cheaper where it applies: the plurality item. A singleton
+     behaviour sentence gives the mint no reason to build the dispatch a claim
+     would then verify, so enriching the program removes the defect where a
+     claim would only have detected it.
+
+  b. **An option's own semantics can make an honest engine wrong.** postgres's
+     re-mint emits `ensureUsers = [ { name = "app"; ensureDBOwnership = true;
+     } ]`, but NixOS grants ownership of the database that shares the USER's
+     name, so a program naming a user and a database differently would
+     realize a silently wrong config. The words are spent (the dropped-value
+     guard is satisfied), so lips sees nothing wrong, and the kernel cannot
+     know option semantics either. DECIDED (OBLIGATION): a system claim
+     falsifies both shapes when the author states one (`systemctl is-active
+     api` fails, since nginx runs under the unit `nginx`), so the remedy exists
+     but stays advisory, plus an LSP diagnostic. No static remedy: teaching the
+     target layer what each option MEANS is an open list the kernel would have
+     to enumerate, which the doctrine forbids.
+     Second instance (2026-07-30, `examples/web` re-mint): the program line
+     "run it as a systemd service named api" is spent into
+     `services.nginx.virtualHosts.api.serverName`, but nginx runs under the
+     unit `nginx` and `serverName` is a HOSTNAME, so the sentence is honored by
+     an option that means something else. Every gate is green. Same shape as
+     postgres, same absent remedy.
 
 - **Demand duplication across worlds** (accepted 2026-08-09). Two worlds needing
   the same fact write the same demand twice, and the diagnosis prints the open
@@ -373,7 +314,6 @@ tracks only what is still open.
   Collapse to "always at language level, listing the worlds it covers, even
   when that is one" only if a corpus-wide re-mint happens for some other
   reason; never as its own errand.
-
 
 - **Nothing records WHICH lips wrote a language folder, or what format its
   engine files are in** (raised 2026-08-09, immediately after worlds became

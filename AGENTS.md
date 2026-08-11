@@ -99,3 +99,8 @@ kernel bug; a missing domain fact is the engine's job.
 - Model gateway: `pi -p -nt --no-session --model <provider/id>` reading the
   prompt from stdin; `pi` is deliberately not in the dev shell (it is the
   user's harness and carries auth).
+- Budget opus-5 for any artifact-bearing mint: sonnet-5 regressed `function`
+  twice (dropping the built artifact for `echo` lines) and installed `habit`'s
+  script under two names so its claim would pass. Elsewhere sonnet-5 is worth
+  trying, because the draft door catches its slips inside its own call. Every
+  per-mint datapoint lives in DESIGN §13.
