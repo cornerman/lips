@@ -877,6 +877,51 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A contract may state the whole text a rule assembles.** Where two worlds
+  spell one fact differently, the pattern captures it in PARTS and each world's
+  rule assembles its own notation (`"*-*-* <value.1>:<value.2>:00"` for a
+  systemd calendar, `"<value.2> <value.1> * * *"` for a cron field). The
+  contract could then say nothing true: a several-part value read whole is its
+  parts joined by a space (`03 00`), which appears in no such notation, and
+  part-containment (`contains "03"`) also passes for text that merely happens to
+  hold `03`. Three live mints of `examples/nightly.timer.lips` refused to write
+  the weak form, and the third filed the gap itself
+  (`expect-cannot-assert-a-reformatted-value`) -- a model declining twice and
+  then reporting the grammar as insufficient is the signal invariant 4 names: fix
+  the format, not the prompt.
+
+  The contract grammar gains one optional arm, `Lips.Kernel.Expect`:
+
+      a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule is "*-*-* <value.1>:<value.2>:00"
+
+  `Surface.fillValueHoles` fills `<value>`/`<value.N>` from the stated value (a
+  hole naming a part that is not there is a `Left`, so a template can never
+  produce half a string), `expectedValue` resolves it, and the comparison is
+  EQUALITY against the option's text -- containment would be weaker than the
+  words. One predicate serves both judging paths, the evaluated option and the
+  ground slot (an artifact arg, a claim section), so one line cannot mean two
+  things. Without a template nothing moves: containment, exactly as before, and
+  every committed `.expect` still holds.
+
+  **Why restating the rule is not vacuous.** Inside one mint it falsifies
+  nothing, and that is not what `.expect` is for: the contract this mint writes
+  gates the NEXT one, so an engine that later drops the seconds, reorders the
+  fields or changes the separator is refused. Same argument `--compat` rests on.
+
+  **And the unholdable form is refused where it can still be fixed.**
+  `unholdableExpects` (`Kernel/Engine/Gate.hs`, beside `partsExist`, whose part
+  counts it borrows through `emitViews`) rejects an expect that reads a
+  several-part fact whole while every rule filling its option assembles that
+  option's text from the parts. Static and domain-blind: it asks how many parts
+  a pattern fixes, never what a part means. It runs at the mint gate and on a
+  committed engine, so the defect that cost three model calls a minute each is
+  now named inside the call, with the two forms that can hold (`is "<template>"`,
+  or `#N` where a world writes one part into an option of its own).
+
+  Not yet proven live: the two-world `timer` example that opened this is still
+  gated offline in `just test-draft`, which exercises both the refusal and the
+  template contract end to end (nix evaluates the module and the equality holds).
+
 - **A world declares the facts it cannot place, and may not launder a dead one.**
   Some facts belong to only some worlds: a Kubernetes pod needs a container
   image, and a machine that runs the script directly has none. Measured on the
@@ -2684,7 +2729,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 - **Behavioral gate on regeneration.** Each program carries a committed
   `<program>.expect` contract: relational assertions binding a NixOS option
-  path to a program value (`expect <option.path> from <subject>[#n]`), judged
+  path to a program value (`expect <option.path> from <subject>[#n]`, or
+  `... is "<template>"` where a rule assembles the option's text, see the
+  entry above), judged
   by containment against the module evaluated with `nix eval` (self-contained,
   offline; the full module system and runtime truth stay with `vm-smoke`).
   `generate` mints the assertions alongside the engine and refuses an engine

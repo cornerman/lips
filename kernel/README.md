@@ -17,7 +17,7 @@ contains no LLM and no I/O. Only `generate` (not built here) needs a model.
 | `Lips.Kernel.Realize` | section 10 | projects a ground base to a NixOS module (`realize`), refusing conflicts |
 | `Lips.Kernel.Run` | section 5 | the deterministic pipeline; `RunError` is the spec's four run outcomes, `Realization` the module/artifacts/staged-paths projections of ONE run |
 | `Lips.Kernel.Source` | ledger 13 | source fills: the `@marker@` grammar of an artifact's baked source and the two-way check that its markers and the engine's declared fills agree |
-| `Lips.Kernel.Expect` | ledger 13 | the `.expect` behavioral contract: relational option-value assertions, parsed/rendered/judged (pure) |
+| `Lips.Kernel.Expect` | ledger 13 | the `.expect` behavioral contract: relational option-value assertions, parsed/rendered/judged (pure). Two arms: a plain assertion holds by containment, one carrying `is "<template>"` states the whole text a rule assembles from a fact's parts and holds by equality |
 | `Lips.Kernel.Lang.Pattern` | section 5 | a crystallization pattern: token template with holes -> one decision |
 | `Lips.Kernel.Lang.Nest` | ledger 13 | blocks: the pattern-nesting relation, a line's scope in the block it sits in (ancestors' captures, `<n:index>`, `<k:key>`), and the checks that close it |
 | `Lips.Kernel.Lang.Crystallize` | section 5 | loose text x language -> decision base, deterministically (three outcomes) |

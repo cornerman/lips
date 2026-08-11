@@ -6,31 +6,24 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-0. **A contract cannot assert a value the rule reformats** (opened 2026-08-09 by
-   three live mints of `examples/nightly.timer.lips`; the third filed the gap
-   `expect-cannot-assert-a-reformatted-value` itself).
+0. **The two-world `timer` example is still unminted** (the live proof left over
+   from the contract-over-a-reformatted-value work, which landed 2026-08-11; see
+   DESIGN §13, "A contract may state the whole text a rule assembles").
 
-   An expect asserts that an option's text CONTAINS the value a fact carries, or
-   one part of it (`from job.schedule#1`). Where a rule assembles a notation from
-   parts -- `"*-*-* <value.1>:<value.2>:00"` -- the whole value read together is
-   its parts joined by a space (`03 00`), which appears in no notation, so the
-   obvious contract cannot hold. Part-containment CAN hold (`03` is in
-   `*-*-* 03:00:00`) and the prompt says to write it, twice over; opus-5 declined
-   twice and then reported the grammar as insufficient rather than writing a
-   weak assertion. It has a point: `contains "03"` also passes for text that
-   merely happens to contain 03.
+   Both ways out of that item are built and offline-verified: the contract's
+   template arm (`expect <path> from <subject> is "*-*-* <value.1>:<value.2>:00"`,
+   compared for equality) and the static refusal of the unholdable whole-value
+   expect (`unholdableExpects` in `Kernel/Engine/Gate.hs`, run at the mint gate
+   and on a committed engine). `just test-draft` exercises both end to end, and
+   the mint prompt teaches the form.
 
-   Two ways out, and they are not exclusive. STRUCTURAL: refuse the unholdable
-   expect statically, in `engineViolations`, so a mint sees it inside its own
-   call instead of after: an expect whose from-subject carries a several-part
-   value, on a path no rule fills with the WHOLE value, cannot hold -- the same
-   family of check as `partsExist`. EXPRESSIVE: give the contract a form that
-   asserts the assembled value, which today only the module holds; the cheap
-   version is to let an expect name the rule whose emit it mirrors, so the
-   contract and the rule cannot drift.
-
-   Blocks: committing a two-world `timer` example (the ignore milestone's live
-   proof, which is otherwise gated offline in `just test-draft`).
+   What is left is the live call, plan Task 4
+   (`docs/superpowers/plans/2026-08-09-a-contract-over-a-reformatted-value.md`):
+   restore the image sentence in `examples/nightly.timer.lips`, then
+   `generate -t nixos -t kubenix ... -m anthropic/claude-opus-5`, and commit the
+   example. If the mint STILL refuses to contract the assembled value, read its
+   gap before changing anything -- a fourth distinct objection is a design
+   signal, not a prompt bug.
 
 1. **A mint may answer with a draft it never checked** (observed twice,
    2026-08-09).

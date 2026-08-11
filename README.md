@@ -185,7 +185,12 @@ the call that writes them has to see every world. A fact must carry what the
 program says in pieces every world can spend: nothing below the mint converts
 one notation into another, so a daily `03:00` becomes an hour and a minute, and
 each world's rule assembles its own spelling (`*-*-* 03:00:00` for a systemd
-timer, `00 03 * * *` for a Kubernetes CronJob). In the reply each rule, demand
+timer, `00 03 * * *` for a Kubernetes CronJob). Each world's contract then
+states the text that world assembles, with the same template
+(`... from job.schedule is "*-*-* <value.1>:<value.2>:00"`), so a later mint that
+spells the same fact differently is refused; a check over a value no rule
+reformats keeps the plain form, where the program's value must simply appear in
+the option. In the reply each rule, demand
 and contract line names its world; the patterns name none, because they belong
 to the language.
 
