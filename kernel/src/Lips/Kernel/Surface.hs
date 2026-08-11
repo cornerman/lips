@@ -27,11 +27,13 @@ module Lips.Kernel.Surface
   , stripTrailingPunct
   , valueTokens
   , valueText
+  , fillValueHoles
   ) where
 
 import           Data.Char (isSpace)
 import           Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Read as TR
 
 -- | The parts of a STATED value: whitespace-separated, except that a @"..."@
 -- span is one part and hands over its inner text (escapes undone by
@@ -67,6 +69,38 @@ valueText :: Text -> Text
 valueText t
   | T.any (== '"') t = T.unwords (valueTokens t)
   | otherwise        = t
+
+-- | Fill @\<value\>@ and @\<value.N\>@ in a template from a STATED value: the
+-- whole value for @\<value\>@ (its parts joined by single spaces, as
+-- 'valueText' reads it), the Nth part for @\<value.N\>@.
+--
+-- Lives beside 'valueTokens' because this is the module that already knows what
+-- a PART is. It is plain-text filling, deliberately narrower than the rule
+-- side's ('Lips.Kernel.Engine.Data'\'s @pick@, which also resolves typed holes
+-- and the captures a subject binds): a contract states text, and a hole naming a
+-- part that is not there is a 'Left' rather than an empty string, so a template
+-- can never silently produce half a string.
+fillValueHoles :: Text -> Text -> Either Text Text
+fillValueHoles template val = go template
+  where
+    parts = valueTokens val
+    go t = case T.breakOn "<value" t of
+      (before, rest)
+        | T.null rest -> Right before
+        | otherwise -> case T.breakOn ">" (T.drop (T.length ("<value" :: Text)) rest) of
+            -- An unterminated hole is literal text, not a silent fill.
+            (_, "")         -> Right (before <> rest)
+            (inner, closed) -> do
+              filled <- fill inner
+              ((before <> filled) <>) <$> go (T.drop 1 closed)
+    -- What sits between "<value" and ">": nothing for the whole value, ".N" for
+    -- its Nth part.
+    fill inner
+      | T.null inner = Right (valueText val)
+      | Just d <- T.stripPrefix "." inner
+      , Right (n, "") <- TR.decimal d
+      , n >= 1, n <= length parts = Right (parts !! (n - 1))
+      | otherwise = Left ("<value" <> inner <> "> is not a part of " <> val)
 
 -- | Wrap text as a transport-quoted lips string, escaping @"@ and @\\@.
 -- Inverse of 'parseQuoted'.

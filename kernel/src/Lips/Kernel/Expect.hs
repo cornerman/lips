@@ -41,6 +41,7 @@ module Lips.Kernel.Expect
   , checkArtifactValues
   ) where
 
+import           Data.Char  (isSpace)
 import           Data.List  (sortOn)
 import           Data.Maybe (isJust)
 import           Data.Text  (Text)
@@ -53,15 +54,28 @@ import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Data (Emit (..), MapRule (..), renderAttrPath, splitAttrPath)
 import Lips.Kernel.Engine.Value (parseValue, sourceText)
 import Lips.Kernel.Reader   (ParseError (..))
-import Lips.Kernel.Surface  (valueText, valueTokens)
+import qualified Lips.Kernel.Surface as Q
+import Lips.Kernel.Surface  (fillValueHoles, quoteText, valueText, valueTokens)
 
 -- | One behavioral assertion: option 'exPath' carries the value drawn from
 -- decision 'exFrom' (optionally its 'exToken'th token).
+--
+-- 'exTemplate' is the arm for an option whose text a rule ASSEMBLES from the
+-- fact's parts (@\"*-*-* \<value.1\>:\<value.2\>:00\"@ for a systemd calendar).
+-- Then the contract states the WHOLE text and is compared for equality, because
+-- the parts joined by a space appear in no such notation and containment of one
+-- part is a weaker claim than the words make. Without a template the comparison
+-- is containment, exactly as it always was.
+--
+-- Such a contract restates what the rule assembles, and that is not vacuous: a
+-- committed contract gates the NEXT mint, so an engine that later spells the
+-- same fact differently (drops the seconds, reorders the fields) is refused.
 data Expect = Expect
-  { exId    :: Text
-  , exPath  :: [Text]
-  , exFrom  :: Subject
-  , exToken :: Maybe Int
+  { exId       :: Text
+  , exPath     :: [Text]
+  , exFrom     :: Subject
+  , exToken    :: Maybe Int
+  , exTemplate :: Maybe Text
   }
   deriving (Eq, Show)
 
@@ -147,6 +161,7 @@ renderExpect = T.unlines . map renderOne . sortOn exId
   where
     renderOne e =
       exId e <> " expect " <> dotted (exPath e) <> " from " <> renderFrom e
+        <> maybe "" (\t -> " is " <> quoteText t) (exTemplate e)
 
 renderFrom :: Expect -> Text
 renderFrom e = dotted segs <> maybe "" (\n -> "#" <> tshow n) (exToken e)
@@ -175,24 +190,62 @@ readExpect src =
 -- when the model mints assertions.
 parseExpectBody :: Text -> Text -> Either Text Expect
 parseExpectBody eid body =
-  case T.words body of
-    ["expect", pathTok, "from", fromTok] -> do
+  case peelTokens 4 body of
+    Just (["expect", pathTok, "from", fromTok], tail') -> do
       (subjTok, tok) <- parseFrom fromTok
       path  <- splitAttrPath pathTok
       subj  <- splitAttrPath subjTok
+      -- The keyword is `is`, not `equals`: this line reads as a sentence about an
+      -- option's TEXT, while claim.<id>.equals compares a program's OUTPUT, and
+      -- the two must not sound like the same operation.
+      tpl <- case T.stripPrefix "is " tail' of
+        Just quoted             -> Just <$> parseQuotedText eid (T.stripStart quoted)
+        Nothing | T.null tail'  -> Right Nothing
+                | otherwise     -> Left (badForm eid body)
+      -- A template states the WHOLE text, so naming a part as well says two
+      -- different things about one option.
+      case (tok, tpl) of
+        (Just _, Just _) -> Left ("expect " <> eid <> ": a template states the whole "
+                                   <> "text, so it cannot also name part #N")
+        _                -> Right ()
       Right Expect
-        { exId    = eid
-        , exPath  = path
-        , exFrom  = Subject subj
-        , exToken = tok
+        { exId       = eid
+        , exPath     = path
+        , exFrom     = Subject subj
+        , exToken    = tok
+        , exTemplate = tpl
         }
-    _ -> Left ("expect " <> eid <> ": want `expect <path> from <subject>[#n]`, got: " <> body)
+    _ -> Left (badForm eid body)
   where
     parseFrom t = case T.breakOn "#" t of
       (s, "") -> Right (s, Nothing)
       (s, r)  -> case readMaybe (T.unpack (T.drop 1 r)) of
         Just n | n >= 1 -> Right (s, Just n)
         _              -> Left ("expect " <> eid <> ": bad token index in " <> t)
+
+-- | The first @n@ whitespace-separated tokens and the REST as text. The tail
+-- carries a quoted template that may hold spaces, so it cannot be read back out
+-- of 'T.words' -- and it must not be found by searching the body for the @is@
+-- keyword either, since an option path may end in those letters
+-- (@services.redis@).
+peelTokens :: Int -> Text -> Maybe ([Text], Text)
+peelTokens n t
+  | n <= 0    = Just ([], T.stripStart t)
+  | T.null w  = Nothing
+  | otherwise = (\(ws, r) -> (w : ws, r)) <$> peelTokens (n - 1) rest
+  where (w, rest) = T.break isSpace (T.stripStart t)
+
+badForm :: Text -> Text -> Text
+badForm eid body = "expect " <> eid
+  <> ": want `expect <path> from <subject>[#n]` or"
+  <> " `expect <path> from <subject> is \"<template>\"`, got: " <> body
+
+-- | The quoted template, unescaped.
+parseQuotedText :: Text -> Text -> Either Text Text
+parseQuotedText eid t = case Q.parseQuoted t of
+  Right (inner, rest) | T.null (T.strip rest) -> Right inner
+  Right (_, rest) -> Left ("expect " <> eid <> ": trailing text after the template: " <> rest)
+  Left why        -> Left ("expect " <> eid <> ": " <> why)
 
 -- | Bind the reserved @\<self\>@ option-path segment to the instance name, so
 -- a shared language's contract is checked against the realized module, whose
@@ -244,6 +297,11 @@ expectedValue :: Base -> Expect -> Either Text Text
 expectedValue base e =
   case [ a | d <- toList base, dSubject d == exFrom e, let Assertion a = dAssertion d ] of
     []      -> Left ("expect " <> exId e <> ": no decision with subject " <> renderFrom e)
+    -- A template is resolved HERE, so the pair 'runExpects' compares is already
+    -- the whole text the option must carry.
+    (a : _) | Just tpl <- exTemplate e ->
+                either (\why -> Left ("expect " <> exId e <> ": " <> why)) Right
+                       (fillValueHoles tpl a)
     (a : _) -> case exToken e of
       Nothing -> Right (valueText a)
       -- The value's PARTS (a several-part value quotes them), so a contract on
@@ -313,7 +371,9 @@ checkArtifactValues ground pairs = concatMap judge pairs
                              , let Assertion a = dAssertion d ] of
       []      -> [ dotted (exPath e) <> ": nothing realizes this slot, so the "
                     <> "program value " <> pv <> " lands nowhere" ]
-      (a : _) | pv `T.isInfixOf` slotText a -> []
+      (a : _) | holds e pv (slotText a) -> []
+              | isJust (exTemplate e) ->
+                  [ dotted (exPath e) <> ": should be " <> pv <> ", but is " <> slotText a ]
               | otherwise -> [ dotted (exPath e) <> ": should contain " <> pv
                                 <> ", but is " <> slotText a <> jointHint pv (slotText a) ]
     -- A slot holds a VALUE and the program states a value, so they are compared
@@ -357,12 +417,35 @@ checkArtifactValues ground pairs = concatMap judge pairs
 -- ('smallestCompat').
 checkValues :: [Expect] -> [(Text, Text)] -> [(Expect, Text)]
 checkValues es pairs =
-  [ (e, fail' e pv ev) | (e, (pv, ev)) <- zip es pairs, not (pv `T.isInfixOf` ev) ]
+  [ (e, fail' e pv ev) | (e, (pv, ev)) <- zip es pairs, not (holds e pv (optionText ev)) ]
   where
     -- Plain, author-facing: name the NixOS option and the mismatch, no internal
     -- assertion id. The caller (CLI) indents and frames it.
-    fail' e pv ev =
-      dotted (exPath e) <> ": should contain " <> pv <> ", but is " <> ev
+    fail' e pv ev
+      | isJust (exTemplate e) =
+          dotted (exPath e) <> ": should be " <> pv <> ", but is " <> optionText ev
+      | otherwise =
+          dotted (exPath e) <> ": should contain " <> pv <> ", but is " <> ev
+
+-- | The option's TEXT, out of the JSON @nix eval@ printed. A template states the
+-- text an option carries, not the transport that carried it here, so the string
+-- is unquoted before the comparison. Anything that is not a JSON string (a list,
+-- a number, @null@) has no other reading and stays verbatim, where it then fails
+-- the equality loud.
+optionText :: Text -> Text
+optionText ev = case Q.parseQuoted ev of
+  Right (inner, rest) | T.null rest -> inner
+  _                                 -> ev
+
+-- | Does an actual text satisfy this assertion? A template states the WHOLE
+-- text, so it is compared for EQUALITY; a plain expect keeps containment, which
+-- is what "the specified value is realized here" means when the option's text is
+-- the world's own notation. One definition, because a contract line must mean
+-- the same on the evaluated-option path and on the ground-slot one.
+holds :: Expect -> Text -> Text -> Bool
+holds e expected actual
+  | isJust (exTemplate e) = expected == actual
+  | otherwise             = expected `T.isInfixOf` actual
 
 firstToken :: Text -> Maybe (Text, Text)
 firstToken t = case T.words t of

@@ -18,7 +18,7 @@ import Test.Hspec
 import Test.QuickCheck hiding (Confidence)
 
 import Lips.Kernel.Base
-import Lips.Kernel.Surface (valueTokens)
+import Lips.Kernel.Surface (fillValueHoles, valueTokens)
 import Lips.Kernel.Decision
 import Lips.Kernel.Demand
 import Lips.Kernel.Reader
@@ -1344,7 +1344,7 @@ main = hspec $ do
     -- the wrong option.
     it "expect round-trips with a dotted segment in the option path" $
       property $ forAll dottedSeg $ \seg ->
-        let e = Expect "a" ["services","nginx",seg,"proxyPass"] (Subject ["proxy","upstream"]) Nothing
+        let e = Expect "a" ["services","nginx",seg,"proxyPass"] (Subject ["proxy","upstream"]) Nothing Nothing
         in readExpect (renderExpect [e]) === Right [e]
 
     -- Re-blessing used to be one word (--renew): keep the committed contract, or
@@ -1352,7 +1352,7 @@ main = hspec $ do
     -- committed assertion VANISH, may a minted one JOIN -- so the switch is a
     -- four-point lattice, and every relaxation stays one explicit human word.
     describe "compat (how much of the contract a re-mint may move)" $ do
-      let e i p from = Expect i (T.splitOn "." p) (Subject (T.splitOn "." from)) Nothing
+      let e i p from = Expect i (T.splitOn "." p) (Subject (T.splitOn "." from)) Nothing Nothing
           port  = e "a1" "services.x.port" "http.port"
           host  = e "a2" "services.x.host" "http.host"
           fresh = e "a1" "services.x.tls" "http.tls"   -- minted with a colliding id
@@ -1411,6 +1411,7 @@ main = hspec $ do
             , exPath = ["services","nginx","virtualHosts","app","locations","/","proxyPass"]
             , exFrom = Subject ["proxy","upstream"]
             , exToken = Nothing
+            , exTemplate = Nothing
             }
       -- a quoted key with a dot inside stays one segment (no split on the dot)
       parseExpectBody "a" "expect a.\"file.txt\".b from x"
@@ -1419,30 +1420,31 @@ main = hspec $ do
             , exPath = ["a","file.txt","b"]
             , exFrom = Subject ["x"]
             , exToken = Nothing
+            , exTemplate = Nothing
             }
 
     it "rejects an unterminated quote in an option path" $
       parseExpectBody "a" "expect a.\"unterminated from x" `shouldSatisfy` isLeft
 
     it "binds <self> in the option path to the instance (contract is language-level)" $
-      bindSelfExpect "ledger" (Expect "a" ["services", "restic", "backups", "<self>", "paths"] opt Nothing)
-        `shouldBe` Expect "a" ["services", "restic", "backups", "ledger", "paths"] opt Nothing
+      bindSelfExpect "ledger" (Expect "a" ["services", "restic", "backups", "<self>", "paths"] opt Nothing Nothing)
+        `shouldBe` Expect "a" ["services", "restic", "backups", "ledger", "paths"] opt Nothing Nothing
 
     -- A segment is literal text with <token> OCCURRENCES (the same grammar an
     -- artifact name uses, where <self>-core is the core-plus-wrapper idiom), so
     -- <self> binds inside a segment too. Comparing the whole segment left
     -- <self>-core unbound and the assertion silently read null.
     it "binds <self> occurring inside a path segment, not only as a whole one" $
-      bindSelfExpect "greet" (Expect "a" ["home", "packages", "<self>-core"] opt Nothing)
-        `shouldBe` Expect "a" ["home", "packages", "greet-core"] opt Nothing
+      bindSelfExpect "greet" (Expect "a" ["home", "packages", "<self>-core"] opt Nothing Nothing)
+        `shouldBe` Expect "a" ["home", "packages", "greet-core"] opt Nothing Nothing
 
     it "resolves the whole assertion and the nth token" $ do
-      expectedValue base (Expect "a" ["o"] opt Nothing)  `shouldBe` Right "/var/lib/ledger /backup/ledger daily"
-      expectedValue base (Expect "a" ["o"] opt (Just 2)) `shouldBe` Right "/backup/ledger"
+      expectedValue base (Expect "a" ["o"] opt Nothing Nothing)  `shouldBe` Right "/var/lib/ledger /backup/ledger daily"
+      expectedValue base (Expect "a" ["o"] opt (Just 2) Nothing) `shouldBe` Right "/backup/ledger"
 
     it "fails loud on an out-of-range token or a missing subject" $ do
-      expectedValue base (Expect "a" ["o"] opt (Just 9))              `shouldSatisfy` isLeft
-      expectedValue base (Expect "a" ["o"] (Subject ["no","x"]) Nothing) `shouldSatisfy` isLeft
+      expectedValue base (Expect "a" ["o"] opt (Just 9) Nothing)              `shouldSatisfy` isLeft
+      expectedValue base (Expect "a" ["o"] (Subject ["no","x"]) Nothing Nothing) `shouldSatisfy` isLeft
 
     -- Value-keyed contract: a family expect (from route.<path>.status) expands
     -- against the program's routes to one concrete expect per route, each with
@@ -1452,7 +1454,7 @@ main = hspec $ do
       let rbase = fromList [ (dec "route./hello.status" "200") { dId = DecisionId "d1" }
                            , (dec "route./bye.status"   "404") { dId = DecisionId "d2" } ]
           fam   = Expect "a" ["environment", "etc", "http-routes<path>", "text"]
-                            (Subject ["route", "<path>", "status"]) Nothing
+                            (Subject ["route", "<path>", "status"]) Nothing Nothing
       case expandExpects rbase [fam] of
         Left e   -> expectationFailure ("expand failed: " ++ show e)
         Right xs -> map (\x -> (exFrom x, exPath x)) xs `shouldMatchList`
@@ -1460,18 +1462,87 @@ main = hspec $ do
           , (Subject ["route", "/bye",   "status"], ["environment", "etc", "http-routes/bye",   "text"]) ]
 
     it "a plain (captureless) expect passes through expansion unchanged" $
-      expandExpects base [Expect "a" ["o"] opt Nothing] `shouldBe` Right [Expect "a" ["o"] opt Nothing]
+      expandExpects base [Expect "a" ["o"] opt Nothing Nothing] `shouldBe` Right [Expect "a" ["o"] opt Nothing Nothing]
 
     it "fails loud on a family expect no decision matches" $
-      expandExpects base [Expect "a" ["o"] (Subject ["route", "<path>", "status"]) Nothing]
+      expandExpects base [Expect "a" ["o"] (Subject ["route", "<path>", "status"]) Nothing Nothing]
         `shouldSatisfy` isLeft
 
     it "containment: the program value must appear in the evaluated option" $ do
-      let e = Expect "a1" ["p"] opt (Just 2)
+      let e = Expect "a1" ["p"] opt (Just 2) Nothing
       checkValues [e] [("/backup/ledger", "\"/backup/ledger\"")] `shouldBe` []          -- exact
       checkValues [e] [("hour", "\"hourly\"")]                   `shouldBe` []          -- substring
       length (checkValues [e] [("/backup/ledger", "\"/fixed/repo\"")]) `shouldBe` 1     -- value dropped
       length (checkValues [e] [("/backup/ledger", "null")])           `shouldBe` 1     -- option relocated
+
+    -- A world may ASSEMBLE an option's text out of a fact's parts (a systemd
+    -- calendar out of an hour and a minute), and then the parts joined by a
+    -- space appear in no such notation, so the whole-value contract cannot hold
+    -- and part-containment is a weaker claim than the words make. The template
+    -- arm states the assembled text itself.
+    describe "template arm (a contract over an assembled value)" $ do
+      let tpl = Expect "a1" ["a","b"] (Subject ["c","d"]) Nothing (Just "x-<value>-y")
+          plain = Expect "a2" ["a","b"] (Subject ["c","d"]) Nothing Nothing
+
+      it "fills a template from a stated value's parts" $ do
+        fillValueHoles "*-*-* <value.1>:<value.2>:00" "\"03\" \"00\""
+          `shouldBe` Right "*-*-* 03:00:00"
+        fillValueHoles "<value>" "03" `shouldBe` Right "03"
+        fillValueHoles "<value.3>" "\"03\" \"00\"" `shouldSatisfy` isLeft
+
+      it "reads and renders the template arm" $ do
+        let src = "a1 expect systemd.timers.t.timerConfig.OnCalendar from job.schedule is \"*-*-* <value.1>:<value.2>:00\"\n"
+        case readExpect src of
+          Left es   -> expectationFailure (show es)
+          Right [e] -> do
+            exTemplate e `shouldBe` Just "*-*-* <value.1>:<value.2>:00"
+            renderExpect [e] `shouldBe` src
+          Right other -> expectationFailure ("expected one expect, got " ++ show (length other))
+
+      it "keeps the plain form untouched" $
+        case readExpect "a1 expect a.b from c.d\n" of
+          Right [e] -> exTemplate e `shouldBe` Nothing
+          other     -> expectationFailure (show other)
+
+      -- An option path may END in the keyword's letters (services.redis), so the
+      -- tail must be read after four tokens, never by searching the body for
+      -- "is ".
+      it "reads a path whose last segment ends in the keyword's letters" $ do
+        parseExpectBody "a1" "expect services.redis from cache.host"
+          `shouldBe` Right (Expect "a1" ["services","redis"] (Subject ["cache","host"]) Nothing Nothing)
+        parseExpectBody "a1" "expect services.redis from cache.host is \"r-<value>\""
+          `shouldBe` Right (Expect "a1" ["services","redis"] (Subject ["cache","host"]) Nothing (Just "r-<value>"))
+
+      it "refuses a malformed tail instead of ignoring it" $ do
+        parseExpectBody "a1" "expect a.b from c.d equals \"x\"" `shouldSatisfy` isLeft
+        parseExpectBody "a1" "expect a.b from c.d is x"         `shouldSatisfy` isLeft
+        parseExpectBody "a1" "expect a.b from c.d is \"x\" junk" `shouldSatisfy` isLeft
+
+      it "resolves a template against the program's value" $ do
+        let e = Expect "a1" ["o"] opt Nothing (Just "<value.2>!")
+        expectedValue base e `shouldBe` Right "/backup/ledger!"
+        expectedValue base (e { exTemplate = Just "<value.9>" }) `shouldSatisfy` isLeft
+
+      it "compares a template for equality and a plain expect by containment" $ do
+        -- the pair is (expected, actual) as runExpects hands it over
+        checkValues [tpl]   [("x-1-y", "x-1-y")]   `shouldBe` []
+        checkValues [tpl]   [("x-1-y", "x-1-y-z")] `shouldSatisfy` (not . null)
+        checkValues [plain] [("1", "x-1-y")]       `shouldBe` []
+
+      -- The option side arrives as the JSON nix eval printed, so the equality is
+      -- over the option's TEXT, not over its transport quoting.
+      it "compares a template against the option's text, not its json quoting" $ do
+        checkValues [tpl] [("x-1-y", "\"x-1-y\"")] `shouldBe` []
+        length (checkValues [tpl] [("x-1-y", "null")]) `shouldBe` 1
+
+      -- A ground slot (an artifact arg, a claim section) is judged by the kernel
+      -- itself, and must read the template the same way: otherwise the same line
+      -- means equality on one path and containment on the other.
+      it "holds a ground slot to the whole assembled text" $ do
+        let ground = fromList [ (dec "artifact.greet.args.text" "\"x-1-y\"") ]
+            gtpl   = Expect "a1" ["artifact","greet","args","text"] (Subject ["c","d"]) Nothing (Just "x-<value>-y")
+        checkArtifactValues ground [(gtpl, "x-1-y")] `shouldBe` []
+        length (checkArtifactValues ground [(gtpl, "x-1")]) `shouldBe` 1
 
     it "rejects a check on a package/artifact-referencing option (would crash eval)" $ do
       -- Regression (kernel review): an expect naming an option a rule fills
@@ -1480,8 +1551,8 @@ main = hspec $ do
       let ruleStr = MapRule "r" Fact ["svc", "name"]
             [ Emit ["systemd","services","s","serviceConfig","ExecStart"] (VStr [PArt "srv", PLit "/bin/s"])
             , Emit ["systemd","services","s","environment","NAME"] (VStr [PHole "value"]) ]
-          onDeriv = Expect "a1" ["systemd","services","s","serviceConfig","ExecStart"] (Subject ["svc","name"]) Nothing
-          onValue = Expect "a2" ["systemd","services","s","environment","NAME"] (Subject ["svc","name"]) Nothing
+          onDeriv = Expect "a1" ["systemd","services","s","serviceConfig","ExecStart"] (Subject ["svc","name"]) Nothing Nothing
+          onValue = Expect "a2" ["systemd","services","s","environment","NAME"] (Subject ["svc","name"]) Nothing Nothing
       valueRefsDerivation (VStr [PArt "srv", PLit "/bin/s"]) `shouldBe` True
       valueRefsDerivation (VStr [PHole "value"])            `shouldBe` False
       map exId (uncheckableExpects [ruleStr] [onDeriv, onValue]) `shouldBe` ["a1"]
@@ -1496,15 +1567,15 @@ main = hspec $ do
             [ (mk "b" "x" "\"writeShellApplication\"" Stated) { dSubject = Subject ["artifact","greet","builder"] }
             , (mk "t" "x" "\"echo \\\"hello from lips\\\"\"" Stated) { dSubject = Subject ["artifact","greet","args","text"] }
             ]
-          onArg = Expect "a1" ["artifact","greet","args","text"] (Subject ["cmd","greet","msg"]) Nothing
+          onArg = Expect "a1" ["artifact","greet","args","text"] (Subject ["cmd","greet","msg"]) Nothing Nothing
       isGroundExpect onArg `shouldBe` True
-      isGroundExpect (Expect "a2" ["home","packages"] (Subject ["x"]) Nothing) `shouldBe` False
+      isGroundExpect (Expect "a2" ["home","packages"] (Subject ["x"]) Nothing Nothing) `shouldBe` False
       -- the program's value reached the arg
       checkArtifactValues ground [(onArg, "hello from lips")] `shouldBe` []
       -- a value that did NOT reach it fails, naming the slot
       length (checkArtifactValues ground [(onArg, "goodbye")]) `shouldBe` 1
       -- an assertion on a slot no rule fills fails loud instead of reading null
-      let onNothing = Expect "a3" ["artifact","greet","args","name"] (Subject ["cmd","greet","msg"]) Nothing
+      let onNothing = Expect "a3" ["artifact","greet","args","name"] (Subject ["cmd","greet","msg"]) Nothing Nothing
       length (checkArtifactValues ground [(onNothing, "greet")]) `shouldBe` 1
 
     -- A claim slot is pinned by the SAME mechanism, which is what makes a
@@ -1517,12 +1588,12 @@ main = hspec $ do
             , (mk "c2" "x" "\"hi\"" Stated)
                 { dSubject = Subject ["claim","echo","stdout"] }
             ]
-          onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing
+          onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing Nothing
       isGroundExpect onOut `shouldBe` True
       checkArtifactValues ground [(onOut, "hi")] `shouldBe` []
       length (checkArtifactValues ground [(onOut, "bye")]) `shouldBe` 1
       -- a claim the engine stopped emitting fails loud, which is the drop gate
-      let dropped = Expect "e2" ["claim","gone","stdout"] (Subject ["witness","out"]) Nothing
+      let dropped = Expect "e2" ["claim","gone","stdout"] (Subject ["witness","out"]) Nothing Nothing
       map snd (checkArtifactValues ground [(dropped, "hi")])
         `shouldSatisfy` any (T.isInfixOf "nothing realizes this slot")
 
@@ -1535,7 +1606,7 @@ main = hspec $ do
             [ (mk "c1" "x" "\"{\\\"a\\\":\\\"1\\\"}\"" Stated)
                 { dSubject = Subject ["claim","echo","stdout"] }
             ]
-          onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing
+          onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing Nothing
       checkArtifactValues ground [(onOut, "{\"a\":\"1\"}")] `shouldBe` []
       -- and a value that genuinely is not there still fails
       length (checkArtifactValues ground [(onOut, "{\"a\":\"2\"}")]) `shouldBe` 1
@@ -1548,7 +1619,7 @@ main = hspec $ do
             [ (mk "c3" "x" "\"{\\\"a\\\":\\\"1\\\"}\\n{\\\"a\\\":\\\"2\\\"}\"" Stated)
                 { dSubject = Subject ["claim","echo","stdin"] }
             ]
-          onIn = Expect "e3" ["claim","echo","stdin"] (Subject ["witness","in"]) Nothing
+          onIn = Expect "e3" ["claim","echo","stdin"] (Subject ["witness","in"]) Nothing Nothing
           -- the program side renders a two-part value space-joined
           fails = map snd (checkArtifactValues ground [(onIn, "{\"a\":\"1\"} {\"a\":\"2\"}")])
       fails `shouldSatisfy` any (T.isInfixOf "pin one part per assertion")
@@ -1561,7 +1632,7 @@ main = hspec $ do
             [ (mk "c2" "x" "[ ${artifact.tool} ]" Stated)
                 { dSubject = Subject ["artifact","w","args","runtimeInputs"] }
             ]
-          onArg = Expect "e2" ["artifact","w","args","runtimeInputs"] (Subject ["x"]) Nothing
+          onArg = Expect "e2" ["artifact","w","args","runtimeInputs"] (Subject ["x"]) Nothing Nothing
       checkArtifactValues ground [(onArg, "artifact.tool")] `shouldBe` []
 
     it "keeps a claim expect out of the nix eval set" $ do
@@ -1570,7 +1641,7 @@ main = hspec $ do
       -- uncheckable and refuse the engine.
       let ruleClaim = MapRule "r" Fact ["witness", "<k>"]
             [ Emit ["claim","echo","run"] (VStr [PArt "tool", PLit "/bin/tool"]) ]
-          onRun = Expect "e1" ["claim","echo","run"] (Subject ["witness","out"]) Nothing
+          onRun = Expect "e1" ["claim","echo","run"] (Subject ["witness","out"]) Nothing Nothing
       uncheckableExpects [ruleClaim] [onRun] `shouldBe` []
 
     it "an artifact arg is checkable even when it references another artifact" $ do
@@ -1578,7 +1649,7 @@ main = hspec $ do
       -- artifact assertion never evals, so it must not be swept up by it.
       let ruleArt = MapRule "r" Fact ["cmd", "<name>"]
             [ Emit ["artifact","wrap","args","runtimeInputs"] (VList [VRef (RArt "core")]) ]
-          onArg = Expect "a1" ["artifact","wrap","args","runtimeInputs"] (Subject ["cmd","x"]) Nothing
+          onArg = Expect "a1" ["artifact","wrap","args","runtimeInputs"] (Subject ["cmd","x"]) Nothing Nothing
       uncheckableExpects [ruleArt] [onArg] `shouldBe` []
 
   describe "pattern matching (crystallization plan: normalization, holes)" $ do
@@ -2648,7 +2719,7 @@ main = hspec $ do
       let base = case crystallize "w" [two] "button \"drück mich\" opens main\n" of
             Right b -> b
             Left e  -> error (show e)
-          ex n = Expect "a1" ["services","x","label"] (Subject ["button","click"]) (Just n)
+          ex n = Expect "a1" ["services","x","label"] (Subject ["button","click"]) (Just n) Nothing
       expectedValue base (ex 1) `shouldBe` Right "drück mich"
       expectedValue base (ex 2) `shouldBe` Right "main"
 
