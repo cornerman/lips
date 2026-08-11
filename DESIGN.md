@@ -958,6 +958,18 @@ but the loop around it is incomplete; "missing" means specced, not built.
   the `check --draft` VERB stages nothing even with `LIPS_MINT_ANSWER` set, so
   staging lives in the tool alone.
 
+  Witnessed live on 2026-08-12, twice. A re-mint of `examples/greet.lips`
+  (opus-5) submitted one clean draft and was then refused by the claim gate over
+  the STAGED bytes, which is the boundary working as stated: a clean submission
+  is not acceptance, because the claim gate and the artifact build run after the
+  model is gone (the committed engine was left untouched). A throwaway
+  home-manager mint (sonnet-5) showed the in-call retry the design was built
+  for: submission 1 was refused in the model's own call (`unknown option
+  home.sessionVariables.<name>`, the type in the pinned schema being an
+  integer), the model looked the namespace up again, submission 2 passed, and
+  the record's `--- raw reply ---` is byte-identical to that second submission.
+  Under the old protocol the same defect would have cost the whole call.
+
 - **A contract may state the whole text a rule assembles.** Where two worlds
   spell one fact differently, the pattern captures it in PARTS and each world's
   rule assembles its own notation (`"*-*-* <value.1>:<value.2>:00"` for a
