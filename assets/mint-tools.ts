@@ -1,22 +1,28 @@
 // The ONLY actions a lips mint may take. pi runs the mint with its built-in
 // tools and every ambient extension, skill and context file disabled, so this
 // file is the mint's complete world: look up an option in the pinned schema of
-// the target world, and check a draft engine before answering with it. Both
-// shell out to the lips binary, so what the model is told is exactly what lips
-// itself would say -- there is no second, model-facing renderer that could
-// drift from the human-facing one.
+// the target world, and submit a draft engine as the answer. Both shell out to
+// the lips binary, so what the model is told is exactly what lips itself would
+// say -- there is no second, model-facing renderer that could drift from the
+// human-facing one.
 //
 // Two tools, and neither one decides. query_options informs about NAMES;
-// check_draft REPORTS which gate rejects a draft. The gate that decides still
-// runs once, in Haskell, after the model is done -- a model that skips both
-// tools is refused by exactly the same gates as before. What moved is when the
-// mint can learn it is wrong, not who judges it.
+// submit_draft REPORTS which gate rejects a draft, and stages a clean one as
+// the answer. The gate that decides still runs once, in Haskell, after the
+// model is done, over the staged bytes. What moved is when the mint can learn
+// it is wrong, not who judges it.
+//
+// Staging is what makes the checked draft and the answer the same bytes: twice
+// (2026-08-09) a mint checked draft A and answered with a different draft B,
+// which lips then refused for a defect the tool had already named, wasting the
+// whole one-shot call. There is no free-text answer channel any more.
 //
 // pi loads this with `-e` for a single run, so the tool exists inside lips'
 // mint and nowhere else: a user's own pi sessions never gain it.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 
 // No defaults. A silent fallback would be a lie generator: if the target ever
 // failed to reach this child, the mint would search the NixOS schema while
@@ -43,6 +49,9 @@ const worlds = required("LIPS_MINT_WORLDS").split(",").filter(Boolean);
 // programs its draft is judged against, or it could validate against a corpus
 // that is not the one being minted.
 const programs = required("LIPS_MINT_PROGRAMS").split("\n").filter(Boolean);
+// Where a clean draft becomes the answer generate reads. Supplied per call, so
+// one mint can never stage into another's directory.
+const answerPath = required("LIPS_MINT_ANSWER");
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -104,20 +113,20 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "check_draft",
-    label: "Check draft",
+    name: "submit_draft",
+    label: "Submit draft",
     description:
-      "Check a DRAFT engine before you answer with it. Pass the complete set of " +
-      "lines you intend to answer with; lips runs its own gates over them and " +
-      "reports the first one that rejects the draft, in the same words the " +
-      "refusal would use. It does not run the claim gate or the artifact build, " +
-      "and it says so. A clean answer does not guarantee acceptance; a dirty one " +
-      "guarantees refusal, so fix what it names and check again. Never narrate " +
-      "what this tool told you in your answer: the answer is engine lines only, " +
-      "and a sentence about the check is a line lips refuses.",
+      "Submit your engine. This is the ONLY way an engine reaches lips: pass the " +
+      "complete set of lines, and lips runs its own gates over them and reports " +
+      "the first one that rejects them, in the same words the refusal would use. " +
+      "A refused submission stages nothing, so fix what it names and submit " +
+      "again. A clean submission is staged as your answer; it does not guarantee " +
+      "acceptance, because the claim gate and the artifact build still run after " +
+      "you are done. The last clean submission is the engine lips takes, and " +
+      "nothing you write outside this tool is read as engine lines.",
     parameters: Type.Object({
       draft: Type.String({
-        description: "The complete draft engine, in the answer format.",
+        description: "The complete engine, in the answer format.",
       }),
     }),
     async execute(_toolCallId: string, params: { draft: string }) {
@@ -142,18 +151,20 @@ export default function (pi: ExtensionAPI) {
           };
         }
       }
+      // Overwrite on purpose: a later clean submission supersedes an earlier
+      // one, so the model may keep improving, and a submission that FAILS the
+      // loop above leaves the last clean one standing.
+      writeFileSync(answerPath, params.draft);
       return {
         content: [
           {
             type: "text",
-            // The reminder rides on the machine's own last words, where the
-            // temptation is created: told it is clean, a model wants to say so,
-            // and one narrating sentence in the reply fails the whole mint
-            // (observed, sonnet-5, the first live run of this tool).
             text:
-              "the draft passes every gate lips can run before you answer. " +
-              "Answer with those lines ALONE -- no sentence about this check, " +
-              "which lips would read as a malformed item and refuse.",
+              "the draft passes every gate lips can run before you are done, and " +
+              "is staged as your answer. The claim gate and the artifact build " +
+              "still run after, so this is not acceptance. Submit again to " +
+              "replace it; whatever you write outside this tool is read by " +
+              "nothing.",
           },
         ],
         details: {},
