@@ -42,12 +42,19 @@ tracks only what is still open.
    answer does not guarantee acceptance; that is a plea, and invariant 2 asks for
    a guard.
 
-   Sketch: the tool records the fingerprint of every draft it validates into a
-   file `generate` supplies, and `generate` refuses a reply whose engine lines
-   hash to nothing it recorded. The reply must then be something the model
-   actually ran the gates over. Open: normalizing the reply's lines so a
-   whitespace difference is not a refusal, and what to do about a first-mint
-   reply the model checked in pieces.
+   SETTLED 2026-08-11, plan written:
+   `docs/superpowers/plans/2026-08-11-the-answer-is-a-submitted-draft.md`. The
+   earlier sketch here (the tool records a fingerprint of every checked draft,
+   `generate` refuses a reply hashing to nothing recorded) is rejected in that
+   plan: `pi -p` is one-shot, so a post-hoc refusal cannot save the call -- a
+   bad reply is refused by the existing gates anyway, and a sound unchecked one
+   would be refused for process reasons alone. Instead the checked draft IS the
+   answer: `check_draft` becomes `submit_draft`, a clean submission is staged
+   to a file `generate` supplies, the last clean submission is the engine lips
+   takes, and the free-text reply stops carrying engine lines (which also
+   retires the "never narrate" plea structurally). The old open questions
+   (hash normalization, a draft checked in pieces) dissolve: there is no
+   comparison, and only a complete clean draft stages.
 
 2. **Witnesses for the programs that cannot yet be observed** (opened 2026-07-31
    by the meaning-dimension work, DESIGN §13).
@@ -303,16 +310,17 @@ tracks only what is still open.
 
 9. **Remaining known gaps on the clause axis** (none blocking).
 
-   a. **`app/Main.hs` is 990 lines** (2135 before 2026-08-05). Four seams moved
-      out: `Lips.Report` (every message it prints, pure -- one voice per defect,
-      readable without the control flow around it), `Lips.Schema` (locking a
-      flakeref, building the option JSON, the `options` verb and the mint's
-      admissibility gate), `Lips.Stage` (staging a language's trees into a temp
-      dir, filling markers, writing the site) and `Lips.Gate` (every gate that
-      judges one realization against something outside the module text).
-      What is left is verb-level composition: which gates a verb runs, the mint
-      round, and reading and writing a language folder. No further seam is
-      obvious, so this stops being an item unless Main grows again.
+   a. **`app/Main.hs` grew back to 1360 lines** (990 after the 2026-08-05
+      extraction, 2135 before it; the worlds arc added the difference). Four
+      seams moved out then: `Lips.Report` (every message it prints, pure),
+      `Lips.Schema` (flakeref locking, option JSON, the `options` verb, the
+      admissibility gate), `Lips.Stage` (staging trees into a temp dir) and
+      `Lips.Gate` (every gate judging one realization against the outside).
+      The next coherent seam is now visible: reading and writing a language
+      folder (`readRecordedWorld`, `writeWorld`, the joint-vs-own record
+      precedence and its cleanup) is one concern with one truth
+      (`Lips.Identity` paths) spread through verb code. Extract when it is
+      touched next, not as an errand.
    b. **Several sites at once is refused, not built** (plan Task 10 landed as
       shape only). No committed example needs a second place; the refusal makes
       growing to several a kernel change nobody can stumble into.
@@ -329,6 +337,32 @@ tracks only what is still open.
       before any program is seen. Revisit if a program wants two differently
       named functions.
 
+10. **A house world's Nix fails at nix, not at lips** (found in the 2026-08-11
+    review of the worlds arc). `parseWorld` is strict about STRUCTURE (unknown
+    header, unknown slot, newer format all refuse naming the offender), but the
+    Nix-bearing slots (`schema`, `builds`, `packages`, `apps`, `devShells`) are
+    pasted verbatim into the compiled flake, so a syntax error in a hand-written
+    world file surfaces as a nix error naming the GENERATED `flake.nix`, not the
+    `.world` file and slot that caused it. The built-ins are covered by the
+    suite and the flake checks; a house world -- the feature's whole point -- is
+    covered by nothing until its first compile.
+
+    Candidate: `lips world <file>` (the verb already prints built-ins) validates
+    a local world file -- the strict parse it has today, plus
+    `nix-instantiate --parse` over each Nix-bearing slot (syntax only, offline,
+    no evaluation), refusing with the file, the slot name and nix's own words.
+    Deliberately NOT at compile time: compile is offline-and-deterministic over
+    a hash-pinned copy that already compiled once, and a per-compile nix parse
+    of an unchanged file buys nothing. The seam is authoring time, once.
+
+11. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
+    ignores and six more; the ignore milestone added the ninth). The next
+    engine axis makes it ten, and no call site is readable now. Fold the
+    engine-owned trio (rules, demands, ignores) into one record -- the run-side
+    twin of what `EngineData` already groups on the storage side. Mechanical,
+    kernel-internal, no behavior change; do it as the FIRST commit of whatever
+    next touches `run`'s signature, not as its own errand.
+
 ## Backlog (larger / deferred by design)
 
 - **Demand duplication across worlds** (accepted 2026-08-09). Two worlds needing
@@ -342,6 +376,29 @@ tracks only what is still open.
   strain output limits at four or five. The staged path already exists: mint two
   now, add the third later against a frozen language level. Measure before
   building anything.
+
+- **Grammar changes cost one full re-mint of every world** (accepted
+  2026-08-11). `grammarIsFrozen` refuses a pattern change unless every
+  committed world is in the same run, so a one-pattern tweak on a language
+  with N worlds is one call carrying N schemas and rewriting N rule sets. The
+  invariant is right (the shared contract must be authored by a party seeing
+  all its parties) and at two worlds the cost is invisible; at four or five the
+  pressure will be for a cheaper path (re-lowering unchanged worlds
+  mechanically when the appended pattern provably reaches none of them).
+  Deliberately unbuilt: no committed language holds more than two worlds, and
+  the remedy already has one honest shape (name every world, a `-t` each).
+  Measure before building anything -- same trigger as reply size above.
+
+- **A record lives in two places** (accepted 2026-08-11). A single-world mint
+  writes `.generation` in the world's folder; a joint mint writes ONE record at
+  the language level and removes the per-world pair (`writeWorld`), and
+  `readRecordedWorld` prefers the world's own record over the joint one. Two
+  shapes for one concept, held by a documented precedence and a cleanup step.
+  The cause is structural: records are SEALED, so committed single-world
+  examples cannot migrate to a one-shape layout without re-minting them.
+  Collapse to "always at language level, listing the worlds it covers, even
+  when that is one" only if a corpus-wide re-mint happens for some other
+  reason; never as its own errand.
 
 
 - **Nothing records WHICH lips wrote a language folder, or what format its
