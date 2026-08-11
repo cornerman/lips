@@ -6,7 +6,7 @@ property fast-start
 
 # Every contract guile's adapters provide. A program reaching for anything not
 # listed here fails loud at compile, naming the contract.
-provides json-parse string-cut field-of field-name field-value
+provides json-parse string-cut field-of field-name field-value random-step
 provides arguments read-a-line end-of-input? emit die
 # Provided while a claim is judging, by the in-memory adapter below.
 provides emitted

@@ -6056,6 +6056,15 @@ main = hspec $ do
         `shouldSatisfy` \ns -> all (`elem` ns)
           ["read-a-line", "end-of-input?", "emit", "die", "json-parse", "string-cut", "field-of"]
 
+    -- A simulation varies without ceasing to be a pure function of its input,
+    -- which takes a generator: pure, seeded, and the SAME sequence on every
+    -- runtime, or a replay disagrees with the run it reproduces. It is a
+    -- contract rather than clauses because a generator a mint invents is a
+    -- generator a re-mint rewrites, and that silently rewrites history.
+    it "ships a seeded generator, pure and one argument wide" $
+      filter ((== "random-step") . cName) (vContracts schemeVocabulary)
+        `shouldSatisfy` \cs -> map cKind cs == [Pure] && map cArity cs == [1]
+
   -- The gate is the whole safety argument: a clause reaches the world only
   -- through a declared contract, and nothing else can slip in. Ported from
   -- experiments/logscan-clauses/gate.scm, which proved the walk by hand.
@@ -6682,6 +6691,9 @@ main = hspec $ do
     it "ships a guile runtime that covers what the logscan core reaches" $
       coveringRuntime [guileRuntime] (map cName (reachedContracts schemeVocabulary logscanClauses)) []
         `shouldBe` Right guileRuntime
+
+    it "ships a guile runtime that covers the seeded generator" $
+      coveringRuntime [guileRuntime] ["random-step"] [] `shouldBe` Right guileRuntime
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).

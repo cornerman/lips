@@ -16,3 +16,11 @@ effect die 2 "message subject -> stops the program, naming the subject"
 # An OBSERVATION exists only while a claim is judging: it reports what the program
 # did, and no real run provides it. So a CLAIM may name it and a CLAUSE may not.
 observation emitted 0 "-> the lines the program printed, in order"
+# A seeded generator, so a simulation can vary without ceasing to be a pure
+# function of its input. The recurrence is fixed HERE rather than per adapter,
+# because every runtime must produce the same sequence or a replay disagrees
+# with the run it reproduces: next = (1664525 * seed + 1013904223) mod 2^32,
+# and the value is (next * 1000) / 2^32, taken from the high bits because an
+# LCG's low bits are not random. Unpredictability is not its job and never can
+# be; a caller who needs it derives each seed outside, from a secret it keeps.
+pure random-step 1 "seed -> (value . next-seed), value 0..999"

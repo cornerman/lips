@@ -17,3 +17,10 @@
 (define (field-of record name) (assoc-ref record name))
 (define (field-name p) (car p))
 (define (field-value p) (cdr p))
+
+;; The generator is specified in assets/runtime/scheme/contracts, not chosen
+;; here, so that every runtime steps identically. Guile's exact integers make
+;; the recurrence exact; nothing rounds.
+(define (random-step seed)
+  (let ((next (modulo (+ (* 1664525 seed) 1013904223) 4294967296)))
+    (cons (quotient (* next 1000) 4294967296) next)))
