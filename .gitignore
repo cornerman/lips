@@ -7,3 +7,6 @@ editors/vscode/*.vsix
 # feature worktrees
 .worktrees/
 nvim.log
+
+# VM run debris (a `nix run .#vm` in a compiled dir writes its disk beside it)
+*.qcow2
