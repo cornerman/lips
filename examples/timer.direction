@@ -1,4 +1,5 @@
-Model the job as a systemd service paired with a systemd timer. The service
-runs the given command via ExecStart; the timer drives it on the stated
-schedule through timerConfig.OnCalendar. Write the OnCalendar value in systemd
-calendar syntax. Do not build a program; the command is given as a path string.
+Where the world is a machine, model the job as a systemd service paired with a
+systemd timer: the service runs the given command via ExecStart, and the timer
+drives it on the stated schedule through timerConfig.OnCalendar, written in
+systemd calendar syntax. Do not build a program; the command is given as a path
+string.
