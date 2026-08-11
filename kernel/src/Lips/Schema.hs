@@ -10,7 +10,7 @@
 --
 -- Everything here shells out to nix and is therefore the imperative shell
 -- around a pure core: 'Lips.Kernel.OptionType' answers what a name means,
--- 'Lips.Nix.Schema' parses the document, and this module only decides which
+-- 'Lips.Nix.Options' parses the document, and this module only decides which
 -- document that is. @check@ never reaches any of it, which is what keeps a
 -- committed engine judgeable offline.
 module Lips.Schema

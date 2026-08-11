@@ -7,7 +7,8 @@
 -- over this flake. So this module holds no run logic -- only the flake text
 -- and the exact commands to print, both pure functions of the program's
 -- /shape/ (its world, and whether it declares artifacts). The kernel stays
--- domain-blind; this is target-tier knowledge (Lips.Nix.*), like 'Lips.Nix.Target'.
+-- domain-blind; this is target-tier knowledge (Lips.Nix.*), assembled from
+-- the world file's slots ('Lips.World').
 --
 -- Two axes meet here:
 --
