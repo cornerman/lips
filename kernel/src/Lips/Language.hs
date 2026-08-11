@@ -44,6 +44,13 @@ import           System.Directory (doesDirectoryExist, doesFileExist, listDirect
 -- It lives here rather than in the kernel's engine gate because it is a property
 -- OF A LANGUAGE ACROSS ITS WORLDS: no single engine can see it, and it only
 -- became checkable when one mint began writing every world at once.
+--
+-- The check is a static approximation: a rule MATCHING the ignored subject
+-- counts as placing it, without proving the rule fires for any particular
+-- program's fact (its demands may still hold one open). That is sound: a fact
+-- the matching rule leaves unspent surfaces as that world's own 'Unmapped'
+-- refusal, so nothing is laundered -- this guard only rules out the fact NO
+-- rule anywhere is even shaped to take.
 orphanIgnores :: [(Text, EngineData)] -> [(Text, Text, Text)]
 orphanIgnores worlds =
   [ (w, igId ig, renderAttrPath (igSubject ig))
