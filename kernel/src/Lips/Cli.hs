@@ -56,7 +56,7 @@ data GenerateOpts = GenerateOpts
 -- entering the record, the same hole @-nc@ closed for ambient context files.
 --
 -- Default @medium@, measured rather than guessed. A mint's cost is turns times
--- per-turn latency, and lips itself is under 1% of it (one @check_draft@ is
+-- per-turn latency, and lips itself is under 1% of it (one @submit_draft@ is
 -- ~0.95s inside a six-minute mint). Reasoning level moves the second factor:
 -- the same program minted in 6m22s at @high@ and 4m17s at @medium@, with the
 -- same number of drafts and a behaviourally identical engine. What actually

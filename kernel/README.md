@@ -137,12 +137,15 @@ text. The boundary is explicit in the code:
 - The model call itself lives in the CLI shell (`app/Main.hs`, `callPi`), which
   runs pi hermetically by explicit subtraction and loads exactly two tools,
   both in `assets/mint-tools.ts`: the `query_options` lookup, which shells back
-  into the `lips options` verb, and `check_draft`, which shells into
-  `lips check --draft` over the engine the model is about to answer with. The
+  into the `lips options` verb, and `submit_draft`, which shells into
+  `lips check --draft` over the engine and, when every gate it can run passes,
+  writes those bytes to the path `generate` supplied in `LIPS_MINT_ANSWER`. The
   mint can therefore confirm an option name instead of recalling it, and learn
   which gate rejects its draft while it can still fix it, but cannot read a
   file, run a command, or judge its own engine: the deciding gate runs
-  afterwards, in Haskell.
+  afterwards, in Haskell, over the staged bytes. The last clean submission is
+  the engine, so the checked draft and the answer cannot differ, and a mint that
+  submits nothing is refused.
   Every lookup and its answer land in the `.generation` record, so nothing the
   model saw escapes `genId`.
 

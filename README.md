@@ -136,10 +136,13 @@ The mint has two tools, and neither one judges. The first looks an option path
 and type up in the pinned schema of the target world (the same lookup
 `lips options <query>` gives you), so the mint confirms a name instead of
 hallucinating it. It grounds names, never values; what your program does not
-state remains uninvented. The second runs lips' own gates over the draft engine
-the model is about to answer with (`lips check --draft`, the same verb you run)
-and reports the first gate that rejects it, so a fixable mistake is fixed inside
-the one call instead of costing you a fresh mint. Every answer either tool gives
+state remains uninvented. The second is how an engine reaches lips at all: the
+model submits its draft, lips runs its own gates over it (`lips check --draft`,
+the same verb you run) and reports the first gate that rejects it, so a fixable
+mistake is fixed inside the one call instead of costing you a fresh mint. A
+clean submission is staged as the answer, and lips takes the last one staged, so
+the draft that was checked and the engine that is used are the same bytes;
+prose the model writes around it is read by nothing. Every answer either tool gives
 goes into `<language>.generation` to enter the generation hash. Nothing in lips
 lets a model run its own engine or decide that it is good — that verification
 happens afterwards, offline, by lips itself, and it is unchanged by what the
@@ -311,7 +314,7 @@ observable, since something has to be built to observe it.) `generate` additiona
 authenticated against some provider: lips deliberately keeps it out of its own
 closure, because it is your harness and carries your credentials. lips calls it hermetically, completely stripping away your ambient session,
 tools, skills, and extensions. What remains is the system prompt lips sends and
-the two tools it loads for that run (the schema lookup and the draft check). Everything the model saw (the
+the two tools it loads for that run (the schema lookup and the draft submission). Everything the model saw (the
 prompt and every tool answer) is hashed into `.generation`, ensuring the mint
 is fully transparent and leaves a complete audit trail.
 

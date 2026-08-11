@@ -921,6 +921,43 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **The answer is a submitted draft.** Twice on 2026-08-09 a mint ran the draft
+  tool over draft A and then answered with a different draft B, so lips refused
+  B a minute later with the exact message the tool had already shown, and the
+  whole one-shot call was wasted. The prompt had pleaded ("answer with those
+  lines ALONE"); invariant 2 asks for a guard instead of a plea.
+
+  REJECTED, and recorded so it is not revived: a fingerprint gate (the tool
+  records a hash of every draft it validates, `generate` refuses a reply hashing
+  to nothing recorded). It cannot save the call, because `pi -p` is one-shot and
+  the model is gone by the time the hashes are compared. A bad unchecked reply is
+  refused by the existing gates anyway; a sound unchecked one would be refused
+  for process reasons alone, which is a pure loss.
+
+  BUILT: the checked draft IS the answer. `check_draft` became `submit_draft`;
+  `callPi` owns a scratch directory for the call and passes `LIPS_MINT_ANSWER`
+  into the pi child; the tool runs the same `lips check --draft` loop and, when
+  every program passes, writes those bytes to that path, overwriting an earlier
+  clean submission. After pi exits, `generate` reads the file instead of the text
+  reply: a missing file is `Report.noSubmission` (a mint that never submitted
+  produced no engine), an empty one is `Report.emptySubmission` (a staging
+  defect, reported as a lips bug). The reply FORMAT is untouched, so
+  `parseEngineCandidates` reads the staged bytes exactly as it read the reply and
+  every committed engine still checks byte-identically.
+
+  What did not move: who judges. The tool REPORTS and stages; the deciding gates
+  still run once, in Haskell, over the staged bytes, including the two
+  `--draft` cannot run (claim gate, artifact build). What is stricter: a mint
+  that never submits is refused, where a sound unchecked reply used to pass.
+  What is deleted: two prompt pleas, structurally. "Answer with what you
+  checked" is now identity by construction, and "never narrate" is moot because
+  the text reply is inert -- a narrating sentence can no longer fail a mint.
+  Invariant 6 holds unchanged: the submitted draft is the recorded reply (hashed
+  into `genId`), and every submission attempt is a tool call in the transcript,
+  which is hashed too. `just test-draft` pins the boundary from the other side:
+  the `check --draft` VERB stages nothing even with `LIPS_MINT_ANSWER` set, so
+  staging lives in the tool alone.
+
 - **A contract may state the whole text a rule assembles.** Where two worlds
   spell one fact differently, the pattern captures it in PARTS and each world's
   rule assembles its own notation (`"*-*-* <value.1>:<value.2>:00"` for a

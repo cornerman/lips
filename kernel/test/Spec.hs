@@ -5027,8 +5027,8 @@ main = hspec $ do
       progressEvent "{\"type\":\"tool_execution_start\",\"toolName\":\"query_options\",\"args\":{\"query\":\"services.nginx\"}}"
         `shouldBe` Just (PiTool "query_options" "services.nginx")
     it "a tool answer carries its text and whether it failed" $
-      progressEvent "{\"type\":\"tool_execution_end\",\"toolName\":\"check_draft\",\"isError\":true,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"nope\"}]}}"
-        `shouldBe` Just (PiToolEnd "check_draft" True "nope")
+      progressEvent "{\"type\":\"tool_execution_end\",\"toolName\":\"submit_draft\",\"isError\":true,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"nope\"}]}}"
+        `shouldBe` Just (PiToolEnd "submit_draft" True "nope")
     it "a turn beginning means lips is waiting on the model" $
       progressEvent "{\"type\":\"turn_start\"}" `shouldBe` Just (PiState "waiting for the model")
     it "the model's words come through as prose" $

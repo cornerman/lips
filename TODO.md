@@ -6,31 +6,7 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
-1. **A mint may answer with a draft it never checked** (observed twice,
-   2026-08-09).
-
-   `check_draft` refuses the defect in the model's own call, with the exact
-   message the final gate will use -- and twice now a mint answered with a
-   different draft than the one it checked, so lips caught the same defect a
-   minute later and the whole call was wasted. The prompt already says a clean
-   answer does not guarantee acceptance; that is a plea, and invariant 2 asks for
-   a guard.
-
-   SETTLED 2026-08-11, plan written:
-   `docs/superpowers/plans/2026-08-11-the-answer-is-a-submitted-draft.md`. The
-   earlier sketch here (the tool records a fingerprint of every checked draft,
-   `generate` refuses a reply hashing to nothing recorded) is rejected in that
-   plan: `pi -p` is one-shot, so a post-hoc refusal cannot save the call -- a
-   bad reply is refused by the existing gates anyway, and a sound unchecked one
-   would be refused for process reasons alone. Instead the checked draft IS the
-   answer: `check_draft` becomes `submit_draft`, a clean submission is staged
-   to a file `generate` supplies, the last clean submission is the engine lips
-   takes, and the free-text reply stops carrying engine lines (which also
-   retires the "never narrate" plea structurally). The old open questions
-   (hash normalization, a draft checked in pieces) dissolve: there is no
-   comparison, and only a complete clean draft stages.
-
-2. **Three open questions about claims** (opened 2026-07-31 by the
+1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
 
    a. Not decided: whether a machine claim should RETRY its observation until it
@@ -69,7 +45,7 @@ tracks only what is still open.
       section, the dual of `feed`, so an author's example stops freezing its item
       count. Deferred until a third program wants it.
 
-3. **The schema pin is recorded, but nothing relates it to the nixpkgs the
+2. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
    "Option-schema grounding"; the mechanism landed cbd3f1f). Three separate
    questions, in the order they hurt:
@@ -102,7 +78,7 @@ tracks only what is still open.
       the document themselves loses the ref. Candidate: accept a ref alongside
       the path, or nothing at all -- prefer `--schema` for that caller.
 
-4. **Plurality is not a gate** (the open half of the plurality work, DESIGN §13
+3. **Plurality is not a gate** (the open half of the plurality work, DESIGN §13
    "Plurality is what makes a baked-source hole mean anything"; every committed
    program has been enriched, so no candidate is left in the corpus).
 
@@ -119,7 +95,7 @@ tracks only what is still open.
    would be evidence either way: cutting `function`'s three calls to one should
    demote the call to a constant.
 
-5. **The contract set reaches stdin-to-stdout text tools and nothing else**
+4. **The contract set reaches stdin-to-stdout text tools and nothing else**
    (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked
    to sweep three directories of files older than 14 days, the mint wrote 97
    lines of Go and never considered clauses: there is no contract for a file, a
@@ -137,7 +113,7 @@ tracks only what is still open.
    filesystem and clock interfaces as the typed authority. Adopting one is a
    design pass, not an errand.
 
-6. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
+5. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
    landed 2026-08-04, when the mint began emitting clauses and `logscan` moved
    from "80 lines vouched by nothing" to 5 clauses and 0 unvouched assertions).
 
@@ -177,7 +153,7 @@ tracks only what is still open.
    recurs, is the twin of `diagInert`: a word whose only landing is a claim is
    inert in the same sense and should be named.
 
-7. **Remaining known gaps on the clause axis** (none blocking).
+6. **Remaining known gaps on the clause axis** (none blocking).
 
    a. **`app/Main.hs` grew back to 1360 lines** (990 after the 2026-08-05
       extraction, 2135 before it; the worlds arc added the difference). Four
@@ -206,7 +182,7 @@ tracks only what is still open.
       before any program is seen. Revisit if a program wants two differently
       named functions.
 
-8. **A house world's Nix fails at nix, not at lips** (found in the 2026-08-11
+7. **A house world's Nix fails at nix, not at lips** (found in the 2026-08-11
     review of the worlds arc). `parseWorld` is strict about STRUCTURE (unknown
     header, unknown slot, newer format all refuse naming the offender), but the
     Nix-bearing slots (`schema`, `builds`, `packages`, `apps`, `devShells`) are
@@ -224,7 +200,7 @@ tracks only what is still open.
     a hash-pinned copy that already compiled once, and a per-compile nix parse
     of an unchanged file buys nothing. The seam is authoring time, once.
 
-9. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
+8. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
     ignores and six more; the ignore milestone added the ninth). The next
     engine axis makes it ten, and no call site is readable now. Fold the
     engine-owned trio (rules, demands, ignores) into one record -- the run-side
