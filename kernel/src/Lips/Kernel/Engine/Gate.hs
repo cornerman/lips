@@ -11,18 +11,24 @@
 module Lips.Kernel.Engine.Gate
   ( engineViolations
   , unanswerableProblem
+  , unholdableExpects
+  , unholdableProblem
   ) where
 
-import           Data.Maybe (mapMaybe)
+import           Data.Maybe (isJust, mapMaybe)
 import           Data.Text (Text)
 import qualified Data.Text as T
 
+import           Lips.Kernel.Decision          (Kind (Concept), Subject (..))
 import           Lips.Kernel.Engine.Answerable (UnanswerableDemand, renderUnanswerableDemand, unanswerableDemands)
 import           Lips.Kernel.Engine.Data       (Emit (..), MapRule (..), renderAttrPath)
-import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOverlap, renderRuleOverlap, ruleOverlaps)
+import           Lips.Kernel.Engine.Landing    (EmitView (..), emitViews)
+import           Lips.Kernel.Engine.Overlap    (patternOverlaps, renderPatternOverlap, renderRuleOverlap, ruleOverlaps, subjectsUnify)
 import           Lips.Kernel.Engine.Parts      (partFaults, renderPartFault)
 import           Lips.Kernel.Engine.Reach      (droppedValues, renderDroppedValue)
-import           Lips.Kernel.Engine.Value      (valuePathHoles)
+import           Lips.Kernel.Engine.Value      (AssertionUse (..), assertionUses, valuePathHoles)
+import           Lips.Kernel.Expect            (Expect (..))
+import           Lips.Kernel.Lang.Pattern      (Pattern)
 import           Lips.Kernel.Lang.Store        (EngineData (..))
 
 -- | Every way an engine can be unsound on its own terms, in the order the gates
@@ -149,3 +155,54 @@ unanswerableProblem uds =
     <> "\nA demand is met by a decision a pattern EMITS, matched segment for\n"
     <> "segment, so the demanded subject must be one of those families -- write\n"
     <> "the capture too (demand command.<name>, not demand command)."
+
+-- | Every assertion that cannot hold as written: it reads a SEVERAL-PART value
+-- whole (no @#N@, no template) while every rule filling its option assembles the
+-- option's text out of the parts, so the option never carries the parts joined
+-- by a space and the check fails for every program in the language.
+--
+-- Static and domain-blind, the same shape as 'Lips.Kernel.Engine.Parts': the
+-- part count comes from the pattern, and nothing here asks what a part MEANS.
+-- Caught at the engine gate because the contract gate that would catch it needs
+-- nix, a realized module and a minute -- by which time the model's call has
+-- ended and the whole mint is wasted (measured: three live mints).
+unholdableExpects :: [Pattern] -> [MapRule] -> [Expect] -> [Text]
+unholdableExpects pats rules es =
+  [ unholdable e n
+  | e <- es
+  , not (isJust (exToken e)), not (isJust (exTemplate e))
+  , n : _ <- [partCounts (exFrom e)]
+  , not (any assembledWhole (emitsFilling (exPath e)))
+  ]
+  where
+    -- How many parts the fact this assertion reads has, as the patterns fix it.
+    -- A concept never reaches a rule, and a one-part value has no assembly to
+    -- speak of, so both leave the list empty.
+    partCounts (Subject subj) =
+      [ n
+      | p <- pats, ev <- emitViews pats p
+      , evKind ev /= Concept
+      , subjectsUnify (evFamily ev) subj
+      , let n = length (evParts ev), n > 1 ]
+    emitsFilling path = [ em | r <- rules, em <- mrEmits r, emPath em == path ]
+    -- A rule that writes the WHOLE value into the option is what the plain form
+    -- was made for, however many parts the fact has.
+    assembledWhole em = UseWhole `elem` assertionUses (emRhs em)
+    unholdable e n =
+      "check " <> exId e <> " reads " <> renderSubject (exFrom e) <> " whole, but its "
+        <> "value has " <> T.pack (show n) <> " parts and every rule filling "
+        <> renderAttrPath (exPath e) <> " assembles that option's text out of them, "
+        <> "so the parts joined by a space appear in it nowhere"
+    renderSubject (Subject segs) = renderAttrPath segs
+
+-- | One voice for the defect, wherever it is caught: at the mint gate, or in an
+-- engine already committed. Names the remedies in the order a mint should prefer
+-- them.
+unholdableProblem :: [Text] -> Text
+unholdableProblem bad =
+  "its contract states checks that can never hold:\n"
+    <> T.unlines (map ("  - " <>) bad)
+    <> "\nState the whole text the rule assembles, with the same template\n"
+    <> "(expect <path> from <subject> is \"*-*-* <value.1>:<value.2>:00\"), or\n"
+    <> "assert ONE part of the value (from <subject>#1), which is the right form\n"
+    <> "when a world writes one part into an option of its own."

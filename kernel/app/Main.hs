@@ -86,7 +86,7 @@ import           Lips.Kernel.Lang.Crystallize  (LineOutcome (..), crystallize)
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (unanswerableDemands)
-import           Lips.Kernel.Engine.Gate       (engineViolations)
+import           Lips.Kernel.Engine.Gate       (engineViolations, unholdableExpects, unholdableProblem)
 import           Lips.Nix.Claims               (claimsFile)
 import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText,
                                                 runCommands)
@@ -599,6 +599,11 @@ expectGate contract claims dir w file eng program rl = do
       Right expects
         | bad@(_ : _) <- uncheckableExpects (edRules eng) expects ->
             die (uncheckableReport file bad)
+        -- An assertion that cannot hold for ANY program is the engine's defect,
+        -- not this program's, so it is named as one rather than reported as a
+        -- broken promise after the eval.
+        | bad@(_ : _) <- unholdableExpects (edPatterns eng) (edRules eng) expects ->
+            die (validationReport file (unholdableProblem bad))
         | otherwise -> step ("contract: " <> plural (length expects) "check") $ do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
@@ -1061,6 +1066,9 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
         <> "lips generate --compat none " <> T.pack rep))
   case uncheckableExpects (edRules eng) expects of
     bad@(_ : _) -> throwE (uncheckableReport rep bad)
+    []          -> pure ()
+  case unholdableExpects (edPatterns eng) (edRules eng) expects of
+    bad@(_ : _) -> throwE (validationReport rep (unholdableProblem bad))
     []          -> pure ()
   -- Every relative path a module names must be in the tree this mint stages: a
   -- mint that emits `src ./artifacts/<name>` but writes its source under another

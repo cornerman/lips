@@ -27,7 +27,7 @@ import Lips.Kernel.Refine
 import Lips.Kernel.Run
 import Lips.Kernel.Engine.Answerable
 import Lips.Kernel.Engine.Data
-import Lips.Kernel.Engine.Gate (engineViolations)
+import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
 import Lips.Report                 (unansweredReport, unportableReport)
@@ -5720,6 +5720,48 @@ main = hspec $ do
       case engineViolations eng of
         (v : _ : _) -> v `shouldSatisfy` T.isInfixOf "patterns read the same line"
         other       -> expectationFailure ("expected both gates to reject, got " ++ show (length other))
+
+    -- A world may ASSEMBLE an option's text from a fact's parts, and then the
+    -- whole value (its parts joined by a space) appears in no such text, so a
+    -- contract stating it can never hold. Refused where the mint can still fix
+    -- it -- three live mints wrote exactly this and lost the call to the
+    -- contract gate a minute later.
+    describe "an expect that cannot hold (the assembled value)" $ do
+      let eng = engineFromLang
+            [ "0.95 p1 pattern at <hh>:<mm> => fact job.schedule \"<hh> <mm>\""
+            , "0.95 r1 match fact job.schedule => systemd.timers.t.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\""
+            ]
+          pats  = edPatterns eng
+          rules = edRules eng
+          whole = Expect "a1" ["systemd","timers","t","timerConfig","OnCalendar"]
+                         (Subject ["job","schedule"]) Nothing Nothing
+          part  = whole { exId = "a2", exToken = Just 1 }
+          tpl   = whole { exId = "a3", exTemplate = Just "*-*-* <value.1>:<value.2>:00" }
+
+      it "refuses a whole-value expect on a path assembled from parts" $
+        unholdableExpects pats rules [whole] `shouldSatisfy` any (T.isInfixOf "a1")
+
+      it "accepts the two forms that can hold: one part, or the whole text" $ do
+        unholdableExpects pats rules [part] `shouldBe` []
+        unholdableExpects pats rules [tpl]  `shouldBe` []
+
+      -- A rule that writes the WHOLE value into its option is the case the plain
+      -- form was made for, however many parts the fact has.
+      it "leaves a whole-value expect alone when a rule fills the option with it" $ do
+        let whole' = engineFromLang
+              [ "0.95 p1 pattern at <hh>:<mm> => fact job.schedule \"<hh> <mm>\""
+              , "0.95 r1 match fact job.schedule => systemd.timers.t.timerConfig.OnCalendar \"\\\"<value>\\\"\""
+              ]
+        unholdableExpects (edPatterns whole') (edRules whole') [whole] `shouldBe` []
+
+      -- A one-part fact has nothing to assemble, so containment is exactly what
+      -- the contract means and the gate stays silent.
+      it "leaves a one-part fact alone" $ do
+        let one = engineFromLang
+              [ "0.95 p1 pattern at <time> => fact job.schedule \"<time>\""
+              , "0.95 r1 match fact job.schedule => systemd.timers.t.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\""
+              ]
+        unholdableExpects (edPatterns one) (edRules one) [whole] `shouldBe` []
 
   describe "draft materialization (Lips.Generate.Draft)" $ do
     let reply = T.unlines
