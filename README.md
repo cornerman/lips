@@ -158,7 +158,9 @@ minted in the order given. A world is DATA, not a lips feature: each of
 those names a `<world>.world` file lips ships (`lips world` lists them, `lips
 world nixos` prints one), and a `<name>.world` file beside your program is
 resolved the same way, so a world lips never heard of works with no change to
-lips. The names lips ships are reserved, so `nixos` means one thing everywhere;
+lips. `lips world --check` hands the Nix in every world file reachable from
+here to nix's own parser, so a typo in yours is named against your file and its
+line instead of surfacing later against a generated `flake.nix`. The names lips ships are reserved, so `nixos` means one thing everywhere;
 call yours `house-k3s`. `--worlds DIR` looks them up in `DIR` instead of beside
 the program. The flag steers the
 mint into that world's option namespace (`services.*`, `boot.*`, `users.*`

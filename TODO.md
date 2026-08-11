@@ -182,25 +182,7 @@ tracks only what is still open.
       before any program is seen. Revisit if a program wants two differently
       named functions.
 
-7. **A house world's Nix fails at nix, not at lips** (found in the 2026-08-11
-    review of the worlds arc). `parseWorld` is strict about STRUCTURE (unknown
-    header, unknown slot, newer format all refuse naming the offender), but the
-    Nix-bearing slots (`schema`, `builds`, `packages`, `apps`, `devShells`) are
-    pasted verbatim into the compiled flake, so a syntax error in a hand-written
-    world file surfaces as a nix error naming the GENERATED `flake.nix`, not the
-    `.world` file and slot that caused it. The built-ins are covered by the
-    suite and the flake checks; a house world -- the feature's whole point -- is
-    covered by nothing until its first compile.
-
-    Candidate: `lips world <file>` (the verb already prints built-ins) validates
-    a local world file -- the strict parse it has today, plus
-    `nix-instantiate --parse` over each Nix-bearing slot (syntax only, offline,
-    no evaluation), refusing with the file, the slot name and nix's own words.
-    Deliberately NOT at compile time: compile is offline-and-deterministic over
-    a hash-pinned copy that already compiled once, and a per-compile nix parse
-    of an unchanged file buys nothing. The seam is authoring time, once.
-
-8. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
+7. **`Lips.Kernel.Run.run` takes nine positional arguments** (rules, demands,
     ignores and six more; the ignore milestone added the ninth). The next
     engine axis makes it ten, and no call site is readable now. Fold the
     engine-owned trio (rules, demands, ignores) into one record -- the run-side

@@ -921,6 +921,50 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A house world's Nix is checked by nix, before anything is minted with it.**
+  `Lips.World.parseWorld` was strict about STRUCTURE (an unknown header, an
+  unknown slot, a newer format all refuse naming the offender) and blind to what
+  the Nix-bearing slots hold, because they are pasted verbatim into the compiled
+  flake and the schema expression. So a typo in a hand-written world file
+  surfaced at nix naming the GENERATED `flake.nix`, a file the human never
+  wrote, and only at the first compile. The built-ins were covered by the suite
+  and the flake checks; a house world, which is the whole point of worlds being
+  data, was covered by nothing.
+
+  `lips world --check [<name>]` now hands every Nix-bearing slot (`schema`,
+  `inputs`, `builds`, `packages`, `apps`, `devShells`) to `nix-instantiate
+  --parse`: syntax only, offline, nothing evaluated and nothing fetched, and
+  nix's own parser is the authority (lips owns no second one). Named, it checks
+  one world; unnamed, every world reachable from here, which is the same default
+  the listing takes -- including a local file that took a name lips ships, since
+  a check that skipped it would call the directory sound.
+
+  What makes the message worth reading is the slicing (`Lips.World.Check`,
+  `nixSlices`, pure and unit-tested): a slot's lines land on THEIR OWN LINES of
+  the file, every other line blanked, and the fragment's wrapper (`{`/`}` for
+  the attrset slots, `let`/`in null` for `builds`, mirroring how
+  `Lips.Nix.Flake.flakeText` embeds each) rides the marker lines that already
+  fence the slot. So nix reports `house-k3s.world:37:51` with a real source
+  excerpt, and the caller only swaps the scratch path for the real one. Every
+  slice opens with `with {};`, because `--parse` also resolves variables
+  statically and a slot legitimately reads names its surroundings bind
+  (`nixpkgs`, `pkgsFor`, the world's own `builds`); under a `with` those lookups
+  become dynamic, so an unbound name is no longer an error while a syntax error
+  still is. Whether a name EXISTS is the compiled flake's question, answered at
+  eval, where the scope is real.
+
+  Deliberately NOT at compile time: compile is offline-and-deterministic over a
+  hash-pinned copy that already compiled once, so a per-compile parse of an
+  unchanged file buys nothing. The seam is authoring time, once.
+
+  Testing splits along the nix boundary: the suite covers WHICH TEXT nix is
+  handed (it cannot run nix -- its own build sandbox has none), and the
+  `world-slots` flake check runs the real binary over the four shipped worlds
+  plus a deliberately broken house world, asserting the refusal names the slot
+  and the file's own line and column. `Lips.World.Resolve` grew
+  `resolveWorldFrom` (resolution plus WHERE the world came from) so a message
+  can name the file without a second place deciding local-versus-shipped.
+
 - **The answer is a submitted draft.** Twice on 2026-08-09 a mint ran the draft
   tool over draft A and then answered with a different draft B, so lips refused
   B a minute later with the exact message the tool had already shown, and the
