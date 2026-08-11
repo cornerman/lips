@@ -243,6 +243,15 @@ test-draft:
       || { echo "FAIL: a contract stating the assembled text was refused"; cat "$tmp/out11"; exit 1; }
     grep -q "contract: 1 check" "$tmp/out11" \
       || { echo "FAIL: the expect gate did not run on the template draft"; cat "$tmp/out11"; exit 1; }
+    # Staging is the TOOL's alone. The verb only reports, so a human (and this
+    # recipe) can run it over any draft without an answer appearing behind their
+    # back; only submit_draft writes the file generate then reads as the answer.
+    export LIPS_MINT_ANSWER="$tmp/answer"
+    "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/tpl.txt" > "$tmp/out12" 2>&1 \
+      || { echo "FAIL: a sound draft was refused with an answer path set"; cat "$tmp/out12"; exit 1; }
+    if [ -e "$tmp/answer" ]; then
+      echo "FAIL: the check verb staged an answer; only submit_draft may"; exit 1
+    fi
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
