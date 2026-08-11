@@ -1,0 +1,7 @@
+q2 meta engine.demand.q2 stated "demand job.command \"which command should the job run?\"" @gen:761fbea6128185e5
+q4 meta engine.demand.q4 stated "demand job.schedule \"at what time of day should the job run?\"" @gen:761fbea6128185e5
+q5 meta engine.demand.q5 stated "demand job.image \"which container image should the run use?\"" @gen:761fbea6128185e5
+r4 meta engine.rule.r4 stated "match fact job.command => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.command \"[ \\\"<value>\\\" ]\"" @gen:761fbea6128185e5
+r5 meta engine.rule.r5 stated "match fact job.schedule => kubernetes.resources.cronJobs.<self>.spec.schedule \"\\\"<value.2> <value.1> * * *\\\"\"" @gen:761fbea6128185e5
+r6 meta engine.rule.r6 stated "match fact job.name => kubernetes.resources.cronJobs.<self>.metadata.name \"\\\"<value>\\\"\"" @gen:761fbea6128185e5
+r7 meta engine.rule.r7 stated "match fact job.image => kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.image \"\\\"<value>\\\"\"" @gen:761fbea6128185e5

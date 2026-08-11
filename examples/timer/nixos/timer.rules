@@ -1,3 +1,6 @@
-r1 meta engine.rule.r1 stated "match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\" ; systemd.services.<self>.serviceConfig.Type \"\\\"oneshot\\\"\"" @gen:f5fd6e2e20173096
-r2 meta engine.rule.r2 stated "match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"" @gen:f5fd6e2e20173096
-r3 meta engine.rule.r3 stated "match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"" @gen:f5fd6e2e20173096
+i1 meta engine.ignore.i1 stated "ignore fact job.image \"a machine runs the script directly from its own filesystem, so there is no container image\"" @gen:761fbea6128185e5
+q1 meta engine.demand.q1 stated "demand job.command \"which command should the job run?\"" @gen:761fbea6128185e5
+q3 meta engine.demand.q3 stated "demand job.schedule \"at what time of day should the job run?\"" @gen:761fbea6128185e5
+r1 meta engine.rule.r1 stated "match fact job.command => systemd.services.<self>.serviceConfig.ExecStart \"\\\"<value>\\\"\"" @gen:761fbea6128185e5
+r2 meta engine.rule.r2 stated "match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar \"\\\"*-*-* <value.1>:<value.2>:00\\\"\" ; systemd.timers.<self>.wantedBy \"[ \\\"timers.target\\\" ]\"" @gen:761fbea6128185e5
+r3 meta engine.rule.r3 stated "match fact job.name => systemd.services.<self>.description \"\\\"<value>\\\"\"" @gen:761fbea6128185e5
