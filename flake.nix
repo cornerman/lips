@@ -194,6 +194,37 @@
             jq -e 'has("kubernetes.resources.deployments.<name>.spec") | not' ${schema} > /dev/null
             touch "$out"
           '';
+        # Every Nix-bearing slot of every shipped world, through nix's own
+        # parser -- and one deliberately broken house world, to show a defect is
+        # caught and reported against the world FILE. The hspec suite cannot run
+        # either half: its own build sandbox has no nix, so it covers only which
+        # text nix is handed. Without this check, a wrapper that stopped
+        # matching how flakeText embeds a slot would surface as a syntax error
+        # in somebody's generated flake.nix.
+        world-slots = pkgs.runCommand "lips-world-slots"
+          { nativeBuildInputs = [ self.packages.${pkgs.stdenv.hostPlatform.system}.default pkgs.nix ]; } ''
+          export HOME="$TMPDIR"
+          cd "$TMPDIR"
+          lips world --check
+          cat > house-broken.world <<'EOF'
+          format: 1
+          world: house-broken
+          module-attr: houseModules
+          --- preamble ---
+          prose
+          --- schema ---
+          let x = ;
+          in x
+          EOF
+          if lips world --check house-broken > refusal 2>&1; then
+            echo "a world whose schema does not parse was accepted:"; cat refusal; exit 1
+          fi
+          # The line and column are the world file's own, which is the whole
+          # point of slicing a slot line-aligned.
+          grep -q "schema slot is not valid Nix" refusal
+          grep -q "house-broken.world:7:9" refusal
+          touch "$out"
+        '';
         kernel-tests = pkgs.runCommand "lips-kernel-tests"
           { nativeBuildInputs = [ (ghc pkgs) ]; } ''
           mkdir -p assets && cp -r ${./assets}/. assets && cp -r ${./kernel}/. build && cd build
