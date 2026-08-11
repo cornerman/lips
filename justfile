@@ -19,13 +19,17 @@ test:
     nix develop -c bash -c 'cd kernel && ghc -Wall -isrc -itest test/Spec.hs \
       -outputdir /tmp/lips-build -o /tmp/lips-spec && /tmp/lips-spec'
 
-# Full verification: conformance suite + VM boot of the realized module.
-# This is the CI gate (nothing calls it automatically yet -- run it by hand
-# before a merge); named `ci`, not `check*`, since it is not the same check
-# as `lips check` (that one program-vs-contract verb is the `check` recipe
-# and `check-expect` below, both host-side and KVM-free).
+# Full verification: conformance suite + VM boot of the realized module,
+# then the draft-door wordings (test-draft below), which hspec cannot see and
+# which rotted unnoticed for four days when nothing ran them -- chained here so
+# the one pre-merge command covers them. This is the CI gate (nothing calls it
+# automatically yet -- run it by hand before a merge); named `ci`, not
+# `check*`, since it is not the same check as `lips check` (that one
+# program-vs-contract verb is the `check` recipe and `check-expect` below,
+# both host-side and KVM-free).
 ci:
     nix flake check -L
+    just test-draft
 
 # Behavioral contracts: every example's .expect must hold against its realized
 # module (relational option-value gate, ledger 13). Host-side (uses nix eval),
