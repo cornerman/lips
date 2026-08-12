@@ -133,11 +133,21 @@ tracks only what is still open.
    What exists: the counting (`Lips.Kernel.Grounding`, printed on every check).
    What is missing: the `Glue` kind is declared in `Decision.hs` and used
    nowhere, so glue is counted structurally rather than marked as such; and no
-   gate refuses a new staged tree. Three committed programs still carry one
-   (`website` 220 lines, `habit` 78, `board` 40; `function` shed its 21 and
-   `http` its 62 on 2026-08-06), so a gate landing today would refuse the corpus
-   it ships with: the trees move to clauses first, then the gate closes the door
-   behind them.
+   gate refuses a new staged tree. Two committed programs still carry one
+   (`website` 220 lines, `habit` 78; `function` shed its 21 and `http` its 62
+   on 2026-08-06, `board` its 40 on 2026-08-12), so a gate landing today would
+   refuse the corpus it ships with: the trees move to clauses first, then the
+   gate closes the door behind them.
+
+   The `board` re-mint (claude-opus-5, `--compat none`) filed two new gaps
+   instead of faking a fix: `no-file-contract` (no contract opens a file, so
+   "read from the file named on the command line" is honoured only for stdin,
+   at reduced confidence) and a second instance of the fixed-arity-witness
+   shape from 1c, named `fixed-witness-count` here because the block form
+   cannot free it either -- `claim.<id>.equals` takes one expression, not an
+   aggregate, so only a claim's INPUT side (via `feed`) can ever be freed from
+   a sentence's own item count, never its output side. Same conclusion 1c
+   already reached from `function` and `habit`, now confirmed a third time.
 
    The `http` re-mint also showed the second grade in the open: with the Go tree
    gone, its route bodies became 19 mint-written words of nginx configuration

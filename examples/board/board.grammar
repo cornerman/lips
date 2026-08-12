@@ -1,8 +1,8 @@
-p1 meta lang.pattern.p1 stated "show a kanban board in the terminal => concept board.intro \"kanban board tool\"" @gen:c0cb5c1eeaaf9751
-p2 meta lang.pattern.p2 stated "read the board from the file named on the command line, or from standard input when no file is named => concept board.input \"reads file arg or stdin\"" @gen:c0cb5c1eeaaf9751
-p3 meta lang.pattern.p3 stated "the board is markdown: <desc.words> => concept board.format \"<desc>\"" @gen:c0cb5c1eeaaf9751
-p4 meta lang.pattern.p4 stated "the board has the columns <cols> => fact board.columns \"<cols>\"" @gen:c0cb5c1eeaaf9751
-p5 meta lang.pattern.p5 stated "print one line per column: <desc.words> => concept board.print \"<desc>\"" @gen:c0cb5c1eeaaf9751
-p6 meta lang.pattern.p6 stated "a column with no cards prints its name and the colon only => concept board.empty \"empty column format\"" @gen:c0cb5c1eeaaf9751
-p7 meta lang.pattern.p7 stated "install the tool as the command <cmd> => fact install.command.<cmd> \"<cmd>\"" @gen:c0cb5c1eeaaf9751
-p8 meta lang.pattern.p8.under.p7 stated "given the lines \"<l1>\", \"<l2>\", \"<l3>\", <l4> and \"<l5>\", print the lines \"<o1>\", <o2> and <o3> => fact board.example.<cmd> \"<l1> <l2> <l3> <l4> <l5> <o1> <o2> <o3>\"" @gen:c0cb5c1eeaaf9751
+p1 meta lang.pattern.p1 stated "show a kanban board in the terminal => concept board.purpose \"a kanban board printed in the terminal\"" @gen:7f5452f6fc714d53
+p2 meta lang.pattern.p2 stated "read the board from the file named on the command line, or from standard input when no file is named => fact input.source \"command line file or standard input\"" @gen:7f5452f6fc714d53
+p3 meta lang.pattern.p3 stated "the board is markdown: a <col> line opens a column and a <card> line under it is one of its cards => fact board.syntax \"<col> <card>\"" @gen:7f5452f6fc714d53
+p4 meta lang.pattern.p4 stated "the board has the columns <names> => fact board.columns \"<names>\"" @gen:7f5452f6fc714d53
+p5 meta lang.pattern.p5 stated "print one line per column: its name, a colon, a space, then its cards joined with <sep> => fact output.separator \"<sep>\"" @gen:7f5452f6fc714d53
+p6 meta lang.pattern.p6 stated "a column with no cards prints its name and the colon only => fact output.empty \"name and colon only\"" @gen:7f5452f6fc714d53
+p7 meta lang.pattern.p7 stated "install the tool as the command <name> => fact tool.command \"<name>\"" @gen:7f5452f6fc714d53
+p8 meta lang.pattern.p8 stated "given the lines \"<l1>\", \"<l2>\", \"<l3>\", <l4> and \"<l5>\", print the lines \"<o1>\", <o2> and <o3> => fact witness.feed \"<l1> <l2> <l3> <l4> <l5>\" ; fact witness.out \"<o1> <o2> <o3>\"" @gen:7f5452f6fc714d53

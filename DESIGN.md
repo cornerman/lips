@@ -3464,6 +3464,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
   it keeps. Guile implements it in three lines of exact integer arithmetic; a
   second runtime is what will need a check pinning the shared sequence, and
   until one exists the pin is a downstream program's own claim.
+- **`board` stopped baking source, the third no-blob conversion** (2026-08-12,
+  `examples/board.lips`, `-t home-manager`, claude-opus-5, `--compat none`).
+  The 40-line bash script that parsed the markdown board and rendered its
+  columns is gone; the same behaviour is now 19 clauses (a hand-rolled
+  string-cut based tokenizer, a recursive column/card walk, a right fold for
+  the join) reached by one whole-program claim that feeds the worked example's
+  five input lines and compares all three output lines byte for byte. Grounding
+  after the re-mint: 1 option assignment, 19 clauses, 1 claim, 0 unvouched
+  assertions, 0 mint-written words -- the prior engine's entire staged tree is
+  gone with nothing replacing it as glue. Two gaps filed instead of worked
+  around: `no-file-contract` (no contract opens a file, so "read the board from
+  the file named on the command line" is honoured only for standard input, at
+  reduced confidence on that rule) and `fixed-witness-count`, a third instance
+  of the fixed-arity-witness shape (TODO 1c): the block form can free a
+  witness's INPUT side but not its OUTPUT side, since `claim.<id>.equals` takes
+  one expression, never an aggregate.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
