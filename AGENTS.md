@@ -72,6 +72,43 @@ kernel bug; a missing domain fact is the engine's job.
 6. Every minted line is stamped `@gen:<id>`; the id must re-hash from the
    committed `.generation` record.
 
+## Citations (never invent an information pillar)
+
+Every claim about the world outside this repo -- a survey figure, a study
+finding, a quoted sentence -- rests on a source a reader can reach. Those
+sources are load-bearing: the case for lips in `README.md` §"Where This Sits"
+and `DESIGN.md` §"Position in the Field" is an argument from evidence, so a
+fabricated or garbled citation does not weaken the argument, it voids it. A
+model's memory of a paper is not a source.
+
+- **Fetch before you cite.** Reach the primary source in this session
+  (`web_fetch`, or the PDF) and copy the wording and the numbers out of it. If
+  you cannot reach it, either drop the claim or mark it in place as the surveys
+  already do ("cited by title, venue and authorship only; text not reached"),
+  and never let an unreached source carry a quotation.
+- **Quote verbatim or do not use quote marks.** No tightening, no merging two
+  sentences, no dropping a hedge. Paraphrase is fine, but then the quote marks
+  come off.
+- **Check the metadata at the record, not from memory.** Author order, year,
+  venue, volume, DOI: `https://api.crossref.org/works/<doi>` settles it.
+  Getting the first author wrong is the same class of error as inventing the
+  paper.
+- **Calibrate the verb to the evidence** (writing RULE-08). "Observed" for one
+  informal run, "measured" only where the source reports a measurement,
+  "suggests" where it suggests. Never "proves".
+- **Numbers travel with their sample.** Sample size, population and fieldwork
+  date belong next to a percentage, since a figure without them cannot be
+  checked.
+- **Re-resolve links when you touch a claim.** They rot fast: Sonar's own
+  survey URL went 404 inside a year. Prefer a stable primary artifact (a report
+  PDF, a DOI, a press release) to a campaign landing page.
+- **Where the reference lives:** `README.md` carries an inline link on the
+  claim itself; `DESIGN.md` names author, title, venue and year and points at
+  the survey that holds the fetched wording; `docs/superpowers/survey/*.md`
+  carries the full URL plus a method note saying what was fetched, what came
+  from secondary reporting, and what is the author's own inference. Keep those
+  three in agreement -- when you correct a citation, correct it in all of them.
+
 ## Working Here
 
 - Feature work in a worktree under `.worktrees/`, TDD against the conformance
