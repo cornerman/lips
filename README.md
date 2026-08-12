@@ -41,30 +41,36 @@ lips never guesses.
 ## Where This Sits
 
 Everyone is answering the same 2026 problem: machines write code faster than
-people can check it (Sonar's survey puts AI at some 42 percent of committed
-code, with 96 percent of developers not fully trusting it and 48 percent
-verifying before they commit). Three answers are on offer. Automate the review
+people can check it (Sonar's [2026 State of Code Developer
+Survey](https://www.sonarsource.com/state-of-code-developer-survey-report.pdf),
+1,149 professional developers polled in October 2025, finds 42 percent of their
+code AI-generated or assisted, 96 percent not fully trusting that AI-generated
+code is functionally correct, and only 48 percent always checking it before they
+commit). Three answers are on
+offer. Automate the review
 and keep the pile of code. Prove the code correct, in Lean, against a formal
 statement someone still has to write. Or shrink what a human reviews down to
 intent and derive the rest.
 
 lips takes the third road, and differs from the rest of it in one move: the
-model writes a **compiler**, not code. Every other spec-driven tool hands the
-spec back to a model on each run, so the same input can yield different output
-(Birgitta Böckeler [measured exactly
-that](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html)
-generating twice from one unchanged spec). In lips the model runs once, leaves
-a page of grammar and rules behind, and every later build is an offline,
-bit-identical compile.
+model writes a **compiler**, not code. The spec-driven tools on offer hand the
+spec back to a model on each run, so the same input can yield different output;
+Birgitta Böckeler, generating from one unchanged Tessl spec several times, [saw
+that happen](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html).
+In lips the model runs once, leaves a page of grammar and rules behind, and
+every later build is an offline, bit-identical compile.
 
 That is model-driven development at the scale that actually works. The folk
 story says model-driven development died; the field studies say it narrowed.
-Surveying 450 practitioners, Hutchinson, Whittle and Rouncefield found that
-developers "rarely use it to generate whole systems; rather, they apply it to
+Surveying 450 practitioners, Whittle, Hutchinson and Rouncefield found that
+developers ["rarely use it to generate whole systems; rather, they apply it to
 develop key parts of a system often using domain-specific modeling languages
-developed specifically for the purpose". What died was the big version: one
-universal notation, a hand-editable middle layer, and a code generator per
-domain that somebody had to build and keep alive. lips is the shape that
+developed specifically for the
+purpose"](https://staffwww.dcs.shef.ac.uk/people/A.Simons/remodel/papers/WhittleMDE_Draft.pdf)
+("The State of Practice in Model-Driven Engineering", IEEE Software 31(3), 2014,
+[doi:10.1109/MS.2013.65](https://doi.org/10.1109/MS.2013.65)). What died was the
+big version: one universal notation, a hand-editable middle layer, and a code
+generator per domain that somebody had to build and keep alive. lips is the shape that
 survived, with the cost that kept it rare removed, since a model mints the
 generator in one call and it is disposable: when the domain moves, mint again.
 What you keep is the determinism, and determinism is the one property no
