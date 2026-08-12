@@ -1,4 +1,1 @@
-a1 expect artifact.<self>.fill.mark_logged from habit.mark.logged
-a2 expect artifact.<self>.fill.mark_missing from habit.mark.missing
-a3 expect artifact.<self>.fill.name from cmd.<name>.install
-a4 expect claim.<q>.stdout from witness.<name>.<q>#7
+a2 expect claim.<q>.equals from witness.<q>.prints is "(list \"<value.8>\")"

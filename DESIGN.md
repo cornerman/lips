@@ -3480,6 +3480,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
   of the fixed-arity-witness shape (TODO 1c): the block form can free a
   witness's INPUT side but not its OUTPUT side, since `claim.<id>.equals` takes
   one expression, never an aggregate.
+- **`habit` stopped baking source, the fourth no-blob conversion, and the
+  largest yet** (2026-08-12, `examples/habit.lips`, `-t home-manager`,
+  claude-opus-5, `--compat none`). The committed Go program parsed a
+  tab-separated log, tracked one habit's logged days, and walked the
+  earliest-to-latest date range printing a mark per day -- calendar arithmetic
+  (month lengths, leap years) included. All of it is now 20 clauses: date
+  parsing over `string-cut`, dates held as `(year month day)` lists compared
+  structurally, and the day-by-day walk written as plain recursion
+  (`next-day`, `days-in-month`, `leap-year?`). One whole-program claim feeds
+  the three worked-example log lines, passes the habit name as the argument,
+  and compares the printed marks exactly. Grounding after: 1 option
+  assignment, 20 clauses, 1 claim, 0 unvouched assertions, 0 mint-written
+  words. Filed the same two gaps `board` filed independently the same day
+  (`no-file-contract`; here `one-line-item-list` for the witness-arity shape),
+  which is evidence the gaps are structural to this class of program rather
+  than an accident of one mint.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every

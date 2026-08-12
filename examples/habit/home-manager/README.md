@@ -2,88 +2,75 @@
 
 # The `habit` language
 
-This language describes one small terminal tool that renders a habit log as a
-row of characters, and builds it. A program of this language is compiled into a
-Go program plus a home-manager module that puts the built command on your PATH
-(`home.packages`); there is nothing to boot and no service, because the thing
-described is a command you run yourself.
+This language describes a small terminal habit tracker, and it is realized as
+behaviour clauses (a real little program), not as configuration.
 
-## The line shapes it reads
+Line shapes it accepts, one per sentence of the program:
 
-Four shapes carry values, and editing them changes the built tool:
-
-- `mark a day the named habit was logged with "#".` -- the character printed for
-  a day the named habit appears in the log. The quoted character is the value.
-- `mark a day it was not logged with ".".` -- the character printed for a day it
-  does not appear.
-- `install the tool as the command habit.` -- the word after "the command" names
-  the command. It becomes the Go module name (so the produced binary carries
-  that name) and the derivation's pname, so renaming it here renames the command
-  you type.
-- `given the log of "2026-01-01" for "run", "2026-01-02" for "read" and
-  "2026-01-04" for "run", the habit "run" prints "#..#".` -- the worked example.
-  This is the only line that holds the tool to its words: it is compiled into a
-  claim that actually runs the built binary in the build sandbox, feeding those
-  three date/habit pairs on standard input as tab-separated lines and comparing
-  what is printed byte for byte with the quoted output. This line must come
-  *after* the install line: it reads the command name from it (it is an item of
-  the block that line opens).
-
-Five shapes are decorative -- they are the design of the generated source, not
-values it can vary, so editing their wording changes no output at all:
-
-- `track daily habits from the terminal.`
-- `the first argument names the habit to print.`
+- `track <what> from the terminal.` -- a decorative title. The words are read
+  but nothing is realized from them.
+- `the first argument names the habit to print.` -- fixes where the habit name
+  comes from: the first command-line argument.
 - `read the habit log from the file named as the second argument, or from
-  standard input when no file is named.`
-- `each log line holds an ISO date and a habit name separated by a tab.`
-- `print one character per day from the log's earliest date to its latest date.`
+  standard input when no file is named.` -- fixes the input. See the caveat
+  below.
+- `each log line holds an ISO date and a habit name separated by a tab.` --
+  fixes the line format: this is what the parser is written from.
+- `print one character per day from the log's earliest date to its latest
+  date.` -- fixes the rendering: the whole day-by-day walk, including the
+  calendar arithmetic (month lengths, leap years), comes from this sentence.
+- `mark a day the named habit was logged with "#".` and
+  `mark a day it was not logged with ".".` -- the two marks. Both characters
+  are holes: change them in the program and the built tool changes.
+- `install the tool as the command habit.` -- the command name is a hole; it
+  becomes the name of the installed program (`site.<self>.command`) and the
+  program is added to `home.packages`.
+- `given the log of "<date>" for "<habit>", ... , the habit "<name>" prints
+  "<out>".` -- the worked example. It becomes a claim: the three log lines are
+  fed to the program, the habit name is its argument, and what it prints is
+  compared byte for byte. This is the only thing that holds the minted code to
+  the program's words, so every program must state one.
 
-They are honest documentation of what the baked Go program does, and I kept them
-readable rather than dropping them; but the argument order, the tab separator,
-the ISO date format and the one-character-per-day span live in `main.go`. To
-change any of them you must regenerate the language, not edit the program.
+Mechanism: the behaviour is clauses (habit-name, read-log, parse-entry,
+parse-date, render, marks, earliest, latest, logged-days, logged?, next-day,
+days-in-month, leap-year?, multiple-of?, date-same?, date-before?,
+present-mark, absent-mark, main). Dates are parsed with the string-cut
+contract, compared as (year month day) lists, and the range is walked one day
+at a time. Because home-manager is unprivileged and there is nothing to boot,
+the tool is simply installed into the user's profile: `home.packages` gets the
+built site, named by the command sentence.
 
-## What the built tool does
+Two things I could not derive and one I had to choose:
 
-`main.go` reads the log from the named file or from standard input, splits each
-line on the first tab into an ISO date and a habit name, takes the earliest and
-latest date over *all* log lines as the span, and prints one character per day
-in that span: the "logged" character when the queried habit was logged that day,
-the "not logged" character otherwise, followed by a newline. Unparsable and
-blank lines are skipped; an empty log prints an empty line. The two characters
-reach the source as fills (`@mark_logged@`, `@mark_missing@`), and the command
-name as the fill `@name@` in `go.mod` and in the usage message, so all three are
-substituted offline at compile time.
+- No contract opens a named file, so the clauses read standard input only; the
+  "file named as the second argument" half of that sentence is not honoured.
+  Filed as a gap (no-file-contract), and the rule that reads the log carries
+  lowered confidence for it.
+- The worked-example sentence lists its log entries inside one line, so the
+  pattern fixes three entries. Filed as a gap (one-line-item-list); an example
+  with a different number of entries needs a regeneration.
+- The program says nothing about an empty log; the tool prints an empty line in
+  that case.
 
-## Choices I made, and what is pinned
-
-The builder is `buildGoModule` with `vendorHash = null`: the source uses only
-the Go standard library, so there is nothing to vendor. The version `0.1.0` is
-mine -- the program says nothing about versions, and no sensible question could
-ask for one. The derivation is keyed by the program's instance name (the file
-name, `habit`), because the two mark lines must reach the same build and they
-sit above the line that names the command, so they cannot borrow that word;
-the command's *name*, though, is entirely governed by the program.
-
-The contract checked on every future compile: the two marks and the command name
-land in the fills that carry them into the source, and the example's expected
-output is the claim's expected stdout. No expect names `home.packages`: it holds
-a build reference, not a checkable value.
-
-One limitation is filed as a gap: the witness line is fixed at three log
-entries, because a claim's standard input is a single value and nothing in the
-grammar repeats a chunk per entry. A two- or four-entry example will fail to
-compile with "no pattern matched"; regenerating with such an example in hand is
-the way to add it.
+The behavioural contract pinned on every future compile is the example itself:
+the claim feeds the stated log to the program, passes the stated habit as its
+argument, and requires exactly the stated output.
 
 ## Known Gaps
 
-### fixed-arity-witness
+### no-file-contract
+
+blocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.
+no contract opens a named file: the clause layer offers read-a-line (standard
+input) and nothing else, so only the standard-input half of that sentence is
+realized. A file-reading contract (open a path, read its lines) would close this.
+
+### one-line-item-list
 
 blocked line: given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".
-the example log holds three entries, and a claim's stdin is one value with no
-way to repeat a per-entry chunk: the pattern has to spell out exactly three
-date/habit pairs. a witness with two or four entries would need its own
-pattern, which is duplication a repeating-value construct would remove.
+the example log is a list of items written inside ONE sentence, and a template
+cannot repeat a hole, so the witness pattern fixes three entries. A four-entry
+example needs a fresh mint, or the author must be able to write the entries as
+lines of a block. A repeating hole (or a list hole binding a comma-separated
+run of items) would close this.
 
