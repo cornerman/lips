@@ -133,12 +133,36 @@ tracks only what is still open.
    What exists: the counting (`Lips.Kernel.Grounding`, printed on every check).
    What is missing: the `Glue` kind is declared in `Decision.hs` and used
    nowhere, so glue is counted structurally rather than marked as such; and no
-   gate refuses a new staged tree. One committed program still carries one
-   (`website` 220 lines; `function` shed its 21 and `http` its 62 on
-   2026-08-06, `board` its 40 and `habit` its 78 (a whole Go program, with
-   calendar arithmetic) on 2026-08-12), so a gate landing today would refuse
-   the corpus it ships with: the tree moves to clauses first, then the gate
-   closes the door behind it.
+   gate refuses a new staged tree. NO committed program carries one any
+   longer as of 2026-08-12 (`function` shed its 21 lines and `http` its 62 on
+   2026-08-06; `board` its 40, `habit` its 78, and `website` its 220 -- the
+   largest, a whole Go http server -- all on 2026-08-12), so the gate this
+   item describes can now land without refusing the corpus it ships with.
+   Landing it is still a separate errand (the `Glue` kind marking above), but
+   nothing blocks it any more.
+
+   The `website` re-mint (claude-opus-5, `--compat none`, two attempts -- the
+   first mint's `darkhttpd` wiring failed the booted-machine claim with a
+   malformed `--addr` argument, and generate correctly refused to write
+   anything; the second attempt fixed it) replaced the Go template server with
+   a `darkhttpd` static server fed by a oneshot unit whose ONE clause `main`
+   prints the whole page (HTML plus the click-handling JavaScript) to a file
+   via shell redirection. It filed three gaps rather than fake a fix:
+   `angle-brackets-in-values` (a Nix value cannot hold literal `<...>`, since
+   that reads as an unknown hole, forcing markup through clause strings, whose
+   hole marker is `#<...>`, even where a plain file would otherwise do);
+   `browser-behaviour` (no contract reaches a document, an element or a click,
+   so the clauses can only PRINT the JavaScript that paints/erases/downloads a
+   canvas -- nothing checks what that script actually does in a browser); and
+   `no-stated-observable` (the program states no example of the rendered page,
+   so the one claim is a smoke test that `main` runs, not a witness of its
+   output). `browser-behaviour` is the sharper of the three: it is the same
+   shape as `no-file-contract` (a capability class -- here, the DOM -- that no
+   contract in `assets/runtime/scheme/contracts` names), but unlike a file it
+   is not obviously closeable by adding one contract, since a browser event
+   loop is a different execution model than the sandbox clauses run in. Left
+   as a gap, not a design item, until a program's own words make the cost of
+   leaving client-side behaviour unchecked concrete.
 
    The `board` and `habit` re-mints (both claude-opus-5, `--compat none`)
    each filed the same two gaps instead of faking a fix: `no-file-contract`

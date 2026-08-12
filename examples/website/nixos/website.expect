@@ -1,6 +1,1 @@
-a1 expect systemd.services.<self>.environment.PORT from site.port
-a2 expect systemd.services.<self>.environment.CANVAS_<i>_NAME from canvas.<i>
-a3 expect systemd.services.<self>.environment.CANVAS_<i>_CONTENT from canvas.<i>.content
-a4 expect systemd.services.<self>.environment.BUTTON_<i>_LABEL from button.<i>
-a5 expect systemd.services.<self>.environment.BUTTON_<i>_ACTION from button.<i>.action
-a6 expect systemd.services.<self>.environment.BUTTON_<i>_TARGET from button.<i>.target
+a1 expect services.darkhttpd.port from site.port

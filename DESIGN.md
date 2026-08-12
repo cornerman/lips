@@ -3496,6 +3496,35 @@ but the loop around it is incomplete; "missing" means specced, not built.
   (`no-file-contract`; here `one-line-item-list` for the witness-arity shape),
   which is evidence the gaps are structural to this class of program rather
   than an accident of one mint.
+- **`website` stopped baking source, the fifth no-blob conversion and the
+  largest, closing the sweep** (2026-08-12, `examples/website.lips`, `-t
+  nixos`, claude-opus-5, `--compat none`; two mints -- the first wired
+  `services.darkhttpd` with a malformed `--addr` and generate correctly
+  refused to write anything, since its own booted-machine claim failed the
+  same way a real deploy would). The committed 220-line Go program templated
+  an HTML page from environment variables at every request; the page is
+  static once the program is compiled (every canvas, button and click target
+  is a program value known at compile time), so there is no server left to
+  write: one clause, `main`, PRINTS the whole page -- markup and the
+  click-handling JavaScript alike -- and a oneshot systemd unit redirects that
+  output to a file `darkhttpd` then serves. Grounding after: 9 option
+  assignments, 1 clause, 1 claim, 0 unvouched assertions, 7 mint-written words
+  (the darkhttpd wiring). Three gaps, the most of any conversion so far:
+  `angle-brackets-in-values` (a Nix value cannot hold literal `<...>` -- it
+  reads as an unknown hole -- so markup has to be routed through a clause
+  string, whose own hole marker is `#<...>`, even where a plain file would
+  otherwise do); `no-stated-observable` (the program gives no example of the
+  rendered page, so the one claim is a smoke test that `main` runs, not a
+  witness of what it prints); and the sharpest, `browser-behaviour` -- no
+  contract reaches a document, an element or a click, so the clauses can only
+  PRINT the JavaScript that paints, erases and downloads a canvas, and nothing
+  checks what that script does once a browser runs it. Unlike `no-file-
+  contract`, this one is not obviously closed by adding a single contract: a
+  browser event loop is a different execution model than the sandbox clauses
+  run in, so it is left as a live gap rather than a design item (TODO, no-blob
+  doctrine). With this landing, every committed program the no-blob sweep
+  named is off staged source, and the gate the doctrine describes ("refuse a
+  new staged tree") can land without refusing the corpus it ships with.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every

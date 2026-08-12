@@ -2,80 +2,78 @@
 
 # The `website` language
 
-## What this language describes
+This language describes a tiny single-page website, and the machine both
+generates the page and serves it.
 
-A one-page canvas website: a port, one or more drawing areas ("canvases"),
-and buttons that act on a named canvas. Every program becomes one systemd
-service on this machine, named after the program file (`website.lips` ->
-`systemd.services.website`), plus the port opened in the firewall.
+Line shapes it accepts:
 
-## The line shapes it accepts
+- `website running on port <port>` -- the port the site is served on. This is
+  the one line the language demands; a program that omits it is asked for it.
+- `canvas "<name>":` -- a drawing area. The quoted name becomes the element id
+  in the page and is how a button refers to it.
+- `content: shows a nice random svg painting` (written under a canvas) -- what
+  that canvas shows. This wording is FIXED: it selects a mechanism (a random
+  SVG painting), it is not a free description.
+- `button "<label>":` -- a button; the quoted label is the text on it.
+- `on click: new random painting in canvas "<target>"`,
+  `on click: erase everything in canvas "<target>"`,
+  `on click: download the picture from canvas "<target>"` (each written under a
+  button) -- the three recognised click actions. The verbs are fixed wording
+  (they choose behaviour); the quoted canvas name is a value.
 
-- `website running on port <port>` — the tcp port the site is served on.
-  This is the one line every program must have; a program without it is
-  asked for it.
-- `canvas "<name>":` — opens a canvas block. The name identifies the canvas
-  and is what buttons refer to.
-  - `content: shows <phrase>` — the canvas description, shown as the
-    caption under the drawing area.
-- `button "<label>":` — opens a button block; the label is the button text.
-  - exactly one of these three click lines, written as-is apart from the
-    canvas name:
-    - `on click: new random painting in canvas "<name>"`
-    - `on click: erase everything in canvas "<name>"`
-    - `on click: download the picture from canvas "<name>"`
+How it is realized. Each canvas, content, button and click line contributes one
+piece of the page to a single behaviour clause, `main`, which PRINTS the page:
+a canvas line prints its `div` plus the painting, erasing and downloading
+helpers; a content line prints the script that paints that canvas (matched by
+the line's position, carried in `data-slot`); a button line prints its
+`button`; a click line prints the script that wires that button's `onclick` to
+the named canvas. Because the pieces are contributions to one clause, adding a
+canvas or a button is just more lines -- no count is baked anywhere.
 
-Everything in `<angle brackets>` is a value you can edit freely (port,
-names, labels, the content phrase). Everything else is a fixed word: the
-three click sentences *select* a behaviour, so they are literal wording, not
-prose. Reword one of them and the build fails loudly rather than silently
-dropping a button's behaviour; that is when you need a new engine.
+The machine runs that program once at boot as a oneshot unit named after the
+program, redirects its output to `/var/lib/<program>/index.html`
+(`StateDirectory` creates the directory), and serves that directory with
+`darkhttpd` on the stated port. `<self>` is the program's own name throughout,
+so two such programs never collide.
 
-Blocks are read by the heading line, not by indentation, so indenting the
-`content:` / `on click:` lines is optional but recommended. Canvases and
-buttons are keyed by their position in the program, which is why two buttons
-may carry the same label or target the same canvas without colliding, and
-why they appear on the page in the order you wrote them.
+What I chose, and what I could not do. The server (darkhttpd -- the smallest
+static server in the option tree), the document root, the oneshot-generates-
+the-page arrangement, and the JavaScript that draws random circles are
+mechanism choices, not values from the program. Three things are filed as gaps.
+First, a rule value cannot contain markup at all: `<div>` in a Nix value is
+read as a hole, so the page had to be routed through clause strings. Second, no
+contract reaches a document, an element or a click, so the in-page behaviour
+cannot be expressed as clauses lips can check -- the clauses only print the
+JavaScript that performs it. Third, the program states no example of what the
+page shows, so the claim over `main` is only a smoke test that it runs; one
+sentence naming an expected line would give a real witness, and I did not
+invent one. The expect pins the stated port to the option that carries it; the
+remaining values (canvas name, content kind, labels, actions) reach the page
+text through the clause, which no expect can address.
 
-## The mechanism I chose
+## Known Gaps
 
-There is no off-the-shelf NixOS service for "a page with a canvas and three
-buttons", so the site is a small Go http server built from source
-(`buildGoModule`, sources in `artifacts/website/`). The server is generic:
-it renders the page from what it finds in its own environment, and the
-module puts the program's words there:
+### no-stated-observable
 
-- `PORT` — the port from the first line (also added to
-  `networking.firewall.allowedTCPPorts`).
-- `CANVAS_<n>_NAME`, `CANVAS_<n>_CONTENT` — one pair per canvas.
-- `BUTTON_<n>_LABEL`, `BUTTON_<n>_ACTION`, `BUTTON_<n>_TARGET` — one triple
-  per button, where the action is the normalised word `paint`, `clear` or
-  `download` chosen by which click sentence you wrote.
+blocked line: content: shows a nice random svg painting
+the program states no example of what the page must show, so the only claim
+possible over the generated page is a smoke claim: (begin (main) #t). a
+sentence like 'the page starts with <meta charset=utf-8>' or 'clicking
+"leeren" empties the canvas' would give a real witness.
 
-So editing a label or a port changes only the unit's environment; nothing
-is rebuilt. The unit runs with `DynamicUser` and restarts always.
+### angle-brackets-in-values
 
-The drawing itself happens in the browser (`/app.js`, served by the same
-binary): `paint` generates a random svg picture into the target canvas,
-`clear` empties it, `download` saves the current svg as `<canvas>.svg`.
-Every canvas is painted once on page load, which is what "shows a nice
-random svg painting" means here.
+blocked line: content: shows a nice random svg painting
+a rule value cannot contain markup: emitting
+  environment.etc.page.text "\"<div id=page></div>\""
+is refused with 'unknown hole <div id=page>', because <...> in a nix value is
+read as a hole. html therefore has to be routed through clause strings (where
+the hole marker is #<...>), even where a plain file would do.
 
-## What I had to decide myself
+### browser-behaviour
 
-- **The renderer is fixed.** This language has exactly one kind of picture:
-  a randomly generated svg painting. The `content:` phrase is therefore
-  carried to the page as the canvas *caption* (the visible description),
-  not as an instruction to some other renderer. If you write
-  `content: shows a bar chart` you will get a random painting captioned
-  "a bar chart" — say so in the report of the next mint if you need real
-  renderer choice, that needs new patterns.
-- **Firewall.** The program says the site runs on a port, so the port is
-  opened. Remove that emit in a regeneration if the machine is behind a
-  reverse proxy.
-- **Build inputs.** Version `0.1.0` and `vendorHash = null` (the server has
-  no Go dependencies) are my choices; nothing in the program pins them.
-- **The binary is called `website`.** The build is a fixed mechanism named
-  `website`, while the systemd unit is named after your program file, so
-  renaming `website.lips` renames the service but keeps the same server
-  binary.
+blocked line: on click: new random painting in canvas "main"
+no contract reaches a document, an element or a click, so in-page behaviour
+cannot be written as clauses that lips can check; the clauses here only PRINT
+the javascript that does it, and that javascript is checked by nothing.
+
