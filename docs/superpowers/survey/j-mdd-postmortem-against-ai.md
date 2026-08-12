@@ -28,12 +28,16 @@ depends on "complex organizational, managerial and social factors, as opposed to
 factors," requiring "a progressive and iterative approach; transparent organizational commitment
 and motivation; integration with existing organizational processes and a clear business focus."
 
-The team's 2014 follow-up, "The state of practice in model-driven engineering" (IEEE Software, 21
-April 2014), surveyed 450 practitioners and interviewed 22 more. Its central finding cuts against
+The team's 2014 follow-up, Whittle, Hutchinson and Rouncefield's "The State of Practice in
+Model-Driven Engineering" (IEEE Software 31(3):79-85, 21 April 2014, DOI 10.1109/MS.2013.65),
+surveyed 450 practitioners and interviewed 22 more. Its central finding cuts against
 the folk story: "developers rarely use it to generate whole systems; rather, they apply it to
 develop key parts of a system often using domain-specific modeling languages developed
 specifically for the purpose," and "adoption largely depends on social and organizational
-factors." MDE did not die from failing to generate whole systems; it survived by narrowing to
+factors." (The IEEE Xplore abstract truncates the first sentence at "key parts of a system"; the
+full clause was read in the authors' draft at
+<https://staffwww.dcs.shef.ac.uk/people/A.Simons/remodel/papers/WhittleMDE_Draft.pdf>.) MDE did
+not die from failing to generate whole systems; it survived by narrowing to
 partial, domain-specific generation, closer to lips's own scope than the "generate everything
 from UML" story the graveyard already dismantled.
 
@@ -167,7 +171,9 @@ program no longer means, rather than failing loud.
 
 **12. Performance of generated code and the verification burden on quality.** Evidence: Mohagheghi
 found reuse "had a negative impact on the performance of tools"; Sonar's 2026 State of Code
-Developer Survey (events.sonarsource.com, 1,100+ developers, fetched directly): "96% of developers
+Developer Survey (report PDF at sonarsource.com, 1,149 developers, fetched directly; the
+`events.sonarsource.com` campaign URL cited when this survey was written is now 404, see Survey G
+§1): "96% of developers
 do not fully trust the functional accuracy of AI-generated code," and "the burden of work has
 moved from creation to verification and debugging." Verdict: UNTOUCHED BY AI. Faster generation
 does not make generated code faster to run, and industry-wide trust in mere functional correctness

@@ -54,12 +54,14 @@ calculus plus a conformance suite, not a blessed runtime.
 
 ## Position in the Field
 
-By 2026 the thesis above is measured rather than argued. Sonar's 2026 survey
-of 1,100+ developers finds 96 percent of developers not fully trusting the
-accuracy of AI-generated code while only 48 percent verify before committing,
-with AI writing some 42 percent of committed code; 61 percent report code that
+By 2026 the thesis above is measured rather than argued. Sonar's 2026 State of
+Code Developer Survey (1,149 professional developers, fieldwork October 2025)
+finds 96 percent of developers not fully trusting the functional accuracy of
+AI-generated code while only 48 percent always check it before committing,
+with some 42 percent of their code AI-generated or assisted; 61 percent report code that
 "looks correct but isn't reliable", and 38 percent find reviewing it costlier
-than reviewing human code, the burden Werner Vogels named *verification debt*.
+than reviewing human code, the burden AWS CTO Werner Vogels named *verification
+debt* at re:Invent in December 2025.
 Time spent on toil did not fall; it moved from writing to reviewing (Survey G,
 §1). The binding constraint is review capacity per unit of derived artifact.
 
@@ -98,13 +100,15 @@ is an open question (§11).
 
 The premise of that objection needs one correction, and it moves the ground
 under lips from analogy to evidence (Survey J). Model-driven engineering did
-not die, it narrowed. Hutchinson, Whittle and Rouncefield, surveying 450
+not die, it narrowed. Whittle, Hutchinson and Rouncefield, surveying 450
 practitioners and interviewing 22 more, report that developers "rarely use it
 to generate whole systems; rather, they apply it to develop key parts of a
 system often using domain-specific modeling languages developed specifically
 for the purpose", and that "adoption largely depends on social and
-organizational factors" (IEEE Software, 2014). Petre's fifty-engineer study
-found zero of fifty using UML the way its promoters described (ICSE 2013).
+organizational factors" ("The State of Practice in Model-Driven Engineering",
+IEEE Software 31(3):79-85, 2014, doi:10.1109/MS.2013.65). Petre's
+fifty-engineer study found zero of fifty using UML the way its promoters
+described ("UML in practice", ICSE 2013, doi:10.1109/ICSE.2013.6606618).
 What failed was one universal notation with a hand-editable middle layer and a
 per-domain generator somebody had to maintain; what works is exactly lips's
 shape, partial generation through a purpose-built language. The mint removes

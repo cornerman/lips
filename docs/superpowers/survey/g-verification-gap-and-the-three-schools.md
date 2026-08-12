@@ -9,7 +9,8 @@ file, **engine** is the minted per-problem rulebook (`.lang`), **kernel** is
 the fixed domain-blind physics.
 
 Method note: claims below carry a source URL. The Böckeler article, the
-SiliconANGLE report on Axiom, and the ByteIota summary of Sonar's survey were
+SiliconANGLE report on Axiom, and Sonar's own survey report (PDF, re-fetched
+2026-08-12 after the campaign URL died) were
 fetched and read in full; figures attributed to Faros, ProjectDiscovery, and
 Aikido come from secondary reporting only and are marked where they appear.
 Anything labelled "inference" is this document's synthesis, not a source's
@@ -19,13 +20,21 @@ claim.
 
 lips opens with an assertion (DESIGN §1): AI produces software faster than
 humans can review it. That assertion is no longer a forecast. Sonar's 2026
-State of Code Developer Survey, of more than 1,100 developers, reports that 96
-percent of developers do not fully trust the functional accuracy of
-AI-generated code while only 48 percent always verify it before committing,
-and that AI now writes about 42 percent of committed code, projected at 65
-percent by 2027 (<https://events.sonarsource.com/2026-state-of-code-developer-survey/>,
-summarized with the figures used here at
-<https://byteiota.com/ai-code-verification-bottleneck-96-dont-trust-output-2/>).
+State of Code Developer Survey, of 1,149 professional developers polled in
+October 2025, reports that 96 percent of developers do not fully trust the
+functional accuracy of
+AI-generated code while only 48 percent always check it before committing,
+and that about 42 percent of the code they commit is now AI-generated or
+significantly AI-assisted, up from 6 percent in 2023 and projected at 65
+percent by 2027 (report PDF:
+<https://www.sonarsource.com/state-of-code-developer-survey-report.pdf>; landing
+page: <https://www.sonarsource.com/resources/developer-survey-report/>; Sonar's
+own press release, which is where the Vogels attribution below comes from:
+<https://www.sonarsource.com/company/press-releases/sonar-data-reveals-critical-verification-gap-in-ai-coding/>.
+The campaign URL this survey originally cited,
+`events.sonarsource.com/2026-state-of-code-developer-survey/`, went 404 by
+August 2026; every figure above was re-verified in the report PDF on 2026-08-12,
+and the ByteIota secondary summary previously cited is no longer needed).
 
 Three findings from that survey matter more to lips than the headline gap.
 Sixty-one percent of developers say AI code "looks correct but isn't
@@ -33,9 +42,11 @@ reliable", which is exactly the failure mode a diff review is worst at
 catching. Thirty-eight percent say reviewing AI code costs *more* effort than
 reviewing human code, against 27 percent who find it easier; AWS CTO Werner
 Vogels named the difference "verification debt", the work of rebuilding
-comprehension of code you did not write. Developers still spend 23 to 25
-percent of their time on toil, unchanged from before the tools arrived, so the
-work moved from writing to reviewing rather than disappearing.
+comprehension of code you did not write; he coined the term at AWS re:Invent in
+December 2025, and Sonar's press release is what attaches it to these figures.
+Developers still spend 23 to 25 percent of their time on toil, unchanged from
+before the tools arrived, so the work moved from writing to reviewing rather
+than disappearing.
 
 Secondary reporting puts numbers on the downstream cost: pull requests 154
 percent larger (Faros data, reported at
