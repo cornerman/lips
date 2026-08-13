@@ -28,12 +28,44 @@ module Lips.Kernel.Surface
   , valueTokens
   , valueText
   , fillValueHoles
+  , NaturalKey
+  , naturalKey
   ) where
 
-import           Data.Char (isSpace)
+import           Data.Char (isDigit, isSpace)
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
+
+-- | The canonical order of lips ids: a run of digits compares as a NUMBER, so
+-- @p2@ precedes @p10@ in every stored file, the way a human reads the list.
+-- Plain text order put @p10@ between @p1@ and @p2@, which makes a twenty-line
+-- engine unreadable and a diff of two of them noise.
+--
+-- Ties (ids differing only in leading zeros, @p01@ vs @p1@) fall back to the
+-- raw text, so the order stays TOTAL and consistent with equality -- required,
+-- since 'Lips.Kernel.Decision.DecisionId' keys a Map.
+data NaturalKey = NaturalKey [Chunk] Text
+  deriving (Eq, Ord, Show)
+
+-- | One run of an id: digits compare numerically, everything else as text.
+-- Digits sort before letters at the same position, as in plain text order.
+data Chunk = Number Integer | Word Text
+  deriving (Eq, Ord, Show)
+
+naturalKey :: Text -> NaturalKey
+naturalKey t = NaturalKey (chunks t) t
+  where
+    chunks s = case T.uncons s of
+      Nothing -> []
+      Just (c, _)
+        | isDigit c -> let (ds, rest) = T.span isDigit s
+                        in Number (readDigits ds) : chunks rest
+        | otherwise -> let (w, rest) = T.break isDigit s
+                        in Word w : chunks rest
+    -- 'T.span isDigit' guarantees a non-empty run of digits, so the decimal
+    -- read cannot fail; 0 keeps the function total.
+    readDigits ds = either (const 0) fst (TR.decimal ds)
 
 -- | The parts of a STATED value: whitespace-separated, except that a @"..."@
 -- span is one part and hands over its inner text (escapes undone by

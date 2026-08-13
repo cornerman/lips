@@ -42,7 +42,7 @@ import Lips.Kernel.Engine.Data     (DemandSpec (..), IgnoreSpec (..), MapRule (.
                              parseDemandBody, parseIgnoreBody, parseMergeBody, parseRuleBody,
                              renderDemandBody, renderIgnoreBody, renderMergeBody, renderRuleBody)
 import Lips.Kernel.Engine.Value    (parseHoleType)
-import Lips.Kernel.Surface  (breakLastOutsideQuotes, quoteText, splitOutsideQuotes)
+import Lips.Kernel.Surface  (breakLastOutsideQuotes, naturalKey, quoteText, splitOutsideQuotes)
 import qualified Lips.Kernel.Surface as Q
 import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
@@ -73,11 +73,11 @@ data EngineData = EngineData
 renderLang :: Provenance -> EngineData -> Text
 renderLang prov ed =
   renderBase . fromList . map stamp $
-    map patternToDecision (sortOn pId (edPatterns ed))
-      ++ map ruleToDecision (sortOn mrId (edRules ed))
-      ++ map demandToDecision (sortOn dsId (edDemands ed))
-      ++ map mergeToDecision (sortOn mgId (edMerges ed))
-      ++ map ignoreToDecision (sortOn igId (edIgnores ed))
+    map patternToDecision (sortOn (naturalKey . pId) (edPatterns ed))
+      ++ map ruleToDecision (sortOn (naturalKey . mrId) (edRules ed))
+      ++ map demandToDecision (sortOn (naturalKey . dsId) (edDemands ed))
+      ++ map mergeToDecision (sortOn (naturalKey . mgId) (edMerges ed))
+      ++ map ignoreToDecision (sortOn (naturalKey . igId) (edIgnores ed))
   where
     stamp d = d { dProv = prov }
 
@@ -98,7 +98,7 @@ readLang src =
       results = [ fmap ((,) n) (readEngineLine n t) | (n, t) <- cands ]
       errs    = [ e | Left e <- results ]
       oks     = [ x | Right x <- results ]
-      pats    = sortOn pId [p | (_, ELPat p) <- oks]
+      pats    = sortOn (naturalKey . pId) [p | (_, ELPat p) <- oks]
       patLine = Map.fromList [(pId p, n) | (n, ELPat p) <- oks]
       -- Nesting is a whole-engine property (a child's holes may be bound by an
       -- ancestor, which one pattern's parse cannot see), so it is judged here,
@@ -111,10 +111,10 @@ readLang src =
    in if null errs && null nestErrs
         then Right EngineData
                { edPatterns = pats
-               , edRules    = sortOn mrId [r | (_, ELRule r) <- oks]
-               , edDemands  = sortOn dsId [q | (_, ELDem q)  <- oks]
-               , edMerges   = sortOn mgId [m | (_, ELMerge m) <- oks]
-               , edIgnores  = sortOn igId [i | (_, ELIgnore i) <- oks]
+               , edRules    = sortOn (naturalKey . mrId) [r | (_, ELRule r) <- oks]
+               , edDemands  = sortOn (naturalKey . dsId) [q | (_, ELDem q)  <- oks]
+               , edMerges   = sortOn (naturalKey . mgId) [m | (_, ELMerge m) <- oks]
+               , edIgnores  = sortOn (naturalKey . igId) [i | (_, ELIgnore i) <- oks]
                }
         else Left (errs ++ nestErrs)
   where

@@ -26,6 +26,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import Lips.Kernel.Claim        (Claim (..), ClaimPlace (..), comparisonPy)
+import Lips.Kernel.Surface      (naturalKey)
 import Lips.Kernel.Engine.Value (Piece (..), Value (..), renderRealized, renderValue)
 
 -- | The file, or 'Nothing' when the program states no claims (so a claim-free
@@ -41,7 +42,7 @@ claimsFile hasArtifacts mSite cs = Just $ T.unlines $
   , "let"
   ] ++ artifactLet ++ siteLet ++
   [ "in {"
-  ] ++ concatMap entry (sortOn clId cs) ++ [ "}" ]
+  ] ++ concatMap entry (sortOn (naturalKey . clId) cs) ++ [ "}" ]
   where
     artifactLet
       | hasArtifacts = [ "  artifact = import ./artifact.nix { inherit pkgs; };" ]

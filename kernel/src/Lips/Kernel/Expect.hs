@@ -55,7 +55,7 @@ import Lips.Kernel.Engine.Data (Emit (..), MapRule (..), renderAttrPath, splitAt
 import Lips.Kernel.Engine.Value (parseValue, sourceText)
 import Lips.Kernel.Reader   (ParseError (..))
 import qualified Lips.Kernel.Surface as Q
-import Lips.Kernel.Surface  (fillValueHoles, quoteText, valueText, valueTokens)
+import Lips.Kernel.Surface  (fillValueHoles, naturalKey, quoteText, valueText, valueTokens)
 
 -- | One behavioral assertion: option 'exPath' carries the value drawn from
 -- decision 'exFrom' (optionally its 'exToken'th token).
@@ -157,7 +157,7 @@ smallestCompat rules es
 
 -- | Render a contract to canonical @.expect@ text, ordered by id.
 renderExpect :: [Expect] -> Text
-renderExpect = T.unlines . map renderOne . sortOn exId
+renderExpect = T.unlines . map renderOne . sortOn (naturalKey . exId)
   where
     renderOne e =
       exId e <> " expect " <> dotted (exPath e) <> " from " <> renderFrom e

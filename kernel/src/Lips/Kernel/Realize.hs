@@ -47,6 +47,7 @@ import Lips.Kernel.Claim        (Claim, ClauseClaim (..), claimRooted, claimsFro
 import Lips.Kernel.Decision
 import Lips.Kernel.Sexp         (renderSexp, sexpSymbols)
 import Lips.Kernel.Source       (validMarker)
+import Lips.Kernel.Surface      (naturalKey)
 import Lips.Kernel.Engine.Value  (Piece (..), Ref (..), Value (..), parseValue, renderRealized,
                                   sourceText, valueArtifactNames, valueArtifactPaths,
                                   valuePaths)
@@ -607,10 +608,13 @@ renderModule winners = do
     ]
       ++ letBlock siteName entries
       ++ ["{"]
-      ++ concatMap assignment (sortOn (path . subjOf) optVals)
+      ++ concatMap assignment (sortOn (segments . subjOf) optVals)
       ++ ["}"]
   where
     subjOf (s, _, _) = s
+    -- Order the assignments by their path SEGMENTS, each numeric-aware, so a
+    -- key ending in a number reads 2 before 10.
+    segments (Subject ss) = map naturalKey ss
     valOf  (_, _, v) = v
     parseOpt (s, d) = case parseValue (unAssertion (dAssertion d)) of
       Right v
@@ -706,7 +710,7 @@ artifactEntries mainProgs arts = do
         secs -> Left (RBadArtifact n ("unknown section(s) " <> T.intercalate ", " secs
                  <> "; an artifact has a builder, args and fill"))
       b <- builderOf n parts
-      argLines <- traverse argLine (sortOn fst [ (k, d) | (Subject ("artifact" : _ : "args" : k), d) <- parts ])
+      argLines <- traverse argLine (sortOn (map naturalKey . fst) [ (k, d) | (Subject ("artifact" : _ : "args" : k), d) <- parts ])
       Right $
         [ n <> " = pkgs." <> b <> " {" ]
           ++ argLines

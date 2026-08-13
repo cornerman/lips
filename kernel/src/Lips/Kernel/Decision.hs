@@ -31,6 +31,8 @@ module Lips.Kernel.Decision
 import           Data.Text (Text)
 import qualified Data.Text as T
 
+import Lips.Kernel.Surface (naturalKey)
+
 -- | An attribute path, e.g. @["account","balance"]@. The key decisions merge
 -- on: same subject means the decisions are about the same thing and compete.
 newtype Subject = Subject [Text]
@@ -47,7 +49,14 @@ clauseRooted _              = False
 -- | Stable identity of a decision within a base. Human decisions get ids from
 -- the reader; derived decisions get fresh ids from the refiner.
 newtype DecisionId = DecisionId Text
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Show)
+
+-- | Ids order NUMERICALLY ('naturalKey'): @d2@ before @d10@. This is the one
+-- place the order is decided, because a base is a @Map DecisionId@ and every
+-- stored file sorts by id, so a second definition would let two listings of
+-- the same decisions disagree.
+instance Ord DecisionId where
+  compare (DecisionId a) (DecisionId b) = compare (naturalKey a) (naturalKey b)
 
 -- | Identity of a refinement rule (a mapping from a language's engine).
 newtype RuleId = RuleId Text

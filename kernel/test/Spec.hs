@@ -763,6 +763,13 @@ main = hspec $ do
       let src = "# concepts\n\nd1 fact currency stated \"EUR\" @ledger:6\n"
       (fmap (map dId . toList) (readBase src)) `shouldBe` Right [DecisionId "d1"]
 
+    it "orders ids numerically, not by text: d2 before d10" $ do
+      let src = T.unlines [ "d10 fact a stated \"x\""
+                          , "d2 fact b stated \"y\""
+                          , "d1 fact c stated \"z\"" ]
+      fmap (map dId . toList) (readBase src) `shouldBe`
+        Right [DecisionId "d1", DecisionId "d2", DecisionId "d10"]
+
     it "round-trips any base: readBase . renderBase == id" $
       property $ \ds ->
         let b = fromList ds in readBase (renderBase b) === Right b
@@ -2778,6 +2785,14 @@ main = hspec $ do
 
     it "round-trips the whole engine: readLang . renderLang == Right" $
       readLang (renderLang (FromGeneration "cafe0123") engine) `shouldBe` Right engine
+
+    it "orders engine ids numerically: p2 before p10" $ do
+      let pats = [ patOne i [TLit "x"] Fact [SLit "a.", SLit i] [SLit "b"]
+                 | i <- ["p10", "p2", "p1"] ]
+          ed = engine { edPatterns = pats, edRules = [], edDemands = []
+                      , edMerges = [], edIgnores = [] }
+          ids = map (T.takeWhile (/= ' ')) (T.lines (renderLang (FromGeneration "cafe0123") ed))
+      ids `shouldBe` ["p1", "p2", "p10"]
 
     it "declares a structure-bound hole in an emit subject" $
       -- An item with no key of its own (no word in the line identifies it) still
