@@ -3529,6 +3529,31 @@ but the loop around it is incomplete; "missing" means specced, not built.
   doctrine). With this landing, every committed program the no-blob sweep
   named is off staged source, and the gate the doctrine describes ("refuse a
   new staged tree") can land without refusing the corpus it ships with.
+- **The corpus a model reads is the corpus a reader reads, and a JSON array is a
+  list** (2026-08-12, both found by the first application-scale mint: a 26-line
+  football program, minted into 37 clauses that play a match in 21 ms). Two
+  defects, one cause: what the mint was shown did not match what the kernel
+  reads.
+  FIRST, `corpusText` sent the raw program text while every reader lips has
+  skips a comment, so the model was asked whether every line it saw
+  crystallizes and could not satisfy the question. Measured, not reasoned: with
+  a seven-line header paragraph the mint spent FOURTEEN drafts writing concept
+  patterns for prose and never converged; with the paragraph moved to
+  `.direction`, the same model minted a working engine in one pass. The rule
+  "a comment carries nothing" also lived in three copies (`Reader`,
+  `Crystallize`, `Store`) and would have become four, so it is now
+  `Reader.commentOrBlank` and the corpus is filtered through it. Stripping beats
+  a plea in the prompt for a second reason: `.direction` is already the one
+  labelled advisory channel, and two channels that both steer a mint can drift
+  apart. Since the corpus is what enters `genId`, editing a comment now
+  correctly leaves an engine valid, because it changed nothing readable.
+  SECOND, the contract set could reach a record (`field-of`) and no array, so
+  the mint encoded eleven players as eleven FIELDS `p1..p11`: honest under the
+  physics it had, and unable to read any real roster. `elements-of` closes it as
+  DATA (one pure contract, `vector->list` in guile, since guile-json maps an
+  array to a vector and an object to an alist), and one converter is the whole
+  addition because recursion over a list is already expressible, so no accessor
+  family enters the vocabulary.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
