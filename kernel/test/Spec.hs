@@ -6056,6 +6056,15 @@ main = hspec $ do
         `shouldSatisfy` \ns -> all (`elem` ns)
           ["read-a-line", "end-of-input?", "emit", "die", "json-parse", "string-cut", "field-of"]
 
+    -- A JSON array is data a program must walk, and the clause world walks a
+    -- LIST (car, cdr, null?). Without this the only reachable shape is a record,
+    -- so a live mint encoded eleven players as eleven FIELDS p1..p11 -- correct,
+    -- and unable to read any real roster. One converter completes the reach; no
+    -- accessor family, because recursion over a list is already expressible.
+    it "ships a converter from a JSON array to a list" $
+      filter ((== "elements-of") . cName) (vContracts schemeVocabulary)
+        `shouldSatisfy` \cs -> map cKind cs == [Pure] && map cArity cs == [1]
+
     -- A simulation varies without ceasing to be a pure function of its input,
     -- which takes a generator: pure, seeded, and the SAME sequence on every
     -- runtime, or a replay disagrees with the run it reproduces. It is a
@@ -6694,6 +6703,9 @@ main = hspec $ do
 
     it "ships a guile runtime that covers the seeded generator" $
       coveringRuntime [guileRuntime] ["random-step"] [] `shouldBe` Right guileRuntime
+
+    it "ships a guile runtime that covers the array converter" $
+      coveringRuntime [guileRuntime] ["elements-of"] [] `shouldBe` Right guileRuntime
 
 -- | The subjects a crystallized base holds, in SOURCE-LINE order (the base is a
 -- set keyed by id, so its own order is not the program's).

@@ -24,3 +24,9 @@ observation emitted 0 "-> the lines the program printed, in order"
 # LCG's low bits are not random. Unpredictability is not its job and never can
 # be; a caller who needs it derives each seed outside, from a secret it keeps.
 pure random-step 1 "seed -> (value . next-seed), value 0..999"
+# A JSON array, as a list the clause world can walk. Without it the only shape a
+# program reaches is a record, so a squad of eleven players had to be minted as
+# eleven FIELDS (p1..p11) -- correct, and unable to read any real roster. One
+# converter is the whole addition: recursion over a list is already expressible,
+# so no accessor family is needed.
+pure elements-of 1 "array -> its elements as a list, or #f when it is not an array"

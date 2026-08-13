@@ -24,3 +24,7 @@
 (define (random-step seed)
   (let ((next (modulo (+ (* 1664525 seed) 1013904223) 4294967296)))
     (cons (quotient (* next 1000) 4294967296) next)))
+
+;; guile-json maps a JSON array to a VECTOR and an object to an alist, so the
+;; representation says which is which and nothing has to be guessed.
+(define (elements-of x) (if (vector? x) (vector->list x) #f))
