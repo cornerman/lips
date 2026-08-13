@@ -39,7 +39,7 @@ import Lips.Kernel.Base     (Base, fromList)
 import Lips.Kernel.Decision
 import Lips.Kernel.Lang.Nest    (noFrames, recordLine, scopeLine)
 import Lips.Kernel.Lang.Pattern
-import Lips.Kernel.Reader   (ParseError (..), joinSubject, readDecision, render)
+import Lips.Kernel.Reader   (ParseError (..), commentOrBlank, joinSubject, readDecision, render)
 
 -- | A crystallization failure, anchored to the 1-based loose line.
 data CrystError
@@ -87,7 +87,7 @@ classifyLines file patterns src =
                    | (n, l) <- numbered, let t = T.strip l, not (skip t) ]
    in reverse (snd (foldl' classify (noFrames, []) candidates))
   where
-    skip t = T.null t || "#" `T.isPrefixOf` t
+    skip = commentOrBlank
     -- Leading whitespace is read but weightless: only a pattern that nests under
     -- ITSELF consults it ('Lips.Kernel.Lang.Nest.scopeLine'), so every existing
     -- program means exactly what it meant.

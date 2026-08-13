@@ -3003,6 +3003,16 @@ main = hspec $ do
       -- and the section stops before the next record block
       recordedProgram "a/two.log.lips" r `shouldSatisfy` maybe False (not . T.isInfixOf "transcript")
 
+    -- The mint's view of a program must be the READER's view of it. A comment is
+    -- skipped by every reader lips has, so a mint shown one is a mint told to
+    -- crystallize a line the kernel throws away: a live 26-line program burned
+    -- fourteen drafts inventing concept patterns for its own header paragraph.
+    -- Stripping here (rather than pleading in the prompt) also keeps ONE
+    -- advisory channel, the .direction file, instead of two that can drift.
+    it "sends the mint the lines a reader reads, and no comment" $
+      corpusText [("a/one.log.lips", "# a frame\n#\nfirst line\n\nsecond line\n")]
+        `shouldBe` "=== program one.log.lips ===\nfirst line\nsecond line\n"
+
     -- The corpus reading, which the source-specification gate needs to judge a
     -- program the record holds no section for: its sentences must at least be
     -- sentences the mint saw somewhere in the language.

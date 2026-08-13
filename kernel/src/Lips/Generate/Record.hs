@@ -41,7 +41,7 @@ import           Data.Word          (Word64)
 import           System.FilePath    (takeFileName)
 
 import           Lips.Kernel.Decision (Decision (..), Provenance (..))
-import           Lips.Kernel.Reader   (readDecision)
+import           Lips.Kernel.Reader   (commentOrBlank, readDecision)
 import           Lips.World           (World (..))
 
 -- | The auditable record of a generation event: everything the model saw and
@@ -187,9 +187,20 @@ renderStampFault (OrphanStamp n g) =
 -- them, and the same text is recorded as the generation's input -- which makes it
 -- the one offline witness of what each program SAID when its language (and any
 -- artifact source) was minted.
+--
+-- Comments and blank lines are dropped, because the mint's view of a program has
+-- to be the READER's view of it: the model is asked whether every line it was
+-- shown crystallizes, and a line the crystallizer skips can never do so. Shown
+-- them, a live mint spent fourteen drafts writing concept patterns for a header
+-- paragraph. Dropping them here also leaves exactly one advisory channel, the
+-- @.direction@ file, which is labelled as advisory; and since the corpus is what
+-- enters the generation id, editing a comment correctly does not invalidate an
+-- engine, because it changed nothing the mint could have read.
 corpusText :: [(FilePath, Text)] -> Text
 corpusText progs = T.intercalate "\n"
-  [ header f <> "\n" <> t | (f, t) <- progs ]
+  [ header f <> "\n" <> rules t | (f, t) <- progs ]
+  where
+    rules t = T.unlines [ l | l <- T.lines t, not (commentOrBlank (T.strip l)) ]
 
 header :: FilePath -> Text
 header f = "=== program " <> T.pack (takeFileName f) <> " ==="

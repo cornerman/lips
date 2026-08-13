@@ -46,7 +46,7 @@ import Lips.Kernel.Surface  (breakLastOutsideQuotes, quoteText, splitOutsideQuot
 import qualified Lips.Kernel.Surface as Q
 import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
-import Lips.Kernel.Reader   (ParseError (..), readDecision, renderBase)
+import Lips.Kernel.Reader   (ParseError (..), commentOrBlank, readDecision, renderBase)
 import Lips.Kernel.Lang.Nest    (NestError (..), checkNesting, renderNestError)
 import Lips.Kernel.Lang.Pattern
 
@@ -118,7 +118,7 @@ readLang src =
                }
         else Left (errs ++ nestErrs)
   where
-    skip t = T.null t || "#" `T.isPrefixOf` t
+    skip = commentOrBlank
     -- Which pattern a nesting error is about, so it lands on that line.
     nestSubject e = case e of
       UnknownParent p _  -> p

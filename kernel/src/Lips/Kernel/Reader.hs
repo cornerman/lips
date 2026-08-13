@@ -17,7 +17,8 @@
 -- @\@file:line@ for a human decision or @<-id1,id2 via ruleId@ for a derived
 -- one. A single decision occupies a single line by construction.
 module Lips.Kernel.Reader
-  ( ParseError (..)
+  ( commentOrBlank
+  , ParseError (..)
   , readBase
   , readDecision
   , render
@@ -55,7 +56,15 @@ readBase src =
       ds   = [d | Right d <- results]
    in if null errs then Right (fromList ds) else Left errs
   where
-    skip t = T.null t || "#" `T.isPrefixOf` t
+    skip = commentOrBlank
+
+-- | Whether a stripped line carries nothing: the ONE definition of a comment in
+-- lips, shared by every reader of a line-oriented file (this base reader, the
+-- program crystallizer, the engine store) and by the corpus the mint is shown.
+-- It lived in three places and would have become four; a mint shown lines its
+-- reader discards spends the call crystallizing them.
+commentOrBlank :: Text -> Bool
+commentOrBlank t = T.null t || "#" `T.isPrefixOf` t
 
 -- | Read one decision line (already stripped of surrounding space).
 readDecision :: Text -> Either ParseError Decision
