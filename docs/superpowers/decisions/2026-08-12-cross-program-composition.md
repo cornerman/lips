@@ -80,50 +80,72 @@ Imports inherit the property: generate hands the importing mint the exported
 names ALREADY qualified, so it calls `player-contribution` and cannot
 accidentally define it, that name being outside its own namespace.
 
-`main` is the one reserved exception, because the runtime's entry is fixed data
-(`entry (main)`). It stays unqualified, and exactly one language in a composed
-site may define it: the program being compiled. Also a check, not glue.
+The entry point needs no exception. A runtime states how it starts a program as
+data (`entry (main)` in `assets/runtime/guile/runtime`), and lips derives from
+that line which symbol the core must define. Namespacing would leave that symbol
+undefinable, since every clause carries its language's prefix, so the entry line
+gains a hole like every other value in lips:
+
+    entry (<entry>)
+
+`compile` knows which language it is compiling and fills `match-main`. Nothing is
+reserved, no glue file appears, no exception to namespacing exists, and a runtime
+that starts a program differently still owns its own spelling. A special case in
+the kernel is replaced by a hole in a data file, which is the trade lips takes
+everywhere else.
 
 ## The Bootstrap, Which Forces the Shape
 
-When `training` is minted, the mint must already know which names `match`
-defines. Otherwise it invents local definitions, which is precisely the observed
-failure. Therefore the dependency must be readable **before any grammar exists
-for that program**, which rules out carrying it in a minted pattern, and rules
-out reading it after crystallization.
+When `match` is minted, the mint must already know which names `player` defines.
+Otherwise it invents local definitions, which is precisely the observed failure.
+Therefore the dependency must be readable **before any grammar exists for that
+program**, which rules out carrying it in a minted pattern, and rules out
+reading it after crystallization.
 
-That leaves it in the fixed lexical frame, where lips already keeps the four
-rules a program author must know (a line is the unit, a blank line carries
-nothing, `#` is a comment, indentation is weightless except under a self-nesting
-pattern) plus the filename convention `<instance>.<language>.lips`. The
-dependency joins them as a fifth, and it stays domain-blind exactly as `#` is:
+It also belongs to the LANGUAGE rather than to a program: a language's rules do
+the calling, and one grammar is shared by every program written in it, so
+`classic.match.lips` and `arcade.match.lips` cannot coherently disagree about
+what `match` uses.
 
-    uses match.
+Both constraints are met by a file named after the language, beside the
+programs, in the same slot the existing owner-written file occupies:
 
-One keyword, one language name, terminated like any other line. The kernel reads
-it before crystallizing and never asks what `match` means.
+    match.direction     taste, advisory, may be ignored
+    match.uses          dependencies, binding, refused when unresolvable
+
+One language name per line, `#` comments and blank lines as everywhere else, no
+file when there are no dependencies. The kernel reads it with no language and
+never asks what `player` means.
 
 ### Alternatives Rejected
 
-A **sidecar file** (`training.uses`, beside `.direction`) keeps the program free
-of new syntax and was rejected because a dependency is intent, not taste:
-`.direction` is advisory and may be ignored, while an unresolved dependency must
-stop the build. Splitting the two across files would put the load-bearing one in
-the weaker channel.
+**A line in the program** (`uses player.`) puts the dependency in the artifact a
+human owns, which is the strongest argument for it, and was rejected because it
+costs a fifth rule in a lexical frame of four (a line is the unit, a blank
+carries nothing, `#` is a comment, indentation is weightless under a
+self-nesting pattern). It would also have needed a mint-time check that every
+program of the language states the same thing, which the sidecar makes
+impossible to violate rather than merely detectable.
+
+**The call is the declaration** (no syntax at all: generate offers every sibling
+language, and the engine records whichever it calls) is the least invasive shape
+and was rejected for loudness. A missing or misspelled dependency can always be
+answered by an invented local definition, since defining something locally is
+legal, so the exact silent failure that opened this design would remain
+reachable.
 
 **Co-location** (every program in a directory composes automatically) needs no
-syntax at all and was rejected for being implicit: it couples programs that
-merely share a folder, gives no way to state which vocabulary was meant, and
-makes moving a file a semantic change.
+syntax either and was rejected for being implicit: it couples programs that
+merely share a folder, and moving a file becomes a semantic change.
 
-A **CLI flag** (`generate --uses match`) was rejected outright: it puts the
-dependency outside the only artifact a human owns, so the program would no
-longer say what it needs.
+**A CLI flag** (`generate --uses player`) was rejected outright: it puts a
+binding dependency outside every artifact, so the repository would no longer say
+what it needs.
 
 ## The Mechanism
 
-**Generate.** Reading `uses match`, generate loads that language's committed
-engine, extracts every `clause.<name>` it defines together with its arity, and
+**Generate.** Reading `match.uses`, generate loads each named language's
+committed engine, extracts every `clause.<name>` it defines together with its arity, and
 hands them to the mint as grounded external names, the same way the option
 schema tool grounds an option path. The mint may call them and may not redefine
 them. The imported engine is pinned by content hash in `.generation`, so the
@@ -183,36 +205,10 @@ that use it:
 The dependency graph stays a shallow tree, each layer is separately reviewable,
 and `player` is exactly the artifact a modder reads first.
 
-## A Dependency Belongs to the Language
-
-A language's RULES do the calling, and one grammar is shared by every program
-written in it, so a dependency is a property of the language rather than of an
-instance. `classic.match.lips` and `arcade.match.lips` cannot coherently
-disagree about what `match` uses.
-
-The `uses` line still sits in the program, because that is the artifact a human
-owns and a dependency is intent. Agreement is then a mint-time check: every
-program of one language is read in the same call, so a disagreement is refused
-there, naming both files.
-
-## Consequences for the Kernel
-
-- `Lips.Identity` gains the resolution of a language name to its engine
-  directory, since it is the only module that knows those paths.
-- `Lips.Language` gains reading another language's engine for its clause
-  signatures, next to `mintedWorlds`.
-- The reader of the lexical frame gains `uses`, beside `commentOrBlank`.
-- `Generate` gains the imported signatures as a mint input and as a recorded,
-  hashed one.
-- `Realize`/`Stage` assemble the union into one site.
-- The gate needs no change beyond receiving a larger ground set, which is the
-  measure of whether this design is right: **if composition needs new gate
-  physics, the shape is wrong.**
-
 ## The Test That Settles It
 
 The falsifier repeats, corrected for layering. `player.lips` defines
-`contribution(p)`, `training.lips` states `uses player.` and calls it, and
+`contribution(p)`, `training.uses` names `player`, `training.lips` calls it, and
 exactly one of two things happens: the call resolves to `player-contribution`,
 or lips refuses by name. Silently becoming a JSON field must be unreachable.
 
