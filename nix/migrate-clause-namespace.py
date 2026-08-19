@@ -15,6 +15,11 @@ definition and call site of those names inside clause and claim bodies. Nothing
 else is touched, and every engine is re-verified afterwards by `lips check`,
 which runs its committed claims and expects.
 
+An engine may also use `clause.<name>` as a FACT subject (its grammar produces
+one, its rules match it), so a language's grammar is migrated in the same call
+as its rules: renaming one side alone leaves the rule matching a fact nothing
+produces, which compiles to a program that reaches no world.
+
 Usage: migrate-clause-namespace.py <engine.rules> [...]
 """
 import re
@@ -30,14 +35,15 @@ def clause_names(text):
                   key=len, reverse=True)
 
 
-def migrate(path):
+def migrate(path, names=None):
     p = Path(path)
     # The language is the engine's own name: <lang>/<world>/<lang>.rules
     lang = p.name.rsplit(".", 1)[0]
     text = p.read_text()
-    names = [n for n in clause_names(text) if not n.startswith(lang + "-")]
+    if names is None:
+        names = [n for n in clause_names(text) if not n.startswith(lang + "-")]
     if not names:
-        return f"{p}: already namespaced"
+        return f"{p}: already namespaced", []
 
     out = text
     for n in names:
@@ -51,11 +57,16 @@ def migrate(path):
         # a predicate's name ends in ? or !, which are not word boundaries
         out = re.sub(r"\((" + re.escape(n) + r")(?=[\s)])", "(" + new, out)
     p.write_text(out)
-    return f"{p}: {len(names)} clause(s) -> {lang}-*"
+    return f"{p}: {len(names)} clause(s) -> {lang}-*", names
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     for arg in sys.argv[1:]:
-        print(migrate(arg))
+        msg, names = migrate(arg)
+        print(msg)
+        # The grammar states the facts the rules match, so it moves with them.
+        grammar = Path(arg).parent.parent / (Path(arg).name.rsplit(".", 1)[0] + ".grammar")
+        if names and grammar.exists():
+            print(migrate(str(grammar), names)[0])

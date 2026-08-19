@@ -3555,6 +3555,45 @@ but the loop around it is incomplete; "missing" means specced, not built.
   addition because recursion over a list is already expressible, so no accessor
   family enters the vocabulary.
 
+- **A dependency on another language is an atom, and a clause is named after its
+  language** (2026-08-12, design in
+  `docs/superpowers/decisions/2026-08-12-cross-program-composition.md`, driven by
+  the `libero` falsifier). Physics half landed; the mint tool and the site union
+  are not built yet.
+  The defect it answers was silent, which is worse than missing: a program
+  writing `contribution(p) := as defined by match.` had that line read as "the
+  raw contribution field of the player record", every gate green, so one concept
+  became two. Nothing in lips represented a reference across a language
+  boundary, so there was no name to fail to resolve, and deduce-or-fail did not
+  hold.
+  A dependency is now a KIND (`Uses`, subject the language, assertion the
+  instance) rather than a fact with a reserved subject, because the kernel may
+  know a structural category and may not know a word in a subject path. The rest
+  is inherited: two instances named for one language are an equal-strength
+  disagreement that merge already refuses with both provenances, and realization
+  ignores the kind.
+  Clause names are namespaced BY CONSTRUCTION at mint time
+  (`clause.match-duel`), never rewritten later: qualifying at realization would
+  make the kernel decide which symbols in a body are call targets, and that is a
+  translation, while emitting is a serialization pinned by `parse . render = id`.
+  So the kernel checks (`clausesNamespaced`) and never transforms, which makes
+  collision-freedom a theorem: two languages cannot share a prefix, and
+  duplicates inside one already conflict.
+  The entry needed no reserved name: `entry (<language>-main)` gives the runtime
+  data a hole like every other value, `compile` fills it, and the runtime keeps
+  ownership of the word.
+  MIGRATION, recorded because it bends invariant 4: the eight committed clause
+  engines (function, hello, logscan, website, board, habit, and libero's match
+  and training) were migrated by a one-off script
+  (`nix/migrate-clause-namespace.py`) rather than re-minted, since a re-mint
+  rewrites behaviour a program never mentioned. Two bugs the script found are the
+  argument for reviewing such a diff: a Scheme name may end in `?`, so a
+  word-boundary charset silently skipped `keep?` and `matches?`; and an engine
+  may use `clause.<name>` as a FACT subject too, so renaming the rules alone left
+  them matching facts the grammar no longer produced. Every engine was
+  re-verified afterwards by `lips check` (claims and expects), and `match` was
+  A/B tested to byte-identical output.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
