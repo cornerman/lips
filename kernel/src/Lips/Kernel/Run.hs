@@ -12,12 +12,14 @@
 module Lips.Kernel.Run
   ( RunError (..)
   , Realization (..)
+  , composeWith
   , run
   , runBase
   ) where
 
 import           Data.Bifunctor  (first)
-import           Data.Maybe      (isJust)
+import           Data.List       (nub)
+import           Data.Maybe      (isJust, mapMaybe)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
 import qualified Data.Text       as T
@@ -159,6 +161,26 @@ runBase modeOf assemble vocab budget eng base0 = do
     <*> realizeClauseClaims modeOf assemble vocab base0 ground
     <*> realizeClaims modeOf assemble ground
     <*> pure (usesIn base0)
+
+-- | Compose a realization with the ones it depends on: their clause cores are
+-- linked ahead of its own, so a call into an imported definition resolves at
+-- link time by NAME, which is all a first-order clause world needs.
+--
+-- Only the core travels. A dependency lends its behaviour, never its module: an
+-- imported program's options, artifacts and claims stay its own, or importing a
+-- language would silently deploy it. Namespacing makes the union safe by
+-- construction, since two languages cannot name one clause.
+composeWith :: [Realization] -> Realization -> Realization
+composeWith imports rl = rl { rlCore = merged }
+  where
+    merged = case (mapMaybe rlCore imports, rlCore rl) of
+      ([], own)     -> own
+      (cs, Nothing) -> Just (foldCores cs)
+      (cs, Just own) -> Just (foldCores (cs <> [own]))
+    foldCores cs =
+      ( T.intercalate "\n" [ t | (t, _, _) <- cs ]
+      , nub (concat [ cts | (_, cts, _) <- cs ])
+      , concat [ ds | (_, _, ds) <- cs ] )
 
 -- | The dependencies a base states: @(language, instance)@ per 'Uses' decision,
 -- read from the human base, since no rule rewrites one and none may.

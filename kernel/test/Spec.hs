@@ -634,6 +634,25 @@ main = hspec $ do
         Left e   -> expectationFailure ("run failed: " <> show e)
         Right rl -> rlUses rl `shouldBe` [("player", "standard")]
 
+    -- Composition links the imported core ahead of the program's own, so a call
+    -- resolves by NAME at link time, which is all a first-order clause world
+    -- needs. Only the core travels: a dependency lends behaviour, never its
+    -- module, or importing a language would silently deploy it.
+    it "links an imported core ahead of its own, keeping only the core" $ do
+      let imp = emptyRealization
+            { rlCore = Just ("(define (player-rating p) 1)", ["json-parse"], [("player-rating", Just 1)])
+            , rlModule = "IMPORTED MODULE" }
+          own = emptyRealization
+            { rlCore = Just ("(define (match-main) (player-rating 1))", ["emit"], [("match-main", Just 0)])
+            , rlModule = "OWN MODULE" }
+      case rlCore (composeWith [imp] own) of
+        Nothing -> expectationFailure "composed core vanished"
+        Just (text, contracts, defined) -> do
+          text `shouldBe` "(define (player-rating p) 1)\n(define (match-main) (player-rating 1))"
+          contracts `shouldBe` ["json-parse", "emit"]
+          defined `shouldBe` [("player-rating", Just 1), ("match-main", Just 0)]
+      rlModule (composeWith [imp] own) `shouldBe` "OWN MODULE"
+
     it "end-to-end C: one line with many packages -> one VList, aggregatable with B" $ do
       -- Capability C: a <name.tail> template hole binds the rest of a line, and
       -- a <value.tail> rhs fills to a VList of those tokens. Each line
