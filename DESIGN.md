@@ -3594,6 +3594,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
   re-verified afterwards by `lips check` (claims and expects), and `match` was
   A/B tested to byte-identical output.
 
+- **A dependency travels on the realization, and composing links a core**
+  (2026-08-12, second half of the composition work; the mint tool is still
+  missing, so nothing yet PRODUCES a `Uses` decision from a program). A `Uses`
+  decision realizes nothing: it names another program's base rather than an
+  option, so `runGround` drops it exactly as it drops a `Concept` (a third sound
+  way to reach no option, beside a world's declared ignore), and `rlUses` carries
+  it to the caller. `composeWith` then links the imported cores ahead of the
+  program's own, so a call resolves by NAME at link time, which is all a
+  first-order clause world needs. Only the CORE travels: a dependency lends
+  behaviour and never its module, or importing a language would silently deploy
+  it. Resolution is spelled the way every program is
+  (`<instance>.<language>.lips`, or the singleton when the instance IS the
+  language), looked up beside the importer, and a missing file stops the run
+  naming what it looked for rather than compiling a site with a hole in it.
+  Composition happens before the gates, so a claim judges the site a run would
+  link.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and

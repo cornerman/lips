@@ -445,6 +445,31 @@ checkLoose contract claims mLangDir file = do
       Right _  -> pure ()
     pure (w, r)
 
+-- | Realize every program this one depends on, in the same world. A dependency
+-- names a language and an instance, and the file it lives in is spelled the way
+-- every program is: @\<instance\>.\<language\>.lips@, or the singleton
+-- @\<language\>.lips@ when the instance IS the language. Beside the importer,
+-- because a language is a directory's vocabulary.
+--
+-- Deduce-or-fail: a dependency naming a file that is not there stops the run and
+-- says which name it looked for, rather than compiling a site with a hole in it.
+resolveImports :: Text -> FilePath -> Realization -> IO [Realization]
+resolveImports w file rl = forM (rlUses rl) $ \(lang, inst) -> do
+  let here     = takeDirectory file
+      fileName = (if inst == lang then lang else inst <> "." <> lang) <> ".lips"
+      imported = here </> T.unpack fileName
+  there <- doesFileExist imported
+  unless there $ die (report
+    (T.pack file <> " depends on " <> inst <> "." <> lang <> ", and that program is not here.")
+    [T.pack imported]
+    ("\8594 write it, or name the instance that exists."))
+  dir' <- either die pure (resolveLangDir imported Nothing)
+  eng' <- loadLangOrDie dir' w imported
+  prog' <- readProgramOrDie imported
+  case validate imported eng' prog' of
+    Left ff -> die (printFail imported ff)
+    Right r -> pure r
+
 -- | One world's verdict on a program: its rules read on top of the shared
 -- grammar, its diagnosis, its contract, its claims.
 -- The one non-fatal defect is the world's own: ground decisions no rule of THIS
@@ -498,7 +523,11 @@ checkWorld contract claims dir w file program = do
       Left (FailRun (Unmapped ds)) -> pure (Left (unportableReport file w ds))
       Left ff -> die (printFail file ff)
       Right rl0 -> do
-        rl <- expectGate contract claims dir w file eng program rl0
+        -- Composition happens BEFORE the gates, so the claims judge the site a
+        -- run would actually link: an imported clause is reachable from a claim
+        -- exactly as a local one is.
+        imports <- resolveImports w file rl0
+        rl <- expectGate contract claims dir w file eng program (composeWith imports rl0)
         -- What vouches for each assertion, always printed. An unvouched
         -- assertion (foreign text in an artifact argument, a staged source tree)
         -- is the one thing lips cannot check, so the count is stated on every
