@@ -309,7 +309,7 @@ compileWorld mout dir file (w, rl) = do
     -- holding the runtime's adapters, the minted core, the assembled entry and
     -- the runtime's own builder. A configuration-only program writes none, so
     -- its output stays byte-identical.
-    hasSite <- writeSite outDirPath rl
+    hasSite <- writeSite (T.pack (languageName file)) outDirPath rl
     -- Always written, empty set when the program declares none: the flake text
     -- imports it unconditionally.
     let (artBody, artNames) = rlArtifact rl
@@ -464,7 +464,7 @@ checkWorld contract claims dir w file program = do
     -- (an ambiguous line reads as the author's problem when it is the engine's),
     -- so it fails before the diagnosis. Same gate generate runs before accepting
     -- a mint, so a committed engine cannot drift below what minting required.
-    case engineViolations eng of
+    case engineViolations (T.pack (languageName file)) eng of
       []      -> pure ()
       (v : _) -> die (validationReport file v)
     -- First phase, pure and offline: how the program sits in its language.
@@ -892,7 +892,8 @@ generate worlds inherited mschema confidence compat verbose mmodel thinking file
       -- The tree is the LANGUAGE's: one program's source, shared by every world
       -- that runs it, which is why only a call that saw every world may write it.
       let minted = sourcesOf (map icItem candidates)
-          stage rl root = writeSources (root </> "artifacts") minted >> void (writeSite root rl)
+          stage rl root = writeSources (root </> "artifacts") minted
+                            >> void (writeSite (T.pack lang) root rl)
       -- A source tree is written under the artifact name the block gives, so a
       -- name still holding a hole makes a directory called "<self>" and the
       -- module's src points at nothing. Refused here, where the mint is still
@@ -1059,7 +1060,7 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
     Left es -> throwE (validationReport rep ("the setup can't be saved and reloaded cleanly:\n"
                         <> T.unlines (map renderParseError es)))
     Right e -> pure e
-  case engineViolations eng of
+  case engineViolations (T.pack (languageName rep)) eng of
     []      -> pure ()
     (v : _) -> throwE (validationReport rep v)
   lift (assertOptionsAdmissible world schemaPath rep eng)

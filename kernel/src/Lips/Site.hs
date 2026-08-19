@@ -22,7 +22,7 @@ import qualified Data.Text as T
 
 import Lips.Kernel.Claim            (renderClauseClaim)
 import Lips.Kernel.Clause.Catalogue (Harness (..), Runtime (..), clauseClaimsFile,
-                                     coveringRuntime, entryDemand, siteFile)
+                                     coveringRuntime, entryDemand, entryFor, siteFile)
 import Lips.Kernel.Run              (Realization (..))
 
 -- | The WHOLE content of a site directory: every file it should hold, and
@@ -46,9 +46,9 @@ data SitePlan = SitePlan
 -- The asset lookup is injected rather than imported, so this module never learns
 -- where lips keeps its runtime files, and the suite can plan a site against a
 -- runtime it invents.
-planSite :: (Text -> FilePath -> Maybe Text) -> [Runtime] -> Realization
+planSite :: (Text -> FilePath -> Maybe Text) -> Text -> [Runtime] -> Realization
          -> Either (Text, Text) (Maybe SitePlan)
-planSite asset runtimes rl = case rlCore rl of
+planSite asset lang runtimes rl = case rlCore rl of
   -- Claims over clauses a program does not state: the site directory would never
   -- be written, and the claim build would then die on a missing path naming
   -- neither lips nor a remedy.
@@ -58,9 +58,12 @@ planSite asset runtimes rl = case rlCore rl of
     , "\8594 rebuild the setup: lips generate <program>." )
   Nothing -> Right Nothing
   Just (core, contracts, defined) -> do
-    rt <- first (\why -> (why, "\8594 state a requirement in the program, or add a\
+    rt0 <- first (\why -> (why, "\8594 state a requirement in the program, or add a\
                                 \ runtime that covers it."))
             (coveringRuntime runtimes contracts (rlSiteProps rl))
+    -- The runtime spells its entry with a hole, so the site starts the clause of
+    -- THIS language (namespacing leaves no bare name to start).
+    let rt = entryFor lang rt0
     -- The core must satisfy the runtime's entry, or the site builds and dies on
     -- first run with "wrong number of arguments" and every lips gate green.
     (entryName, entryArgs) <- first (\why -> (why, "\8594 this is a lips bug; report it."))

@@ -26,6 +26,7 @@ module Lips.Kernel.Clause.Catalogue
   , siteFile
   , clauseClaimsFile
   , entryDemand
+  , entryFor
   ) where
 
 import           Data.List (intercalate)
@@ -229,6 +230,15 @@ clauseClaimsFile rt files forms = T.unlines
 -- Without this check the entry and the core can disagree with every gate green:
 -- two live mints defined @(define (main) ...)@ against an entry passing one
 -- argument, and both binaries died at runtime with "wrong number of arguments".
+-- | Fill a runtime's entry with the language whose site is being assembled.
+-- Namespacing means every clause carries its language's prefix, so no language
+-- can define a bare @main@; the runtime therefore spells its entry with a hole
+-- (@entry (\<language\>-main)@) exactly as every other lips value carries one,
+-- and keeps ownership of how it starts a program. The kernel substitutes a name
+-- and learns no word: @main@ is the runtime's, not the kernel's.
+entryFor :: Text -> Runtime -> Runtime
+entryFor lang rt = rt { rEntry = T.replace "<language>" lang (rEntry rt) }
+
 entryDemand :: Runtime -> Either Text (Text, Int)
 entryDemand rt = case parseSexp (rEntry rt) of
   Right (SList (SSym n : args)) -> Right (n, length args)

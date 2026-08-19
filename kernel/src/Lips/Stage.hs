@@ -38,7 +38,7 @@ import           System.Posix.Temp  (mkdtemp)
 
 import           Lips.Cli.Output       (die, report)
 import           Lips.Generate.Minting (SourceFile (..))
-import           Lips.Identity         (artifactsPathIn)
+import           Lips.Identity         (artifactsPathIn, languageName)
 import           Lips.Kernel.Decision   (Subject (..))
 import           Lips.Kernel.Grounding (Grounding, Unvouched (..), gStaged)
 import           Lips.Kernel.Realize   (defaultSiteName)
@@ -128,7 +128,7 @@ stageFromDisk dir file dst = do
 stageBeside :: FilePath -> FilePath -> Realization -> FilePath -> IO ()
 stageBeside dir file rl root = do
   stageFromDisk dir file (root </> "artifacts")
-  void (writeSite root rl)
+  void (writeSite (T.pack (languageName file)) root rl)
 
 -- | What the program is installed as. A realization names the site only where
 -- something REFERENCES it, so a program whose module never mentions @${site}@
@@ -141,8 +141,8 @@ siteNameOf rl = fromMaybe defaultSiteName (rlSiteName rl)
 -- decisions (which runtime, which files, what to prune) are pure and live in
 -- 'Lips.Site'; this is the shell that touches the disk. Returns whether a site
 -- was written, which is what decides the compiled flake's rungs.
-writeSite :: FilePath -> Realization -> IO Bool
-writeSite outDirPath rl = case planSite runtimeAsset runtimes rl of
+writeSite :: Text -> FilePath -> Realization -> IO Bool
+writeSite lang outDirPath rl = case planSite runtimeAsset lang runtimes rl of
   Left (why, remedy) -> die (report
     "lips can't build this program's behaviour."
     [why]

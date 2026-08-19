@@ -40,15 +40,41 @@ import           Lips.Kernel.Lang.Store        (EngineData (..))
 -- later gate's verdict is rarely meaningful once an earlier one rejected the
 -- engine. Laziness makes that free -- asking whether the list is empty runs
 -- only as many gates as it takes to find one.
-engineViolations :: EngineData -> [Text]
-engineViolations eng = mapMaybe ($ eng)
+engineViolations :: Text -> EngineData -> [Text]
+engineViolations lang eng = mapMaybe ($ eng)
   [ patternsOrthogonal
   , rulesOrthogonal
   , valuesReach
   , partsExist
   , noPathHoles
   , demandsAnswerable
+  , clausesNamespaced lang
   ]
+
+-- | Every clause a language defines must be named after that language
+-- (@clause.match-report@ for language @match@). Composition unions the clause
+-- spaces of several languages, and a flat space would make one language's
+-- @report@ collide with another's, refusable but only after both were written,
+-- so authors would carry a project-wide name registry in their heads.
+--
+-- Namespacing is done by the MINT, which knows the language it is writing, and
+-- never afterwards: qualifying at realization would make the kernel rewrite
+-- names inside clause bodies, deciding which symbols are call targets, and that
+-- is a translation, while emitting is a serialization pinned by
+-- @parse . render = id@. So the kernel checks rather than transforms, and this
+-- one predicate makes collision-freedom a theorem: two languages cannot share a
+-- prefix, and duplicates inside one language already conflict.
+clausesNamespaced :: Text -> EngineData -> Maybe Text
+clausesNamespaced lang eng = case wrong of
+  []      -> Nothing
+  (n : _) -> Just
+    ( "clause." <> n <> " is not named after its language: a clause of ." <> lang
+      <> " must be clause." <> lang <> "-<name>, so that languages compose"
+      <> " without their names colliding." )
+  where
+    wrong = [ n | ("clause" : n : _) <- paths, not (prefixed n) ]
+    prefixed n = (lang <> "-") `T.isPrefixOf` n
+    paths = [ emPath e | r <- edRules eng, e <- mrEmits r ]
 
 -- | Two templates that could read one line leave the language with no single
 -- reading of it. 'Lips.Kernel.Lang.Crystallize.crystallize' reports the clash

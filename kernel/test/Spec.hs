@@ -5814,7 +5814,27 @@ main = hspec $ do
             [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
             , "0.95 r1 match fact watch.interval => systemd.services.w.environment.S \"<value:int>\""
             ]
-      engineViolations eng `shouldBe` []
+      engineViolations "watch" eng `shouldBe` []
+
+    -- Composition unions the clause spaces of several languages, so two of them
+    -- defining `report` would collide and could only be refused, leaving every
+    -- author to keep a project-wide name registry in their head. Namespacing at
+    -- MINT time removes the collision by construction (nothing is rewritten
+    -- later, so serialization stays exact), and this is the predicate that makes
+    -- it a theorem rather than a hope.
+    it "refuses a clause a language did not name after itself" $ do
+      let eng = engineFromLang
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
+            , "0.95 r1 match fact watch.interval => clause.tick \"(define (tick) #<value:int>)\""
+            ]
+      engineViolations "watch" eng `shouldSatisfy` any (T.isInfixOf "watch-")
+
+    it "passes a clause named after its own language" $ do
+      let eng = engineFromLang
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
+            , "0.95 r1 match fact watch.interval => clause.watch-tick \"(define (watch-tick) #<value:int>)\""
+            ]
+      engineViolations "watch" eng `shouldBe` []
 
     it "names two patterns that both read one line" $ do
       let eng = engineFromLang
@@ -5823,7 +5843,7 @@ main = hspec $ do
             , "0.95 r1 match fact watch.a => systemd.services.w.environment.A \"<value:int>\""
             , "0.95 r2 match fact watch.b => systemd.services.w.environment.B \"<value:int>\""
             ]
-      engineViolations eng `shouldNotBe` []
+      engineViolations "watch" eng `shouldNotBe` []
 
     -- The caller shows the FIRST entry, as dying on the first gate has always
     -- done, so the gate order decides which defect a refusal names: a later
@@ -5836,7 +5856,7 @@ main = hspec $ do
             , "0.95 r2 match fact watch.b => systemd.services.w.environment.B \"<value:int>\""
             , "0.95 q1 demand watch.nobody \"a fact no pattern emits\""
             ]
-      case engineViolations eng of
+      case engineViolations "watch" eng of
         (v : _ : _) -> v `shouldSatisfy` T.isInfixOf "patterns read the same line"
         other       -> expectationFailure ("expected both gates to reject, got " ++ show (length other))
 
@@ -6511,13 +6531,13 @@ main = hspec $ do
         withCore ccs = emptyRealization
           { rlCore = Just ("(define (main a) a)\n", ["emit"], [("main", Just 1)])
           , rlClauseClaims = ccs }
-        plan ccs = planSite assets [rt] (withCore ccs)
+        plan ccs = planSite assets "lang" [rt] (withCore ccs)
         names p = case p of
           Right (Just sp) -> map fst (spFiles sp)
           _               -> []
 
     it "writes nothing for a program that states no behaviour" $
-      case planSite assets [rt] emptyRealization of
+      case planSite assets "lang" [rt] emptyRealization of
         Right Nothing -> pure ()
         other -> expectationFailure ("expected no plan, got " <> show (fmap (fmap (map fst . spFiles)) other))
 
@@ -6549,33 +6569,33 @@ main = hspec $ do
     -- first run: they defined (main) while the entry called (main (arguments)).
     it "refuses a core that does not satisfy the runtime's entry" $ do
       let wrongArity = (withCore []) { rlCore = Just ("", ["emit"], [("main", Just 0)]) }
-      planSite assets [rt] wrongArity
+      planSite assets "lang" [rt] wrongArity
         `shouldSatisfy` either (\(e, _) -> T.isInfixOf "1 parameter" e && T.isInfixOf "main" e)
                                (const False)
       let noMain = (withCore []) { rlCore = Just ("", ["emit"], [("scan", Just 1)]) }
-      planSite assets [rt] noMain
+      planSite assets "lang" [rt] noMain
         `shouldSatisfy` either (T.isInfixOf "defines no clause of that name" . fst) (const False)
 
     -- Proven against the real binary: a core defining main as a constant passed
     -- every gate and died on first run with "Wrong type to apply: 5".
     it "refuses a core whose entry name is a constant, not a procedure" $
-      planSite assets [rt] (withCore []) { rlCore = Just ("", ["emit"], [("main", Nothing)]) }
+      planSite assets "lang" [rt] (withCore []) { rlCore = Just ("", ["emit"], [("main", Nothing)]) }
         `shouldSatisfy` either (T.isInfixOf "defined as a constant" . fst) (const False)
 
     -- The site directory is written only where there is a core, so a claim over
     -- clauses a program does not state would reach nix as a missing path.
     it "refuses observables over clauses the program does not state" $
-      planSite assets [rt] emptyRealization
+      planSite assets "lang" [rt] emptyRealization
         { rlClauseClaims = [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Sx.SBool True) [] []] }
         `shouldSatisfy` either (T.isInfixOf "states no clauses" . fst) (const False)
 
     it "refuses, with the reason, when no runtime has a required property" $
-      planSite assets [rt] (withCore []) { rlSiteProps = [("browser", "typed live")] }
+      planSite assets "lang" [rt] (withCore []) { rlSiteProps = [("browser", "typed live")] }
         `shouldSatisfy` either (\(e, _) -> T.isInfixOf "browser" e && T.isInfixOf "typed live" e)
                                (const False)
 
     it "reports a runtime declaring a file lips does not ship" $
-      planSite (\_ _ -> Nothing) [rt] (withCore [])
+      planSite (\_ _ -> Nothing) "lang" [rt] (withCore [])
         `shouldSatisfy` either (T.isInfixOf "ships no file" . fst) (const False)
 
   -- Making the status quo visible: every assertion is vouched by a schema, by
@@ -6704,6 +6724,17 @@ main = hspec $ do
         `shouldBe` Right (Right ("main", 0))
       fmap entryDemand (parseRuntime "r" (declOf ["entry (main (arguments))"]))
         `shouldBe` Right (Right ("main", 1))
+
+    -- Namespacing leaves no bare name for a runtime to start, so the entry
+    -- carries a hole like every other lips value and the runtime keeps ownership
+    -- of the word: the kernel substitutes a language and learns nothing.
+    it "fills the entry's language hole, and demands the clause it then names" $ do
+      let rt = parseRuntime "r" (declOf ["entry (<language>-main)"])
+      fmap (rEntry . entryFor "match") rt `shouldBe` Right "(match-main)"
+      fmap (entryDemand . entryFor "match") rt `shouldBe` Right (Right ("match-main", 0))
+      -- a runtime that states no hole is untouched
+      fmap (rEntry . entryFor "match") (parseRuntime "r" (declOf ["entry (main)"]))
+        `shouldBe` Right "(main)"
 
     it "assembles the site file: adapters, then core, then the runtime's entry" $
       siteFile guile ["adapter-pure.scm", "core.scm"] `shouldSatisfy` \t ->

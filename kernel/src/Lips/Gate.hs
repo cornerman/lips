@@ -46,7 +46,7 @@ import           System.Process     (readProcessWithExitCode)
 
 import           Lips.Cli.Output    (die, note, report, step, tshow)
 import           Lips.Generate.Record (recordedPrograms)
-import           Lips.Identity      (artifactsPathIn, generationPathIn)
+import           Lips.Identity      (artifactsPathIn, generationPathIn, languageName)
 import           Lips.Kernel.Claim  (Claim (..), ClaimPlace (..))
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect (Expect, checkArtifactValues, checkValues, evalExpr,
@@ -102,7 +102,7 @@ clauseClaimGate world file rl
   | otherwise =
       step ("clause claims: " <> plural (length (rlClauseClaims rl)) "claim") $
         withTempDir $ \tmp -> do
-          _ <- writeSite tmp rl
+          _ <- writeSite (T.pack (languageName file)) tmp rl
           TIO.writeFile (tmp </> "flake.nix")
             (flakeText world noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
           res <- try (readProcessWithExitCode "nix"

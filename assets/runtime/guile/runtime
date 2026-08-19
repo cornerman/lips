@@ -25,7 +25,7 @@ effect-file adapter-effects.scm
 # through the `arguments` contract, so the entry passes nothing -- and lips
 # DERIVES from this line that the core must define `main` taking no parameters,
 # refusing a core that does not.
-entry (main)
+entry (<language>-main)
 
 # The Nix file that turns the linked site into a runnable derivation. It takes
 # { pkgs, name, src } and returns one; lips copies it and calls it.
