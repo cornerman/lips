@@ -127,6 +127,11 @@ data Realization = Realization
     -- ^ The observables the program states, empty for a program that states
     -- none. Projected from the same ground base as the module beside them, so
     -- what @check@ runs and what the module contains cannot disagree.
+  , rlUses     :: [(Text, Text)]
+    -- ^ @(language, instance)@: the other programs this one composes with, from
+    -- its 'Uses' decisions. Realizing nothing itself, a dependency names a base
+    -- to union with this one, so the site assembler consumes it and the run only
+    -- carries it -- which is why it is neither realized nor reported unmapped.
   }
 
 -- | The pipeline from a decision base onward (resolve, demands, refine,
@@ -153,6 +158,14 @@ runBase modeOf assemble vocab budget eng base0 = do
     <*> pure (grounding [ (dSubject d, d) | d <- realizable ])
     <*> realizeClauseClaims modeOf assemble vocab base0 ground
     <*> realizeClaims modeOf assemble ground
+    <*> pure (usesIn base0)
+
+-- | The dependencies a base states: @(language, instance)@ per 'Uses' decision,
+-- read from the human base, since no rule rewrites one and none may.
+usesIn :: Base -> [(Text, Text)]
+usesIn b = [ (T.intercalate "." segs, a)
+           | d <- toList b, dKind d == Uses
+           , let Subject segs = dSubject d, let Assertion a = dAssertion d ]
 
 -- | The realizable ground decisions (post resolve, demands, refine, anti-MDA
 -- guard). Takes the resolve result
@@ -181,7 +194,12 @@ runGround budget eng resolved = do
       covers d ig = igKind ig == dKind d
                       && isJust (matchSubject (igSubject ig) (segsOf (dSubject d)))
       segsOf (Subject segs) = segs
-      realizable = filter (\d -> dKind d /= Concept && not (ignored d)) (toList ground)
+      -- Three ways a decision reaches no option soundly. A CONCEPT is
+      -- decorative vocabulary. An IGNORED decision is a fact this world declares
+      -- it cannot place. A USES decision names another program to compose with,
+      -- which the site assembler consumes and no rule ever places.
+      realizable = filter (\d -> dKind d `notElem` [Concept, Uses] && not (ignored d))
+                          (toList ground)
   case filter ((/= Meta) . dKind) realizable of
     []        -> Right realizable
     leftovers -> Left (Unmapped leftovers)

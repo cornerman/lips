@@ -621,6 +621,19 @@ main = hspec $ do
           Right rl -> rlModule rl `shouldSatisfy`
             T.isInfixOf "environment.systemPackages = [ \"htop\" \"ripgrep\" ];"
 
+    -- A dependency realizes nothing: no option, no clause, no claim. It names
+    -- another program whose decisions this one composes with, so the site
+    -- assembler consumes it and the run must neither refuse it as an unmapped
+    -- obligation nor drop it silently -- it travels on the realization.
+    it "carries a dependency instead of realizing it" $ do
+      let base = fromList [ mkUses "d1" "player" "standard" ]
+          mkUses i subj inst = Decision (DecisionId i) (Subject [subj]) Uses
+                                 (Assertion inst) Stated
+                                 (FromSource (SourceLoc "match.lips" 3)) Nothing
+      case runBase (const Replace) noAssembly schemeVocabulary 100 (Engine [] [] []) base of
+        Left e   -> expectationFailure ("run failed: " <> show e)
+        Right rl -> rlUses rl `shouldBe` [("player", "standard")]
+
     it "end-to-end C: one line with many packages -> one VList, aggregatable with B" $ do
       -- Capability C: a <name.tail> template hole binds the rest of a line, and
       -- a <value.tail> rhs fills to a VList of those tokens. Each line
@@ -7032,4 +7045,4 @@ emptyRealization = Realization
   { rlBase = empty, rlGround = empty, rlModule = "", rlArtifact = ("", [])
   , rlStaged = [], rlArtPaths = [], rlFills = [], rlCore = Nothing
   , rlClauseClaims = [], rlSiteProps = [], rlSiteName = Nothing
-  , rlGrounding = grounding [], rlClaims = [] }
+  , rlGrounding = grounding [], rlClaims = [], rlUses = [] }
