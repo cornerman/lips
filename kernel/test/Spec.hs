@@ -539,6 +539,18 @@ main = hspec $ do
         Left (REConflict _ : _) -> pure ()
         Left _                  -> expectationFailure "expected REConflict, got REAssemble"
         Right _                 -> expectationFailure "equal-strength dissent on a Replace subject must conflict"
+    -- Two programs of one language naming different instances of one dependency
+    -- is an equal-strength disagreement about the same subject, so composition
+    -- needs no rule of its own: the merge already refuses it, carrying both
+    -- provenances so the author learns which two lines disagree.
+    it "resolve: two dependencies on one language with different instances conflict" $ do
+      let base = fromList
+            [ (mk "d1" "player" "\"standard\"" Stated) { dKind = Uses }
+            , (mk "d2" "player" "\"arcade\"" Stated)   { dKind = Uses } ]
+      case resolve (const Replace) assembleSubject base of
+        Left (REConflict _ : _) -> pure ()
+        _ -> expectationFailure "two instances of one dependency must conflict"
+
     it "resolve: a single stronger decision on an Append subject wins as-is (no assembly)" $ do
       -- replace-across-strengths: a lone top-strength winner is taken verbatim,
       -- without assembling (the list-shape check is the option schema's job at
@@ -758,6 +770,21 @@ main = hspec $ do
 
     it "rejects an unknown kind (fail loud)" $
       readDecision "d1 whatever x stated \"a\"" `shouldSatisfy` isLeft
+
+    -- A dependency on another language is an ATOM, not a fact with a reserved
+    -- subject: the kernel may know a structural category and may not know the
+    -- word "uses" in a subject path. Subject is the language, assertion is the
+    -- instance, provenance is the line that said it.
+    it "reads a dependency on another language" $
+      readDecision "d4 uses player stated \"standard\" @match.lips:3" `shouldBe` Right Decision
+        { dId        = DecisionId "d4"
+        , dSubject   = Subject ["player"]
+        , dKind      = Uses
+        , dAssertion = Assertion "standard"
+        , dStrength  = Stated
+        , dProv      = FromSource (SourceLoc "match.lips" 3)
+        , dRationale = Nothing
+        }
 
     it "skips comment and blank lines" $ do
       let src = "# concepts\n\nd1 fact currency stated \"EUR\" @ledger:6\n"

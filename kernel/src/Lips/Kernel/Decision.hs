@@ -101,6 +101,15 @@ data Kind
   | Assume
   | Steer
   | Glue
+  | -- | A dependency on another language: the subject is the language, the
+    --   assertion is the instance of it this program composes with
+    --   (@d4 uses player stated "standard"@). A KIND rather than a fact with a
+    --   reserved subject, because the kernel may know a structural category and
+    --   may not know a word in a subject path. Everything else is inherited:
+    --   two instances named for one language are an equal-strength
+    --   disagreement, which merge already refuses with both provenances, and
+    --   realization ignores the kind because the site assembler consumes it.
+    Uses
   | Meta
   deriving (Eq, Ord, Show, Enum, Bounded)
 
