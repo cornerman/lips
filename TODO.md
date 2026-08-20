@@ -6,6 +6,21 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
+-1. **The growth mint: an author's feedback cycle** (design settled 2026-08-20,
+   `docs/superpowers/specs/2026-08-20-mint-feedback-cycle-design.md`; nothing
+   built). Adding one sentence shape to a working language costs a full re-mint
+   (4-6 minutes, opus, the whole engine re-emitted), which is the one act that
+   leaves the zero-AI edit loop and the act an author hits every time a language
+   grows. Three errands in order: (1) an unsealed `<language>/<world>/<lang>.timing`
+   recording wall time per phase, turn count, tool-call counts and tokens, since
+   nothing today knows where the minutes go and a duration may never enter the
+   sealed record; (2) generate inherits the committed engine and takes a PATCH
+   keyed by id (new id adds, known id replaces, unmentioned id inherited),
+   default inherit with `--fresh` to rewrite, `basis:` recorded as a sealed
+   input -- sound because the gates, not the rewrite, are what guard an engine;
+   (3) `compile --watch` with `g` to run the growth mint, leaving invariant 1
+   intact (the loop drives, compile itself never calls a model).
+
 0. **Composition plumbing** (design settled, kernel half merged 2026-08-12).
    The mint cannot yet ask what another language exports, so nothing produces a
    `Uses` decision and composition is untested end to end. Four tasks, file by

@@ -36,6 +36,10 @@ they carry. Nothing beyond that is measured, which errand 1 exists to fix.
 **What.** Every mint writes an unsealed stats file beside the sealed record,
 `<language>/<world>/<lang>.timing`, holding the LAST event, exactly as
 `.generation` holds the last record (history is git's job, not a growing log).
+It is COMMITTED, like every other machine-written file in a world folder: the
+cost of a mint is a fact about the committed engine, and a reviewer comparing
+two mints wants the diff. Its path lives in `Lips.Identity` with the others, so
+nothing else in the tree knows how a language folder is spelled.
 
 Contents, each item chosen because a design decision waits on it:
 
