@@ -8,9 +8,6 @@ lips turns plain sentences into a Nix configuration. You write what a system
 should do. A model reads your wording once and mints a small compiler for it.
 From then on, every build is offline, deterministic, and runs no model.
 
-The AI is confined to that one call, and lips itself was written by AI agents
-under my direction ([Built With AI](#built-with-ai)).
-
 The point is to keep what a human owns small enough to read. Machines now write
 code faster than anyone can review it, so lips shrinks the reviewed artifact to
 a few lines of meaning and derives everything else reproducibly.
@@ -61,6 +58,13 @@ Four properties, each one you can check yourself:
 lips renders desired state and stops. Applying it stays an explicit human act,
 so live cloud APIs that must be polled and reconciled are out of scope.
 
+GitOps is the natural vehicle for that other half. What `compile` writes is a
+deterministic, committable directory, which is exactly the input a reconciler
+wants: Flux or Argo CD for kubenix output, `nixos-rebuild` or deploy-rs for a
+NixOS module, `tofu apply` in CI for terranix. Since the same program yields the
+same bytes, a commit is a real diff of intent and a revert is a real rollback.
+None of this is a lips feature; it follows from the shape of the output.
+
 A rule can only name a vocabulary that already exists: nixpkgs defines what
 `services.restic.backups.<name>.paths` means, and lips looks the name up rather
 than inventing it. Configuring a system out of named parts is where lips is
@@ -76,30 +80,14 @@ carries the honest ledger of what is done, partial, and missing.
 
 ## Built With AI
 
-lips was itself built the way it asks you to work. Nearly all of its code was
-written by AI agents under my direction: I set the design, the invariants and
-the gates, and I reviewed those rather than every line. A tool that asks you to
-trust derived output owes you that disclosure about itself.
-
-So judge it by what you can run. `just test` executes more than a thousand
-conformance examples over the decision calculus, `just ci` evaluates and builds
-every example's module and boots one in a VM, and `just check-expect` re-verifies
-every committed contract. Each example in this repo ships with its minted engine,
-so you can read what a mint actually produced.
-
-What makes that bearable is that the part which must be right is small and
-law-shaped. The kernel is about 3,700 lines of Haskell, and its center, merging
-decisions, is pinned by algebra rather than by cases: union is idempotent and
-associative, and conflict resolution is invariant under the order decisions
-arrived in and under how the base is split, each checked over arbitrary
-randomly generated bases. Those laws are the specification in `DESIGN.md` §2,
-executable. Reading and realizing are pinned by examples, which is weaker, so
-the honest line is that the algebra is checked on random input and the rest on
-input somebody chose.
-
-The residual risk is real: bugs can hide wherever the suite does not reach.
-Where I know that bites, `DESIGN.md` §13 says so under "Partial", "Verified
-Breakages" and "Missing".
+Nearly all of lips was written by AI agents under my direction: I set the
+design, the invariants and the gates, and reviewed those rather than every line.
+So judge it by what you can run (`just test`, `just ci`, `just check-expect`)
+and by where the risk sits. The kernel is about 3,700 lines, and its center,
+merging decisions, is pinned by algebra over randomly generated bases, which is
+the specification in `DESIGN.md` §2 made executable. Reading and realizing are
+pinned by chosen examples instead, so bugs can hide where the suite does not
+reach; `DESIGN.md` §13 names where I know that happens.
 
 ## Where This Sits
 
@@ -127,10 +115,10 @@ Three moves: write, generate, compile. Only the middle one touches a model.
 **Write.** State intent in plain lines. This is the only artifact you own and
 the only one you cannot regenerate.
 
-A program is named `<instance>.<language>.lips` and read right to left, so
-`ledger.backup.lips` is the instance `ledger` written in the language `backup`.
-A sibling `photos.backup.lips` reuses the same grammar with no new AI, and the
-two compose in one configuration without collision. `backup.lips` alone is the
+A program is named `<instance>.<language>.lips`, so `ledger.backup.lips` is the
+instance `ledger` written in the language `backup`. A sibling
+`photos.backup.lips` reuses the same grammar with no new AI, and the two
+compose in one configuration without collision. `backup.lips` alone is the
 singleton shorthand; add named instances later, no re-mint. Editors key on the
 constant `.lips` extension, and `lips lsp` serves completion and live
 diagnostics for any language, with no per-language setup (glue for neovim, vim,

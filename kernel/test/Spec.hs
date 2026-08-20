@@ -1777,6 +1777,26 @@ main = hspec $ do
       map snd (checkArtifactValues ground [(dropped, "hi")])
         `shouldSatisfy` any (T.isInfixOf "nothing realizes this slot")
 
+    -- A CLAUSE body and a SITE name are literals in the ground base too, and no
+    -- attribute of any module: sent to the nix eval they read as null, so a mint
+    -- that pinned its own tunable numeral ("effort still multiplies by 60") was
+    -- refused fifteen minutes in with "should contain 60, but is null"
+    -- (2026-08-12, libero's training). Judged here, that contract holds -- and a
+    -- re-mint that changes the numeral trips it, which is what invariant 5 is for.
+    it "judges a clause body and a site name against the ground base" $ do
+      let ground = fromList
+            [ (mk "k1" "x" "(define (training-effort p) (* (player-contribution p) 60))" Stated)
+                { dSubject = Subject ["clause","training-effort"] }
+            , (mk "s1" "x" "\"training\"" Stated)
+                { dSubject = Subject ["site","training","command"] }
+            ]
+          onClause = Expect "e1" ["clause","training-effort"] (Subject ["effort","def"]) Nothing Nothing
+          onSite   = Expect "e2" ["site","training","command"] (Subject ["install"]) Nothing Nothing
+      isGroundExpect onClause `shouldBe` True
+      isGroundExpect onSite `shouldBe` True
+      checkArtifactValues ground [(onClause, "60"), (onSite, "training")] `shouldBe` []
+      length (checkArtifactValues ground [(onClause, "70")]) `shouldBe` 1
+
     -- A slot holds a VALUE; the program states a value. They must be compared as
     -- values, never as transport encodings: the canonical form escapes a quote,
     -- so a stated value carrying one (a JSON witness) would never appear in it as

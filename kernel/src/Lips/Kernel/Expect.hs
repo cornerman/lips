@@ -353,10 +353,17 @@ evalExpr modPath expects = T.concat
 -- empty, which passes trivially. Pinning the claim slots is also what makes a
 -- re-mint that DROPS an author's example trip the existing gate, with no new
 -- gate to build.
+-- Every root lips owns itself is judged here; only a world's OPTIONS need the
+-- eval. A clause body and a site name are the same kind of thing as an artifact
+-- arg -- a literal the ground base holds and no module attribute carries -- so
+-- sending them to nix read a silent @null@ and refused a contract that was in
+-- fact exactly right (libero's training, 2026-08-12).
 isGroundExpect :: Expect -> Bool
 isGroundExpect e = case exPath e of
   ("artifact" : _) -> True
   ("claim" : _)    -> True
+  ("clause" : _)   -> True
+  ("site" : _)     -> True
   _                -> False
 
 -- | Judge artifact assertions against the GROUND base -- the decisions realize
