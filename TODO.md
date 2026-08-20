@@ -6,6 +6,14 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
+0. **Composition plumbing** (design settled, kernel half merged 2026-08-12).
+   The mint cannot yet ask what another language exports, so nothing produces a
+   `Uses` decision and composition is untested end to end. Four tasks, file by
+   file, in `docs/superpowers/plans/2026-08-12-composition-plumbing-plan.md`:
+   a `lips exports` verb, a `query_language` tool mirroring `query_options`,
+   three sentences in `assets/mint/body.md`, then libero's `player`/`training`
+   acceptance test. Everything below the mint is built and tested.
+
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
 
