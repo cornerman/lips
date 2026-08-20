@@ -6679,8 +6679,11 @@ main = hspec $ do
                      "(main (arguments))" "build-toy.nix"
                      (Harness "load" "feed-args" "feed-lines" "claim" "claims-done" "list")
         assets _ f = Just ("; " <> T.pack f)
+        -- A STARTED program: something references its site, so the runtime's
+        -- entry is a requirement of it (the unstarted case is its own test).
         withCore ccs = emptyRealization
           { rlCore = Just ("(define (main a) a)\n", ["emit"], [("main", Just 1)])
+          , rlSiteName = Just "\"toy\""
           , rlClauseClaims = ccs }
         plan ccs = planSite assets "lang" [rt] (withCore ccs)
         names p = case p of
@@ -6739,6 +6742,23 @@ main = hspec $ do
       planSite assets "lang" [rt] emptyRealization
         { rlClauseClaims = [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Sx.SBool True) [] []] }
         `shouldSatisfy` either (T.isInfixOf "states no clauses" . fst) (const False)
+
+    -- A vocabulary language is a program nothing starts: it lends its clauses to
+    -- another program and installs no command of its own. An entry is a
+    -- requirement of a site something STARTS, so demanding one here refused every
+    -- shared vocabulary outright -- which is what a language folder for `player`
+    -- ran into (2026-08-12). Its core is still written and still claimed, since
+    -- claims.scm is what observes it.
+    it "asks no entry of a program nothing starts, and writes it no main" $ do
+      let vocab = emptyRealization
+            { rlCore = Just ("(define (contribution p) p)\n", ["emit"]
+                            , [("contribution", Just 1)]) }
+      case planSite assets "lang" [rt] vocab of
+        Left (why, _)   -> expectationFailure ("a vocabulary was refused: " <> T.unpack why)
+        Right Nothing   -> expectationFailure "a vocabulary with a core got no plan"
+        Right (Just sp) -> do
+          map fst (spFiles sp) `shouldBe` ["build.nix", "pure.scm", "effects.scm", "core.scm"]
+          lookup "core.scm" (spFiles sp) `shouldBe` Just "(define (contribution p) p)\n"
 
     it "refuses, with the reason, when no runtime has a required property" $
       planSite assets "lang" [rt] (withCore []) { rlSiteProps = [("browser", "typed live")] }

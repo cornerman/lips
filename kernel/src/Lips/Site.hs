@@ -17,6 +17,7 @@ module Lips.Site
 
 import           Data.Bifunctor (first)
 import           Data.List (nub, sort)
+import           Data.Maybe (isJust)
 import           Data.Text (Text)
 import qualified Data.Text as T
 
@@ -64,11 +65,17 @@ planSite asset lang runtimes rl = case rlCore rl of
     -- The runtime spells its entry with a hole, so the site starts the clause of
     -- THIS language (namespacing leaves no bare name to start).
     let rt = entryFor lang rt0
+    -- An entry is a requirement of a site something STARTS. A program whose site
+    -- nothing references is a VOCABULARY: it lends its clauses to another
+    -- program and installs no command, so it has nothing to be started by and
+    -- states no entry. Its core is still written and still claimed -- claims.scm
+    -- is what observes it, and main.scm is the file that would start it.
+    let started = isJust (rlSiteName rl)
     -- The core must satisfy the runtime's entry, or the site builds and dies on
     -- first run with "wrong number of arguments" and every lips gate green.
     (entryName, entryArgs) <- first (\why -> (why, "\8594 this is a lips bug; report it."))
                                     (entryDemand rt)
-    case lookup entryName defined of
+    if not started then Right () else case lookup entryName defined of
       Just (Just n) | n == entryArgs -> Right ()
       Just (Just n) -> engineFault (T.pack (show entryName) <> " is defined with " <> plural n
                        <> ", but the " <> rName rt <> " runtime starts a program by\
@@ -105,8 +112,8 @@ planSite asset lang runtimes rl = case rlCore rl of
       { spRuntime = rt
       , spFiles =
           shipped
-            <> [ ("core.scm", core)
-               , ("main.scm", siteFile rt runFiles) ]
+            <> [ ("core.scm", core) ]
+            <> [ ("main.scm", siteFile rt runFiles) | started ]
             <> [ ("claims.scm", clauseClaimsFile rt claimFiles
                                   (concatMap (renderClauseClaim (harnessWords rt)) claims))
                | not (null claims) ]

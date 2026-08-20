@@ -3635,6 +3635,15 @@ but the loop around it is incomplete; "missing" means specced, not built.
   hand-written and checked through the draft door, so the whole path was proven
   with no mint: the call grounded, the claim ran the IMPORTED definition in
   guile, and a deliberately wrong claim reported `got=("hello")`.
+  ONE MORE PIECE OF PHYSICS the fixture forced, and the reason a shared
+  vocabulary could not exist before it: an ENTRY is a requirement of a site
+  something STARTS. `planSite` demanded the runtime's entry from every core, so a
+  program that installs no command -- which is exactly what a vocabulary language
+  is -- was refused with "the guile runtime starts a program by calling
+  player-main, and this program defines no clause of that name". Now the entry is
+  demanded, and `main.scm` written, exactly when something references the site
+  (`rlSiteName`); the core is still written and still claimed, because
+  `claims.scm` is what observes it and `main.scm` is what would start it.
   Also found and fixed here: the mint prompt still taught BARE clause names
   (`clause.main`, `(begin (main) (emitted))`) four days after the namespacing
   gate landed, so every future mint would have been refused inside its own draft

@@ -4,283 +4,174 @@
 
 # lips
 
-Describe what a system should do in plain lines. lips grows a small language
-around exactly those words and gives you its compiler for free; from then on it
-turns your intent into a running system deterministically, with no AI in the
-loop.
+lips turns plain sentences into a Nix configuration. You write what a system
+should do. A model reads your wording once and mints a small compiler for it.
+From then on, every build is offline, deterministic, and runs no model.
 
-The point is to keep what a human owns small enough to read. AI now writes code
-faster than anyone can review it, so lips shrinks the reviewed artifact to a few
-lines of meaning and makes everything the machine derives from them reproducible
-and offline.
+The AI is confined to that one call, and lips itself was written by AI agents
+under my direction ([Built With AI](#built-with-ai)).
+
+The point is to keep what a human owns small enough to read. Machines now write
+code faster than anyone can review it, so lips shrinks the reviewed artifact to
+a few lines of meaning and derives everything else reproducibly.
 
 ## The Idea
 
 Writing your intent and building a language for it are the same act.
 
-You start by writing plainly what you want:
+Start by writing what you want:
 
     back up /var/lib/ledger to /backup/ledger daily.
     keep 14 daily snapshots.
     credentials come from /etc/ledger-backup.env.
 
-That file is already a valid program. When you run `generate` once, a model
-reads your lines and mints a small **engine**: the grammar that reads sentences
-like yours, the rules that map them to real options of the system it configures, and tests that pin
-your values. In other words, the wording you chose defines a little language
-for your problem, and lips hands you the compiler for it.
+That file is already a valid program. `lips generate` mints an **engine** from
+it: a grammar that reads sentences like yours, rules that map them to real
+options of the system being configured, and tests that pin your values. The
+wording you chose defines a small language for your problem, and lips hands you
+its compiler.
 
-From then on the AI is gone. `compile` turns your text into a Nix module
-offline and bit-identical, every time. Edit a path or a number and compile
-again; the change flows straight through. The language you grew stays yours to write
-in, and the compiler keeps working without a model ever running again.
+From then on no model runs. `lips compile` writes a Nix module offline and
+bit-identical, every time. Edit a path or a number and compile again; the change
+flows straight through. A line the engine cannot read fails loudly and sends you
+back to `generate`. lips never guesses.
 
-A line the engine cannot read fails loudly and sends you back to `generate`.
-lips never guesses.
+## Why You Can Trust It
+
+Four properties, each one you can check yourself:
+
+- **Determinism.** `compile` and `check` never call a model, so the same program
+  yields the same bytes on any machine. A model that writes valid but different
+  output each run leaves you nothing to diff, bisect, or audit.
+- **Deduce or fail.** An unreadable line is an error naming its remedy, never a
+  guess. What your program does not state stays uninvented.
+- **Gated change.** A fresh engine is accepted only if the committed tests still
+  hold. To move behavior on purpose you say how far the contract may travel
+  (`generate --compat backwards|forwards|none`), and that diff is your semantic
+  changelog.
+- **A full audit trail.** Every minted line ends in `@gen:<id>`, the hash of the
+  one AI call recorded in `<language>.generation`. The prompt lips sends is a
+  reviewable file, not a secret: its world-neutral half sits under `assets/mint/`
+  in this repo, the world's own half in the world file. And
+  `out/<instance>.decisions` shows how the machine read you, one statement per
+  line, so you can ask "did it understand me?" before trusting anything.
+
+## What It Does Not Do
+
+lips renders desired state and stops. Applying it stays an explicit human act,
+so live cloud APIs that must be polled and reconciled are out of scope.
+
+A rule can only name a vocabulary that already exists: nixpkgs defines what
+`services.restic.backups.<name>.paths` means, and lips looks the name up rather
+than inventing it. Configuring a system out of named parts is where lips is
+strongest; inventing mechanism is not what it does.
+
+`generate` needs the `pi` binary on your PATH, authenticated against a provider.
+Mint quality varies by model, and lips records which model wrote what. Budget a
+strong model for any program that has source built for it.
+
+Composing two lips languages (one program using another's exports) is designed
+but not yet wired through the mint. `TODO.md` tracks it, and `DESIGN.md` §13
+carries the honest ledger of what is done, partial, and missing.
+
+## Built With AI
+
+lips was itself built the way it asks you to work. Nearly all of its code was
+written by AI agents under my direction: I set the design, the invariants and
+the gates, and I reviewed those rather than every line. A tool that asks you to
+trust derived output owes you that disclosure about itself.
+
+So judge it by what you can run. `just test` executes more than a thousand
+conformance examples over the decision calculus, `just ci` evaluates and builds
+every example's module and boots one in a VM, and `just check-expect` re-verifies
+every committed contract. Each example in this repo ships with its minted engine,
+so you can read what a mint actually produced.
+
+What makes that bearable is that the part which must be right is small and
+law-shaped. The kernel is about 3,700 lines of Haskell, and its center, merging
+decisions, is pinned by algebra rather than by cases: union is idempotent and
+associative, and conflict resolution is invariant under the order decisions
+arrived in and under how the base is split, each checked over arbitrary
+randomly generated bases. Those laws are the specification in `DESIGN.md` §2,
+executable. Reading and realizing are pinned by examples, which is weaker, so
+the honest line is that the algebra is checked on random input and the rest on
+input somebody chose.
+
+The residual risk is real: bugs can hide wherever the suite does not reach.
+Where I know that bites, `DESIGN.md` §13 says so under "Partial", "Verified
+Breakages" and "Missing".
 
 ## Where This Sits
 
-Everyone is answering the same 2026 problem: machines write code faster than
-people can check it (Sonar's [2026 State of Code Developer
-Survey](https://www.sonarsource.com/state-of-code-developer-survey-report.pdf),
-1,149 professional developers polled in October 2025, finds 42 percent of their
+Everyone is answering the same problem: machines write code faster than people
+can check it. Sonar's [2026 State of Code Developer
+Survey](https://www.sonarsource.com/state-of-code-developer-survey-report.pdf)
+(1,149 professional developers polled in October 2025) finds 42 percent of their
 code AI-generated or assisted, 96 percent not fully trusting that AI-generated
 code is functionally correct, and only 48 percent always checking it before they
-commit). Three answers are on
-offer. Automate the review
-and keep the pile of code. Prove the code correct, in Lean, against a formal
-statement someone still has to write. Or shrink what a human reviews down to
-intent and derive the rest.
+commit. lips differs from the other answers in one move: the model writes a
+**compiler**, not code, and it runs once. That is model-driven development at
+the scale field studies found it actually works, applied to "key parts of a
+system often using domain-specific modeling languages developed specifically for
+the purpose" (Whittle, Hutchinson and Rouncefield, ["The State of Practice in
+Model-Driven
+Engineering"](https://staffwww.dcs.shef.ac.uk/people/A.Simons/remodel/papers/WhittleMDE_Draft.pdf),
+IEEE Software 31(3), 2014), with the cost that kept it rare removed: the
+generator is minted in one call and disposable. `DESIGN.md` §"Position in the
+Field" carries the long argument and its evidence.
 
-lips takes the third road, and differs from the rest of it in one move: the
-model writes a **compiler**, not code. The spec-driven tools on offer hand the
-spec back to a model on each run, so the same input can yield different output;
-Birgitta Böckeler, generating from one unchanged Tessl spec several times, [saw
-that happen](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html).
-In lips the model runs once, leaves a page of grammar and rules behind, and
-every later build is an offline, bit-identical compile.
+## The Loop
 
-That is model-driven development at the scale that actually works. The folk
-story says model-driven development died; the field studies say it narrowed.
-Surveying 450 practitioners, Whittle, Hutchinson and Rouncefield found that
-developers ["rarely use it to generate whole systems; rather, they apply it to
-develop key parts of a system often using domain-specific modeling languages
-developed specifically for the
-purpose"](https://staffwww.dcs.shef.ac.uk/people/A.Simons/remodel/papers/WhittleMDE_Draft.pdf)
-("The State of Practice in Model-Driven Engineering", IEEE Software 31(3), 2014,
-[doi:10.1109/MS.2013.65](https://doi.org/10.1109/MS.2013.65)). What died was the
-big version: one universal notation, a hand-editable middle layer, and a code
-generator per domain that somebody had to build and keep alive. lips is the shape that
-survived, with the cost that kept it rare removed, since a model mints the
-generator in one call and it is disposable: when the domain moves, mint again.
-What you keep is the determinism, and determinism is the one property no
-better model will ever hand you, since a perfect model that writes valid but
-different code each run still leaves you with nothing to diff, bisect, or
-audit.
-
-The scope this buys is precise. lips reaches as far as some external, typed
-vocabulary of mechanism reaches, because that is what a rule names: nixpkgs
-defines what `services.restic.backups.<name>.paths` means, lips looks the name
-up rather than inventing it, and your line fills the value. Configuring a
-system out of named parts is where lips is strongest.
-
-Nix is the substrate, not the subject. Three layers are worth keeping apart.
-The *substrate* is Nix itself, and it does not move: a set of `path = value`
-assignments merged by path is the same algebra lips uses on decisions, so
-realizing is almost a translation, and the compiler's promise of bit-identical
-output rests on an evaluator that already promises it. The *world* is the
-option vocabulary a rule names, and that axis is open: NixOS, home-manager,
-kubenix (Kubernetes manifests), terranix (Terraform configuration), whatever
-ships a schema next, each of them reachable without touching the kernel, since
-they all emit the same module shape. The *surface* is what you see, and it is your
-world's own artifact: a Kubernetes user gets multi-document YAML to pipe into
-`kubectl`, a Terraform user gets `config.tf.json` for `tofu plan`. Nix ran
-underneath; you never had to learn it.
-
-So lips grows by adding worlds rather than by growing the kernel, and anything
-declarative is in reach. Live cloud APIs that must be polled and reconciled
-are not: lips renders the desired state and hands it to the tool whose job
-applying is. `DESIGN.md` carries the long version, the evidence, and the
-honest limits.
-
-## How You Work With It
-
-The loop has three moves: write, (generate), compile. Only the middle
-one, `generate`, touches a model; running the result is stock `nix` over what
-`compile` emits.
+Three moves: write, generate, compile. Only the middle one touches a model.
 
 **Write.** State intent in plain lines. This is the only artifact you own and
-the only one you cannot regenerate. Keep it short and truthful.
+the only one you cannot regenerate.
 
-A program is named `<instance>.<language>.lips` and read right to left. The
-`.lips` extension is the constant marker every editor and language server keys
-on (one extension, so vim, VS Code, Emacs, and Helix all recognize a program
-with no per-language setup). lips ships that language server: `lips lsp` is one
-domain-blind, offline process that reads the `.grammar` in the language folder and
-gives completion (the language's own patterns as snippets) and live diagnostics
-(an unread line is an error, an open question a warning), with no per-language
-configuration. Editor glue for neovim, vim, VS Code, and Helix lives in
-`editors/`. The segment before it, `<language>`, names the
-lips language the program is written in -- a reusable grammar shared by every
-program in it. What precedes that, `<instance>`, names this one instance.
+A program is named `<instance>.<language>.lips` and read right to left, so
+`ledger.backup.lips` is the instance `ledger` written in the language `backup`.
+A sibling `photos.backup.lips` reuses the same grammar with no new AI, and the
+two compose in one configuration without collision. `backup.lips` alone is the
+singleton shorthand; add named instances later, no re-mint. Editors key on the
+constant `.lips` extension, and `lips lsp` serves completion and live
+diagnostics for any language, with no per-language setup (glue for neovim, vim,
+VS Code and Helix in `editors/`).
 
-So `ledger.backup.lips` is the instance `ledger`, written in the language
-`backup`. A sibling `photos.backup.lips` reuses the same `backup.grammar`
-with no new AI; each realizes to its own instance
-(`services.restic.backups.ledger.*` and `...photos.*`) and the two compose in
-one configuration without collision. The instance is optional: `backup.lips`
-alone is the singleton shorthand, its instance name defaulting to the language.
-Start there and add named instances later, no re-mint.
+**Generate, once.** `lips generate ledger.backup.lips` mints the grammar, the
+rules, the tests and a plain-language `README.md` for the language. Pass several
+programs and it generalizes one grammar across them. Nothing is written unless
+the engine compiles every program and the tests hold, so a bad mint costs you
+nothing.
 
-**Generate (once, AI).** `lips generate ledger.backup.lips` mints the engine
-and the tests for the language; pass several programs
-(`lips generate a.backup.lips b.backup.lips`) and it generalizes one grammar
-across them. lips refuses to write anything unless the engine actually compiles
-every program and the tests hold, so a bad mint costs you nothing.
+`-t <world>` picks the world the engine is born into: `nixos` (default),
+`home-manager`, `kubenix`, `terranix`, or any `<name>.world` file beside your
+program. A world is data, not a lips feature, so a world lips never heard of
+works without changing lips (`lips world` lists them). Repeat the flag to mint
+several worlds in one call. Every minted option path is grounded against that
+world's own pinned schema, the same one `lips options <query>` searches, so a
+path that does not exist there is refused before anything is written.
 
-The mint has two tools, and neither one judges. The first looks an option path
-and type up in the pinned schema of the target world (the same lookup
-`lips options <query>` gives you), so the mint confirms a name instead of
-hallucinating it. It grounds names, never values; what your program does not
-state remains uninvented. The second is how an engine reaches lips at all: the
-model submits its draft, lips runs its own gates over it (`lips check --draft`,
-the same verb you run) and reports the first gate that rejects it, so a fixable
-mistake is fixed inside the one call instead of costing you a fresh mint. A
-clean submission is staged as the answer, and lips takes the last one staged, so
-the draft that was checked and the engine that is used are the same bytes;
-prose the model writes around it is read by nothing. Every answer either tool gives
-goes into `<language>.generation` to enter the generation hash. Nothing in lips
-lets a model run its own engine or decide that it is good — that verification
-happens afterwards, offline, by lips itself, and it is unchanged by what the
-model checked. The mint's own instructions are a
-reviewable artifact, not a secret: the world-neutral half lives as plain
-markdown under `assets/mint/` in this repo, the world's own half in its world
-file, both embedded into the binary at build time.
+To express taste about *how* the engine gets built, put a plain-text
+`<language>.direction` file beside your programs ("prefer restic over rsync",
+"no docker"). It steers `generate` only and stays advisory; anything that must
+hold belongs in the program.
 
-You pick the world at mint time. `-t nixos` (the default), `-t home-manager`,
-`-t kubenix` or `-t terranix` picks the world the engine is born into, and
-repeating the flag (`-t nixos -t kubenix`) picks several in ONE model call,
-minted in the order given. A world is DATA, not a lips feature: each of
-those names a `<world>.world` file lips ships (`lips world` lists them, `lips
-world nixos` prints one), and a `<name>.world` file beside your program is
-resolved the same way, so a world lips never heard of works with no change to
-lips. `lips world --check` hands the Nix in every world file reachable from
-here to nix's own parser, so a typo in yours is named against your file and its
-line instead of surfacing later against a generated `flake.nix`. The names lips ships are reserved, so `nixos` means one thing everywhere;
-call yours `house-k3s`. `--worlds DIR` looks them up in `DIR` instead of beside
-the program. The flag steers the
-mint into that world's option namespace (`services.*`, `boot.*`, `users.*`
-versus `programs.*`, `systemd.user.*`, `home.file.*` versus
-`kubernetes.resources.<kind>.<name>.*` versus `resource.<type>.<name>.*`) and
-grounds every minted option path against that world's own schema, so a path that
-does not exist there is refused before anything is written. How much that buys
-differs per world, and lips says which: kubenix types every Kubernetes field,
-while terranix declares its Terraform namespaces free-form, so there a lookup
-confirms `resource` exists and nothing below it — the answer says so in those
-words rather than implying a name was checked. The world file is copied
-into the language folder and pinned by content hash in `backup.generation`,
-which enters the generation id: the engine carries the physics it was minted
-into, so a checkout on another machine compiles identically.
+**Compile, forever.** `lips compile ledger.backup.lips` writes a directory
+holding `default.nix` (the module, for import and deploy), any staged
+`artifacts/`, and a `flake.nix` that makes the directory runnable. Running is
+not a lips verb: `compile` prints the stock `nix` commands for what it just
+built, and you pick one. A NixOS module offers a throwaway QEMU boot, a build
+without booting, and a dev shell holding exactly the tools your program adds. A
+kubenix module renders multi-document YAML for `kubectl`, a terranix module a
+`config.tf.json` for `tofu plan`. No command applies anything; the host is never
+touched.
 
-One language can serve several worlds, and the split between the files says
-how. The patterns — how a program is READ — sit in `backup.grammar` at the
-language level and are shared: one reading, the same everywhere. Everything
-that depends on where a program LANDS sits in a folder named after the world:
-`backup/nixos/backup.rules`, its `.expect`, its `.generation`, its copy of the
-world file. So `compile` writes one module directory per world
-(`out/ledger/nixos`, `out/ledger/kubenix`) and `check` reports one verdict per
-world.
-
-One call writes all of it, because the patterns are what the worlds agree on and
-the call that writes them has to see every world. A fact must carry what the
-program says in pieces every world can spend: nothing below the mint converts
-one notation into another, so a daily `03:00` becomes an hour and a minute, and
-each world's rule assembles its own spelling (`*-*-* 03:00:00` for a systemd
-timer, `00 03 * * *` for a Kubernetes CronJob). Each world's contract then
-states the text that world assembles, with the same template
-(`... from job.schedule is "*-*-* <value.1>:<value.2>:00"`), so a later mint that
-spells the same fact differently is refused; a check over a value no rule
-reformats keeps the plain form, where the program's value must simply appear in
-the option. In the reply each rule, demand
-and contract line names its world; the patterns name none, because they belong
-to the language.
-
-Minting one world LATER, against a language that already holds others, is the
-same command with that world's name. Then the language level is frozen: the
-grammar may only be added to and the shared `artifacts/` tree may not change at
-all, since the other worlds' rules were lowered from exactly those bytes. lips
-refuses a change and names the remedy, which is to mint every world together.
-
-Worlds answer for themselves. One that needs a fact the program does not state
-demands it by name (a Kubernetes pod needs a container image; a systemd unit
-does not), one the program cannot reach fails alone, and the worlds that hold
-are still written, with the run still exiting nonzero.
-
-The other side of that asymmetry is declared, never silent. Where a world has no
-place for a fact another world needs, its rules say so with the reason
-(`ignore fact job.image "a machine runs the script directly"`), every run prints
-what each world ignores, and lips refuses a declaration no world's rules place:
-a fact nobody spends is a word your program states and the language throws
-away.
-
-**Compile and run (forever, no AI).** `lips compile ledger.backup.lips` turns
-your text into a directory holding `default.nix` (the Nix module, for import
-and deploy), any staged `artifacts/`, and a `flake.nix` that makes the directory
-runnable. `compile` reads the world file beside the engine — required, and
-checked against the record's hash — to decide what that flake offers:
-a NixOS engine gets a bootable VM, a home-manager engine gets the module and an
-import hint, since there is no machine to boot, and a kubenix or terranix engine
-gets what it renders. Running is not a lips verb:
-`compile` prints the exact stock `nix` commands over that directory, and you
-pick one. A program that builds an
-artifact prints `nix run …#artifact.<name>` (run the binary bare) and
-`nix shell …#artifact.<name>`; a system module prints `nix run …#vm`
-(a throwaway QEMU boot of the whole system), `nix build …#vm` (build it
-without booting, no KVM -- the "does it build" check), `nix develop …`
-(a shell holding the tools the program adds to the system PATH) and
-`nix develop …#service-<unit>` (that shell plus one unit's environment, so
-running a service by hand needs no manual `export`). A kubenix
-module prints `nix run …#manifest > manifests.yaml` (kubenix's own
-multi-document YAML, ready to pipe into `kubectl`), `nix build …#manifest`
-(the "does it render and validate" check, since kubenix refuses an unknown or
-mistyped field at evaluation), `nix run …#manifest-json` for the JSON form, and
-`nix develop …` (a shell holding `kubectl`). A terranix module prints the same
-shape one file over: `nix run …#config > config.tf.json` (terranix's own
-rendered configuration, ready for `tofu plan`), `nix build …#config`, and
-`nix develop …` (a shell holding `opentofu`). No rung applies anything: piping
-into `kubectl` or `tofu` stays an explicit human act. The host is
-never touched.
-
-The shell is derived, never declared. `compile` evaluates the module once and
-subtracts a bare NixOS config's `environment.systemPackages` from your own, so
-what is left is exactly what your program contributes, plus anything it built.
-For `ledger.backup.lips` that is `restic-ledger`, the wrapper that runs your
-backup with your repository and credentials already set; for `hello.http.lips`
-it is the `helloserver` binary its engine compiled. You get your program's tools
-in your hands without booting a machine. (A portable OCI image for shipping a server is a future *package*
-axis, `dockerTools`-built, not a way to run locally.)
-
-You then edit freely. Value and wording changes covered by your language run
-straight through `compile`. You return to `generate` only when you say something
-genuinely new that the language cannot yet read, and even then regeneration is
-gated: a fresh engine is accepted only if the committed tests still hold. To
-change behavior on purpose you say how far the contract may move --
-`generate --compat backwards` lets this run's new checks join, `forwards` lets a
-check leave once the engine stops filling that option, `none` rewrites the
-contract from this run -- and that diff is your semantic changelog.
-
-**Steer the mint (optional).** To express taste about *how* the engine gets
-built, put a plain-text `backup.direction` file beside your programs (you write
-it, so it lives with your own files; named by the language, so it is shared): "prefer restic over rsync", "no docker", "secrets
-via env files". It shapes generate
-only, and stays advisory: preferences about mechanism, never requirements.
-Anything that *must* hold belongs in the program or its tests, not here. The
-file is optional; absent, nothing changes.
+`lips check <program>` re-verifies the committed tests offline, in CI or before a
+merge.
 
 ```mermaid
 flowchart LR
     W("<b>write</b><br>ledger.backup.lips")
-    C("<b>compile</b><br>no AI, forever")
+    C("<b>compile</b><br>no model, forever")
     R("<b>nix run</b><br>the running system")
     G("<b>generate</b><br>AI, once")
 
@@ -299,153 +190,91 @@ flowchart LR
     linkStyle 2,3,4 stroke:#94a3b8,stroke-width:1.5px
 ```
 
-The dashed edges are the whole discipline. Compiling an unreadable line fails
-loud and sends you to `generate`, the one AI step, which grows the language and
-hands the loop back; everything else is you editing text and compiling again. A
-fourth verb, `lips check`, re-verifies the committed tests in CI.
-
-## Install
-
-Add the flake as an input:
-
-    inputs.lips.url = "github:cornerman/lips";
-
-Then add the package to NixOS `environment.systemPackages` or home-manager
-`home.packages`:
-
-    inputs.lips.packages.${pkgs.stdenv.hostPlatform.system}.default
-
-Rebuild, and `lips` is a command on your PATH. That one package is everything
-`compile`, `check`, and `lsp` need; they are offline and use only `nix`
-itself. (`check` reaches for an ambient nixpkgs only where a program states an
-observable, since something has to be built to observe it.) `generate` additionally expects the `pi` binary on your PATH,
-authenticated against some provider: lips deliberately keeps it out of its own
-closure, because it is your harness and carries your credentials. lips calls it hermetically, completely stripping away your ambient session,
-tools, skills, and extensions. What remains is the system prompt lips sends and
-the two tools it loads for that run (the schema lookup and the draft submission). Everything the model saw (the
-prompt and every tool answer) is hashed into `.generation`, ensuring the mint
-is fully transparent and leaves a complete audit trail.
-
-Prefer not to install anything yet? Run it straight from the flake instead:
-
-    nix run github:cornerman/lips -- compile ledger.backup.lips
-
-Everywhere below assumes `lips` is installed; substitute
-`nix run github:cornerman/lips --` for `lips` if you are trying it this way.
-
-To deploy a program, point `lib.modulesFromDir` at the directory holding your
-`.lips` files. It compiles each one in a derivation (offline, no AI) and labels
-it by the world its engine was minted for:
-
-    { inputs, pkgs, ... }:
-    let lips = inputs.lips.lib.modulesFromDir { inherit pkgs; dir = ./lips; };
-    in { imports = [ lips.nixosModules.ledger ]; }
-
-A home-manager engine appears under `lips.homeManagerModules.<instance>`
-instead, a kubenix one under `lips.kubenixModules.<instance>` and a terranix one
-under `lips.terranixModules.<instance>` — each name is the world file's own
-`module-attr:`, so a house world lands under the attribute it names. Nix flakes see only git-tracked files, so `git add` your program and
-its language folder before rebuilding. Both program shapes work here, the
-singleton `<language>.lips` included.
-
-The compile inside that derivation passes `--no-contract`: the behavioral gate
-evaluates the realized module with `nix`, and a compile running inside a `nix`
-build has no nix to do it with. So the contract is checked where it lives, in
-your repo, by `lips check <program>` (the deploy path realizes the same module
-from the same committed engine, deterministically).
-
-## Try It
-
-The examples live in the repo, so clone it first:
-
-    git clone https://github.com/cornerman/lips && cd lips
-
-    lips compile examples/ledger.backup.lips # plain lines -> module dir + flake
-    # just compile examples/ledger.backup.lips
-    # nix run . -- compile examples/ledger.backup.lips
-
-    lips check examples/ledger.backup.lips # the committed contract still holds
-    # just check examples/ledger.backup.lips
-    # nix run . -- check examples/ledger.backup.lips
-
-The commented lines show equivalents using `just` or `nix run . --` for when you are developing on `lips` itself.
-
-`compile` prints the stock nix commands that run the result, e.g.
-`nix run path:examples/backup/out/ledger/nixos#vm` for a throwaway QEMU boot (needs
-KVM), `nix build path:examples/backup/out/ledger/nixos#vm` to only check that it
-builds, or `nix develop path:examples/backup/out/ledger/nixos` for a shell with
-`restic-ledger` on PATH.
-
-Open `examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and
-compile again. The module updates with no AI. Then add a sentence the language
-does not know and watch it fail loud, pointing you back to
-`lips generate my.backup.lips` (the only step that needs a model, via `pi`).
-To see reuse, look at `examples/photos.backup.lips`: a second instance of the
-same `backup` language, sharing `examples/backup/backup.grammar`.
-
-Sometimes intent needs a program written, not just a package configured.
-`examples/hello.http.lips` asks for a small HTTP server; its engine builds
-that server from generated Go source (a Nix `buildGoModule` derivation) and
-runs it as a service. The source is a committed, reviewable file beside the
-program; the build and run stay deterministic and offline. The `artifact-vm`
-flake check compiles it and boots the service in a VM.
-
-Developing on lips itself, rather than using it, is a separate mode: the repo
-clone above already gives you everything. `justfile` is the command index
-(`just` alone lists every recipe); with direnv installed, `direnv allow` once
-wires the dev shell automatically, otherwise prefix commands with
-`nix develop -c` or run via `nix run .`. The full suite (conformance tests, module eval, and a VM boot) is a separate recipe, `just ci`; run it yourself before a merge. The module-eval check reads both program name shapes -- `<instance>.<language>.lips` and the singleton `<language>.lips` -- verified against `examples/`, which commits both.
-
 ## The Files
 
-Your programs are the only files in your directory; everything the machine
-writes for a language goes into one folder named after it. So a directory
-listing shows what you own and nothing else:
+Your programs sit at the top level; everything the machine writes for a language
+goes in one folder named after it. A directory listing shows what you own and
+nothing else:
 
     ledger.backup.lips          <- yours
     photos.backup.lips          <- yours
     backup.direction            <- yours (optional taste for the mint)
     backup/                     <- the machine's, all of it
-      backup.grammar            <- how every program is read, shared by the worlds
-      backup.generation README.md   <- the mint that wrote them, and its account
+      backup.grammar            <- how every program is read, shared by all worlds
       nixos/                    <- one folder per world it was minted into
-        backup.rules backup.expect nixos.world
-      artifacts/
-      out/                      <- derived; lips writes out/.gitignore itself
-        ledger.decisions  ledger/nixos/
-        photos.decisions  photos/nixos/
+        backup.rules            <- this world's lowering
+        backup.expect           <- this world's behavioral tests
+        backup.generation       <- receipt of the exact AI call, and what it pins
+        nixos.world             <- the world it was minted into, copied verbatim
+        README.md               <- the language in plain words, your review artifact
+      artifacts/                <- source the engine builds, when a program needs one
+      out/                      <- derived, safe to delete, git-ignored by lips
 
-The grammar is shared by every `*.backup.lips` program AND by every world; a
-world folder holds that world's own lowering. What sits under `out/` is per
-instance and per world, derived, and safe to delete.
+The grammar says how a program is *read* and is shared by every world; a world
+folder holds where a program *lands*. Everything under `out/` is per instance and
+per world: `ledger.decisions` and the compiled module directory. Everything else
+belongs in git.
 
-| File | Author | Role | In git |
-|------|--------|------|--------|
-| `ledger.backup.lips` | you | the program (instance `ledger`), the only real source | yes |
-| `backup.direction` | you | optional taste steering the mint, shared | yes, if you want it |
-| `backup/backup.grammar` | AI, once | the patterns: how a program is read, shared by every world | yes |
-| `backup/nixos/backup.rules` | AI, once | one world's lowering: rules and demands | yes |
-| `backup/nixos/backup.expect` | AI, once | that world's behavioral tests, which gate regeneration | yes |
-| `backup/README.md` | AI, once | the language explained in plain words, your review artifact | yes |
-| `backup/artifacts/` | AI, once | source the engine builds (when a program needs a program) | yes |
-| `backup/backup.generation` | machine | receipt of the exact AI call and every world it pins | yes |
-| `backup/nixos/nixos.world` | machine | the world that mint was aimed at, copied verbatim | yes |
-| `backup/out/ledger.decisions` | machine | the machine's reading of this program | no (cache) |
-| `backup/out/ledger/nixos/` | machine | the compiled module dir (`default.nix`, `flake.nix`) | no (cache) |
+## Install
 
-Everything the machine writes is traceable. Each minted line ends in
-`@gen:<fingerprint>`, the hash of the AI call recorded in `.generation`. And
-`.decisions` shows how the machine read you, one precise statement per line, so
-you can check "did it understand me?" before trusting the output.
+Add the flake as an input and put the package in `environment.systemPackages` or
+`home.packages`:
 
-If everything burned down, the program file is the only thing you could not
-recreate. That is the whole point.
+    inputs.lips.url = "github:cornerman/lips";                          # flake input
+    inputs.lips.packages.${pkgs.stdenv.hostPlatform.system}.default     # the package
+
+That one package is all `compile`, `check` and `lsp` need; they use only `nix`
+itself. `generate` also wants `pi` on your PATH, which lips deliberately keeps
+out of its own closure because it is your harness and carries your credentials.
+lips calls it hermetically, stripping your ambient session, tools and
+extensions, and hashes everything the model saw into `.generation`.
+
+Prefer to install nothing yet:
+
+    nix run github:cornerman/lips -- compile ledger.backup.lips
+
+To deploy, point `lib.modulesFromDir` at the directory holding your `.lips`
+files. It compiles each one in a derivation, offline, and labels it by its
+world:
+
+    { inputs, pkgs, ... }:
+    let lips = inputs.lips.lib.modulesFromDir { inherit pkgs; dir = ./lips; };
+    in { imports = [ lips.nixosModules.ledger ]; }
+
+A home-manager engine appears under `homeManagerModules.<instance>`, kubenix
+under `kubenixModules.<instance>`, terranix under `terranixModules.<instance>`.
+Nix flakes see only git-tracked files, so `git add` your program and its
+language folder before rebuilding. The compile inside that derivation cannot run
+`nix`, so it skips the behavioral contract; check it where it lives, with
+`lips check <program>` in your repo.
+
+## Try It
+
+The examples live in the repo:
+
+    git clone https://github.com/cornerman/lips && cd lips
+
+    lips compile examples/ledger.backup.lips   # plain lines -> module dir + flake
+    lips check examples/ledger.backup.lips     # the committed contract still holds
+
+`compile` prints the nix commands that run the result. Open
+`examples/ledger.backup.lips`, change `/backup/ledger` or `14`, and compile
+again: the module updates without a model call. Then add a sentence the language
+cannot read and watch it fail loud, pointing you back to `generate`.
+
+For reuse, see `examples/photos.backup.lips`, a second instance of the same
+language. For intent that needs something built rather than only configured, see
+`examples/greet.lips`, whose engine builds the command it names and puts it on
+your PATH. Other examples cover the other worlds: `examples/report.cron.lips`
+compiles to NixOS and kubenix at once, `examples/assets.bucket.lips` to
+terranix, `examples/board.lips` to home-manager.
 
 ## Layout
 
-- `kernel/` is the deliverable: the decision calculus and its conformance
-  suite. Module map in `kernel/README.md`.
+- `kernel/` is the deliverable: the decision calculus and its conformance suite.
+  Module map in `kernel/README.md`.
 - `examples/` holds demonstration programs with their minted engines.
-- `DESIGN.md` (repo root) is the living design doc; its section 13 tracks
-  milestones.
-- `justfile` lists every command. Run `just` to see them.
+- `DESIGN.md` is the living design doc; §13 tracks milestones.
+- `TODO.md` tracks what is still open.
+- `justfile` is the command index for developing on lips itself. Run `just` to
+  see every recipe.
