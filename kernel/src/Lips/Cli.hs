@@ -13,6 +13,7 @@ module Lips.Cli
   , CompileOpts (..)
   , CheckOpts (..)
   , OptionsOpts (..)
+  , ExportsOpts (..)
   , WorldWhat (..)
   , worldWhat
   , cliParserInfo
@@ -21,6 +22,7 @@ module Lips.Cli
   , compileOpts
   , checkOpts
   , optionsOpts
+  , exportsOpts
   , programCompleter
   , defaultThinking
   ) where
@@ -104,6 +106,16 @@ data OptionsOpts = OptionsOpts
   , ooQuery  :: String
   } deriving (Eq, Show)
 
+-- | Everything @exports@ needs: which language to ask about, and which of its
+-- worlds. The world is optional because a language minted into exactly one has
+-- nothing to choose ('Lips.Language.soleWorld' decides), and there is no
+-- default: exports live in a world's rules, so answering from an unasked-for
+-- world would be a different vocabulary.
+data ExportsOpts = ExportsOpts
+  { xoTarget   :: Maybe Text
+  , xoLanguage :: String
+  } deriving (Eq, Show)
+
 -- | The lips verbs, all visible/documented via 'hsubparser' (lsp was
 -- previously reachable but absent from --help; now consistent with the rest).
 data Command
@@ -111,6 +123,7 @@ data Command
   | Compile CompileOpts
   | Check CheckOpts
   | Options OptionsOpts
+  | Exports ExportsOpts
   -- | Print the world a name resolves to, or list every world reachable from
   -- here: the seed a house world starts from, and the way to restore a copy
   -- beside an engine. Carries the same @--worlds@ override the other verbs take,
@@ -167,6 +180,9 @@ cliParser defConf = hsubparser
   (  command "options"
        (info (Options <$> optionsOpts)
              (progDesc "Search the pinned option schema of a Nix world. Reads only, changes nothing."))
+  <> command "exports"
+       (info (Exports <$> exportsOpts)
+             (progDesc "List what another program may call from a language. Reads only, changes nothing."))
   <> command "world"
        (info (WorldCmd <$> worldsDirOpt <*> (worldWhat
                 <$> optional (strArgument
@@ -375,3 +391,12 @@ optionsOpts = OptionsOpts
           <> metavar "N" <> help "How many entries an answer may print (default: 40).")
   <*> strArgument
         (metavar "QUERY" <> help "A dotted option prefix to browse, or any substring of a path to find one.")
+
+exportsOpts :: Parser ExportsOpts
+exportsOpts = ExportsOpts
+  <$> optional (T.pack <$> strOption
+        (long "target" <> short 't'
+          <> metavar targetMetavar
+          <> help "Which world's rules to read (default: the one world the language is minted into)."))
+  <*> strArgument
+        (metavar "LANGUAGE" <> help "The language to ask about, as a program names it: the .lips extension.")

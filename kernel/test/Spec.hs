@@ -52,7 +52,7 @@ import Lips.World
 import Lips.World.Builtin (builtinWorld, builtinWorlds)
 import Lips.World.Check (NixSlice (..), nixSlices)
 import Lips.World.Resolve (resolveWorld)
-import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, programCompleter, defaultThinking)
+import Lips.Cli (GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), generateOpts, compileOpts, checkOpts, optionsOpts, exportsOpts, programCompleter, defaultThinking)
 import Options.Applicative (execParserPure, defaultPrefs, getParseResult, info, idm)
 import Options.Applicative.Types (Completer (..))
 import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive, getTemporaryDirectory)
@@ -76,7 +76,7 @@ import Lips.Kernel.Source
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
-import Lips.Language               (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores)
+import Lips.Language               (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -275,6 +275,47 @@ main = hspec $ do
         `shouldBe` Just (OptionsOpts "nixos" Nothing (Just "github:NixOS/nixpkgs/nixos-24.11") 40 "services.restic")
     it "fails with no query at all" $
       parseArgs [] `shouldBe` Nothing
+
+  describe "exports argument parsing (Lips.Cli)" $ do
+    let parseArgs = getParseResult . execParserPure defaultPrefs (info exportsOpts idm)
+    -- No default world, unlike options: the exports of a language ARE per world
+    -- (they live in its rules), so a default would answer about a world the
+    -- caller never named. Nothing here means "the one world it was minted into".
+    it "takes a language and no world" $
+      parseArgs ["player"] `shouldBe` Just (ExportsOpts Nothing "player")
+    it "takes a world" $
+      parseArgs ["--target", "home-manager", "player"]
+        `shouldBe` Just (ExportsOpts (Just "home-manager") "player")
+    it "fails with no language at all" $
+      parseArgs [] `shouldBe` Nothing
+
+  -- Deduce-or-fail for the world an exports listing is read from. A language
+  -- minted into one world needs no --target; asked about several, lips refuses
+  -- rather than picking, because either answer would be a different vocabulary.
+  describe "which world an exports listing reads (Lips.Language.soleWorld)" $ do
+    it "takes the only world a language was minted into" $
+      soleWorld Nothing ["nixos"] `shouldBe` Right "nixos"
+    it "refuses to choose between two, naming both" $
+      case soleWorld Nothing ["home-manager", "nixos"] of
+        Right w  -> expectationFailure ("chose " <> T.unpack w)
+        Left why -> do
+          why `shouldSatisfy` T.isInfixOf "home-manager"
+          why `shouldSatisfy` T.isInfixOf "nixos"
+          why `shouldSatisfy` T.isInfixOf "--target"
+    it "names generate when the language was never minted" $
+      case soleWorld Nothing [] of
+        Right w  -> expectationFailure ("chose " <> T.unpack w)
+        Left why -> why `shouldSatisfy` T.isInfixOf "lips generate"
+    it "takes a world the language holds" $
+      soleWorld (Just "nixos") ["home-manager", "nixos"] `shouldBe` Right "nixos"
+    -- A world with no rules file has no exports to report, and answering from
+    -- another world's rules is the confidently-wrong lookup invariant 2 forbids.
+    it "refuses a world the language was not minted into, naming what is there" $
+      case soleWorld (Just "darwin") ["nixos"] of
+        Right w  -> expectationFailure ("chose " <> T.unpack w)
+        Left why -> do
+          why `shouldSatisfy` T.isInfixOf "darwin"
+          why `shouldSatisfy` T.isInfixOf "nixos"
 
   -- Tab completion must offer only what a human may pass: the .lips programs
   -- and directories to descend into, never the machine-written neighbours.

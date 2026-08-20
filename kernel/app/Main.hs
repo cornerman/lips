@@ -52,8 +52,8 @@ import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (Engine (..), IgnoreSpec (..), bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
-import           Lips.Language                 (grammarIsFrozen, mintedWorlds, orphanIgnores)
-import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
+import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
+import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
                                         clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
@@ -157,8 +157,34 @@ main = do
       -- directory the human stands in (or --worlds).
       world <- resolveWorldOrDie "." (ooWorlds oo) (ooTarget oo)
       optionsQuery world (ooSchema oo) (ooLimit oo) (T.pack (ooQuery oo))
+    Exports xo  -> exportsListing (xoTarget xo) (xoLanguage xo)
     WorldCmd dir what -> worldVerb dir what
     Lsp         -> runLsp
+
+-- | @exports@: the clauses another program may call from a language, one
+-- @name arity@ line each (@-@ where the definition is not a literal one, so
+-- nothing is guessed). Offline and read-only, like @options@ -- and for the
+-- same reason: a mint composing with a language must be grounded against the
+-- names that exist, not against its memory of them.
+exportsListing :: Maybe Text -> String -> IO ()
+exportsListing mtarget lang = do
+  -- Every path here (the language folder, the grammar, a world's rules) is
+  -- derived from the LANGUAGE alone, so the bare @<language>.lips@ names them
+  -- all and no instance of it has to exist. The listing is per language for the
+  -- same reason: a vocabulary belongs to the language, not to an instance.
+  let file = lang <> ".lips"
+      dir  = langDir file
+  minted <- mintedWorlds dir file
+  world <- case soleWorld mtarget minted of
+    Right w  -> pure w
+    Left how -> die (report
+      ("lips can't list what ." <> T.pack lang <> " exports.") []
+      ("\8594 " <> how))
+  eng <- loadLangOrDie dir world file
+  -- On stdout, one export per line and nothing else: this is read by a mint
+  -- tool. A progress line here would corrupt a list a model counts.
+  sayAnswer (T.unlines
+    [ n <> " " <> maybe "-" tshow ar | (n, ar) <- exportedClauses eng ])
 
 -- | The committed grammar a mint must REUSE, or 'Nothing' when it is free to
 -- write its own ('Lips.Language.grammarIsFrozen' decides which). Read fresh

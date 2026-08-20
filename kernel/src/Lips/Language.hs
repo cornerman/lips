@@ -17,6 +17,7 @@
 -- @artifacts\/@ are excluded for free, since neither holds a rules file.
 module Lips.Language
   ( exportedClauses
+  , soleWorld
   , mintedWorlds
   , grammarIsFrozen
   , orphanIgnores
@@ -94,6 +95,28 @@ mintedWorlds dir file = do
       d <- doesDirectoryExist (worldDirIn dir w)
       if not d then pure False
                else doesFileExist (rulesPathIn dir w file)
+
+-- | Which world a listing is read from, given what the caller asked for and
+-- what the language folder holds. Deduce-or-fail: a language minted into one
+-- world answers without being asked, since there is nothing to choose; asked
+-- about several, lips refuses and names them, because each world lowers the
+-- language differently and picking one would answer a question nobody put.
+--
+-- A 'Left' is the remedy line the caller prints, not a description of the
+-- fault: what failed is already said by the verb that asked.
+soleWorld :: Maybe Text -> [Text] -> Either Text Text
+soleWorld (Just w) minted
+  | w `elem` minted = Right w
+  | otherwise = Left ("name a world the language holds: " <> list minted
+      <> " (not " <> w <> ").")
+soleWorld Nothing [w]    = Right w
+soleWorld Nothing []     = Left "mint the language first: lips generate --target <world> <program>."
+soleWorld Nothing minted = Left ("name one of its worlds with --target: " <> list minted)
+
+-- | The worlds, in a sentence. Empty reads as none, which is the caller's own
+-- case above and never reached from here.
+list :: [Text] -> Text
+list = T.intercalate ", "
 
 -- | What another language may call: every clause this engine's rules define,
 -- sorted, with the arity read off each definition.
