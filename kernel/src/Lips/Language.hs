@@ -16,7 +16,8 @@
 -- for), so keying on the record would make such a folder invisible. @out\/@ and
 -- @artifacts\/@ are excluded for free, since neither holds a rules file.
 module Lips.Language
-  ( mintedWorlds
+  ( exportedClauses
+  , mintedWorlds
   , grammarIsFrozen
   , orphanIgnores
   ) where
@@ -28,7 +29,8 @@ import           Data.Text        (Text)
 import qualified Data.Text        as T
 import           Lips.Identity    (rulesPathIn, worldDirIn)
 import           Lips.Kernel.Capture      (matchSubject)
-import           Lips.Kernel.Engine.Data   (IgnoreSpec (..), MapRule (..), renderAttrPath)
+import           Lips.Kernel.Engine.Data   (Emit (..), IgnoreSpec (..), MapRule (..), renderAttrPath)
+import           Lips.Kernel.Engine.Value   (renderValue)
 import           Lips.Kernel.Lang.Store    (EngineData (..))
 import           System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 
@@ -92,3 +94,35 @@ mintedWorlds dir file = do
       d <- doesDirectoryExist (worldDirIn dir w)
       if not d then pure False
                else doesFileExist (rulesPathIn dir w file)
+
+-- | What another language may call: every clause this engine's rules define,
+-- sorted, with the arity read off each definition.
+--
+-- A mint composing with a language is grounded against this list, exactly as it
+-- is grounded against a world's option schema, which is what stops it inventing
+-- a local definition of a name that already exists somewhere -- the silent
+-- failure composition exists to remove.
+--
+-- Read from the ENGINE alone, with no program: a vocabulary belongs to the
+-- language, not to any one instance of it. The arity comes from the definition's
+-- own parameter list rather than from anything declared beside it, so the two
+-- cannot drift; a body whose head is not a literal definition reports 'Nothing'
+-- rather than a guess.
+exportedClauses :: EngineData -> [(Text, Maybe Int)]
+exportedClauses eng = sort
+  [ (n, arityOf (renderValue (emRhs e)))
+  | r <- edRules eng, e <- mrEmits r
+  , ("clause" : n : _) <- [emPath e] ]
+
+-- | The parameter count of a literal @(define (name a b) ...)@, or 'Nothing'
+-- when the body is not one -- a constant, or a shape this reader does not know.
+-- A textual read rather than a parse, because a clause body carries fill markers
+-- (@#\<value\>@) that are not Scheme yet.
+arityOf :: Text -> Maybe Int
+arityOf body = case T.breakOn "(define (" body of
+  (_, rest) | T.null rest -> Nothing
+            | otherwise ->
+                let inner = T.takeWhile (/= ')') (T.drop (T.length "(define (") rest)
+                in case T.words inner of
+                     (_ : ps) -> Just (length ps)
+                     []       -> Nothing

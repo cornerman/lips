@@ -76,7 +76,7 @@ import Lips.Kernel.Source
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
-import Lips.Language               (grammarIsFrozen, mintedWorlds, orphanIgnores)
+import Lips.Language               (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores)
 
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
@@ -5854,6 +5854,19 @@ main = hspec $ do
     -- MINT time removes the collision by construction (nothing is rewritten
     -- later, so serialization stays exact), and this is the predicate that makes
     -- it a theorem rather than a hope.
+    -- What another language may CALL: the clause names its rules define, with the
+    -- arity read off each definition. A mint composing with that language is
+    -- grounded against this list instead of inventing a local definition, which
+    -- is the silent failure composition exists to remove. Read from the engine
+    -- alone, with no program, because a vocabulary is the language's and not any
+    -- one instance's.
+    it "reports what a language exports for another to call" $ do
+      let eng = engineFromLang
+            [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
+            , "0.95 r1 match fact watch.interval => clause.watch-tick \"(define (watch-tick a b) #<value:int>)\" ; clause.watch-limit \"(define (watch-limit) 9)\""
+            ]
+      exportedClauses eng `shouldBe` [("watch-limit", Just 0), ("watch-tick", Just 2)]
+
     it "refuses a clause a language did not name after itself" $ do
       let eng = engineFromLang
             [ "0.95 p1 pattern watch <secs> seconds => fact watch.interval \"<secs>\""
