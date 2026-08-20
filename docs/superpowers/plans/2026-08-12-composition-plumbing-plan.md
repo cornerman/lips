@@ -42,11 +42,13 @@ Fast loop: `cd kernel && ghc -Wall -isrc -itest test/Spec.hs -outputdir /tmp/b -
 
 ## State: Not Built
 
-Nothing yet PRODUCES a `Uses` decision from a program, because the mint cannot
-ask what another language exports. So the path is untested end to end, and
-libero cannot compose.
+Only task 4 is left: libero's own two-language acceptance test, which costs two
+mints. Tasks 1 to 3 landed on 2026-08-12 (`lips exports`, `query_language`, the
+prompt), and the path was proven end to end offline with a hand-written
+two-language fixture through the draft door, so what remains is libero's real
+vocabulary rather than any kernel work.
 
-## Task 1: A CLI Verb for Exports
+## DONE Task 1: A CLI Verb for Exports
 
 Add `lips exports -t <world> <language>`, printing one `name arity` pair per
 line (`-` where arity is unknown), from `Language.exportedClauses` over the
@@ -64,7 +66,7 @@ engine loaded for that language and world.
 Verify: `lips exports -t nixos match` in `libero/` lists the 32 `match-*`
 clauses.
 
-## Task 2: The query_language Tool
+## DONE Task 2: The query_language Tool
 
 Mirror `query_options` exactly; it is 60 lines in `assets/mint-tools.ts` and the
 new tool is a thinner version of it.
@@ -80,7 +82,7 @@ new tool is a thinner version of it.
   what was looked for, never an empty list, since an empty list reads as "that
   language exports nothing" and invites a local definition.
 
-## Task 3: Tell the Mint
+## DONE Task 3: Tell the Mint
 
 Two or three sentences in `assets/mint/body.md`, in its voice, saying: a line
 that names another language is a question, not a definition; ask

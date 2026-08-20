@@ -3611,6 +3611,36 @@ but the loop around it is incomplete; "missing" means specced, not built.
   Composition happens before the gates, so a claim judges the site a run would
   link.
 
+- **A mint can ask what a language exports, and a call into it grounds**
+  (2026-08-12, third and last part of composition; end to end offline, no model
+  involved). `Language.exportedClauses` reads what a language gives another
+  (name plus arity, the arity taken from the definition's own parameter list so
+  the two cannot drift), `lips exports [-t <world>] <language>` prints it one
+  `name arity` line per clause, and the mint's third tool `query_language` reads
+  that same list from the same binary, asked from beside the importer. No world
+  is defaulted: exports live in a world's rules, so a language minted into
+  several is a refusal that names them (`Language.soleWorld`), and an unminted
+  one is an error rather than an empty list, since "exports nothing" reads as
+  permission to define those names locally.
+  THE PHYSICS THE FIXTURE FOUND: linking the cores afterwards is too late to
+  ground a call, because the clause gate runs INSIDE realization. So a caller
+  that composes lends the imported names to the vocabulary BEFORE the run
+  (`Vocabulary.withLent`, fed by `Run.lentNames`), which is where the kernel
+  already takes "what grounds a name in a clause" as injected data. The shell
+  resolves the chain depth first with a cycle guard, since a dependency may name
+  a language of its own. Arity deliberately does not travel: a lent name enters
+  as a procedure, and a procedure declares no arity here, so a wrong-arity call
+  is caught by the runtime the claim gate runs.
+  Measured on a two-language fixture (`greet` lending `greet-hello` to `hi`),
+  hand-written and checked through the draft door, so the whole path was proven
+  with no mint: the call grounded, the claim ran the IMPORTED definition in
+  guile, and a deliberately wrong claim reported `got=("hello")`.
+  Also found and fixed here: the mint prompt still taught BARE clause names
+  (`clause.main`, `(begin (main) (emitted))`) four days after the namespacing
+  gate landed, so every future mint would have been refused inside its own draft
+  door. A structural test now walks every `clause.` path in the prompt and
+  requires the prefix, because a prose reminder rots exactly this way.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
