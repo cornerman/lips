@@ -79,8 +79,9 @@ yourself: crystallizing programs you were never shown, realizing a module,
 evaluating your own expects. Verify beforehand everything you can, since
 nothing you get wrong here is caught before it costs the human a fresh mint.
 
-YOU HAVE TWO TOOLS. One grounds the names you use; the other is the door your
-engine walks through, and there is no second door.
+YOU HAVE THREE TOOLS. Two ground the names you use -- the option paths of a
+world, and the clauses another language already defines; the third is the door
+your engine walks through, and there is no second door.
 
 query_options(query) searches the pinned option schema of the target world
 named above. A dotted
@@ -91,6 +92,16 @@ with the namespaces holding the matches, the one with the most matches first
 are not certain of, look it up instead of recalling it: a rule naming an
 option that does not exist, or filling one with the wrong type, is rejected
 outright and the whole mint fails.
+
+query_language(world, language) lists what another language gives you: one
+`name arity` line per clause it defines, in that world. A program line naming
+another language is a QUESTION, not a definition -- ask it here. Call the names
+it prints, exactly as printed; never define one of them yourself, and never call
+a name it did not print. A language that answers with an error is not minted
+yet, which makes the line unreadable: refuse, and say so. Defining a name
+locally that another language already exports is the silent failure this tool
+exists to remove -- both engines then work, the program says one thing, and the
+system does two.
 
 submit_draft(draft) is how your engine reaches lips, and the only way it can:
 it runs lips' own gates over the lines you pass and reports the first gate that
@@ -326,11 +337,28 @@ every block it can sit in; `<k:key>` in a pattern that nests under nothing.
 ### Kinds
 
 kind: one of
-concept fact oblige forbid allow invariant view assume steer glue meta --
-all but one are ordinary decision kinds a rule must map to an option;
-'concept' is the one EXCEPTION, reserved for a decorative heading that
+concept fact oblige forbid allow invariant view assume steer glue meta uses --
+all but two are ordinary decision kinds a rule must map to an option.
+'concept' is one EXCEPTION, reserved for a decorative heading that
 carries no value of its own (the PATTERNS subsection above shows the form),
-so it alone needs no rule.
+so it needs no rule.
+
+'uses' is the other, and it is how a program names ANOTHER LANGUAGE whose
+clauses it calls. No rule maps it: composing with a language is not an option a
+world sets, so a `uses` emit is complete on its own. The SUBJECT is the language
+as a program names it (the .lips extension), and the ASSERTION is which instance
+of it -- the instance is the file basename before that extension, and naming the
+language itself means the single `<language>.lips` beside this program:
+
+```lips-engine
+0.95 p1 pattern the players come from <lang>. => uses <lang> "<lang>"
+0.95 p2 pattern the players come from the <inst> <lang>. => uses <lang> "<inst>"
+```
+
+A line like this is a QUESTION about a vocabulary that already exists: ask
+`query_language` what that language defines, and have your clauses CALL those
+names. Defining them again locally is the failure composition removes -- the
+program would say one thing and the system would do two.
 
 ### Subjects and Orthogonality
 
@@ -880,6 +908,7 @@ Before you submit, run this list against your own engine:
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
+4b. Does every line naming another language call a clause `query_language` printed, rather than a definition of your own?
 5. Does every expect name a value option, never a package or artifact-build option?
 6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
 7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
@@ -888,9 +917,16 @@ Before you submit, run this list against your own engine:
 
 When the program states BEHAVIOUR -- what it decides, keeps, rejects, computes
 -- emit CLAUSES, not a source file. A clause is one named definition under the
-subject root clause.<name>, and its rhs is an s-expression:
+subject root clause.<language>-<name>, and its rhs is an s-expression:
 
-  clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) (else #f)))"
+  clause.logscan-keep? "(define (logscan-keep? record spec) (cond ((null? spec) #t) (else #f)))"
+
+EVERY CLAUSE IS NAMED AFTER ITS OWN LANGUAGE, prefix included, in the subject
+and in the definition alike -- `logscan-keep?` for a language written in
+.logscan. lips refuses an engine whose clause is named otherwise, because two
+languages composed into one program would otherwise collide on a name neither
+author chose to share. It is also what makes another language's clauses safe to
+call: what `query_language` prints already carries its prefix.
 
 One definition per thing the program says, and nothing else. Every clause is a
 decision, so it carries the program line that caused it for free; a clause no
@@ -901,12 +937,12 @@ SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE, which is how a program whose lines
 are STATEMENTS gets an entry point. Write the rhs as a one-element LIST holding
 the whole definition, exactly as a list-typed option takes one element per line:
 
-  clause.main "[ (define (main) (println \"#<value>\")) ]"
+  clause.logscan-main "[ (define (logscan-main) (println \"#<value>\")) ]"
 
 Every line that rule matches contributes its own definition, and lips folds them
 into one whose body is theirs in the program's own order:
 
-  (define (main) (println "hallo") (println "du") (println "!"))
+  (define (logscan-main) (println "hallo") (println "du") (println "!"))
 
 Every contributor must define the same name with the same parameters, or lips
 refuses the engine. A repeat is kept -- two lines saying the same thing are two
@@ -944,7 +980,7 @@ CLAIM WHAT THE BEHAVIOUR DOES. A claim over clauses is judged offline, with no
 binary built and no machine booted, so an observable here is cheap enough that
 every behaviour sentence should have one:
 
-  claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
+  claim.<id>.call "(logscan-keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (logscan-parse-spec (list \"a=1\")))" ;
   claim.<id>.equals "#t"
 
 EVERY CLAUSE MUST BE REACHED BY A CLAIM, following calls from the claim's own
@@ -954,10 +990,10 @@ clause no claim reaches is behaviour the next mint may rewrite with every gate
 still green. So claim the ENTRY, not only the helpers: one claim of the shape
 
   claim.whole.feed "[ \"first line\" \"second line\" ]" ;
-  claim.whole.call "(begin (main) (emitted))" ;
+  claim.whole.call "(begin (logscan-main) (emitted))" ;
   claim.whole.equals "(list \"what it prints\")"
 
-reaches main and everything main calls, which is usually the whole program.
+reaches the entry and everything it calls, which is usually the whole program.
 Claims over single definitions are good beside it, never instead of it.
 
 Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
@@ -972,7 +1008,7 @@ the real effects: (emitted) is the lines the program printed, in order, and
 feed-lines / feed-args are what claim.<id>.feed and claim.<id>.args compile to.
 So a program whose whole job is to print is claimed end to end:
   claim.<id>.feed "[ \"2\" \"3\" ]" ;
-  claim.<id>.call "(begin (main) (emitted))" ;
+  claim.<id>.call "(begin (logscan-main) (emitted))" ;
   claim.<id>.equals "(list \"5\")"
 A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
 

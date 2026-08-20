@@ -6,9 +6,10 @@
 // say -- there is no second, model-facing renderer that could drift from the
 // human-facing one.
 //
-// Two tools, and neither one decides. query_options informs about NAMES;
-// submit_draft REPORTS which gate rejects a draft, and stages a clean one as
-// the answer. The gate that decides still runs once, in Haskell, after the
+// Three tools, and none of them decides. query_options and query_language
+// inform about NAMES -- the option paths of a world, and the clauses another
+// language already defines; submit_draft REPORTS which gate rejects a draft,
+// and stages a clean one as the answer. The gate that decides still runs once, in Haskell, after the
 // model is done, over the staged bytes. What moved is when the mint can learn
 // it is wrong, not who judges it.
 //
@@ -23,6 +24,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 // No defaults. A silent fallback would be a lie generator: if the target ever
 // failed to reach this child, the mint would search the NixOS schema while
@@ -100,6 +102,71 @@ export default function (pi: ExtensionAPI) {
       // answer carrying two progress lines, a model answered 27. On failure the
       // opposite holds -- stderr is where the deduce-or-fail remedy lives, and
       // the model needs it to ask a better question.
+      const failed = r.status !== 0;
+      const text = (failed ? [r.stdout, r.stderr] : [r.stdout])
+        .filter(Boolean)
+        .join("\n");
+      return {
+        content: [{ type: "text", text: text || "no output" }],
+        details: {},
+        isError: failed,
+      };
+    },
+  });
+
+  pi.registerTool({
+    // A language a program NAMES is a question, and this is where it is asked.
+    // Its answer is the same list the kernel grounds the draft against, from the
+    // same binary, so a call that passes this tool cannot fail the composition
+    // gate for a name that was never there -- the silent misread of 2026-08-12
+    // (a line saying "as defined by match" was read as a local field, and every
+    // gate stayed green) has no room left.
+    name: "query_language",
+    label: "Language",
+    description:
+      "List the clauses another language defines, which your rules may CALL " +
+      "instead of defining again. LANGUAGE is the language a line of the program " +
+      "names, as a program names it (the .lips extension: 'player' for " +
+      "player.lips or squad.player.lips). WORLD is the world you are writing " +
+      "rules for, because a language is lowered per world. The answer is one " +
+      "'name arity' line per clause, arity '-' where it takes no parameter list. " +
+      "Call those names as they are printed; never define one of them yourself, " +
+      "and never call a name this tool did not print.",
+    parameters: Type.Object({
+      world: Type.String({
+        description: "Which world's rules to read. One of: " + worlds.join(", "),
+      }),
+      language: Type.String({
+        description: "The language to ask about, without the .lips extension.",
+      }),
+    }),
+    async execute(_toolCallId: string, params: { world: string; language: string }) {
+      // The same refusal query_options makes, for the same reason: a language
+      // lowered for another world exports other names, and answering from it
+      // would ground the draft against a vocabulary this mint never links.
+      if (!worlds.includes(params.world)) {
+        return {
+          content: [{
+            type: "text",
+            text: `${params.world} is not a world this mint writes for. ` +
+              `Ask about one of: ${worlds.join(", ")}`,
+          }],
+          details: {},
+          isError: true,
+        };
+      }
+      // Beside the importer, exactly where `lips check` resolves an import from:
+      // a language folder is found relative to the program that names it, so the
+      // tool must ask from that directory and not from wherever pi was started.
+      const r = spawnSync(bin, ["exports", "--target", params.world, params.language], {
+        cwd: dirname(programs[0]) || ".",
+        encoding: "utf8",
+      });
+      // Same split as query_options, for the same reason: a clean answer alone
+      // (progress text corrupts a list a model counts), a failure with the
+      // stderr that carries the remedy. An unminted language is an ERROR here,
+      // never an empty list -- "exports nothing" would read as permission to
+      // define the names locally, which is the failure this tool removes.
       const failed = r.status !== 0;
       const text = (failed ? [r.stdout, r.stderr] : [r.stdout])
         .filter(Boolean)

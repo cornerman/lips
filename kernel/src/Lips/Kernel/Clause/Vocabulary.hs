@@ -43,6 +43,7 @@ module Lips.Kernel.Clause.Vocabulary
   , clauseContracts
   , claimContracts
   , effectContracts
+  , withLent
   ) where
 
 import           Data.Text (Text)
@@ -84,6 +85,22 @@ data Vocabulary = Vocabulary
   , vContracts  :: [Contract]
   }
   deriving (Eq, Show)
+
+-- | Add the names another decision base defines, so a clause may call them.
+--
+-- An imported definition grounds a call exactly as a base procedure does, by
+-- name -- which is all a first-order clause world needs, and all the linker
+-- does. It belongs in the vocabulary rather than beside it because the clause
+-- gate runs INSIDE realization: linking the cores afterwards
+-- ('Lips.Kernel.Run.composeWith') is too late to ground anything, so a caller
+-- that composes must lend the names before the run.
+--
+-- Arity is deliberately not carried: a lent name enters as a procedure, and a
+-- procedure declares no arity here (many are variadic), so a call with the wrong
+-- number of arguments is caught where every arity is -- by the runtime the claim
+-- gate runs.
+withLent :: [Text] -> Vocabulary -> Vocabulary
+withLent ns v = v { vProcedures = vProcedures v <> ns }
 
 -- | The contracts a CLAUSE may reach: every capability a real run provides.
 clauseContracts :: Vocabulary -> [Text]

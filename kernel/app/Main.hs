@@ -82,6 +82,7 @@ import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Run
 import           Lips.Kernel.Grounding  (groundingReport)
 import           Lips.Runtime            (schemeVocabulary)
+import           Lips.Kernel.Clause.Vocabulary (withLent)
 import           Lips.Kernel.Lang.Crystallize  (LineOutcome (..), crystallize)
 
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
@@ -479,8 +480,8 @@ checkLoose contract claims mLangDir file = do
 --
 -- Deduce-or-fail: a dependency naming a file that is not there stops the run and
 -- says which name it looked for, rather than compiling a site with a hole in it.
-resolveImports :: Text -> FilePath -> Realization -> IO [Realization]
-resolveImports w file rl = forM (rlUses rl) $ \(lang, inst) -> do
+resolveImports :: [FilePath] -> Text -> FilePath -> [(Text, Text)] -> IO [Realization]
+resolveImports trail w file uses = forM uses $ \(lang, inst) -> do
   let here     = takeDirectory file
       fileName = (if inst == lang then lang else inst <> "." <> lang) <> ".lips"
       imported = here </> T.unpack fileName
@@ -489,12 +490,33 @@ resolveImports w file rl = forM (rlUses rl) $ \(lang, inst) -> do
     (T.pack file <> " depends on " <> inst <> "." <> lang <> ", and that program is not here.")
     [T.pack imported]
     ("\8594 write it, or name the instance that exists."))
+  -- A cycle would otherwise resolve for ever. Named in full, because "which two
+  -- programs" is the whole question a reader has.
+  when (imported `elem` trail) $ die (report
+    "these programs depend on each other in a circle."
+    [ T.pack p | p <- reverse (imported : trail) ]
+    "\8594 break the circle: move the shared vocabulary into a language both use.")
   dir' <- either die pure (resolveLangDir imported Nothing)
   eng' <- loadLangOrDie dir' w imported
   prog' <- readProgramOrDie imported
-  case validate imported eng' prog' of
+  -- Depth first: a dependency may name a language of its own, and the names the
+  -- whole chain lends must be grounded before this link realizes.
+  deps <- resolveImports (imported : trail) w imported (usesOf imported eng' prog')
+  case validate (lentNames deps) imported eng' prog' of
     Left ff -> die (printFail imported ff)
-    Right r -> pure r
+    Right r -> pure (composeWith deps r)
+
+-- | The dependencies a program states, read BEFORE it is realized: the names an
+-- import lends have to be in the vocabulary while the clause gate runs, and that
+-- gate runs inside realization.
+--
+-- A program that does not crystallize states nothing here and fails loud in the
+-- realization that follows immediately, which is where that failure is reported
+-- from anyway -- so this stays a question about dependencies alone.
+usesOf :: FilePath -> EngineData -> Text -> [(Text, Text)]
+usesOf file eng program = case crystallize file (edPatterns eng) program of
+  Left _     -> []
+  Right base -> usesIn base
 
 -- | One world's verdict on a program: its rules read on top of the shared
 -- grammar, its diagnosis, its contract, its claims.
@@ -542,17 +564,22 @@ checkWorld contract claims dir w file program = do
         else pure []
   case openQuestions of
     (_ : _) -> pure (Left (unansweredReport file w openQuestions))
-    [] ->
+    [] -> do
+     -- The dependency chain is resolved BEFORE this program's own run, because
+     -- a call into an imported definition is grounded DURING realization: the
+     -- linked core that composeWith builds below arrives too late for that, and
+     -- a program calling a name its dependency defines would be refused as
+     -- ungrounded (measured on a two-language fixture, 2026-08-12).
+     imports <- resolveImports [file] w file (usesOf file eng program)
      -- Validated ONCE, here, so the two readings of the outcome (is this world
      -- reachable, and does its contract hold) judge the same run.
-     case validate file eng program of
+     case validate (lentNames imports) file eng program of
       Left (FailRun (Unmapped ds)) -> pure (Left (unportableReport file w ds))
       Left ff -> die (printFail file ff)
       Right rl0 -> do
         -- Composition happens BEFORE the gates, so the claims judge the site a
         -- run would actually link: an imported clause is reachable from a claim
         -- exactly as a local one is.
-        imports <- resolveImports w file rl0
         rl <- expectGate contract claims dir w file eng program (composeWith imports rl0)
         -- What vouches for each assertion, always printed. An unvouched
         -- assertion (foreign text in an artifact argument, a staged source tree)
@@ -1121,15 +1148,21 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   lift (assertOptionsAdmissible world schemaPath rep eng)
   -- Every program must crystallize, run, and parse as Nix under this world's
   -- engine: the example set is the regeneration corpus.
-  validated <- forM progs $ \(f, t) -> case validate f eng t of
-    Left (FailRun (Unmapped ds))      -> throwE (unportableReport f wn ds)
+  validated <- forM progs $ \(f, t) -> do
+    -- The same composition check runs, so the gate that decides judges what the
+    -- draft door judged: a program calling a name another language lends must
+    -- not be accepted at the door and refused here.
+    imports <- lift (resolveImports [f] wn f (usesOf f eng t))
+    case validate (lentNames imports) f eng t of
+     Left (FailRun (Unmapped ds))      -> throwE (unportableReport f wn ds)
     -- At mint time the remedy has two sides (state it in the program, or mint
     -- again so a rule fills it), so the existing message stands; what several
     -- worlds add is WHICH world is asking, since the kubernetes lowering wants
     -- an image the NixOS one does not.
-    Left (FailRun (OpenQuestions qs)) -> throwE (demandGenerateFail f qs)
-    Left ff                           -> throwE (validationReport f (failureReport f ff))
-    Right rl -> do
+     Left (FailRun (OpenQuestions qs)) -> throwE (demandGenerateFail f qs)
+     Left ff                           -> throwE (validationReport f (failureReport f ff))
+     Right rl0 -> do
+      let rl = composeWith imports rl0
       nixCheck <- lift (nixParses (rlModule rl))
       case nixCheck of
         Left (NixToolMissing e) -> lift (die (nixMissing f "verify the output" "generate" e))
@@ -1274,8 +1307,10 @@ readTree root = do
 -- The module and the artifact.nix (the buildable derivations, or Nothing) are
 -- projected from the same bound rules and ground base, so the artifacts a
 -- compiled flake addresses are exactly the ones the module @let@-binds.
-validate :: FilePath -> EngineData -> Text -> Either Failure Realization
-validate file eng program =
+-- @lent@ is the names other languages lend this one, in the clause vocabulary;
+-- empty for a program that composes with nothing.
+validate :: [Text] -> FilePath -> EngineData -> Text -> Either Failure Realization
+validate lent file eng program =
   case crystallize file (edPatterns eng) program of
     Left errs  -> Left (FailRead errs)
     Right base ->
@@ -1293,7 +1328,7 @@ validate file eng program =
           -- option, so the engine states it; nothing declared means a set (two
           -- program lines naming one thing name it once).
           assembleList = assembleWith (keepsRepeats (edMerges eng))
-      in first FailRun (runBase modeOf assembleList schemeVocabulary budget runEngine base)
+      in first FailRun (runBase modeOf assembleList (withLent lent schemeVocabulary) budget runEngine base)
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable

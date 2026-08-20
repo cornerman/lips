@@ -13,6 +13,8 @@ module Lips.Kernel.Run
   ( RunError (..)
   , Realization (..)
   , composeWith
+  , lentNames
+  , usesIn
   , run
   , runBase
   ) where
@@ -181,6 +183,12 @@ composeWith imports rl = rl { rlCore = merged }
       ( T.intercalate "\n" [ t | (t, _, _) <- cs ]
       , nub (concat [ cts | (_, cts, _) <- cs ])
       , concat [ ds | (_, _, ds) <- cs ] )
+
+-- | What imported realizations lend their importer: every name their cores
+-- define. Fed to 'Lips.Kernel.Clause.Vocabulary.withLent' before the importer's
+-- own run, since a call is grounded during realization and composed after it.
+lentNames :: [Realization] -> [Text]
+lentNames rs = [ n | r <- rs, Just (_, _, ds) <- [rlCore r], (n, _) <- ds ]
 
 -- | The dependencies a base states: @(language, instance)@ per 'Uses' decision,
 -- read from the human base, since no rule rewrites one and none may.

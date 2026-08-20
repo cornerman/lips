@@ -694,6 +694,42 @@ main = hspec $ do
           defined `shouldBe` [("player-rating", Just 1), ("match-main", Just 0)]
       rlModule (composeWith [imp] own) `shouldBe` "OWN MODULE"
 
+    -- Composition is too late to ground a call: the clause gate runs INSIDE
+    -- realization, so a program calling an imported name is refused before any
+    -- core is linked unless the names its dependency lends are in the
+    -- vocabulary. Measured on a two-language fixture (2026-08-12): the draft
+    -- crystallized, then died on "greet-hello, which no form, procedure or
+    -- contract grounds".
+    it "grounds a call into a lent name, and refuses it when nothing lends it" $ do
+      let pat = patOne "p" [TLit "print", TLit "it"] Fact [SLit "hi.print"] [SLit "print"]
+          sexp t = either (error . T.unpack) id (parseValue t)
+          body = sexp "(define (hi-main) (greet-hello))"
+          -- A claim must reach every definition, so the fixture states one: the
+          -- gate under test is grounding, and an unobserved clause would fail
+          -- for another reason entirely.
+          lentRule = MapRule "r" Fact ["hi", "print"]
+                   [ Emit ["clause", "hi-main"] body
+                   , Emit ["claim", "whole", "call"] (sexp "(hi-main)")
+                   , Emit ["claim", "whole", "equals"] (sexp "\"hello\"") ]
+          runWith v = case crystallize "hi.lips" [pat] "print it" of
+            Left e     -> Left (T.pack (show e))
+            Right base -> case runBase (const Replace) noAssembly v 100
+                                 (Engine (map toRule [lentRule]) [] []) base of
+              Left e   -> Left (T.pack (show e))
+              Right rl -> Right (rlCore rl)
+      runWith schemeVocabulary `shouldSatisfy` isLeft
+      case runWith (withLent ["greet-hello"] schemeVocabulary) of
+        Left why   -> expectationFailure ("a lent name did not ground: " <> T.unpack why)
+        Right core -> fmap (\(_, _, ds) -> ds) core `shouldBe` Just [("hi-main", Just 0)]
+
+    -- What a caller may call, in one place: the names every dependency's core
+    -- defines, which is exactly what extends the vocabulary above.
+    it "reports the names imported realizations lend" $ do
+      let imp = emptyRealization
+            { rlCore = Just ("(define (player-rating p) 1)", [], [("player-rating", Just 1)]) }
+          bare = emptyRealization { rlCore = Nothing }
+      lentNames [imp, bare] `shouldBe` ["player-rating"]
+
     it "end-to-end C: one line with many packages -> one VList, aggregatable with B" $ do
       -- Capability C: a <name.tail> template hole binds the rest of a line, and
       -- a <value.tail> rhs fills to a VList of those tokens. Each line
@@ -3904,8 +3940,9 @@ main = hspec $ do
   describe "the mint prompt states the clause grammar" $ do
     let p = systemPrompt
 
-    it "tells the model to emit behaviour as clauses" $
-      p `shouldSatisfy` T.isInfixOf "clause.<name>"
+    it "tells the model to emit behaviour as clauses, named after the language" $ do
+      p `shouldSatisfy` T.isInfixOf "clause.<language>-<name>"
+      p `shouldSatisfy` T.isInfixOf "EVERY CLAUSE IS NAMED AFTER ITS OWN LANGUAGE"
 
     -- The one wart a mint will otherwise get wrong: < is an identifier character
     -- in Scheme, so a clause's hole marker cannot be <value>.
@@ -3927,7 +3964,7 @@ main = hspec $ do
     -- unobserved, which the structural check waved through.
     it "tells the model every clause must be reached by a claim" $ do
       p `shouldSatisfy` T.isInfixOf "EVERY CLAUSE MUST BE REACHED BY A CLAIM"
-      p `shouldSatisfy` T.isInfixOf "(begin (main) (emitted))"
+      p `shouldSatisfy` T.isInfixOf "(begin (logscan-main) (emitted))"
 
     it "states the clause claim sections" $ do
       p `shouldSatisfy` T.isInfixOf "claim.<id>.call"
@@ -3938,8 +3975,8 @@ main = hspec $ do
     -- and go on demoting a program's statements to observations.
     it "tells the model how several lines contribute to one clause" $ do
       p `shouldSatisfy` T.isInfixOf "SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE"
-      p `shouldSatisfy` T.isInfixOf "clause.main \"[ (define (main) (println \\\"#<value>\\\")) ]\""
-      parseValue "[ (define (main) (println \"#<value>\")) ]" `shouldSatisfy` isRight
+      p `shouldSatisfy` T.isInfixOf "clause.logscan-main \"[ (define (logscan-main) (println \\\"#<value>\\\")) ]\""
+      parseValue "[ (define (logscan-main) (println \"#<value>\")) ]" `shouldSatisfy` isRight
 
     -- Grepping the prompt proves only that words are present. These parse the
     -- exact rhs forms it teaches through the real grammar, which is what catches
@@ -5140,6 +5177,34 @@ main = hspec $ do
     it "teaches that a template must write the symbols its line carries" $
       mapM_ (\clause -> systemPrompt `shouldSatisfy` T.isInfixOf clause)
         [ "A SYMBOL IS A TOKEN'S OWN TEXT", "TERMINATOR" ]
+
+    -- The third tool exists to remove a silent misread: a line naming another
+    -- language was read as a local field and every gate stayed green
+    -- (2026-08-12). A tool the model is never told about is dead, so the prompt
+    -- must name it and say what it forbids.
+    it "teaches the tool that grounds another language's names" $
+      mapM_ (\s -> systemPrompt `shouldSatisfy` T.isInfixOf s)
+        [ "query_language", "YOU HAVE THREE TOOLS" ]
+
+    -- A kind the prompt does not list cannot be written, so nothing would ever
+    -- produce a dependency: the whole composition path stays unreachable until
+    -- the mint is told the emit form. The fenced-block guard below parses the
+    -- example, so the taught spelling is the one the reader accepts.
+    it "teaches the kind that names another language, and that no rule maps it" $
+      mapM_ (\s -> systemPrompt `shouldSatisfy` T.isInfixOf s)
+        [ "meta uses", "=> uses <lang>", "No rule maps it" ]
+
+    -- Every clause is named after the language that emits it, and
+    -- 'clausesNamespaced' refuses anything else -- so an example teaching a bare
+    -- name teaches a refusal, costing the mint a round trip. Structural rather
+    -- than a prose reminder: every clause path the prompt shows carries a
+    -- prefix, which is the hyphen a bare name cannot have.
+    it "teaches no clause name without its language prefix" $ do
+      let names = [ T.takeWhile (\c -> c /= ' ' && c /= '"' && c /= '\n')
+                      (T.drop (T.length "clause.") rest)
+                  | (_, rest) <- T.breakOnAll "clause." systemPrompt ]
+      names `shouldSatisfy` (not . null)
+      mapM_ (`shouldSatisfy` T.isInfixOf "-") names
 
     it "every lips-engine block in the prompt parses" $ do
       let blocks = fencedBlocks "lips-engine" systemPrompt
