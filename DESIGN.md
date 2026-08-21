@@ -925,6 +925,65 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **The growth mint: a language grows by a PATCH, not by a rewrite.** Adding one
+  sentence shape to a working language re-minted the whole engine, so the one act
+  that leaves the zero-AI loop was also the most expensive one, and it recurs
+  every time a language grows. `generate` against a language that already has a
+  committed engine now renders that engine back into the reply format
+  (`replyLinesOf`), hands it to the model as its basis (`assets/mint/patch.md`),
+  and asks for a patch keyed by id: a new id adds, a known id replaces, an id the
+  reply does not mention stays. `--fresh` rewrites.
+
+  The patch is merged into a complete reply BEFORE anything reads it
+  (`mergeReply`), so every gate, every render and every write below is untouched
+  and knows nothing about patches -- the soundness argument is that the gates,
+  not the rewrite, are what guard an engine, and they already run over the whole
+  corpus. `check --draft` merges identically, told the basis directory through
+  `LIPS_MINT_BASIS`, so what the model checks is what the gate will judge; a bare
+  patch with no basis is still refused as an engine that cannot read its program.
+
+  MEASURED, `examples/greet` grown from one line to three (a second command and a
+  daily schedule), claude-sonnet-5, thinking medium, 2026-08-20, against errand
+  1's fresh baseline for the ONE-line version:
+
+  | | fresh (1 line) | patch (3 lines) |
+  |---|---|---|
+  | wall | 326.4s | 74.5s |
+  | turns | 6 | 4 |
+  | `submit_draft` calls | 4 | 1 |
+  | output tokens | 26,598 | 3,765 |
+  | cost | $0.43 | $0.068 |
+
+  So a bigger program cost 4.4x less wall time, 7.1x fewer output tokens and 6.3x
+  less money, because the model emitted the two lines it authored instead of
+  restating the engine four times. Output is the side that is neither cached nor
+  cheap (input arrived as 8 fresh tokens against 99k from cache), which is exactly
+  what errand 1 predicted.
+
+  Two decisions the implementation forced, both recorded because they are not
+  obvious. (i) A patched engine is RE-STAMPED wholesale rather than keeping each
+  untouched line's original `@gen:` id. The first attempt kept them, and `check`
+  refused it correctly: a stamp means "the record beside me hashes to this", there
+  is one record per world, and a kept stamp names a record that is no longer
+  there. Re-stamping stays honest because the record stores the MERGED reply, so
+  it really does contain every line the engine holds; where a line came from is
+  carried by the new `basis:` line, which names the record this one grew out of
+  (a chain), and by git. (ii) `basis:` is a sealed input in `.generation`, so a
+  patch and a rewrite of the same reply are different events with different ids.
+
+  Accepted cost, now visible rather than assumed: prompt and physics improvements
+  stop reaching committed languages until someone runs `--fresh`, and the record
+  says which basis produced each engine. One asymmetry of the stored form had to
+  be undone to make any of it work: a pattern's stored assertion drops the
+  `pattern` keyword the reader consumed, so `replyLinesOf` restores it from the
+  subject -- without that, every inherited pattern comes back as a line no reply
+  parser accepts and every program stops crystallizing (caught by the offline
+  draft case now in `just test-draft`).
+
+  Verified: 907/907, `-Wall` clean, `check` green on all 13 examples,
+  `test-draft` green including two new cases (a patch with a basis holds, the
+  same patch without one is refused).
+
 - **A mint now says what it cost, and the first measurement says where the
   minutes go.** Every figure about a mint was hand-copied from whatever a
   terminal still showed: `Lips.Cli.Output` timed each phase for the live line and

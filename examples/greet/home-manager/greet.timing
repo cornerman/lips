@@ -1,0 +1,17 @@
+format: 1
+verdict: accepted
+model: claude-sonnet-5
+thinking: medium
+wall: 74.5
+phase 0.7 home-manager option schema
+phase 71.9 mint .greet from 1 program for home-manager
+phase 1.6 build 2 artifacts
+phase 0.0 write examples/greet
+turns: 4
+tool query_options: 4
+tool submit_draft: 1
+tokens input: 8
+tokens output: 3765
+tokens cache-read: 98521
+tokens cache-write: 4120
+cost-usd: 6.76702e-2

@@ -1,1 +1,2 @@
-p1 meta lang.pattern.p1 stated "install a command <name> that prints <msg> => fact cmd.<name>.msg \"<msg>\"" @gen:afc3e6ce7773b7db
+p1 meta lang.pattern.p1 stated "install a command <name> that prints <msg> => fact cmd.<name>.msg \"<msg>\"" @gen:219f101bf0618684
+p2 meta lang.pattern.p2 stated "run <name> every day at <time> => fact schedule.<name>.time \"<time>\"" @gen:219f101bf0618684

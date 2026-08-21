@@ -46,17 +46,18 @@ tracks only what is still open.
    built). Adding one sentence shape to a working language costs a full re-mint
    (4-6 minutes, opus, the whole engine re-emitted), which is the one act that
    leaves the zero-AI edit loop and the act an author hits every time a language
-   grows. Errand (1), the unsealed `<language>/<world>/<lang>.timing` recording
-   wall time per phase, turns, tool-call counts, tokens and cost, LANDED
-   2026-08-20 (DESIGN §13, "A mint now says what it cost"), and its first
-   measurement is the case for errand 2: minting `greet` fresh spent 26,598
-   OUTPUT tokens on a one-rule engine, against 12 fresh input tokens and 205k
-   read from cache. Two errands left: (2) generate inherits the committed engine and takes a PATCH
+   grows. Errands (1) and (2) LANDED 2026-08-20 (DESIGN §13, "A mint now says
+   what it cost" and "The growth mint"): the timing file measures a mint, and
+   generate patches a committed engine by id, measured at 4.4x less wall time and
+   7.1x fewer output tokens than a fresh mint of a SMALLER program. One errand
+   left: (3) `compile --watch` with `g` to run the growth mint, leaving invariant
+   1 intact (the loop drives, compile itself never calls a model).
+
+   Superseded description kept for the reader who wants what was decided: (2)
+   generate inherits the committed engine and takes a PATCH
    keyed by id (new id adds, known id replaces, unmentioned id inherited),
    default inherit with `--fresh` to rewrite, `basis:` recorded as a sealed
-   input -- sound because the gates, not the rewrite, are what guard an engine;
-   (3) `compile --watch` with `g` to run the growth mint, leaving invariant 1
-   intact (the loop drives, compile itself never calls a model).
+   input -- sound because the gates, not the rewrite, are what guard an engine.
 
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
