@@ -19,8 +19,24 @@ option tree, nothing narrower and nothing wider.
 A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
 command that reaches beyond the program's own artifacts (a systemctl call, a
 curl against a running service) is run inside the booted module. It costs a
-boot, so prefer an observable over the program's own binary where the
-behaviour lives in a binary.
+boot, so where the behaviour lives in a BINARY, prefer an observable over the
+program's own binary: it needs no machine and reads the same everywhere.
+
+BUT WHERE YOUR RULES MAKE SOMETHING RUN, ONE CLAIM MUST BOOT. An option
+assignment says what the configuration CONTAINS, never that the thing it
+configures can start: an expect compares the value you wrote, and a sandbox
+claim runs a definition with no systemd around it. So when your rules wire a
+unit, a timer or a served port -- anything whose whole point is to be running
+on the machine -- state one claim whose command reaches the SYSTEM (systemctl
+is-active <unit>, curl against the port), not only the artifact. Pay the boot.
+The failure this catches is not exotic: a unit can be perfectly typed, pass
+every expect, and still never start, because an option's own semantics defeat
+the wiring (a StandardOutput= file inside a StateDirectory= that systemd
+creates only after it opens that file -- measured, 2026-08-20, and it shipped
+in a committed example for eight days with every gate green). Nothing static
+can see that. Only the boot can.
+Where the world cannot boot, this does not apply: state what you can observe
+in the sandbox and file a gap for the rest.
 
 --- schema ---
 let np = builtins.getFlake "<flakeref>";
