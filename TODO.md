@@ -25,12 +25,21 @@ tracks only what is still open.
    instance.
 
    Not fixable by hand (invariant 4: generated output is never hand-edited), and
-   not teachable to the kernel (an option's meaning is an open list). The open
-   question is whether a blind re-mint converges: nothing tells the mint the unit
-   failed to boot, so it may emit the same pair again. If it does, the candidate
-   remedy is domain-blind and belongs in the preamble: where a program's words
-   describe a RUNNING service, the claim must observe the booted machine, which
-   is what makes generate's own claim gate boot a VM and refuse the engine.
+   not teachable to the kernel (an option's meaning is an open list). MEASURED
+   2026-08-20: a blind re-mint does not converge. claude-opus-5, 17m44s, 80,945
+   output tokens, $3.10, and it emitted the SAME `StandardOutput`/`StateDirectory`
+   pair, since nothing in the call reports that the unit fails to start. The
+   re-mint was reverted (a new engine with the same defect is churn) and its cost
+   is recorded in DESIGN §13.
+
+   So the remedy is the one that closes the loop, domain-blind and in the
+   preamble rather than in any per-program file: where a program's own words
+   describe a RUNNING service, its claim must observe the BOOTED machine, not the
+   sandbox. That is what makes generate's claim gate boot a VM, which would have
+   refused this engine inside the call that wrote it -- exactly how the 2026-08-12
+   attempt with the malformed darkhttpd `--addr` was caught. Cost to weigh before
+   landing it: a machine claim adds minutes and a KVM requirement to any mint of
+   a service-shaped program.
 
 -1. **The growth mint: an author's feedback cycle** (design settled 2026-08-20,
    `docs/superpowers/specs/2026-08-20-mint-feedback-cycle-design.md`; nothing

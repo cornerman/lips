@@ -966,6 +966,26 @@ but the loop around it is incomplete; "missing" means specced, not built.
   Verified: 899/899, `-Wall` clean, and the numbers above are read from the file
   the run wrote.
 
+  SECOND DATAPOINT, and the first on a real artifact-bearing mint:
+  `examples/website.lips` re-minted for `nixos`, claude-opus-5, thinking medium,
+  2026-08-20. Wall 1063.6s (17m44s), of which the mint phase 1061.1s. 13 turns,
+  13 `query_options` calls, 5 `submit_draft` calls. Tokens: 26 fresh input,
+  780,437 cache-read, 109,338 cache-write, and **80,945 output**. Cost $3.10.
+  So the shape `greet` showed holds at scale and gets worse: output grew 3x with
+  the engine, fresh input stayed near zero, and the whole engine was emitted five
+  times because each draft re-states it.
+
+  That mint also measured something the stats file cannot see, and it is the
+  reason the run was made: a blind re-mint does NOT converge on a defect no gate
+  reports. The engine it replaced fails to boot (TODO, `StandardOutput=file:`
+  opened before `StateDirectory` is created), and the fresh mint, told nothing
+  about that failure, emitted the same pair again -- for $3.10. The re-mint was
+  reverted, since a new engine with the same defect is churn. What that argues
+  for is domain-blind and belongs in the preamble, not in a per-program file:
+  where a program's own words describe a RUNNING service, its claim must observe
+  the booted machine, which is what makes generate's claim gate boot a VM and
+  refuse the engine inside the call that wrote it.
+
 - **A house world's Nix is checked by nix, before anything is minted with it.**
   `Lips.World.parseWorld` was strict about STRUCTURE (an unknown header, an
   unknown slot, a newer format all refuse naming the offender) and blind to what
