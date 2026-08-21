@@ -65,6 +65,8 @@ module Lips.Identity
   , languageReadmePathIn
   , languageGapPathIn
   , gapPathIn
+  , timingPathIn
+  , languageTimingPathIn
   , artifactsPathIn
   , worldPathIn
   ) where
@@ -226,6 +228,20 @@ languageReadmePathIn dir = dir </> "README.md"
 -- writing for several worlds refuses as a whole.
 languageGapPathIn :: FilePath -> FilePath -> FilePath
 languageGapPathIn dir = langLevelIn dir "gap"
+
+-- | What a mint COST, beside the record of what it was made of:
+-- @services\/a\/backup\/nixos\/backup.timing@. A separate file because the
+-- record's bytes hash to the id every minted line is stamped with (invariant 6),
+-- so a duration inside it would make two identical mints produce different ids.
+timingPathIn :: FilePath -> Text -> FilePath -> FilePath
+timingPathIn dir world = langLevelIn (worldDirIn dir world) "timing"
+
+-- | The cost of a mint that covered the whole language:
+-- @backup\/backup.timing@. Filed at the scope of the event, exactly as its
+-- record and its refusal are: one call is one cost, however many worlds it
+-- wrote for.
+languageTimingPathIn :: FilePath -> FilePath -> FilePath
+languageTimingPathIn dir = langLevelIn dir "timing"
 
 -- | One world's machine-readable refusal artifact:
 -- @services\/a\/backup\/nixos\/backup.gap@. Written only when @generate@

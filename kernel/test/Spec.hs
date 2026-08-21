@@ -5484,11 +5484,13 @@ main = hspec $ do
       expectPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.expect"
       generationPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.generation"
       gapPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.gap"
+      timingPathIn dir "nixos" prog `shouldBe` "examples/backup/nixos/backup.timing"
       readmePathIn dir "nixos" `shouldBe` "examples/backup/nixos/README.md"
       -- A mint covering the whole language files its record and its account at
       -- the language level, where its outputs are.
       languageRecordPathIn dir prog `shouldBe` "examples/backup/backup.generation"
       languageReadmePathIn dir `shouldBe` "examples/backup/README.md"
+      languageTimingPathIn dir prog `shouldBe` "examples/backup/backup.timing"
       worldPathIn (worldDirIn dir "nixos") "nixos"
         `shouldBe` "examples/backup/nixos/nixos.world"
     it "keeps the grammar's own outputs world-free" $ do
