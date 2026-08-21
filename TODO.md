@@ -21,14 +21,14 @@ tracks only what is still open.
    (3) `compile --watch` with `g` to run the growth mint, leaving invariant 1
    intact (the loop drives, compile itself never calls a model).
 
-0. **Composition plumbing** (design settled, kernel half merged 2026-08-12).
-   The mint cannot yet ask what another language exports, so nothing produces a
-   `Uses` decision and composition is untested end to end. Four tasks, file by
-   file, in `docs/superpowers/plans/2026-08-12-composition-plumbing-plan.md`:
-   a `lips exports` verb, a `query_language` tool mirroring `query_options`,
-   three sentences in `assets/mint/body.md`, then libero's `player`/`training`
-   acceptance test. Everything below the mint is built and tested.
-
+0. **Composition, done end to end** (2026-08-21). `lips exports`,
+   `query_language`, the `uses` kind in the mint prompt, imported names lent to
+   the clause vocabulary, an entry demanded only of a site something starts, and
+   ground expects covering every root lips owns. libero composes for real:
+   `training.lips` names the player language and calls `player-contribution`.
+   Numbers and the four-mint cost in `libero/docs/composition-measurement.md`.
+   Remaining, if wanted: match.lips still defines its own `contribution`, so
+   moving it onto player is a third mint nobody has spent yet.
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
 
