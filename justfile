@@ -252,6 +252,32 @@ test-draft:
     if [ -e "$tmp/answer" ]; then
       echo "FAIL: the check verb staged an answer; only submit_draft may"; exit 1
     fi
+    unset LIPS_MINT_ANSWER
+    # A PATCH is judged as the engine it BECOMES: generate names the language
+    # folder it grows from (LIPS_MINT_BASIS), the committed pattern is merged in,
+    # and a reply carrying ONLY a rule is therefore a complete engine. Without
+    # the merge this draft reads as a language that cannot read its own program.
+    export LIPS_MINT_WORLDS=nixos
+    grown=$(mktemp -d -p "$tmp")
+    export LIPS_MINT_BASIS="$grown/watch"
+    export LIPS_MINT_PROGRAMS="$grown/one.watch.lips"
+    mkdir -p "$grown/watch/nixos"
+    printf 'watch 30 seconds\n' > "$grown/one.watch.lips"
+    printf 'p1 meta lang.pattern.p1 stated "watch <secs> seconds => fact watch.interval \\"<secs>\\"" @gen:aaa\n' \
+      > "$grown/watch/watch.grammar"
+    printf 'r1 meta engine.rule.r1 stated "match fact watch.interval => systemd.services.w.environment.S \\"<value:int>\\"" @gen:aaa\n' \
+      > "$grown/watch/nixos/watch.rules"
+    printf '0.95 r1 match fact watch.interval => systemd.services.w.environment.T "<value:int>"\n' > "$grown/patch.txt"
+    "$lips" check --draft "$grown/one.watch.lips" < "$grown/patch.txt" > "$tmp/out13" 2>&1 \
+      || { echo "FAIL: a patch against a committed engine was refused"; cat "$tmp/out13"; exit 1; }
+    grep -q "1 of 1 lines crystallize" "$tmp/out13" \
+      || { echo "FAIL: the inherited pattern did not reach the draft"; cat "$tmp/out13"; exit 1; }
+    # Without the basis the same patch is not an engine at all, which is what says
+    # the merge is doing the work rather than something else.
+    unset LIPS_MINT_BASIS
+    if "$lips" check --draft "$grown/one.watch.lips" < "$grown/patch.txt" > "$tmp/out14" 2>&1; then
+      echo "FAIL: a bare patch was accepted as a whole engine"; cat "$tmp/out14"; exit 1
+    fi
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

@@ -60,7 +60,7 @@ import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Runtime                 (schemeVocabulary)
 import Lips.World            (World (..))
 import Lips.Kernel.Capture      (nameTokens)
-import Lips.Kernel.Decision     (Assertion (..), Decision (..), DecisionId (..), Provenance (..), SourceLoc (..))
+import Lips.Kernel.Decision     (Assertion (..), Decision (..), DecisionId (..), Provenance (..), SourceLoc (..), Subject (..))
 import Lips.Kernel.Reader       (readDecision)
 import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
 import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody)
@@ -349,11 +349,22 @@ mergeGrammar old new = old <> T.unlines
 -- existed; patterns are shared, so their lines are never tagged.
 replyLinesOf :: Maybe Text -> Text -> Text
 replyLinesOf tag src = T.unlines
-  [ T.unwords ([ "1.0", i ] ++ maybe [] (\w -> ["@" <> w]) tag ++ [ a ])
+  [ T.unwords ([ "1.0", i ] ++ maybe [] (\w -> ["@" <> w]) tag ++ keyword s ++ [ a ])
   | l <- T.lines src
   , Right d <- [readDecision (T.strip l)]
   , let DecisionId i = dId d
-  , let Assertion a = dAssertion d ]
+  , let Assertion a = dAssertion d
+  , let Subject s = dSubject d ]
+  where
+    -- One asymmetry of the stored form has to be undone here: a PATTERN's stored
+    -- assertion is its template body, because the reading side consumed the
+    -- leading @pattern@ keyword, while a rule, a demand and an ignore each keep
+    -- theirs (@match@, @demand@, @ignore@). Restored from the subject, which is
+    -- what the store keys the kind by; without it the inherited pattern comes
+    -- back as a line no reply parser accepts, and every program stops
+    -- crystallizing.
+    keyword ("lang" : "pattern" : _) = ["pattern"]
+    keyword _                        = []
 
 -- | The engine a PATCH means: every inherited line, with the ones the patch
 -- restates dropped, then the patch itself. An id the patch does not mention is

@@ -5390,7 +5390,9 @@ main = hspec $ do
     it "renders a committed engine back into reply lines the mint can read" $ do
       let ls = T.lines (replyLinesOf Nothing committed)
       length ls `shouldBe` 2
-      take 1 ls `shouldBe` pure "1.0 p1 install <name> => fact cmd.<name> \"<name>\""
+      -- The 'pattern' keyword is restored: the store dropped it when it read the
+      -- line, and a reply line without it parses as nothing.
+      take 1 ls `shouldBe` pure "1.0 p1 pattern install <name> => fact cmd.<name> \"<name>\""
     it "tags every line when the run writes for several worlds" $
       replyLinesOf (Just "nixos") committed
         `shouldSatisfy` T.isInfixOf "1.0 r1 @nixos match fact"
@@ -5401,8 +5403,16 @@ main = hspec $ do
           merged = T.lines (mergeReply (replyLinesOf Nothing committed) patch)
       length merged `shouldBe` 3
       merged `shouldSatisfy` any (T.isInfixOf "home.packages")
-      merged `shouldSatisfy` any (T.isInfixOf "1.0 p1 install")
+      merged `shouldSatisfy` any (T.isInfixOf "1.0 p1 pattern install")
       merged `shouldSatisfy` all (not . T.isInfixOf "environment.systemPackages")
+    -- The merge feeds the ordinary reply parser, so the real contract is that
+    -- every inherited line comes back as a line that parser accepts.
+    it "the merged reply parses as an engine, inherited lines included" $ do
+      let patch = T.unlines [ "0.9 q1 demand cmd.<name> \"which command?\"" ]
+          (errs, cands) = parseEngineCandidates ["nixos"]
+                            (mergeReply (replyLinesOf Nothing committed) patch)
+      errs `shouldBe` []
+      length cands `shouldBe` 3
     it "reads the ids a patch touched, so writing can keep the other bytes" $
       touchedIds (T.unlines [ "0.9 r1 match fact a => b \"c\"", "0.9 d1 report x" ])
         `shouldBe` ["r1", "d1"]

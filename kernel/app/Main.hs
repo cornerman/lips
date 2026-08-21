@@ -73,7 +73,7 @@ import           Lips.Report            (Failure (..), demandGenerateFail, empty
 import           Options.Applicative    (customExecParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, itemsFor, sharedFileViolations, carriesEngineMeaning, mergeGrammar, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, itemsFor, sharedFileViolations, carriesEngineMeaning, mergeGrammar, mergeReply, mergeTouched, replyLinesOf, touchedIds, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Stats    (MintStats (..), renderStats, verdictOf)
@@ -625,7 +625,7 @@ checkWorld contract claims dir w file program = do
 -- before.
 checkDraft :: FilePath -> IO ()
 checkDraft file = do
-  reply <- TIO.getContents
+  patch <- TIO.getContents
   -- Which contract governs is generate's rule, not this function's: it exports
   -- the answer per world (the committed .expect on a regeneration, absent under
   -- --renew or on a first mint) so the two cannot drift apart.
@@ -635,6 +635,20 @@ checkDraft file = do
   -- throwaway tree has the shape check reads. Named by generate, never guessed:
   -- a draft judged in the wrong world's namespace is a false verdict.
   ws <- draftWorlds
+  -- A PATCH is judged as the engine it BECOMES. Judging it alone would refuse
+  -- every growth mint, since a reply that keeps a committed pattern does not
+  -- carry it. generate names the basis directory (LIPS_MINT_BASIS); nothing is
+  -- guessed, and an absent one means the reply is the whole engine.
+  basisDir <- lookupEnv "LIPS_MINT_BASIS"
+  reply <- case basisDir of
+    Just d | not (null d) -> do
+      g  <- tryRead (grammarPathIn d file)
+      rs <- forM (map wName ws) $ \w -> fmap ((,) w) <$> tryRead (rulesPathIn d w file)
+      let tagOf w = if length ws > 1 then Just w else Nothing
+          parts = maybe [] (\t -> [replyLinesOf Nothing t]) g
+                    ++ [ replyLinesOf (tagOf w) t | Just (w, t) <- rs ]
+      pure (if null parts then patch else mergeReply (T.concat parts) patch)
+    _ -> pure patch
   withTempDir $ \root -> case materializeDraft root (map wName ws) file reply governing of
     Left errs -> die (validationReport file ("the draft cannot be read as an engine:\n"
                         <> T.unlines [ "  - " <> e | e <- errs ]))
@@ -913,10 +927,22 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
               (w : _) -> governingRecord dir w rep
               []      -> pure Nothing
       pure (maybe "fresh" (\r -> "inherited " <> genId r) mr)
+    -- The engine this mint GROWS FROM, rendered back into the reply format: the
+    -- shared grammar (never tagged -- patterns belong to the language) plus each
+    -- world's rules, tagged only when the run writes for several worlds. Absent
+    -- under --fresh and on a first mint, and then every step below is exactly the
+    -- whole-engine path it always was.
+    basisEngine <- if fresh then pure Nothing else do
+      g  <- tryRead (grammarPathIn dir rep)
+      rs <- forM wnames $ \w -> fmap ((,) w) <$> tryRead (rulesPathIn dir w rep)
+      let tagOf w = if length wnames > 1 then Just w else Nothing
+          parts = maybe [] (\t -> [replyLinesOf Nothing t]) g
+                    ++ [ replyLinesOf (tagOf w) t | Just (w, t) <- rs ]
+      pure (if null parts then Nothing else Just (T.concat parts))
     progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
     -- Owner taste is language-level (shared); read once from the language path.
     direction <- tryRead (directionPath rep)
-    let prompt = promptWithDirection direction inherited Nothing worlds
+    let prompt = promptWithDirection direction inherited basisEngine worlds
         -- The mint sees the whole example set at once, so the grammar generalizes
         -- across them (anti-unification): tokens that vary between examples become
         -- holes, tokens that agree stay literal. One program is the corpus-of-one
@@ -957,12 +983,22 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
               <> " for " <> T.intercalate ", " wnames) $
         callPi verbose mmodel thinking prompt corpus worlds files committedExpects
                [ (wName w, p) | (w, p, _) <- grounds ]
+               (maybe "" (const dir) basisEngine)
     -- From here on a refusal has a model call behind it, so the numbers the mint
     -- reported belong in the stats file however this run ends.
     writeIORef costCell (Just piReply)
-    let reply      = prReply piReply
+    let patchReply = prReply piReply
+        -- A patch is not an engine: merged with what it grows from BEFORE
+        -- anything reads it, so every gate, every render and every write below
+        -- sees a complete engine and needs no notion of a patch at all.
+        reply      = maybe patchReply (`mergeReply` patchReply) basisEngine
+        -- Which ids this run actually authored, so writing keeps the committed
+        -- bytes -- and stamps -- of every line it did not.
+        touched    = fmap (const (touchedIds patchReply)) basisEngine
         model      = prModel piReply
         transcript = prTranscript piReply
+    forM_ touched $ \ids -> note ("patching " <> plural (length ids) "line"
+                                    <> ": " <> T.unwords ids)
     note ("minted by " <> model <> ", thinking " <> T.pack thinking)
     -- --verbose: echo the model's raw reply verbatim before parsing, so the
     -- whole minted engine is inspectable even when it validates cleanly (a
@@ -1117,7 +1153,7 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
                 TIO.writeFile (languageRecordPathIn dir rep) rec
                 TIO.writeFile (languageReadmePathIn dir) (renderReadme (T.pack lang) reportBody gaps)
             forM_ held $ \(w, wr) ->
-              writeWorld dir rep lang rec reportBody gaps (length wnames == 1) w wr
+              writeWorld dir rep lang rec reportBody gaps touched (length wnames == 1) w wr
             forM_ [ (f, rl) | (_, wr) <- held, (f, rl) <- wrValidated wr ] $ \(f, rl) -> do
               ensureDerived f
               TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
@@ -1314,13 +1350,22 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
 -- | Write one world's own files. The record and the account are written here
 -- only when the event covered this world ALONE; a call covering several files
 -- both at the language level, where its outputs are.
-writeWorld :: FilePath -> FilePath -> String -> Text -> Text -> [Gap] -> Bool
+writeWorld :: FilePath -> FilePath -> String -> Text -> Text -> [Gap] -> Maybe [Text] -> Bool
            -> World -> WorldResult -> IO ()
-writeWorld dir rep lang rec reportBody gaps single world wr = do
+writeWorld dir rep lang rec reportBody gaps touched single world wr = do
   let w = wName world
       (_, rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) (wrEngine wr))
   createDirectoryIfMissing True (worldDirIn dir w)
-  TIO.writeFile (rulesPathIn dir w rep) rulesText
+  -- After a PATCH, a rule this run did not author keeps its committed bytes, and
+  -- therefore its own @gen: stamp: that line was minted by the run whose record
+  -- still hashes to it (invariant 6), and re-stamping it would claim this event
+  -- produced a line its reply never carried. 'Nothing' is a whole-engine mint,
+  -- which authored every line it writes.
+  committedRules <- tryRead (rulesPathIn dir w rep)
+  let rulesOut = case (touched, committedRules) of
+        (Just ids, Just old) -> mergeTouched ids old rulesText
+        _                    -> rulesText
+  TIO.writeFile (rulesPathIn dir w rep) rulesOut
   -- The world travels WITH the engine: the record pins this copy by hash, and
   -- compile reads the copy, never the search path.
   TIO.writeFile (worldPathIn (worldDirIn dir w) w) (wRaw world)
@@ -1431,8 +1476,8 @@ nixParses nixModule = do
 -- engine. Handing back a tuple of the three fields it happened to need meant
 -- the numbers pi already reported were parsed and dropped.
 callPi :: Bool -> Maybe String -> String -> Text -> Text -> [World] -> [FilePath]
-       -> [(Text, FilePath)] -> [(Text, FilePath)] -> IO PiReply
-callPi verbose mmodel thinking system userPrompt worlds files expects schemas =
+       -> [(Text, FilePath)] -> [(Text, FilePath)] -> FilePath -> IO PiReply
+callPi verbose mmodel thinking system userPrompt worlds files expects schemas basisDir =
   -- The answer travels in a file, not in the model's words, so generate owns a
   -- scratch directory for the whole call and the tool writes into it. The
   -- directory is created and the file is NOT: its absence is the signal that no
@@ -1473,6 +1518,12 @@ callPi verbose mmodel thinking system userPrompt worlds files expects schemas =
              -- Where a checked draft becomes the answer. The tool stages here;
              -- nothing else lips runs writes this path.
              , ("LIPS_MINT_ANSWER",   answerPath)
+             -- The language folder whose committed engine a PATCH is merged with
+             -- before it is judged. Empty under --fresh and on a first mint, and
+             -- then the draft tool judges the reply alone, as it always did. The
+             -- directory, not the text: the tool reads the same files through
+             -- Lips.Identity, so the two cannot drift.
+             , ("LIPS_MINT_BASIS",    basisDir)
              ]
       childEnv = ours ++ filter ((`notElem` map fst ours) . fst) parentEnv
       -- Hermetic by explicit subtraction: -nbt drops pi's built-in tools (read,
