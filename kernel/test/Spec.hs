@@ -62,6 +62,7 @@ import Data.List (nubBy, sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), itemsFor, systemPromptFor, promptWithDirection)
+import Lips.Generate.Stats (MintStats (..), renderStats, verdictOf)
 import Lips.Generate.PiJson (PiReply (..), Usage (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), Phase (..), phaseLog, runningText, verdictText, elapsedText, report, reportHead)
 -- Qualified: the suite has its own local @step@ bindings, and shadowing one of
@@ -5357,6 +5358,42 @@ main = hspec $ do
       report "broke" [] "→ fix it" `shouldBe` "broke\n\n→ fix it"
     it "a headline-only diagnosis leaves the action to its caller" $
       reportHead "broke" [] `shouldBe` "broke"
+
+  describe "mint stats (Lips.Generate.Stats)" $ do
+    it "renders one key-per-line record a human and a grep can both read" $
+      renderStats MintStats
+        { mtVerdict  = "accepted"
+        , mtModel    = "anthropic/claude-opus-5"
+        , mtThinking = "medium"
+        , mtWall     = 257.25
+        , mtPhases   = [Phase "schema" 12.5 True, Phase "mint nixos" 231.0 True]
+        , mtTurns    = 7
+        , mtTools    = [("check_draft", 3), ("query_options", 4)]
+        , mtUsage    = Just (Usage 41233 5120 0 12 0.83)
+        } `shouldBe` T.unlines
+          [ "format: 1"
+          , "verdict: accepted"
+          , "model: anthropic/claude-opus-5"
+          , "thinking: medium"
+          , "wall: 257.2"
+          , "phase schema: 12.5"
+          , "phase mint nixos: 231.0"
+          , "turns: 7"
+          , "tool check_draft: 3"
+          , "tool query_options: 4"
+          , "tokens input: 41233"
+          , "tokens output: 5120"
+          , "tokens cache-read: 0"
+          , "tokens cache-write: 12"
+          , "cost-usd: 0.83"
+          ]
+    it "says in words when pi reported no usage, instead of writing zeros" $
+      renderStats (MintStats "accepted" "m" "medium" 1.0 [] 1 [] Nothing)
+        `shouldSatisfy` T.isInfixOf "tokens: not reported\n"
+    it "names the phase a refused mint died in" $ do
+      verdictOf [Phase "schema" 1 True, Phase "mint nixos" 2 False]
+        `shouldBe` "refused at mint nixos"
+      verdictOf [Phase "schema" 1 True] `shouldBe` "accepted"
 
   describe "the phase log (Lips.Cli.Output.phaseLog)" $
     it "records every finished phase in order, with its verdict" $ do
