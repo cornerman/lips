@@ -8,6 +8,7 @@
 -- conformance suite named as the source of truth in spec section 12.
 module Main (main) where
 
+import           Control.Exception (SomeException, catch, throwIO)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -62,7 +63,10 @@ import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), itemsFor, systemPromptFor, promptWithDirection)
 import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
-import Lips.Cli.Output (Style (..), Verdict (..), runningText, verdictText, elapsedText, report, reportHead)
+import Lips.Cli.Output (Style (..), Verdict (..), Phase (..), phaseLog, runningText, verdictText, elapsedText, report, reportHead)
+-- Qualified: the suite has its own local @step@ bindings, and shadowing one of
+-- them would cost the -Wall cleanliness the suite keeps.
+import qualified Lips.Cli.Output as Out
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
 import Lips.Generate.Record (StampFault (..), corpusText, genId, record, recordedProgram,
@@ -5332,6 +5336,16 @@ main = hspec $ do
       report "broke" [] "→ fix it" `shouldBe` "broke\n\n→ fix it"
     it "a headline-only diagnosis leaves the action to its caller" $
       reportHead "broke" [] `shouldBe` "broke"
+
+  describe "the phase log (Lips.Cli.Output.phaseLog)" $
+    it "records every finished phase in order, with its verdict" $ do
+      _ <- Out.step "first" (pure (1 :: Int))
+      _ <- (Out.step "second" (throwIO (userError "boom")) :: IO Int)
+             `catch` \e -> const (pure 0) (e :: SomeException)
+      ps <- phaseLog
+      map phLabel ps `shouldBe` ["first", "second"]
+      map phOk ps `shouldBe` [True, False]
+      all ((>= 0) . phSecs) ps `shouldBe` True
 
   describe "solution identity (plan 2026-07-22: <instance>.<language>.lips)" $ do
     let prog = "examples/ledger.backup.lips"

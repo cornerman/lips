@@ -21,6 +21,8 @@ module Lips.Cli.Output
     step
   , setState
   , note
+  , Phase (..)
+  , phaseLog
     -- * Plain output
   , say
   , sayAnswer
@@ -78,6 +80,30 @@ data Live = Live
 liveRef :: MVar (Maybe Live)
 liveRef = unsafePerformIO (newMVar Nothing)
 {-# NOINLINE liveRef #-}
+
+-- | One finished phase: what it was called, how long it took, whether it held.
+-- What a mint COST is read from this log ('Lips.Generate.Stats'); the live line
+-- consumed the same durations and dropped them, so nothing in lips knew where a
+-- six-minute mint spent its minutes.
+data Phase = Phase
+  { phLabel :: Text
+  , phSecs  :: Double
+  , phOk    :: Bool
+  } deriving (Eq, Show)
+
+-- | Every phase that has finished, oldest first. Module-level state for the
+-- same reason 'liveRef' is: a process runs one verb, so its phase history is a
+-- singleton of the world lips prints to, and threading an accumulator through
+-- every gate in @Main.hs@ would model it as if there could be several.
+--
+-- Kept newest-first internally (a cons is the cheap end) and reversed by the
+-- reader, so a caller always sees the order things happened in.
+phasesRef :: MVar [Phase]
+phasesRef = unsafePerformIO (newMVar [])
+{-# NOINLINE phasesRef #-}
+
+phaseLog :: IO [Phase]
+phaseLog = reverse <$> readMVar phasesRef
 
 -- | Cached once: the tty test is a syscall and the answer cannot change within
 -- a run.
@@ -167,6 +193,10 @@ finish st ok = do
       modifyMVar_ liveRef (const (pure Nothing))
       now <- getPOSIXTime
       let secs = realToFrac (now - lvStart l)
+      -- Recorded here rather than in 'step', because this is the single place a
+      -- phase ends: 'step' on either outcome, and 'die' when it closes the line
+      -- before its report. So the log cannot miss a phase the terminal showed.
+      modifyMVar_ phasesRef (pure . (Phase (lvLabel l) secs ok :))
       emit (verdictText st (lvLabel l) (if ok then Held secs else Failed secs))
 
 -- | Report what the running phase is doing right now (the mint's state: waiting
