@@ -17,6 +17,7 @@ module Lips.Generate.PiJson
   ( PiReply (..)
   , parsePiReply
     -- * Live progress
+  , Usage (..)
   , PiEvent (..)
   , progressEvent
   , abbreviate
@@ -27,6 +28,7 @@ import           Data.Aeson            (Value (..), decode, encode)
 import qualified Data.Aeson.KeyMap     as KM
 import qualified Data.ByteString.Lazy  as BL
 import           Data.Foldable         (asum, toList)
+import qualified Data.Map.Strict       as M
 import           Data.Maybe            (mapMaybe)
 import           Data.Text             (Text)
 import qualified Data.Text             as T
@@ -39,6 +41,26 @@ data PiReply = PiReply
   { prReply      :: Text
   , prModel      :: Text
   , prTranscript :: Text
+  , prTurns      :: Int
+  , prTools      :: [(Text, Int)]
+  , prUsage      :: Maybe Usage
+  }
+  deriving (Eq, Show)
+
+-- | What a mint cost, as pi's own accounting reports it. Read rather than
+-- estimated: a token count lips computed itself would be a second opinion about
+-- somebody else's billing.
+-- Measured against a live @--mode json@ run (2026-08-20): an assistant message
+-- of @agent_end@ carries @usage {input, output, cacheRead, cacheWrite,
+-- totalTokens, cost {..., total}}@. The dollar figure is pi's own, so it is read
+-- like the rest; lips never multiplies tokens by a price it would have to keep
+-- true.
+data Usage = Usage
+  { usInput      :: Integer
+  , usOutput     :: Integer
+  , usCacheRead  :: Integer
+  , usCacheWrite :: Integer
+  , usCost       :: Double
   }
   deriving (Eq, Show)
 
@@ -136,10 +158,81 @@ parsePiReply out =
     { prReply      = maybe "" id (asum (map replyFrom events))
     , prModel      = maybe "" id (asum (map findModel events))
     , prTranscript = maybe "" id (asum (map transcriptFrom events))
+    , prTurns      = maybe 0 id (asum (map turnsFrom events))
+    , prTools      = maybe [] id (asum (map toolsFrom events))
+    , prUsage      = maybe Nothing id (asum (map usageFrom events))
     }
   where
     events = mapMaybe decodeLine (T.lines out)
     decodeLine l = decode (BL.fromStrict (TE.encodeUtf8 l)) :: Maybe Value
+
+-- | Assistant messages of the terminal event: one per model turn. Turn COUNT is
+-- the larger factor in what a mint costs (DESIGN \167\&13), so it is the first
+-- number the stats file wants. Counted from @agent_end@ rather than from the
+-- @turn_start@ events, so every figure recorded about a mint is read off the one
+-- message list that is authoritative and complete.
+turnsFrom :: Value -> Maybe Int
+turnsFrom (Object o)
+  | KM.lookup "type" o == Just (String "agent_end")
+  , Just (Array msgs) <- KM.lookup "messages" o =
+      Just (length [ () | Object m <- toList msgs
+                        , KM.lookup "role" m == Just (String "assistant") ])
+turnsFrom _ = Nothing
+
+-- | How often the mint called each tool, by name, sorted so two runs compare
+-- line by line. The @check_draft@ count is the interesting one: it says whether
+-- a mint's turns went into drafting or into thinking.
+toolsFrom :: Value -> Maybe [(Text, Int)]
+toolsFrom (Object o)
+  | KM.lookup "type" o == Just (String "agent_end")
+  , Just (Array msgs) <- KM.lookup "messages" o =
+      Just (M.toAscList (M.fromListWith (+) [ (n, 1 :: Int) | n <- names msgs ]))
+  where
+    names msgs =
+      [ n
+      | Object m <- toList msgs
+      , KM.lookup "role" m == Just (String "assistant")
+      , Just (Array content) <- [KM.lookup "content" m]
+      , Object c <- toList content
+      , KM.lookup "type" c == Just (String "toolCall")
+      , Just (String n) <- [KM.lookup "name" c] ]
+toolsFrom _ = Nothing
+
+-- | The run's token usage: the per-message figures summed. 'Nothing' when no
+-- message carries any, which is stated rather than guessed -- a zero would read
+-- as a mint that cost nothing.
+usageFrom :: Value -> Maybe (Maybe Usage)
+usageFrom (Object o)
+  | KM.lookup "type" o == Just (String "agent_end")
+  , Just (Array msgs) <- KM.lookup "messages" o =
+      Just (case [ u | Object m <- toList msgs
+                     , Just u <- [usageOf (KM.lookup "usage" m)] ] of
+              [] -> Nothing
+              us -> Just (foldr1 plus us))
+  where
+    plus a b = Usage (usInput a + usInput b) (usOutput a + usOutput b)
+                     (usCacheRead a + usCacheRead b) (usCacheWrite a + usCacheWrite b)
+                     (usCost a + usCost b)
+usageFrom _ = Nothing
+
+-- | One message's usage object. Every field is optional and defaults to zero:
+-- the shape is pi's, not lips', so a field that moves must not lose the fields
+-- that are still there.
+usageOf :: Maybe Value -> Maybe Usage
+usageOf (Just (Object u)) =
+  Just (Usage (num "input") (num "output") (num "cacheRead") (num "cacheWrite") cost)
+  where
+    num k = case KM.lookup k u of
+      Just (Number n) -> truncate n
+      _               -> 0
+    -- What this message billed, from pi's nested @cost.total@; absent bills as
+    -- zero, which sums correctly with the messages that do carry it.
+    cost = case KM.lookup "cost" u of
+      Just (Object c) -> case KM.lookup "total" c of
+        Just (Number n) -> realToFrac n
+        _               -> 0
+      _ -> 0
+usageOf _ = Nothing
 
 -- | The minted engine is the text of the LAST assistant message of @agent_end@.
 -- Not every assistant message: the mint has a tool, so it may act several times

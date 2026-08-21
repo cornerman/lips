@@ -62,7 +62,7 @@ import Data.List (nubBy, sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
 import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), itemsFor, systemPromptFor, promptWithDirection)
-import Lips.Generate.PiJson (PiReply (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
+import Lips.Generate.PiJson (PiReply (..), Usage (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), Phase (..), phaseLog, runningText, verdictText, elapsedText, report, reportHead)
 -- Qualified: the suite has its own local @step@ bindings, and shadowing one of
 -- them would cost the -Wall cleanliness the suite keeps.
@@ -5255,7 +5255,28 @@ main = hspec $ do
     it "recovers the model pi actually used" $
       prModel (parsePiReply stream) `shouldBe` "anthropic/claude-opus-4-8"
     it "empty stream yields empty fields (caller fails loud)" $
-      parsePiReply "" `shouldBe` PiReply "" "" ""
+      parsePiReply "" `shouldBe` PiReply "" "" "" 0 [] Nothing
+
+  -- What a mint COST: read from the same authoritative agent_end event the reply
+  -- comes from, never estimated, since a duration or a token count lips computed
+  -- itself would be a second opinion about somebody else's accounting.
+  describe "pi json stream parsing (what the mint cost)" $ do
+    let stream = T.concat
+          [ "{\"type\":\"agent_end\",\"messages\":["
+          , "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"go\"}]},"
+          , "{\"role\":\"assistant\",\"content\":[{\"type\":\"toolCall\",\"name\":\"query_options\",\"arguments\":{\"query\":\"a\"}}],\"usage\":{\"input\":10,\"output\":2,\"cacheRead\":1,\"cacheWrite\":0,\"cost\":{\"total\":0.25}}},"
+          , "{\"role\":\"assistant\",\"content\":[{\"type\":\"toolCall\",\"name\":\"query_options\",\"arguments\":{\"query\":\"b\"}},{\"type\":\"toolCall\",\"name\":\"check_draft\",\"arguments\":{}}],\"usage\":{\"input\":20,\"output\":3,\"cacheRead\":0,\"cacheWrite\":5,\"cost\":{\"total\":0.5}}},"
+          , "{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"0.9 p1 pattern x => fact a x\"}]}"
+          , "]}" ]
+    it "counts assistant turns and tool calls, and totals usage" $ do
+      let r = parsePiReply stream
+      prTurns r `shouldBe` 3
+      prTools r `shouldBe` [("check_draft", 1), ("query_options", 2)]
+      prUsage r `shouldBe` Just (Usage 30 5 1 5 0.75)
+    it "reports no usage when the stream carries none" $
+      prUsage (parsePiReply
+        "{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}]}")
+        `shouldBe` Nothing
 
   -- What the mint LOOKED UP is an input to the mint, so invariant 6 requires it
   -- in the record. The fixture is the shape pi really emits, captured from a
