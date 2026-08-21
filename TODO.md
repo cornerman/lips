@@ -6,6 +6,32 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
+-2. **`examples/website`'s unit cannot start, and the check that would have said
+   so was dead** (found 2026-08-20). The committed engine emits
+   `serviceConfig.StandardOutput = "file:/var/lib/website/index.html"` together
+   with `StateDirectory = "website"`, and systemd sets stdout up BEFORE it
+   creates the state directory, so the unit fails `209/STDOUT` on a fresh
+   machine. Reproduced outside lips, in a NixOS test carrying nothing but that
+   pair plus `ExecStart = echo hello`:
+   `probe.service: Failed to set up standard output: No such file or directory`.
+
+   Why nothing caught it: `checks.artifact-vm` copied `examples/website/artifacts`,
+   a path that stopped existing when the 2026-08-12 re-mint shed the Go tree, so
+   `nix flake check` failed at EVALUATION and the boot never ran (fixed
+   2026-08-20 -- the check no longer copies a source tree, since no committed
+   program carries one). `check-expect` stays green because it compares option
+   values, and the engine's own claim runs the clause in the sandbox rather than
+   in the booted unit -- which is item 1b's narrowing, now with a corpus
+   instance.
+
+   Not fixable by hand (invariant 4: generated output is never hand-edited), and
+   not teachable to the kernel (an option's meaning is an open list). The open
+   question is whether a blind re-mint converges: nothing tells the mint the unit
+   failed to boot, so it may emit the same pair again. If it does, the candidate
+   remedy is domain-blind and belongs in the preamble: where a program's words
+   describe a RUNNING service, the claim must observe the booted machine, which
+   is what makes generate's own claim gate boot a VM and refuse the engine.
+
 -1. **The growth mint: an author's feedback cycle** (design settled 2026-08-20,
    `docs/superpowers/specs/2026-08-20-mint-feedback-cycle-design.md`; nothing
    built). Adding one sentence shape to a working language costs a full re-mint
