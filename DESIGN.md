@@ -925,6 +925,56 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **Where the rules make something RUN, one claim must boot -- and it caught the
+  broken example on the first try.** `examples/website` shipped a unit that could
+  not start for eight days with every gate green: `StandardOutput=file:` into a
+  `StateDirectory=` that systemd creates only after it opens that file
+  (reproduced outside lips in a NixOS test carrying nothing but that pair). No
+  static gate can see it -- an expect compares the value the rule wrote, and a
+  clause claim runs a definition with no systemd around it -- and the kernel may
+  not learn what an option MEANS (an open list the doctrine forbids).
+
+  The steering that produced it was in world DATA, so that is where the fix went:
+  `assets/worlds/nixos.world`'s preamble said "prefer an observable over the
+  program's own binary" (true for a binary, and it left the unit wiring
+  unobserved). It now adds the exception -- when the rules wire a unit, a timer or
+  a served port, one claim's command must reach the SYSTEM (`systemctl is-active`,
+  a curl against the port), and the boot is worth paying for. No kernel change:
+  `PlaceMachine` claims, the VM gate and the KVM refusal all existed already;
+  what was missing was a mint being told when to use them.
+
+  MEASURED, three opus-5 mints of `examples/website.lips`, 2026-08-20:
+
+  1. **Blind re-mint, old steering** (before this change): emitted the same
+     failing `StandardOutput`/`StateDirectory` pair, accepted, 17m44s, 80,945
+     output tokens, $3.10. A defect no gate reports does not fix itself.
+  2. **New steering, `--fresh`**: emitted a machine claim, the gate booted a VM,
+     the claim FAILED (`claim serving: exit was 7` -- darkhttpd rejecting its own
+     `--addr`, the same wiring that failed on 2026-08-12), and generate REFUSED to
+     write anything. 17m14s, 81,022 output, $3.23, recorded as
+     `verdict: refused at claims: 2 claims`. The hole is closed: a wiring that
+     cannot start can no longer be committed.
+  3. **New steering plus a `website.direction`** naming the mechanism taste that
+     was missing (serve with `services.nginx`, and let a unit's command write its
+     own file rather than routing stdout into a path): ACCEPTED, booted, 24m40s,
+     110,257 output, $4.20. `nix flake check` is green for the first time since
+     2026-08-12, `artifact-vm` included -- the check that would have caught this
+     all along, which was itself dead (it copied an artifacts tree the 2026-08-12
+     re-mint had shed).
+
+  What run 2 also settles: the round loop is still the missing piece. A refused
+  mint costs a full round ($3.23 here, now recorded rather than guessed), and
+  nothing carries the boot failure back into the next call -- the human does, as a
+  direction file, which is exactly what run 3 shows working.
+
+  One honest wart in the accepted engine, filed by the mint itself rather than
+  hidden (`inherited-contract-pins-darkhttpd`): the committed `.expect` still pins
+  `services.darkhttpd.port` from the mechanism that is gone, so the nginx engine
+  assigns that option too (darkhttpd stays disabled) to keep the inherited
+  contract true. The mint named the remedy in its own report -- re-mint with
+  `--compat none`, the human decision the compat door exists for -- rather than
+  dropping a contract line on its own authority.
+
 - **`compile --watch`: the edit loop, and one key to grow the language.** Compile
   is deterministic, offline and takes milliseconds, so re-running it on every save
   costs nothing -- yet an author had to type it, which is what makes a loop feel

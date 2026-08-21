@@ -1,7 +1,7 @@
-p1 meta lang.pattern.p1 stated "website running on port <port> => fact site.port \"<port>\"" @gen:6e49c98d7d3efa26
-p2 meta lang.pattern.p2 stated "canvas <name> => fact canvas.<n:index> \"<name>\"" @gen:6e49c98d7d3efa26
-p3 meta lang.pattern.p3.under.p2 stated "content: shows a nice random svg painting => fact <k:key>.content \"random svg painting\"" @gen:6e49c98d7d3efa26
-p4 meta lang.pattern.p4 stated "button <label> => fact button.<n:index> \"<label>\"" @gen:6e49c98d7d3efa26
-p5 meta lang.pattern.p5.under.p4 stated "on click: new random painting in canvas <target> => fact <k:key>.action \"paint <target>\"" @gen:6e49c98d7d3efa26
-p6 meta lang.pattern.p6.under.p4 stated "on click: erase everything in canvas <target> => fact <k:key>.action \"erase <target>\"" @gen:6e49c98d7d3efa26
-p7 meta lang.pattern.p7.under.p4 stated "on click: download the picture from canvas <target> => fact <k:key>.action \"save <target>\"" @gen:6e49c98d7d3efa26
+p1 meta lang.pattern.p1 stated "website running on port <port> => fact site.port \"<port>\"" @gen:56a2b4a35ccdc4b4
+p2 meta lang.pattern.p2 stated "canvas <name> => fact canvas.name \"<name>\"" @gen:56a2b4a35ccdc4b4
+p3 meta lang.pattern.p3.under.p2 stated "content: <what.words> => fact canvas.content \"<what>\"" @gen:56a2b4a35ccdc4b4
+p4 meta lang.pattern.p4 stated "button <label> => concept button.<n:index> \"<label>\"" @gen:56a2b4a35ccdc4b4
+p5 meta lang.pattern.p5.under.p4 stated "on click: new random painting in canvas <canvas> => fact button.repaint \"<label> <canvas>\"" @gen:56a2b4a35ccdc4b4
+p6 meta lang.pattern.p6.under.p4 stated "on click: erase everything in canvas <canvas> => fact button.erase \"<label> <canvas>\"" @gen:56a2b4a35ccdc4b4
+p7 meta lang.pattern.p7.under.p4 stated "on click: download the picture from canvas <canvas> => fact button.download \"<label> <canvas>\"" @gen:56a2b4a35ccdc4b4

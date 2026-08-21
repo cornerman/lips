@@ -6,8 +6,25 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
--2. **`examples/website`'s unit cannot start, and the check that would have said
-   so was dead** (found 2026-08-20). The committed engine emits
+-2. **What is left of the website defect: one vestigial option, and no round
+   loop** (the defect itself is CLOSED, 2026-08-20 -- DESIGN §13, "Where the
+   rules make something RUN, one claim must boot"; `nix flake check` is green for
+   the first time since 2026-08-12).
+
+   a. The accepted engine still assigns `services.darkhttpd.port` (with darkhttpd
+      disabled) because the committed `.expect` pins it from the mechanism that
+      is gone. The mint filed it (`inherited-contract-pins-darkhttpd`) and named
+      the remedy instead of dropping a contract line itself: re-mint with
+      `--compat none`, which rewrites the contract from the accepted engine. One
+      opus mint (~$4, ~20 min); cosmetic, so it waits for a reason to spend that.
+   b. A refused mint still costs a whole round with nothing learned: run 2 below
+      paid $3.23 to discover a boot failure, and only a human could carry that
+      finding into the next call (as the direction file that made run 3 work).
+      That is the deferred "mint round loop" in the backlog, now with a price on
+      it.
+
+   Superseded description of the defect itself, kept because the reproduction is
+   worth having: the engine emitted
    `serviceConfig.StandardOutput = "file:/var/lib/website/index.html"` together
    with `StateDirectory = "website"`, and systemd sets stdout up BEFORE it
    creates the state directory, so the unit fails `209/STDOUT` on a fresh
@@ -24,22 +41,13 @@ tracks only what is still open.
    in the booted unit -- which is item 1b's narrowing, now with a corpus
    instance.
 
-   Not fixable by hand (invariant 4: generated output is never hand-edited), and
-   not teachable to the kernel (an option's meaning is an open list). MEASURED
-   2026-08-20: a blind re-mint does not converge. claude-opus-5, 17m44s, 80,945
-   output tokens, $3.10, and it emitted the SAME `StandardOutput`/`StateDirectory`
-   pair, since nothing in the call reports that the unit fails to start. The
-   re-mint was reverted (a new engine with the same defect is churn) and its cost
-   is recorded in DESIGN §13.
-
-   So the remedy is the one that closes the loop, domain-blind and in the
-   preamble rather than in any per-program file: where a program's own words
-   describe a RUNNING service, its claim must observe the BOOTED machine, not the
-   sandbox. That is what makes generate's claim gate boot a VM, which would have
-   refused this engine inside the call that wrote it -- exactly how the 2026-08-12
-   attempt with the malformed darkhttpd `--addr` was caught. Cost to weigh before
-   landing it: a machine claim adds minutes and a KVM requirement to any mint of
-   a service-shaped program.
+   Not fixable by hand (invariant 4) and not teachable to the kernel (an option's
+   meaning is an open list). The remedy that landed is world DATA:
+   `assets/worlds/nixos.world` now tells a mint that where its rules wire a unit,
+   a timer or a served port, one claim's command must reach the system, so the
+   claim gate boots a VM and refuses an engine whose wiring cannot start. Cost
+   accepted: minutes and a KVM requirement on any mint of a service-shaped
+   nixos program.
 
 -1. **The growth mint: an author's feedback cycle** (design settled 2026-08-20,
    `docs/superpowers/specs/2026-08-20-mint-feedback-cycle-design.md`; nothing
