@@ -1,9 +1,3 @@
-Serve static files with services.nginx (its virtualHosts.<name>.root), not with
-darkhttpd: two mints in a row wired darkhttpd's listen address through an option
-whose value it rejects at startup, and nginx's own module builds the config, so
-there is one less hand-written argument to get wrong.
-
-Where a unit's job is to WRITE a file before something serves it, let the
-command write the file itself (a redirection inside the script it runs), rather
-than routing the unit's standard output into a path: systemd opens that path
-before it creates the directory the path lives in.
+Serve static files with services.nginx (its virtualHosts.<name>.root) rather
+than a server whose listen address is passed as a hand-written argument: the
+module builds the config, so there is one less argument to get wrong.

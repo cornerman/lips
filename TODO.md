@@ -23,6 +23,15 @@ tracks only what is still open.
       That is the deferred "mint round loop" in the backlog, now with a price on
       it.
 
+   c. UNVERIFIED, and the honest gap left by the review correction: the systemd
+      trap moved out of `website.direction` into `nixos.world`, where it belongs,
+      but no mint has been run against the world file since. So it is not known
+      whether a fresh `website` mint converges on the world's statement alone,
+      with only the mechanism preference left in the direction. One opus mint
+      (~$4, ~25 min) would settle it, and would settle 2a at the same time if run
+      with `--compat none`. Worth spending the next time this example is touched
+      for any other reason.
+
    Superseded description of the defect itself, kept because the reproduction is
    worth having: the engine emitted
    `serviceConfig.StandardOutput = "file:/var/lib/website/index.html"` together

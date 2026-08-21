@@ -967,6 +967,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
   nothing carries the boot failure back into the next call -- the human does, as a
   direction file, which is exactly what run 3 shows working.
 
+  A REVIEW CORRECTION, because the first version of this got the layering wrong.
+  Run 3's direction file carried two sentences, and only one of them was taste.
+  "Let a unit's command write its own file rather than routing stdout into a
+  path" is a fact about systemd that holds for EVERY program minted into this
+  world, and it sat in one program's taste file, where exactly one program could
+  see it -- so the next program would pay a boot to rediscover it. It now sits in
+  `nixos.world` beside the boot rule, and `website.direction` keeps only the
+  mechanism preference (a module that builds its own config, over a hand-written
+  listen argument), which is what direction is for.
+
+  The deeper reason a human had to write either sentence is worth naming plainly:
+  a refused mint teaches nobody. Run 2 spent $3.23 discovering a boot failure and
+  nothing carried that finding into run 3 except a person typing it into a file.
+  Direction was standing in for the missing round loop, which is a workaround, not
+  a design -- and by the repo's own rule a workaround belongs in the physics. The
+  price is now on the record (a refused round of this size: $3.23, 17 minutes).
+
   One honest wart in the accepted engine, filed by the mint itself rather than
   hidden (`inherited-contract-pins-darkhttpd`): the committed `.expect` still pins
   `services.darkhttpd.port` from the mechanism that is gone, so the nginx engine
