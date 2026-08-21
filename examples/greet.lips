@@ -1,1 +1,3 @@
 install a command greet that prints "hello from lips".
+install a command bye that prints "see you".
+run greet every day at 09:00.
