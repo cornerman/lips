@@ -9,6 +9,7 @@
 module Main (main) where
 
 import           Control.Exception (SomeException, catch, throwIO)
+import           System.IO         (hSetEncoding, stderr, utf8)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -5397,6 +5398,10 @@ main = hspec $ do
 
   describe "the phase log (Lips.Cli.Output.phaseLog)" $
     it "records every finished phase in order, with its verdict" $ do
+      -- A phase prints its verdict glyph, and a nix build runs with LANG unset,
+      -- where '✓' cannot be encoded. @Main.hs@ pins the app's encoding for the
+      -- same reason; the suite pins it here, where it is the only test printing.
+      hSetEncoding stderr utf8
       _ <- Out.step "first" (pure (1 :: Int))
       _ <- (Out.step "second" (throwIO (userError "boom")) :: IO Int)
              `catch` \e -> const (pure 0) (e :: SomeException)
