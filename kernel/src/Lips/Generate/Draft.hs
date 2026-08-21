@@ -23,7 +23,7 @@ import qualified Data.Text as T
 import           Lips.Generate.Minting  (ItemCandidate (..), SourceFile, assemble, expectsOf, itemsFor,
                                          parseEngineCandidates, sourcesOf)
 import           Lips.Identity          (languageName)
-import           Lips.Kernel.Expect     (renderExpect)
+import           Lips.Kernel.Expect     (Expect, renderExpect)
 import           Lips.Kernel.Lang.Store (renderLang)
 import           Lips.Kernel.Decision   (Provenance (..), SourceLoc (..))
 import           System.FilePath        ((</>))
@@ -39,6 +39,12 @@ data DraftTree = DraftTree
   -- what the committed engine will cover.
   , dtWorlds  :: [(Text, Text, Text)]
   , dtSources :: [SourceFile] -- ^ the baked source tree, staged under artifacts/
+  , dtOwnExpects :: [(Text, [Expect])]
+    -- ^ Per world, the expects the DRAFT itself wrote -- which is not what
+    -- 'dtWorlds' carries on a regeneration, where the committed contract
+    -- governs. Kept beside it because the two answer different questions: the
+    -- governing contract asks whether the behaviour changed, and these ask
+    -- whether the new promises can be evaluated at all.
   }
 
 -- | Build a language folder's contents from a reply. @root@ is a temporary
@@ -70,6 +76,7 @@ materializeDraft root worlds file reply governing = case parseEngineCandidates w
           , dtGrammar = T.concat (take 1 [ fst (rendered w) | w <- worlds ])
           , dtWorlds  = [ (w, snd (rendered w), contractOf w (itemsFor w cands)) | w <- worlds ]
           , dtSources = sourcesOf items
+          , dtOwnExpects = [ (w, expectsOf (itemsFor w cands)) | w <- worlds ]
           }
 
 -- | Split a rendered engine into the shared grammar (the pattern lines) and one

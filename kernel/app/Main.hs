@@ -56,6 +56,7 @@ import           Lips.Language                 (exportedClauses, grammarIsFrozen
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
+                                        groundExpectFaults,
                                         clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
                                         stagedGate)
 import           Lips.Stage             (fillStagedTree, siteNameOf, stageBeside, stageFromDisk,
@@ -668,6 +669,17 @@ checkDraft file = do
       forM_ ws $ \w -> do
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
         clauseClaimGate w file rl
+        -- The contract above is the GOVERNING one (the committed .expect on a
+        -- regeneration), which cannot say whether the draft's NEW promises are
+        -- evaluable at all. The ground half of those costs no nix, so the door
+        -- judges it here rather than leaving the mint to find out from the final
+        -- gate a quarter of an hour later.
+        case groundExpectFaults (concat [ es | (w', es) <- dtOwnExpects t, w' == wName w ]) rl of
+          []   -> pure ()
+          bad  -> die (report
+            (T.pack file <> ": this draft's own contract cannot hold, in " <> wName w <> ":")
+            bad
+            "\8594 assert the slot the value actually reaches, or drop the check.")
       note "the command claim gate and the artifact build were NOT run"
 
 -- | A @<name>=<value>@ list generate exports, one per line: the per-world

@@ -6132,6 +6132,18 @@ main = hspec $ do
         Left es -> expectationFailure ("draft did not materialize: " <> show es)
         Right t -> [ e | (_, _, e) <- dtWorlds t ] `shouldSatisfy` all (T.isInfixOf "watch.interval")
 
+    -- The governing contract above answers "did the behaviour change", and it
+    -- cannot answer "is this new contract even evaluable": three mints in a row
+    -- (libero's training, 2026-08-12) wrote a promise over a slot that reads
+    -- null or over the wrong slot of a claim, passed the door against the OLD
+    -- contract, and were refused fifteen minutes later. So the draft's own
+    -- expects travel beside it, for the door to judge on their own terms.
+    it "carries the draft's own expects beside the governing contract" $
+      case materializeDraft "/tmp/x" ["nixos"] "one.watch.lips" reply [("nixos", "the committed contract")] of
+        Left es -> expectationFailure ("draft did not materialize: " <> show es)
+        Right t -> map (map exPath . snd) (dtOwnExpects t)
+                     `shouldBe` [[["systemd","services","w","environment","S"]]]
+
     it "reports the parse errors of an unreadable draft rather than guessing" $
       case materializeDraft "/tmp/x" ["nixos"] "one.watch.lips" "not an engine line" [] of
         Left es -> es `shouldNotBe` []

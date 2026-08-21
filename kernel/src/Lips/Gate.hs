@@ -21,6 +21,7 @@ module Lips.Gate
   ( -- * The contract
     ExpectFail (..)
   , runExpects
+  , groundExpectFaults
     -- * Gates over one realization
   , stagedGate
   , sourceSpecGate
@@ -191,6 +192,27 @@ runExpects stage expects0 rl =
         (_,  Left other) -> Left other
   where
     base = rlBase rl
+
+-- | The GROUND half of a contract alone: every assertion over a slot lips owns
+-- itself (a claim, a clause, a site, an artifact arg), judged against the ground
+-- base with no nix and no eval. Empty is the sound case.
+--
+-- This is what lets a MINT be held to its own new promises. Grading a model
+-- against expects it just wrote is flattery for an option assertion, since the
+-- rule that fills the option and the assertion that reads it come from the same
+-- pen -- but a ground assertion that names a slot the realization does not have,
+-- or the wrong slot of its own claim, is self-CONTRADICTORY rather than
+-- self-fulfilling, and no amount of writing makes it pass. Three mints in a row
+-- died on exactly that, a quarter of an hour after the door had let them past.
+groundExpectFaults :: [Expect] -> Realization -> [Text]
+groundExpectFaults []       _  = []
+groundExpectFaults expects0 rl =
+  case expandExpects base expects0 >>= \es -> (,) es <$> traverse (expectedValue base) es of
+    Left e  -> ["lips can't match a check to the program: " <> e]
+    Right (es, pvs) ->
+      map snd (checkArtifactValues (rlGround rl)
+                 (filter (isGroundExpect . fst) (zip es pvs)))
+  where base = rlBase rl
 
 -- | The nix half of the gate: evaluate the realized module once and judge every
 -- option assertion against it.
