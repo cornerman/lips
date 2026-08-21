@@ -3644,6 +3644,22 @@ but the loop around it is incomplete; "missing" means specced, not built.
   demanded, and `main.scm` written, exactly when something references the site
   (`rlSiteName`); the core is still written and still claimed, because
   `claims.scm` is what observes it and `main.scm` is what would start it.
+  TWO MORE GATE CORRECTIONS, both paid for by libero's `training` (three sonnet-5
+  mints in a row, each ~12 minutes, each refused at the FINAL gate for the
+  contract it had just written). First, a clause body and a site name are
+  literals of the ground base and no attribute of any module, so an expect over
+  one was sent to the nix eval, read a silent `null`, and refused a promise that
+  was in fact exactly right ("effort still multiplies by 60"). `isGroundExpect`
+  now covers every root lips owns (artifact, claim, clause, site); only a world's
+  OPTIONS need the eval. Second, the draft door judged the GOVERNING contract
+  (the committed `.expect`) and never the draft's own new promises, so a mint
+  could not see its own contract fail: the door now also runs the ground half of
+  the draft's own expects (`Gate.groundExpectFaults`, `DraftTree.dtOwnExpects`),
+  which costs no nix. The old argument against self-grading still stands for an
+  option assertion (the rule that fills it and the check that reads it come from
+  one pen, so it is flattery), but a ground assertion naming a slot the
+  realization does not have, or the wrong slot of its own claim, is
+  self-CONTRADICTORY, and no amount of writing makes it pass.
   Also found and fixed here: the mint prompt still taught BARE clause names
   (`clause.main`, `(begin (main) (emitted))`) four days after the namespacing
   gate landed, so every future mint would have been refused inside its own draft
