@@ -916,7 +916,7 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
     progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
     -- Owner taste is language-level (shared); read once from the language path.
     direction <- tryRead (directionPath rep)
-    let prompt = promptWithDirection direction inherited worlds
+    let prompt = promptWithDirection direction inherited Nothing worlds
         -- The mint sees the whole example set at once, so the grammar generalizes
         -- across them (anti-unification): tokens that vary between examples become
         -- holes, tokens that agree stay literal. One program is the corpus-of-one

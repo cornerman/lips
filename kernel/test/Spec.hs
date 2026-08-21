@@ -5125,8 +5125,8 @@ main = hspec $ do
   -- keeps it advisory, never an obligation channel.
   describe "direction file (optional mint taste)" $ do
     it "absent or blank direction leaves the prompt untouched" $ do
-      promptWithDirection Nothing Nothing [shippedWorld "nixos"] `shouldBe` systemPrompt
-      promptWithDirection (Just "   \n  ") Nothing [shippedWorld "nixos"] `shouldBe` systemPrompt
+      promptWithDirection Nothing Nothing Nothing [shippedWorld "nixos"] `shouldBe` systemPrompt
+      promptWithDirection (Just "   \n  ") Nothing Nothing [shippedWorld "nixos"] `shouldBe` systemPrompt
     it "steers kubenix to the resource alias every kubenix example writes" $ do
       systemPromptFor [shippedWorld "kubenix"] `shouldSatisfy` T.isInfixOf "kubernetes.resources."
       systemPromptFor [shippedWorld "kubenix"] `shouldSatisfy` T.isInfixOf "kubenix"
@@ -5140,11 +5140,11 @@ main = hspec $ do
       systemPromptFor [shippedWorld "home-manager"] `shouldSatisfy` T.isInfixOf "home.packages"
       systemPromptFor [shippedWorld "nixos"] `shouldSatisfy` T.isInfixOf "NixOS"
     it "present direction is appended verbatim atop the fixed prompt" $ do
-      let p = promptWithDirection (Just "prefer restic, no docker") Nothing [shippedWorld "nixos"]
+      let p = promptWithDirection (Just "prefer restic, no docker") Nothing Nothing [shippedWorld "nixos"]
       systemPrompt `shouldSatisfy` (`T.isInfixOf` p)
       p `shouldSatisfy` T.isInfixOf "prefer restic, no docker"
     it "states the advisory-not-obligation guard when direction is present" $ do
-      let p = promptWithDirection (Just "prefer systemd timers") Nothing [shippedWorld "nixos"]
+      let p = promptWithDirection (Just "prefer systemd timers") Nothing Nothing [shippedWorld "nixos"]
       mapM_ (\clause -> p `shouldSatisfy` T.isInfixOf clause)
         [ "PREFERENCE, not requirement"
         , "never let it override a value the program states"
@@ -5154,14 +5154,27 @@ main = hspec $ do
   -- where it learns that it may only append to it.
   describe "inherited grammar in the prompt" $ do
     it "is absent on a first mint" $
-      promptWithDirection Nothing Nothing [shippedWorld "nixos"]
+      promptWithDirection Nothing Nothing Nothing [shippedWorld "nixos"]
         `shouldNotSatisfy` T.isInfixOf "begin grammar"
     it "carries the committed patterns verbatim, and the rule about them" $ do
       let g = "p1 meta lang.pattern.p1 stated \"a <x> => fact f \\\"<x>\\\"\" @gen:aaaa"
-          p = promptWithDirection Nothing (Just g) [shippedWorld "kubenix"]
+          p = promptWithDirection Nothing (Just g) Nothing [shippedWorld "kubenix"]
       p `shouldSatisfy` T.isInfixOf g
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
         [ "must come back in your reply exactly", "You may ADD a pattern", "Refuse" ]
+
+  -- The growth mint: a committed ENGINE in the prompt is what turns a whole-engine
+  -- reply into a patch, so the section must carry the engine verbatim and say what
+  -- an unmentioned id means.
+  describe "inherited engine in the prompt (the growth mint)" $ do
+    it "carries the committed engine and the patch rule" $ do
+      let e = "1.0 r1 match fact a => b \"c\""
+          p = promptWithDirection Nothing Nothing (Just e) [shippedWorld "nixos"]
+      p `shouldSatisfy` T.isInfixOf e
+      p `shouldSatisfy` T.isInfixOf "id you do not mention"
+    it "is absent on a fresh mint, which has no engine to patch" $
+      promptWithDirection Nothing Nothing Nothing [shippedWorld "nixos"]
+        `shouldNotSatisfy` T.isInfixOf "id you do not mention"
 
   -- One call writes for every world, so the prompt carries every preamble. Each
   -- is fenced into its own section: two preambles read as one text contradict

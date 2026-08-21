@@ -174,6 +174,13 @@ directionDoc = T.pack $(embedStringFile "../assets/mint/direction.md")
 grammarDoc :: Text
 grammarDoc = T.pack $(embedStringFile "../assets/mint/grammar.md")
 
+-- | The wrapper around a committed ENGINE a growth mint patches: what the ids
+-- mean, and that a line it does not mention stays. Its own asset rather than a
+-- paragraph of 'bodyDoc', because it is present only when something is inherited
+-- -- a first mint must not read about patching an engine that does not exist.
+patchDoc :: Text
+patchDoc = T.pack $(embedStringFile "../assets/mint/patch.md")
+
 -- | The rules that only apply when one mint writes for SEVERAL worlds: the
 -- per-item world tag, the neutrality a shared fact needs, and demanding rather
 -- than inventing what one world needs and the program does not state. Appended
@@ -251,10 +258,14 @@ contractList = T.unlines
 -- The inherited GRAMMAR rides in the same prompt, before the direction: a
 -- second world's mint may only append to what the first one wrote, so it has to
 -- see it. Absent on a first mint, and then the section is not there at all.
+-- The inherited ENGINE (the growth mint's basis, patterns AND rules) rides
+-- between them: it is what the direction steers, and a mint that sees it answers
+-- a patch instead of a whole engine.
 --
-promptWithDirection :: Maybe Text -> Maybe Text -> [World] -> Text
-promptWithDirection md mg ws =
+promptWithDirection :: Maybe Text -> Maybe Text -> Maybe Text -> [World] -> Text
+promptWithDirection md mg me ws =
   systemPromptFor ws <> section mg grammarDoc "{{GRAMMAR}}"
+                     <> section me patchDoc "{{ENGINE}}"
                      <> section md directionDoc "{{DIRECTION}}"
   where
     -- Each doc carries the fixed wrapper text with a single placeholder line;
