@@ -73,7 +73,7 @@ import           Lips.Report            (Failure (..), demandGenerateFail, empty
 import           Options.Applicative    (customExecParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, itemsFor, sharedFileViolations, carriesEngineMeaning, mergeGrammar, mergeReply, mergeTouched, replyLinesOf, touchedIds, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, itemsFor, sharedFileViolations, carriesEngineMeaning, mergeGrammar, mergeReply, replyLinesOf, touchedIds, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Stats    (MintStats (..), renderStats, verdictOf)
@@ -993,8 +993,14 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
         -- anything reads it, so every gate, every render and every write below
         -- sees a complete engine and needs no notion of a patch at all.
         reply      = maybe patchReply (`mergeReply` patchReply) basisEngine
-        -- Which ids this run actually authored, so writing keeps the committed
-        -- bytes -- and stamps -- of every line it did not.
+        -- Which ids the model actually wrote, for the human: after a patch every
+        -- line is RE-STAMPED with this run's record, and that is correct rather
+        -- than a loss -- the record stores the MERGED reply, so it really does
+        -- contain every line the engine now holds, and a stamp keeps meaning
+        -- "the record beside me hashes to this" (invariant 6, which refuses a
+        -- stamp naming a record that is no longer there). Where a line came from
+        -- is carried by the record's own @basis:@ line, which names the record
+        -- this one grew out of, and by git.
         touched    = fmap (const (touchedIds patchReply)) basisEngine
         model      = prModel piReply
         transcript = prTranscript piReply
@@ -1131,18 +1137,7 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
         -- event is filed at the scope of the event: one call covering several
         -- worlds writes one README at the language level.
         let (freshGrammarStamped, _) = splitEngine (renderLang (FromGeneration (genId rec)) sharedEng)
-            -- Three ways a grammar reaches disk, and the difference is whose
-            -- lines they are. A FROZEN grammar (a world of this language is not
-            -- being re-minted) is append-only, so every committed line keeps its
-            -- bytes wholesale. A PATCH keeps the bytes of the lines it did not
-            -- author, and takes the new render for the ones it did. A fresh mint
-            -- authored all of them.
-            grammarText = case (inherited, touched) of
-              (Just old, _)       -> mergeGrammar old freshGrammarStamped
-              (Nothing, Just ids) -> maybe freshGrammarStamped
-                                       (\old -> mergeTouched ids old freshGrammarStamped)
-                                       committedGrammar
-              _                   -> freshGrammarStamped
+            grammarText = maybe freshGrammarStamped (`mergeGrammar` freshGrammarStamped) inherited
         unless (null held) $
           step ("write " <> T.pack dir) $ do
             createDirectoryIfMissing True dir
@@ -1165,7 +1160,7 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
                 TIO.writeFile (languageRecordPathIn dir rep) rec
                 TIO.writeFile (languageReadmePathIn dir) (renderReadme (T.pack lang) reportBody gaps)
             forM_ held $ \(w, wr) ->
-              writeWorld dir rep lang rec reportBody gaps touched (length wnames == 1) w wr
+              writeWorld dir rep lang rec reportBody gaps (length wnames == 1) w wr
             forM_ [ (f, rl) | (_, wr) <- held, (f, rl) <- wrValidated wr ] $ \(f, rl) -> do
               ensureDerived f
               TIO.writeFile (decisionsPath f) (renderBase (rlBase rl))
@@ -1362,22 +1357,13 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
 -- | Write one world's own files. The record and the account are written here
 -- only when the event covered this world ALONE; a call covering several files
 -- both at the language level, where its outputs are.
-writeWorld :: FilePath -> FilePath -> String -> Text -> Text -> [Gap] -> Maybe [Text] -> Bool
+writeWorld :: FilePath -> FilePath -> String -> Text -> Text -> [Gap] -> Bool
            -> World -> WorldResult -> IO ()
-writeWorld dir rep lang rec reportBody gaps touched single world wr = do
+writeWorld dir rep lang rec reportBody gaps single world wr = do
   let w = wName world
       (_, rulesText) = splitEngine (renderLang (FromGeneration (genId rec)) (wrEngine wr))
   createDirectoryIfMissing True (worldDirIn dir w)
-  -- After a PATCH, a rule this run did not author keeps its committed bytes, and
-  -- therefore its own @gen: stamp: that line was minted by the run whose record
-  -- still hashes to it (invariant 6), and re-stamping it would claim this event
-  -- produced a line its reply never carried. 'Nothing' is a whole-engine mint,
-  -- which authored every line it writes.
-  committedRules <- tryRead (rulesPathIn dir w rep)
-  let rulesOut = case (touched, committedRules) of
-        (Just ids, Just old) -> mergeTouched ids old rulesText
-        _                    -> rulesText
-  TIO.writeFile (rulesPathIn dir w rep) rulesOut
+  TIO.writeFile (rulesPathIn dir w rep) rulesText
   -- The world travels WITH the engine: the record pins this copy by hash, and
   -- compile reads the copy, never the search path.
   TIO.writeFile (worldPathIn (worldDirIn dir w) w) (wRaw world)

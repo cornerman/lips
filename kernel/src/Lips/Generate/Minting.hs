@@ -40,12 +40,10 @@ module Lips.Generate.Minting
   , replyLinesOf
   , mergeReply
   , touchedIds
-  , mergeTouched
   , mergeGrammar
   , sharedFileViolations
   ) where
 
-import           Data.Maybe      (fromMaybe)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
@@ -382,29 +380,6 @@ mergeReply inheritedLines patch = T.unlines
 -- of a reply line is its confidence.
 touchedIds :: Text -> [Text]
 touchedIds t = [ i | l <- T.lines t, (_ : i : _) <- [T.words l] ]
-
--- | What to WRITE after a patch: the rendered engine, except that a line the
--- patch never touched keeps its committed bytes -- and therefore its own
--- @\@gen:@ stamp, because that line was minted by the run whose record still
--- hashes to it (invariant 6). Re-stamping it would claim this event produced a
--- line its reply never carried.
---
--- The same move 'mergeGrammar' makes for a second world's grammar, generalized
--- to any engine file and to replacement.
-mergeTouched :: [Text] -> Text -> Text -> Text
-mergeTouched touched committed rendered = T.unlines
-  [ fromMaybe l (keep (engineId l)) | l <- T.lines rendered ]
-  where
-    keep i | i `elem` touched = Nothing
-           | otherwise = lookup i [ (engineId c, c) | c <- T.lines committed ]
-
--- | Token 1 of an engine FILE line (its decision id), as against 'replyId'.
--- Two functions rather than one that guesses: the two formats put the id in
--- different places, and a reader that tried both would silently accept either.
-engineId :: Text -> Text
-engineId l = case T.words l of
-  (w : _) -> w
-  []      -> ""
 
 -- | Token 2 of a REPLY line (the id after the confidence).
 replyId :: Text -> Text
