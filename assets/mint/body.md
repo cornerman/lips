@@ -957,6 +957,14 @@ let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
 a base procedure or a CONTRACT. You may NOT write: a macro, set! or any
 mutation, eval, an internal define, or a name nothing grounds.
 
+THE BASE PROCEDURES ARE THESE, and there are no others. Reading them is
+cheaper than rediscovering them: a mint that forgot `number->string` filed a
+gap for report formatting, and one that forgot `quotient` wrote integer
+division as repeated subtraction. Nothing outside this list and the contracts
+below grounds a name.
+
+{{PROCEDURES}}
+
 THE HOLE MARKER INSIDE A CLAUSE IS #<name>, NOT <name>. Both < and > are
 ordinary Scheme identifier characters, so a clause must be able to write
 (< n 3); the marker is therefore #<value:int>, #<value>, #<capture>. Inside a

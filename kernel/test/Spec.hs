@@ -5210,6 +5210,13 @@ main = hspec $ do
     -- produce a dependency: the whole composition path stays unreachable until
     -- the mint is told the emit form. The fenced-block guard below parses the
     -- example, so the taught spelling is the one the reader accepts.
+    -- The base notation is rendered from the shipped vocabulary, never written
+    -- into the markdown: a procedure added to the asset must appear in the prompt
+    -- or the next mint hand-rolls it (measured twice: number->string, quotient).
+    it "lists the base procedures it will accept, from the shipped vocabulary" $
+      mapM_ (\n -> systemPrompt `shouldSatisfy` T.isInfixOf n)
+        ["THE BASE PROCEDURES ARE THESE", "quotient", "number->string", "string-append"]
+
     it "teaches the kind that names another language, and that no rule maps it" $
       mapM_ (\s -> systemPrompt `shouldSatisfy` T.isInfixOf s)
         [ "meta uses", "=> uses <lang>", "No rule maps it" ]
@@ -6305,6 +6312,16 @@ main = hspec $ do
     it "ships a scheme vocabulary that parses" $
       schemeVocabulary `shouldSatisfy` \v ->
         "cond" `elem` vForms v && "equal?" `elem` vProcedures v
+
+    -- EXACT integer division, because `/` is not it: in Scheme (/ 95001 1000) is
+    -- the rational 95001/1000, so a language doing per-mille arithmetic under a
+    -- no-floats rule has no way to divide. Two independent mints hand-rolled one
+    -- (libero's match wrote a doubling `match-idiv`, its player wrote a LINEAR
+    -- repeated subtraction and filed the gap `no-exact-division`), which is the
+    -- signature of a missing primitive rather than two coincidences.
+    it "ships the exact integer division a no-floats program needs" $
+      vProcedures schemeVocabulary `shouldSatisfy` \ps ->
+        all (`elem` ps) ["quotient", "remainder", "modulo"]
 
     it "ships contracts covering what the logscan core reaches" $
       map cName (vContracts schemeVocabulary)

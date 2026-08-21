@@ -217,7 +217,18 @@ scopedPreambles ws = T.unlines $
 -- drift from what the gate will actually accept: a contract added to
 -- @assets\/runtime\/@ appears here, and one removed disappears.
 promptBody :: Text
-promptBody = T.replace "{{CONTRACTS}}" contractList bodyDoc
+promptBody = T.replace "{{PROCEDURES}}" procedureList
+               (T.replace "{{CONTRACTS}}" contractList bodyDoc)
+
+-- | The base notation, rendered from the same asset for the same reason: a model
+-- that cannot see a name rediscovers it badly. Wrapped at a readable width and
+-- indented, so it reads as a list rather than a wall.
+procedureList :: Text
+procedureList = T.unlines
+  [ "  " <> T.unwords row | row <- chunk 10 (vProcedures schemeVocabulary) ]
+  where
+    chunk _ [] = []
+    chunk n xs = take n xs : chunk n (drop n xs)
 
 contractList :: Text
 contractList = T.unlines

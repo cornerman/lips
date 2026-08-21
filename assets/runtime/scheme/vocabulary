@@ -32,6 +32,10 @@ procedure cons car cdr caar cadr cdar cddr
 procedure null? pair? list list? length append reverse
 procedure eq? eqv? equal?
 procedure + - * / = < > <= >= min max abs
+# Exact integer division, and the only division a no-floats program can use: in
+# Scheme (/ 95001 1000) is the rational 95001/1000, not 95. Two mints hand-rolled
+# one of these before it was here.
+procedure quotient remainder modulo
 procedure number? string? boolean? symbol? char? procedure?
 procedure string=? string<? string-length string-append substring string->number number->string
 procedure char=?
