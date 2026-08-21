@@ -467,19 +467,19 @@
             '';
           };
 
-        # The artifacts proof (artifacts plan; ledger section 13): a Solution
-        # whose realization BUILDS a program from generated source and runs it.
-        # The committed website example realizes to a module that let-binds a
-        # buildGoModule derivation over the committed Go source and wires
-        # ${artifact.website} into a systemd service. This pins the whole chain
-        # -- generated source -> Nix build -> service -> booted and answering --
-        # as a permanent check. No AI in this derivation.
+        # The built-program proof (artifacts plan; ledger section 13): a Solution
+        # whose realization BUILDS the program it needs and runs it. The
+        # committed website example realizes to a module that let-binds a derivation
+        # over the clause SITE compile writes (its guile program), wires it into a
+        # oneshot systemd unit, and serves what that unit prints. This pins the
+        # whole chain -- rules -> built program -> service -> booted and answering
+        # -- as a permanent check. No AI in this derivation.
         #
-        # It watches `website` rather than `hello.http` because the http
-        # language stopped baking source on 2026-08-06 (its re-mint over three
-        # contrasted routes realizes to nginx). `website` is now the largest
-        # baked-source example, so it is the one this check must follow; when it
-        # too sheds its tree, the next artifact-bearing example inherits this.
+        # No source tree is copied in, and that is the current state of the
+        # corpus rather than an omission: no committed program carries a
+        # mint-written source tree any more (the no-blob doctrine; `website` shed
+        # its Go http server on 2026-08-12), so the program under test is the one
+        # `compile` derives from the rules.
         artifact-vm =
           let
             lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -490,8 +490,6 @@
               cp ${./examples/website.lips} website.lips
               cp ${./examples/website/website.grammar} website/website.grammar
               cp ${./examples/website/nixos/website.rules} website/nixos/website.rules
-              # The artifacts tree is the LANGUAGE's, shared by every world.
-              cp -r ${./examples/website/artifacts} website/artifacts
               # The generation record travels with the language, exactly as it
               # does in a real language folder: where a language BAKES source,
               # compile reads it to check the program still states the

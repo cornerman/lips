@@ -23,14 +23,6 @@ tracks only what is still open.
    (3) `compile --watch` with `g` to run the growth mint, leaving invariant 1
    intact (the loop drives, compile itself never calls a model).
 
-0. **Move `contribution` off match onto player** (the last piece of
-   composition, 2026-08-21). Composition itself is done and measured
-   (`libero/docs/composition-measurement.md`, DESIGN §13): `training.lips` names
-   the player language and calls `player-contribution`. `match.lips` still
-   defines its own, so libero states one rule twice -- exactly what the
-   dependency exists to remove. Costs one mint of match against player, and
-   `match/nixos/match.expect` must still hold afterwards (invariant 5), which is
-   the real test of the split.
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
 

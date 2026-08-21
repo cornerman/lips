@@ -3707,6 +3707,31 @@ but the loop around it is incomplete; "missing" means specced, not built.
   door. A structural test now walks every `clause.` path in the prompt and
   requires the prefix, because a prose reminder rots exactly this way.
 
+- **libero composes for real, and a missing primitive surfaced twice**
+  (2026-08-21, the acceptance test for the whole composition line). `player`
+  states one player's numbers and exports an accessor per field; `training` and
+  `match` both name it in a sentence (`the players come from the player
+  language.`) and call `player-contribution`, `player-rating`, `player-name`.
+  The decisive number is a NEGATIVE one: `match/nixos/match.expect` is
+  BYTE-UNCHANGED across a re-mint that moved a rule into another language and
+  re-emitted all 40 clauses, and 20 matches between equal squads still average
+  2.30 goals split 1.30/1.00, exactly as before the split. Same football,
+  computed once instead of twice; no clause of `match` reads a player's JSON
+  field any more (only the fixture's own `seed`).
+  A MISSING PRIMITIVE, found by two mints independently: Scheme's `/` yields a
+  RATIONAL (`(/ 95001 1000)` is `95001/1000`), so a program forbidden floats
+  could not divide. `match`'s first engine hand-rolled a doubling `match-idiv`;
+  `player` wrote repeated subtraction, LINEAR in the result, and filed the gap
+  `no-exact-division`. Two workarounds for one gap is physics, not coincidence
+  (invariant 4), so `quotient remainder modulo` are base notation now, and the
+  prompt renders the whole base procedure list from the same asset -- an earlier
+  mint had filed a FALSE gap for `number->string`, a name it already had.
+  Mint cost, recorded: `player` 9m 60s sonnet-5 (first shape), then 13m 15s and
+  21m 26s opus-5 high; `training` four attempts, 53 minutes, only opus accepted;
+  `match` 24m 23s opus-5 high, accepted first try. Every sonnet refusal was the
+  CONTRACT it wrote for itself, and two of the three were lips' fault (both now
+  structural guards). Details in `libero/docs/composition-measurement.md`.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
