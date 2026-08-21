@@ -347,34 +347,49 @@ watchCompile mout mLangDir noContract file = do
             pure (b, e))
         (\(b, e) -> hSetBuffering stdin b >> hSetEcho stdin e)
         (const act)
-  withKeys (loop exe dir Nothing)
+  withKeys (loop exe dir Nothing True)
   where
-    -- One pass, with the failure of a pass reduced to what it printed: a
-    -- program the language cannot read is the NORMAL state of an edit loop, so
-    -- it must not end it (compile alone still exits nonzero, which is what CI
-    -- reads).
+    -- One pass, answering whether it HELD, with the failure reduced to what it
+    -- printed: a program the language cannot read is the NORMAL state of an edit
+    -- loop, so it must not end it (compile alone still exits nonzero, which is
+    -- what CI reads).
     once = do
       r <- try (compileLoose mout mLangDir noContract file)
-      case r of
-        Right () -> pure ()
-        Left e | Just (_ :: ExitCode) <- fromException e -> pure ()
-               | otherwise -> say (tshow (e :: SomeException))
-      say "\8594 watching. g grows the language (runs generate), q quits."
+      ok <- case r of
+        Right () -> pure True
+        Left e | Just (_ :: ExitCode) <- fromException e -> pure False
+               | otherwise -> say (tshow (e :: SomeException)) >> pure False
+      -- The mint is OFFERED only where it is the remedy. A green pass means the
+      -- language reads every line, so growing it would buy nothing and cost a
+      -- model call -- and an offer standing there invites exactly that by a
+      -- stray keypress.
+      say (if ok then "\8594 watching. q quits."
+                 else "\8594 watching. g grows the language (runs generate), q quits.")
+      pure ok
 
-    loop exe dir before = do
+    loop exe dir before held = do
       now <- stamps dir
-      when (Just now /= before) once
+      (held', before') <- if Just now /= before then (,) <$> once <*> pure (Just now)
+                                                else pure (held, before)
       k <- key
       case k of
         Just 'q' -> say "stopped watching."
-        Just 'g' -> do
-          -- A separate process on purpose: the mint is the other verb, with its
-          -- own gates, its own record and its own cost -- not something a
-          -- compile can slide into.
-          say ("\8594 " <> T.pack exe <> " generate " <> T.pack file)
-          _ <- try (callProcess exe ["generate", file]) :: IO (Either SomeException ())
-          loop exe dir Nothing
-        _ -> loop exe dir (Just now)
+        Just 'g'
+          -- Refused rather than silently ignored: a key the loop just stopped
+          -- offering must say why, or it reads as a broken key.
+          | held' -> do
+              say ("\8594 nothing to grow: every line of " <> T.pack file
+                    <> " reads. Changing the MECHANISM is a deliberate act:"
+                    <> " lips generate --fresh " <> T.pack file)
+              loop exe dir before' held'
+          | otherwise -> do
+              -- A separate process on purpose: the mint is the other verb, with
+              -- its own gates, its own record and its own cost -- not something a
+              -- compile can slide into.
+              say ("\8594 " <> T.pack exe <> " generate " <> T.pack file)
+              _ <- try (callProcess exe ["generate", file]) :: IO (Either SomeException ())
+              loop exe dir Nothing held'
+        _ -> loop exe dir before' held'
 
     -- Sleep, then ASK whether a key is waiting. 'hWaitForInput' is the obvious
     -- call and the wrong one: with NoBuffering it blocks past its timeout

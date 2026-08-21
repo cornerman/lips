@@ -1002,7 +1002,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   is what compile writes, and watching it would make the loop feed itself.
 
   When a line does not crystallize the loop prints the remedy it always printed,
-  and then OFFERS it: `g` runs `lips generate` on the program, `q` quits.
+  and then OFFERS it: `g` runs `lips generate` on the program, `q` quits. The
+  offer appears ONLY after a failed pass, and `g` refuses on a green one, naming
+  `--fresh` for the deliberate case (review correction, 2026-08-20: the first
+  version printed the offer on every pass, which invites a model call nobody
+  needs -- a green pass means the language reads every line, so growing it buys
+  nothing, and an offer standing there spends money on a stray keypress).
   Invariant 1 is intact and the code says so where a reader would doubt it --
   compile never calls a model; the loop is a driver around two verbs, and the mint
   runs as a separate process with every gate of an ordinary mint. A failing pass
