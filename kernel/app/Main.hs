@@ -932,8 +932,9 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
     -- world's rules, tagged only when the run writes for several worlds. Absent
     -- under --fresh and on a first mint, and then every step below is exactly the
     -- whole-engine path it always was.
+    committedGrammar <- if fresh then pure Nothing else tryRead (grammarPathIn dir rep)
     basisEngine <- if fresh then pure Nothing else do
-      g  <- tryRead (grammarPathIn dir rep)
+      let g = committedGrammar
       rs <- forM wnames $ \w -> fmap ((,) w) <$> tryRead (rulesPathIn dir w rep)
       let tagOf w = if length wnames > 1 then Just w else Nothing
           parts = maybe [] (\t -> [replyLinesOf Nothing t]) g
@@ -1130,7 +1131,18 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
         -- event is filed at the scope of the event: one call covering several
         -- worlds writes one README at the language level.
         let (freshGrammarStamped, _) = splitEngine (renderLang (FromGeneration (genId rec)) sharedEng)
-            grammarText = maybe freshGrammarStamped (`mergeGrammar` freshGrammarStamped) inherited
+            -- Three ways a grammar reaches disk, and the difference is whose
+            -- lines they are. A FROZEN grammar (a world of this language is not
+            -- being re-minted) is append-only, so every committed line keeps its
+            -- bytes wholesale. A PATCH keeps the bytes of the lines it did not
+            -- author, and takes the new render for the ones it did. A fresh mint
+            -- authored all of them.
+            grammarText = case (inherited, touched) of
+              (Just old, _)       -> mergeGrammar old freshGrammarStamped
+              (Nothing, Just ids) -> maybe freshGrammarStamped
+                                       (\old -> mergeTouched ids old freshGrammarStamped)
+                                       committedGrammar
+              _                   -> freshGrammarStamped
         unless (null held) $
           step ("write " <> T.pack dir) $ do
             createDirectoryIfMissing True dir
