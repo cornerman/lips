@@ -162,8 +162,12 @@ cliPrefs = prefs (columns 120)
 
 cliParserInfo :: Double -> ParserInfo Command
 cliParserInfo defConf = info (cliParser defConf <**> helper) $
+  -- Not "a Nix configuration": that reads as a NixOS machine, while the output
+  -- is whatever the target world takes (a home, a cluster, a cloud) and carries
+  -- the program's behaviour as clauses, not options alone. The worlds are named
+  -- once, by @lips world@, so this line cannot drift from them.
   fullDesc <> progDesc
-    "lips builds a Nix configuration from a program you wrote in your own plain sentences."
+    "lips compiles a program you wrote in your own plain sentences into the configuration and code a world runs."
 
 -- | The three verbs a user works with day to day, in the loop's own order.
 cliParser :: Double -> Parser Command

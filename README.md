@@ -4,9 +4,11 @@
 
 # lips
 
-lips turns plain sentences into a Nix configuration. You write what a system
-should do. A model reads your wording once and mints a small compiler for it.
-From then on, every build is offline, deterministic, and runs no model.
+lips turns plain sentences into the configuration and code a system runs: a
+NixOS machine, a home-manager home, a Kubernetes cluster, a Terraform cloud.
+You write what a system should do. A model reads your wording once and mints a
+small compiler for it. From then on, every build is offline, deterministic, and
+runs no model.
 
 The point is to keep what a human owns small enough to read. Machines now write
 code faster than anyone can review it, so lips shrinks the reviewed artifact to
