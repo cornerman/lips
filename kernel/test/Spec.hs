@@ -228,17 +228,24 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info compileOpts idm)
     it "defaults --out and --lang to Nothing, and gates on the contract" $
       parseArgs ["a.backup.lips"]
-        `shouldBe` Just (CompileOpts Nothing Nothing False "a.backup.lips")
+        `shouldBe` Just (CompileOpts Nothing Nothing False False "a.backup.lips")
     it "reads --lang in any position, alongside --out" $ do
       parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CompileOpts Nothing (Just "services/a/backup") False "a.backup.lips")
+        `shouldBe` Just (CompileOpts Nothing (Just "services/a/backup") False False "a.backup.lips")
       parseArgs ["--out", "dir", "--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CompileOpts (Just "dir") (Just "services/a/backup") False "a.backup.lips")
+        `shouldBe` Just (CompileOpts (Just "dir") (Just "services/a/backup") False False "a.backup.lips")
     -- The gate needs nix to evaluate the realized module, which a compile
     -- INSIDE a nix build does not have; the flag states that skip.
     it "reads --no-contract, the stated skip for a compile inside a nix build" $
       parseArgs ["--no-contract", "a.backup.lips"]
-        `shouldBe` Just (CompileOpts Nothing Nothing True "a.backup.lips")
+        `shouldBe` Just (CompileOpts Nothing Nothing True False "a.backup.lips")
+    -- The edit loop is a flag on compile, not a verb: the same deterministic
+    -- pipeline, run again on every save.
+    it "reads --watch, and its short form" $ do
+      parseArgs ["--watch", "a.backup.lips"]
+        `shouldBe` Just (CompileOpts Nothing Nothing False True "a.backup.lips")
+      parseArgs ["-w", "a.backup.lips"]
+        `shouldBe` Just (CompileOpts Nothing Nothing False True "a.backup.lips")
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
 
@@ -5555,6 +5562,16 @@ main = hspec $ do
       languageTimingPathIn dir prog `shouldBe` "examples/backup/backup.timing"
       worldPathIn (worldDirIn dir "nixos") "nixos"
         `shouldBe` "examples/backup/nixos/nixos.world"
+    -- What the edit loop re-reads on a save: the human's own files and the engine
+    -- they are read with. Derived output is absent on purpose, or the loop would
+    -- feed itself.
+    it "watches the program, its taste and its engine, never derived output" $
+      watchedFiles dir prog ["nixos", "kubenix"]
+        `shouldBe` [ "examples/ledger.backup.lips"
+                   , "examples/backup.direction"
+                   , "examples/backup/backup.grammar"
+                   , "examples/backup/nixos/backup.rules"
+                   , "examples/backup/kubenix/backup.rules" ]
     it "keeps the grammar's own outputs world-free" $ do
       decisionsPath prog `shouldBe` "examples/backup/out/ledger.decisions"
       artifactsPath prog `shouldBe` "examples/backup/artifacts"

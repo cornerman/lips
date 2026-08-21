@@ -24,9 +24,9 @@
 --     over the compiled directory, and the user picks one.
 module Main (main) where
 
-import           Control.Concurrent (forkIO)
+import           Control.Concurrent (forkIO, threadDelay)
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import           Control.Exception  (IOException, finally, try)
+import           Control.Exception  (IOException, SomeException, bracket, catch, finally, fromException, try)
 import           Control.Monad      (forM, forM_, unless, when, void)
 import           Data.IORef         (IORef, newIORef, modifyIORef', readIORef, writeIORef)
 import           Data.Bifunctor     (first)
@@ -36,23 +36,26 @@ import           Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           System.Environment (getEnvironment, lookupEnv)
+import           System.Environment (getEnvironment, getExecutablePath, lookupEnv)
 import           System.Exit        (ExitCode (..), exitFailure, exitWith)
 import           GHC.IO.Encoding     (setLocaleEncoding)
-import           System.IO          (BufferMode (..), hClose, hGetContents,
-                                     hIsEOF, hSetBuffering, hSetEncoding, stderr, stdout, utf8)
+import           System.IO          (BufferMode (..), hClose, hGetBuffering, hGetChar,
+                                     hGetContents, hGetEcho, hIsEOF, hIsTerminalDevice,
+                                     hReady, hSetBuffering, hSetEcho, hSetEncoding,
+                                     stderr, stdin, stdout, utf8)
 import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Except (runExceptT, throwE)
 import           System.Directory   (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
-                                     doesPathExist, listDirectory, removePathForcibly)
+                                     doesPathExist, getModificationTime, listDirectory,
+                                     removePathForcibly)
 import           System.FilePath    (takeDirectory, (</>))
-import           System.Process     (CreateProcess (..), StdStream (..), createProcess, proc,
+import           System.Process     (CreateProcess (..), StdStream (..), callProcess, createProcess, proc,
                                      readProcessWithExitCode, waitForProcess)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (Engine (..), IgnoreSpec (..), bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
-import           Lips.Identity                 (timingPathIn, languageTimingPathIn, requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
+import           Lips.Identity                 (watchedFiles, timingPathIn, languageTimingPathIn, requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAnswer, setState, step, tshow)
@@ -151,7 +154,9 @@ main = do
       -- computation -- can only refuse. Measured 2026-08-09.
       inherited <- inheritedGrammar (goTarget go) (goFiles go)
       generate worlds inherited (goSchema go) (goConfidence go) (goCompat go) (goFresh go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
-    Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
+    Compile co
+      | coWatch co -> watchCompile (coOut co) (coLangDir co) (coNoContract co) (coFile co)
+      | otherwise  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
       | otherwise  -> checkLoose True True (ceLangDir co) (ceFile co)
@@ -303,6 +308,85 @@ compileLoose mout mLangDir noContract file = do
   rls <- checkLoose (not noContract) (not noContract) mLangDir file
   forM_ [ (w, rl) | (w, Right rl) <- rls ] (compileWorld mout dir file)
   exitUnlessEveryWorldHeld file rls
+
+-- | @compile --watch@: the edit loop. Compile is deterministic, offline and
+-- takes milliseconds, so it runs again on every save; the terminal then says
+-- what the program means now, or which line the language cannot read yet.
+--
+-- INVARIANT 1 IS INTACT, and this is the one place a reader might doubt it:
+-- @compile@ never calls a model. When a line does not crystallize, the loop
+-- OFFERS the remedy it already prints, and @g@ runs @lips generate@ as a
+-- separate process -- a deliberate act by the human, with every gate of the
+-- ordinary mint. The loop is a driver around two verbs, not a third verb that
+-- mixes them.
+--
+-- Polling, not inotify: the dev shell has no fsnotify, half a dozen @stat@ calls
+-- four times a second cost nothing, and a poll cannot miss a file that does not
+-- exist yet (a grammar the next mint will write).
+watchCompile :: Maybe FilePath -> Maybe FilePath -> Bool -> FilePath -> IO ()
+watchCompile mout mLangDir noContract file = do
+  tty <- hIsTerminalDevice stdin
+  unless tty $ die (report
+    "lips compile --watch needs a terminal: it reads single keypresses."
+    ["stdin is not a terminal here."]
+    ("\8594 run it in a terminal, or compile once: lips compile " <> T.pack file))
+  exe <- getExecutablePath
+  dir <- either die pure (resolveLangDir file mLangDir)
+  -- Raw-ish stdin: one keypress, no line buffering, no echo of the key itself.
+  -- Restored on every exit, including the exception a failing compile throws,
+  -- so a terminal is never left mute.
+  let withKeys act = bracket
+        (do b <- hGetBuffering stdin; e <- hGetEcho stdin
+            hSetBuffering stdin NoBuffering >> hSetEcho stdin False
+            pure (b, e))
+        (\(b, e) -> hSetBuffering stdin b >> hSetEcho stdin e)
+        (const act)
+  withKeys (loop exe dir Nothing)
+  where
+    -- One pass, with the failure of a pass reduced to what it printed: a
+    -- program the language cannot read is the NORMAL state of an edit loop, so
+    -- it must not end it (compile alone still exits nonzero, which is what CI
+    -- reads).
+    once = do
+      r <- try (compileLoose mout mLangDir noContract file)
+      case r of
+        Right () -> pure ()
+        Left e | Just (_ :: ExitCode) <- fromException e -> pure ()
+               | otherwise -> say (tshow (e :: SomeException))
+      say "\8594 watching. g grows the language (runs generate), q quits."
+
+    loop exe dir before = do
+      now <- stamps dir
+      when (Just now /= before) once
+      k <- key
+      case k of
+        Just 'q' -> say "stopped watching."
+        Just 'g' -> do
+          -- A separate process on purpose: the mint is the other verb, with its
+          -- own gates, its own record and its own cost -- not something a
+          -- compile can slide into.
+          say ("\8594 " <> T.pack exe <> " generate " <> T.pack file)
+          _ <- try (callProcess exe ["generate", file]) :: IO (Either SomeException ())
+          loop exe dir Nothing
+        _ -> loop exe dir (Just now)
+
+    -- Sleep, then ASK whether a key is waiting. 'hWaitForInput' is the obvious
+    -- call and the wrong one: with NoBuffering it blocks past its timeout
+    -- (measured -- a file touched ten seconds in went unnoticed for thirty),
+    -- which would freeze the loop until a key arrived. 'hReady' answers now.
+    --
+    -- 250ms: fast enough that a save feels immediate, cheap enough that half a
+    -- dozen stats four times a second are invisible.
+    key = do
+      threadDelay 250000
+      ready <- hReady stdin `catch` \(_ :: SomeException) -> pure False
+      if ready then Just <$> hGetChar stdin else pure Nothing
+
+    stamps dir = do
+      worlds <- mintedWorlds dir file
+      forM (watchedFiles dir file worlds) $ \p -> do
+        there <- doesFileExist p
+        if there then Just <$> getModificationTime p else pure Nothing
 
 -- | Stop with a failing exit code when any world did not hold, after the ones
 -- that did have been reported and written. Deliberate: you get the artifact you

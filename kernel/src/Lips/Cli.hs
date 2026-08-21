@@ -81,6 +81,7 @@ data CompileOpts = CompileOpts
   { coOut        :: Maybe FilePath
   , coLangDir    :: Maybe FilePath
   , coNoContract :: Bool
+  , coWatch      :: Bool
   , coFile       :: FilePath
   } deriving (Eq, Show)
 
@@ -354,6 +355,12 @@ compileOpts = CompileOpts
   <*> switch
         (long "no-contract"
           <> help "Do not check the contract, for a compile inside a nix build (which has no nix to evaluate with). The program must still crystallize.")
+  -- The edit loop: compile is deterministic, offline and instant, so re-running
+  -- it on every save costs nothing. It never calls a model -- growing the
+  -- language stays a keypress the human makes (see 'watchCompile').
+  <*> switch
+        (long "watch" <> short 'w'
+          <> help "Recompile whenever the program or its language changes; press g to grow the language, q to quit.")
   <*> programArg
 
 -- | Which engine @check@ judges. The two ways are mutually exclusive by

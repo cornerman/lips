@@ -66,6 +66,7 @@ module Lips.Identity
   , languageGapPathIn
   , gapPathIn
   , timingPathIn
+  , watchedFiles
   , languageTimingPathIn
   , artifactsPathIn
   , worldPathIn
@@ -284,3 +285,14 @@ resolveLangDir file (Just d0)
       <> ", or rename the program."
   where lang = languageName file
         d    = dropTrailingPathSeparator d0
+
+-- | The files whose change means "compile again": the program, the taste that
+-- steers its mint, and the engine it is read with (the shared grammar plus each
+-- world's rules). Pure, so what the loop watches is testable without a clock.
+--
+-- Derived output is deliberately absent: @out\/@ is what compile WRITES, and
+-- watching it would make the loop feed itself.
+watchedFiles :: FilePath -> FilePath -> [Text] -> [FilePath]
+watchedFiles dir file worlds =
+  [ file, directionPath file, grammarPathIn dir file ]
+    ++ [ rulesPathIn dir w file | w <- worlds ]
