@@ -52,7 +52,10 @@ renderStats s = T.unlines $
   , "model: " <> mtModel s
   , "thinking: " <> mtThinking s
   , "wall: " <> secs (mtWall s) ]
-  ++ [ "phase " <> phLabel p <> ": " <> secs (phSecs p) | p <- mtPhases s ]
+  -- The duration comes BEFORE the label, unlike every other line, because a
+  -- phase label is free text lips composes at the call site and may itself hold
+  -- a colon ("clause claims: 1 claim"). Number first keeps the line parseable.
+  ++ [ "phase " <> secs (phSecs p) <> " " <> phLabel p | p <- mtPhases s ]
   ++ [ "turns: " <> T.pack (show (mtTurns s)) ]
   ++ [ "tool " <> n <> ": " <> T.pack (show c) | (n, c) <- mtTools s ]
   ++ tokens (mtUsage s)

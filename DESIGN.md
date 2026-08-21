@@ -925,6 +925,47 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A mint now says what it cost, and the first measurement says where the
+  minutes go.** Every figure about a mint was hand-copied from whatever a
+  terminal still showed: `Lips.Cli.Output` timed each phase for the live line and
+  dropped the number, and pi reported turns, tokens and dollars in its json
+  stream, which lips parsed for the reply and the transcript alone. So the one
+  question the feedback cycle turns on -- what is slow, and why -- had no data.
+
+  `generate` now writes `<language>/<world>/<lang>.timing` (a joint mint writes
+  one at the language level, the scope its record and its refusal artifact
+  already use): verdict, model, thinking level, total wall time, one line per
+  phase, model turns, one line per tool with its call count, tokens by kind, and
+  pi's own dollar figure. The file is UNSEALED and cannot be otherwise: the
+  record's bytes hash to the id every minted line is stamped with (invariant 6),
+  so a duration inside it would give two identical mints different ids and break
+  every stamp. Sealed inputs in `.generation`, observed costs beside it.
+  `verdictOf` derives the verdict from the phase log, so the file cannot disagree
+  with the `✗` the terminal printed, and the write hangs off `finally`, so a mint
+  refused by a gate -- which cost a whole round -- is recorded exactly as an
+  accepted one is. A run that dies before the model answered writes nothing (no
+  cost to report, and a lone `.timing` beside no engine would be a file about
+  nothing).
+
+  MEASURED, `examples/greet.lips` minted fresh for `nixos`, claude-sonnet-5,
+  thinking medium, 2026-08-20: wall 326.4s, of which the mint phase 324.0s
+  (99.4%) and everything lips does 2.1s -- which reproduces the earlier
+  "lips is under 1%" figure on a second program. 6 turns, 1 `query_options`
+  call, 4 `submit_draft` calls. Tokens: 12 fresh input, 205,148 cache-read,
+  50,975 cache-write, and **26,598 output** for an engine of one pattern, one
+  rule, one demand and one expect. Cost $0.43.
+
+  The output figure is the finding. A one-rule language spent 26.6k output
+  tokens because the whole engine is re-emitted on every draft, and output is
+  the side that is neither cached nor cheap: input arrived almost entirely from
+  cache (205k read against 12 fresh). That is the evidence behind the growth mint
+  (`docs/superpowers/specs/2026-08-20-mint-feedback-cycle-design.md`): a patch
+  keyed by id emits a few lines instead of a whole engine, and the prompt it
+  grows from is the cached side.
+
+  Verified: 899/899, `-Wall` clean, and the numbers above are read from the file
+  the run wrote.
+
 - **A house world's Nix is checked by nix, before anything is minted with it.**
   `Lips.World.parseWorld` was strict about STRUCTURE (an unknown header, an
   unknown slot, a newer format all refuse naming the offender) and blind to what

@@ -5366,7 +5366,7 @@ main = hspec $ do
         , mtModel    = "anthropic/claude-opus-5"
         , mtThinking = "medium"
         , mtWall     = 257.25
-        , mtPhases   = [Phase "schema" 12.5 True, Phase "mint nixos" 231.0 True]
+        , mtPhases   = [Phase "schema" 12.5 True, Phase "claims: 1 claim" 231.0 True]
         , mtTurns    = 7
         , mtTools    = [("check_draft", 3), ("query_options", 4)]
         , mtUsage    = Just (Usage 41233 5120 0 12 0.83)
@@ -5376,8 +5376,8 @@ main = hspec $ do
           , "model: anthropic/claude-opus-5"
           , "thinking: medium"
           , "wall: 257.2"
-          , "phase schema: 12.5"
-          , "phase mint nixos: 231.0"
+          , "phase 12.5 schema"
+          , "phase 231.0 claims: 1 claim"
           , "turns: 7"
           , "tool check_draft: 3"
           , "tool query_options: 4"

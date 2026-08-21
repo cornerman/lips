@@ -11,10 +11,12 @@ tracks only what is still open.
    built). Adding one sentence shape to a working language costs a full re-mint
    (4-6 minutes, opus, the whole engine re-emitted), which is the one act that
    leaves the zero-AI edit loop and the act an author hits every time a language
-   grows. Three errands in order: (1) an unsealed `<language>/<world>/<lang>.timing`
-   recording wall time per phase, turn count, tool-call counts and tokens, since
-   nothing today knows where the minutes go and a duration may never enter the
-   sealed record; (2) generate inherits the committed engine and takes a PATCH
+   grows. Errand (1), the unsealed `<language>/<world>/<lang>.timing` recording
+   wall time per phase, turns, tool-call counts, tokens and cost, LANDED
+   2026-08-20 (DESIGN §13, "A mint now says what it cost"), and its first
+   measurement is the case for errand 2: minting `greet` fresh spent 26,598
+   OUTPUT tokens on a one-rule engine, against 12 fresh input tokens and 205k
+   read from cache. Two errands left: (2) generate inherits the committed engine and takes a PATCH
    keyed by id (new id adds, known id replaces, unmentioned id inherited),
    default inherit with `--fresh` to rewrite, `basis:` recorded as a sealed
    input -- sound because the gates, not the rewrite, are what guard an engine;
