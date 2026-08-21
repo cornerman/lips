@@ -925,6 +925,37 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **`compile --watch`: the edit loop, and one key to grow the language.** Compile
+  is deterministic, offline and takes milliseconds, so re-running it on every save
+  costs nothing -- yet an author had to type it, which is what makes a loop feel
+  slow even when the tool is fast. `--watch` (`-w`) polls the program, its
+  `<language>.direction` and its engine (the shared grammar plus every world's
+  rules -- `Lips.Identity.watchedFiles`, pure and tested) four times a second and
+  compiles again on any change. Derived output is deliberately not watched: `out/`
+  is what compile writes, and watching it would make the loop feed itself.
+
+  When a line does not crystallize the loop prints the remedy it always printed,
+  and then OFFERS it: `g` runs `lips generate` on the program, `q` quits.
+  Invariant 1 is intact and the code says so where a reader would doubt it --
+  compile never calls a model; the loop is a driver around two verbs, and the mint
+  runs as a separate process with every gate of an ordinary mint. A failing pass
+  does not end the loop (a program the language cannot read yet is the NORMAL
+  state of an edit loop), while `compile` alone still exits nonzero, which is what
+  CI reads.
+
+  Two things measured rather than assumed. Polling, not inotify: the dev shell has
+  no fsnotify, and half a dozen `stat` calls four times a second are invisible --
+  a poll also cannot miss a file that does not exist yet, like the grammar the
+  next mint will write. And `hWaitForInput` is the obvious call for "is a key
+  waiting" and the wrong one: with `NoBuffering` it blocks past its timeout, so a
+  file touched ten seconds in went unnoticed for thirty. `hReady` after a
+  `threadDelay` answers now. Watch mode refuses loud when stdin is not a terminal,
+  since single keypresses are the whole interface.
+
+  Verified: 909/909, `-Wall` clean, and by hand in a pty -- a save triggers a
+  second pass, `g` spawns the mint (which refuses cleanly in a shell without the
+  packaged pins, and the loop carries on), `q` restores the terminal and stops.
+
 - **The growth mint: a language grows by a PATCH, not by a rewrite.** Adding one
   sentence shape to a working language re-minted the whole engine, so the one act
   that leaves the zero-AI loop was also the most expensive one, and it recurs

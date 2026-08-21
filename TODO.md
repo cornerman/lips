@@ -46,12 +46,15 @@ tracks only what is still open.
    built). Adding one sentence shape to a working language costs a full re-mint
    (4-6 minutes, opus, the whole engine re-emitted), which is the one act that
    leaves the zero-AI edit loop and the act an author hits every time a language
-   grows. Errands (1) and (2) LANDED 2026-08-20 (DESIGN §13, "A mint now says
-   what it cost" and "The growth mint"): the timing file measures a mint, and
-   generate patches a committed engine by id, measured at 4.4x less wall time and
-   7.1x fewer output tokens than a fresh mint of a SMALLER program. One errand
-   left: (3) `compile --watch` with `g` to run the growth mint, leaving invariant
-   1 intact (the loop drives, compile itself never calls a model).
+   grows. ALL THREE ERRANDS LANDED 2026-08-20 (DESIGN §13: "A mint now says what
+   it cost", "The growth mint", "compile --watch"): a mint records what it cost,
+   generate patches a committed engine by id (4.4x less wall time and 7.1x fewer
+   output tokens than a fresh mint of a SMALLER program), and the edit loop
+   recompiles on save with `g` to grow the language. This item stays only for
+   what is NOT done: nothing measures the patch path on a language with several
+   worlds or with artifacts, and the model default was left alone deliberately
+   (whether a patch is sonnet-able is now a cheap experiment against the timing
+   file rather than an assumption).
 
    Superseded description kept for the reader who wants what was decided: (2)
    generate inherits the committed engine and takes a PATCH

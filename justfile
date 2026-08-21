@@ -49,6 +49,11 @@ check-expect:
 compile program:
     nix run . -- compile "{{program}}"
 
+# The edit loop: recompile on every save, and press g to grow the language (which
+# runs generate, the one AI step) or q to stop. Needs a terminal.
+watch program:
+    nix run . -- compile --watch "{{program}}"
+
 # Running is not a lips verb: `compile` prints the exact `nix run`/`nix build`
 # commands over the compiled dir (exec/shell for an artifact, container/vm for a
 # system module). Run one of those printed commands to run the program.
