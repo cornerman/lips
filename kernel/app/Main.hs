@@ -150,7 +150,7 @@ main = do
       -- world -- which cannot convert a value, the grammar having no
       -- computation -- can only refuse. Measured 2026-08-09.
       inherited <- inheritedGrammar (goTarget go) (goFiles go)
-      generate worlds inherited (goSchema go) (goConfidence go) (goCompat go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
+      generate worlds inherited (goSchema go) (goConfidence go) (goCompat go) (goFresh go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
       | ceDraft co -> checkDraft (ceFile co)
@@ -880,11 +880,11 @@ tryRead p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either 
 -- The inherited grammar, when there is one, is both an INPUT (the mint is told
 -- to reuse it, so it enters the prompt and the record) and a GUARD (what comes
 -- back is checked against it).
-generate :: [World] -> Maybe Text -> Maybe String -> Double -> Compat -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
+generate :: [World] -> Maybe Text -> Maybe String -> Double -> Compat -> Bool -> Bool -> Maybe String -> String -> [FilePath] -> IO ()
 -- Unreachable: Lips.Cli.generateOpts's `some` guarantees at least one file by
 -- construction. Kept only so this function stays total (-Wall incomplete-patterns).
-generate _ _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
-generate worlds inherited mschema confidence compat verbose mmodel thinking files@(rep : _) = do
+generate _ _ _ _ _ _ _ _ _ [] = die "lips generate needs at least one program (unreachable: the CLI parser requires one)."
+generate worlds inherited mschema confidence compat fresh verbose mmodel thinking files@(rep : _) = do
   -- What the mint cost is recorded whatever the verdict, because a REFUSED mint
   -- spends a whole round and that is the number the feedback cycle turns on.
   -- Every refusal below goes through 'die', which throws, so the write hangs off
@@ -903,6 +903,16 @@ generate worlds inherited mschema confidence compat verbose mmodel thinking file
         [ T.pack f <> " is ." <> T.pack (languageName f) | f <- files ]
         ("→ generate the ." <> T.pack lang <> " programs together, other languages separately."))
       [] -> pure ()
+    -- What this mint grows from, named by the record the committed engine was
+    -- stamped from: an inherited engine steers the reply as much as the prompt
+    -- does, so it is pinned like every other input (invariant 6). Read from the
+    -- first world's governing record, because one call patches one language
+    -- against one committed state.
+    basis <- if fresh then pure "fresh" else do
+      mr <- case wnames of
+              (w : _) -> governingRecord dir w rep
+              []      -> pure Nothing
+      pure (maybe "fresh" (\r -> "inherited " <> genId r) mr)
     progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
     -- Owner taste is language-level (shared); read once from the language path.
     direction <- tryRead (directionPath rep)
@@ -971,7 +981,7 @@ generate worlds inherited mschema confidence compat verbose mmodel thinking file
         -- The whole event, pinning every world it aimed at. Built before the
         -- gates because a refusal is pinned exactly as an acceptance would be.
         rec = record model [ (wName w, worldHash w, pin) | (w, _, pin) <- grounds ]
-                     (T.pack thinking) confidence prompt corpus transcript reply
+                     (T.pack thinking) confidence basis prompt corpus transcript reply
     if not (null errs) || not (null unsure)
       then do
         -- Machine-readable twin of the on-screen refusal: the cross-repo

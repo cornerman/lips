@@ -156,44 +156,44 @@ main = hspec $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
     it "defaults target to nixos, confidence to the default, compat full, verbose off" $
       parseArgs ["ledger.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False Nothing defaultThinking ["ledger.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False False Nothing defaultThinking ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseArgs ["--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.7 Full False False Nothing defaultThinking ["a.backup.lips"])
     -- A name the CLI does not know may be a house world file beside the
     -- program, which only the resolver (which knows the directory) can look
     -- for, so the parser takes any name and resolution decides.
     it "takes a world name the binary does not ship" $
       parseArgs ["--target", "house-k3s", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["house-k3s"] Nothing Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["house-k3s"] Nothing Nothing 0.7 Full False False Nothing defaultThinking ["a.backup.lips"])
     it "reads --worlds as the directory to resolve a world name in" $
       parseArgs ["--worlds", "worlds", "--target", "house-k3s", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["house-k3s"] (Just "worlds") Nothing 0.7 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["house-k3s"] (Just "worlds") Nothing 0.7 Full False False Nothing defaultThinking ["a.backup.lips"])
     it "reads an explicit --model alongside multiple programs" $
       parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.9 Full False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.9 Full False False Nothing defaultThinking ["a.backup.lips"])
     it "rejects an out-of-range confidence" $
       parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
     it "reads --compat in any position, and refuses a word that is not a mode" $ do
       parseArgs ["--compat", "none", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 None False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 None False False Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "--compat", "forwards"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Forwards False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Forwards False False Nothing defaultThinking ["a.backup.lips"])
       -- the flag it replaces is gone, so an old invocation fails loud rather
       -- than silently keeping the committed contract
       parseArgs ["--renew", "a.backup.lips"] `shouldBe` Nothing
       parseArgs ["--compat", "renew", "a.backup.lips"] `shouldBe` Nothing
     it "reads -v/--verbose in any position" $ do
       parseArgs ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False True Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "-v"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False True Nothing defaultThinking ["a.backup.lips"])
     it "reads -m as the short alias for --model" $
       parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     -- The thinking level is always passed to pi and always recorded, so an
@@ -3052,13 +3052,13 @@ main = hspec $ do
             `shouldBe` []
 
     it "generation ids are deterministic and content-sensitive" $ do
-      let r  = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply"
-          r' = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply2"
-          rc = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.5 "sp" "prog" "tt" "reply"
-          rt = record "m" [("home-manager", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply"
-          rl = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "other lookup" "reply"
-          rk = record "m" [("nixos", "wh1", "github:o/r/aaa")] "low" 0.7 "sp" "prog" "tt" "reply"
-          rs = record "m" [("nixos", "wh1", "github:o/r/bbb")] "high" 0.7 "sp" "prog" "tt" "reply"
+      let r  = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
+          r' = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply2"
+          rc = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.5 "fresh" "sp" "prog" "tt" "reply"
+          rt = record "m" [("home-manager", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
+          rl = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "other lookup" "reply"
+          rk = record "m" [("nixos", "wh1", "github:o/r/aaa")] "low" 0.7 "fresh" "sp" "prog" "tt" "reply"
+          rs = record "m" [("nixos", "wh1", "github:o/r/bbb")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
       genId r `shouldBe` genId r
       genId r `shouldNotBe` genId r'
       -- the confidence threshold is pinned: changing it changes the id
@@ -3074,12 +3074,21 @@ main = hspec $ do
       genId r `shouldNotBe` genId rs
       T.length (genId r) `shouldBe` 16
 
+    -- What a mint GREW FROM is an input of the event: a patch against a
+    -- committed engine and a rewrite from scratch are two different events, and
+    -- without the basis they would record as one.
+    it "the record names the basis the mint grew from, and it is pinned" $ do
+      let rf = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
+          ri = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "inherited aaa" "sp" "prog" "tt" "reply"
+      T.lines ri `shouldSatisfy` elem "basis: inherited aaa"
+      genId rf `shouldNotBe` genId ri
+
     -- Invariant 6: every minted line is stamped @gen:<id>, and the id must
     -- re-hash from the committed .generation beside it. Nothing verified that
     -- for a year, so a change to what the record CONTAINS could have
     -- invalidated every committed engine with all gates green.
     describe "generation stamps (does the engine name the record beside it)" $ do
-      let rec  = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply"
+      let rec  = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
           want = genId rec
           line i g = "p" <> T.pack (show (i :: Int)) <> " meta lang.pattern.p"
                        <> T.pack (show i) <> " stated \"x" <> T.pack (show i)
@@ -3109,12 +3118,12 @@ main = hspec $ do
       -- A language is minted once per world, so the grammar's lines name
       -- whichever mint wrote them and each world's rules name their own.
       it "accepts a line stamped by ANY of the language's records" $ do
-        let recB = record "m" [("kubenix", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply"
+        let recB = record "m" [("kubenix", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
         stampFaults [rec, recB] (lang [" @gen:" <> want, " @gen:" <> genId recB])
           `shouldBe` []
 
       it "names every id available when a stamp matches none of them" $ do
-        let recB = record "m" [("kubenix", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply"
+        let recB = record "m" [("kubenix", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
         stampFaults [rec, recB] (lang [" @gen:0123456789abcdef"])
           `shouldBe` [StaleStamp 3 "0123456789abcdef" [want, genId recB]]
 
@@ -3137,7 +3146,7 @@ main = hspec $ do
     -- its own world file hash and its own schema.
     it "pins every world a joint mint covered, each by its own hash" $ do
       let rec = record "m" [("nixos", "h1", "s1"), ("kubenix", "h2", "s2")]
-                       "high" 0.7 "sp" "prog" "tt" "reply"
+                       "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
       recordedWorldPin rec "nixos"    `shouldBe` Just ("nixos", Just "h1")
       recordedWorldPin rec "kubenix"  `shouldBe` Just ("kubenix", Just "h2")
       recordedWorldPin rec "terranix" `shouldBe` Nothing
@@ -3145,7 +3154,7 @@ main = hspec $ do
     -- A committed record is sealed (its hash stamps every engine line beside
     -- it), so the one-world rendering must not move by a byte.
     it "reads a one-world record exactly as before" $ do
-      let rec = record "m" [("nixos", "h1", "s1")] "high" 0.7 "sp" "prog" "tt" "reply"
+      let rec = record "m" [("nixos", "h1", "s1")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
       recordedWorld rec `shouldBe` Right ("nixos", Just "h1")
       recordedSchema rec `shouldBe` Just "s1"
 
@@ -3153,9 +3162,9 @@ main = hspec $ do
     -- (or --schema), so the one thing a reader needs is to be TOLD when the two
     -- differ. That needs the committed pin read back out.
     it "reads the schema pin back out of a committed record" $ do
-      recordedSchema (record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply")
+      recordedSchema (record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply")
         `shouldBe` Just "github:o/r/aaa"
-      recordedSchema (record "m" [("nixos", "wh1", "options-json:cafe0123")] "high" 0.7 "sp" "p" "t" "r")
+      recordedSchema (record "m" [("nixos", "wh1", "options-json:cafe0123")] "high" 0.7 "fresh" "sp" "p" "t" "r")
         `shouldBe` Just "options-json:cafe0123"
       -- a record written before the pin existed simply has none
       recordedSchema "model: m\ntarget: nixos\n" `shouldBe` Nothing
@@ -3164,14 +3173,14 @@ main = hspec $ do
       -- A reader (and the re-mint that wants the same grounding) must be able to
       -- see WHICH schema admitted these rules, without re-deriving it from
       -- whichever lips binary happens to be installed.
-      T.lines (record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "tt" "reply")
+      T.lines (record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "tt" "reply")
         `shouldContain` ["schema: github:o/r/aaa"]
     -- The record stores the corpus verbatim, which makes it the one offline
     -- witness of what each program SAID when the language (and any baked
     -- artifact source) was minted. The source-specification gate reads it back.
     it "reads one program's text back out of the record it was minted from" $ do
       let progs = [("a/one.log.lips", "first line\nsecond line\n"), ("a/two.log.lips", "other\n")]
-          r     = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" (corpusText progs) "tt" "reply"
+          r     = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" (corpusText progs) "tt" "reply"
       recordedProgram "a/one.log.lips" r `shouldBe` Just "first line\nsecond line\n"
       -- addressed by file NAME, so the same program under another directory reads
       recordedProgram "b/two.log.lips" r `shouldBe` Just "other\n"
@@ -3195,7 +3204,7 @@ main = hspec $ do
     -- sentences the mint saw somewhere in the language.
     it "reads every program section back out of the record" $ do
       let progs = [("a/one.log.lips", "first line\nsecond line\n"), ("a/two.log.lips", "other\n")]
-          r     = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" (corpusText progs) "tt" "reply"
+          r     = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" (corpusText progs) "tt" "reply"
       recordedPrograms r `shouldBe`
         [("one.log.lips", "first line\nsecond line\n"), ("two.log.lips", "other\n")]
       -- a record with no corpus block at all yields no sections, never a crash
@@ -3205,8 +3214,8 @@ main = hspec $ do
     -- the record pins the file by content, and compile re-checks the committed
     -- copy against that hash. Both enter genId like every other mint input.
     it "names the world and pins the world file it was minted from" $ do
-      let r1 = record "m" [("nixos", "h1", "s")] "high" 0.7 "p" "c" "t" "y"
-          r2 = record "m" [("nixos", "h2", "s")] "high" 0.7 "p" "c" "t" "y"
+      let r1 = record "m" [("nixos", "h1", "s")] "high" 0.7 "fresh" "p" "c" "t" "y"
+          r2 = record "m" [("nixos", "h2", "s")] "high" 0.7 "fresh" "p" "c" "t" "y"
       r1 `shouldSatisfy` T.isInfixOf "format: 1"
       r1 `shouldSatisfy` T.isInfixOf "world: nixos h1"
       genId r1 `shouldNotBe` genId r2
@@ -3228,9 +3237,9 @@ main = hspec $ do
     -- readRecordedWorld scans for the FIRST line starting with "world:", so
     -- the headers must stay above every section a lookup answer could pollute.
     it "keeps the headers above the tool transcript" $ do
-      let r = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "sp" "prog" "<- query_options\nworld: not-this" "reply"
-      take 5 (T.lines r)
-        `shouldBe` [ "format: 1", "model: m", "world: nixos wh1"
+      let r = record "m" [("nixos", "wh1", "github:o/r/aaa")] "high" 0.7 "fresh" "sp" "prog" "<- query_options\nworld: not-this" "reply"
+      take 6 (T.lines r)
+        `shouldBe` [ "format: 1", "model: m", "basis: fresh", "world: nixos wh1"
                    , "schema: github:o/r/aaa", "thinking: high" ]
       r `shouldSatisfy` T.isInfixOf "--- tool transcript ---"
 

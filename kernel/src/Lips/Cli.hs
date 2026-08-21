@@ -48,6 +48,7 @@ data GenerateOpts = GenerateOpts
   , goSchema     :: Maybe String
   , goConfidence :: Double
   , goCompat     :: Compat
+  , goFresh      :: Bool
   , goVerbose    :: Bool
   , goModel      :: Maybe String
   , goThinking   :: String
@@ -312,6 +313,12 @@ generateOpts defConf = GenerateOpts
                     <> "(keep it, the default), backwards (minted extras may join), "
                     <> "forwards (an assertion the engine stopped filling may leave), "
                     <> "none (rewrite it from this run)."))
+  -- No short alias, and off by default: growing a language is the everyday act,
+  -- so patching the committed engine is what an unadorned generate does, and
+  -- rewriting it is the deliberate, occasional one (the same judgment --lang and
+  -- --compat are given).
+  <*> switch (long "fresh"
+        <> help "Rewrite the whole engine instead of patching the committed one (loses nothing but costs a full mint).")
   <*> switch (long "verbose" <> short 'v' <> help "Show everything sent to the model and everything it says, as it happens.")
   <*> optional (strOption
         (long "model" <> short 'm' <> metavar "ID"

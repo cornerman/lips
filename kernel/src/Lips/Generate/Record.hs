@@ -76,10 +76,16 @@ import           Lips.World           (World (..))
 -- The thinking level is an input like the model: it changes what the mint
 -- produces, so a record omitting it would not pin the event. lips always passes
 -- it explicitly, so nothing ambient can steer a mint unrecorded.
-record :: Text -> [(Text, Text, Text)] -> Text -> Double -> Text -> Text -> Text -> Text -> Text
-record model worlds thinking confidence sysPrompt program transcript reply = T.unlines $
+record :: Text -> [(Text, Text, Text)] -> Text -> Double -> Text -> Text -> Text -> Text -> Text -> Text
+record model worlds thinking confidence basis sysPrompt program transcript reply = T.unlines $
   [ "format: 1"
-  , "model: " <> model ]
+  , "model: " <> model
+  -- What this mint GREW FROM: @fresh@, or @inherited \<genid\>@ naming the record
+  -- the committed engine was stamped from. An inherited engine steers the reply
+  -- as much as the prompt does (the model answers a PATCH against it), so it is
+  -- pinned like the schema and the world file -- otherwise a patch and a rewrite
+  -- would record as the same event.
+  , "basis: " <> basis ]
   ++ concat [ [ "world: " <> n <> " " <> h, "schema: " <> s ] | (n, h, s) <- worlds ]
   ++
   [ "thinking: " <> thinking
