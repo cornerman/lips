@@ -231,10 +231,16 @@ worldVerb dir (WorldPrint name) = do
 worldVerb dir WorldList = do
   let here = fromMaybe "." dir
   locals <- localWorldNames here
+  -- Two groups under one heading each, rather than a tag repeated on every
+  -- line: the origin is a property of the group, and a shipped list of four
+  -- said it four times. A local world still carries its own path, since that
+  -- differs per line and is the file the reader opens.
+  let mine = [ n | n <- locals, n `notElem` builtinNames ]
   sayAnswer (T.unlines
-    ([ n <> "   (lips ships it)" | n <- builtinNames ]
-      ++ [ n <> "   (" <> T.pack (worldPathIn here n) <> ")"
-         | n <- locals, n `notElem` builtinNames ]))
+    ([ "lips ships:" ] ++ [ "  " <> n | n <- builtinNames ]
+      ++ (if null mine then []
+          else "" : "beside your program:"
+               : [ "  " <> n <> "   (" <> T.pack (worldPathIn here n) <> ")" | n <- mine ])))
 worldVerb dir (WorldCheck mname) = do
   let here = fromMaybe "." dir
   -- Unnamed means every world reachable from here, the same default the listing
