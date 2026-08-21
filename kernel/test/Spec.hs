@@ -33,7 +33,7 @@ import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
 import Lips.Report                 (emptySubmission, noSubmission, unansweredReport, unportableReport)
-import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, sharedFileViolations)
+import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, mergeReply, mergeTouched, replyLinesOf, sharedFileViolations, touchedIds)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
@@ -5359,6 +5359,41 @@ main = hspec $ do
       report "broke" [] "→ fix it" `shouldBe` "broke\n\n→ fix it"
     it "a headline-only diagnosis leaves the action to its caller" $
       reportHead "broke" [] `shouldBe` "broke"
+
+  describe "the growth mint's merges (Lips.Generate.Minting)" $ do
+    let committed = T.unlines
+          [ "p1 meta lang.pattern.p1 stated \"install <name> => fact cmd.<name> \\\"<name>\\\"\" @gen:aaa"
+          , "r1 meta engine.rule.r1 stated \"match fact cmd.<name> => environment.systemPackages \\\"[ <value:pkg> ]\\\"\" @gen:aaa"
+          ]
+    it "renders a committed engine back into reply lines the mint can read" $ do
+      let ls = T.lines (replyLinesOf Nothing committed)
+      length ls `shouldBe` 2
+      take 1 ls `shouldBe` pure "1.0 p1 install <name> => fact cmd.<name> \"<name>\""
+    it "tags every line when the run writes for several worlds" $
+      replyLinesOf (Just "nixos") committed
+        `shouldSatisfy` T.isInfixOf "1.0 r1 @nixos match fact"
+    it "a patch replaces by id, adds new ids and leaves the rest" $ do
+      let patch = T.unlines
+            [ "0.9 r1 match fact cmd.<name> => home.packages \"[ <value:pkg> ]\""
+            , "0.9 p2 pattern quietly => concept quiet \"quietly\"" ]
+          merged = T.lines (mergeReply (replyLinesOf Nothing committed) patch)
+      length merged `shouldBe` 3
+      merged `shouldSatisfy` any (T.isInfixOf "home.packages")
+      merged `shouldSatisfy` any (T.isInfixOf "1.0 p1 install")
+      merged `shouldSatisfy` all (not . T.isInfixOf "environment.systemPackages")
+    it "reads the ids a patch touched, so writing can keep the other bytes" $
+      touchedIds (T.unlines [ "0.9 r1 match fact a => b \"c\"", "0.9 d1 report x" ])
+        `shouldBe` ["r1", "d1"]
+    it "writing keeps a committed line verbatim unless the patch touched it" $ do
+      let rendered = T.unlines
+            [ "p1 meta lang.pattern.p1 stated \"install <name> => fact cmd.<name> \\\"<name>\\\"\" @gen:bbb"
+            , "r1 meta engine.rule.r1 stated \"match fact cmd.<name> => home.packages \\\"[ <value:pkg> ]\\\"\" @gen:bbb"
+            ]
+          out = mergeTouched ["r1"] committed rendered
+      out `shouldSatisfy` T.isInfixOf "@gen:aaa"
+      out `shouldSatisfy` T.isInfixOf "home.packages"
+      out `shouldSatisfy` T.isInfixOf "@gen:bbb"
+      out `shouldSatisfy` (not . T.isInfixOf "environment.systemPackages")
 
   describe "mint stats (Lips.Generate.Stats)" $ do
     it "renders one key-per-line record a human and a grep can both read" $

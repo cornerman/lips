@@ -37,10 +37,15 @@ module Lips.Generate.Minting
   , claimlessBakedSource
   , unplaceableClaims
   , appendOnlyViolations
+  , replyLinesOf
+  , mergeReply
+  , touchedIds
+  , mergeTouched
   , mergeGrammar
   , sharedFileViolations
   ) where
 
+import           Data.Maybe      (fromMaybe)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
@@ -55,7 +60,7 @@ import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Runtime                 (schemeVocabulary)
 import Lips.World            (World (..))
 import Lips.Kernel.Capture      (nameTokens)
-import Lips.Kernel.Decision     (Decision (..), DecisionId (..), Provenance (..), SourceLoc (..))
+import Lips.Kernel.Decision     (Assertion (..), Decision (..), DecisionId (..), Provenance (..), SourceLoc (..))
 import Lips.Kernel.Reader       (readDecision)
 import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
 import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody)
@@ -321,6 +326,69 @@ mergeGrammar :: Text -> Text -> Text
 mergeGrammar old new = old <> T.unlines
   [ l | l <- T.lines new, idOf l `notElem` map idOf (T.lines old) ]
   where idOf l = take 1 (T.words l)
+
+-- | A committed engine, rendered back into the line format a mint ANSWERS in.
+--
+-- This is what makes a patch cheap without inventing a second grammar: an engine
+-- line carries the reply line's own text as its assertion, so handing the model
+-- (and 'mergeReply') a committed engine costs a re-quote, not a translation.
+-- Confidence 1.0, because a committed line has already passed every gate. The
+-- world tag is added only when the run writes for several worlds, so a
+-- single-world reply stays byte-identical to what mints wrote before tags
+-- existed; patterns are shared, so their lines are never tagged.
+replyLinesOf :: Maybe Text -> Text -> Text
+replyLinesOf tag src = T.unlines
+  [ T.unwords ([ "1.0", i ] ++ maybe [] (\w -> ["@" <> w]) tag ++ [ a ])
+  | l <- T.lines src
+  , Right d <- [readDecision (T.strip l)]
+  , let DecisionId i = dId d
+  , let Assertion a = dAssertion d ]
+
+-- | The engine a PATCH means: every inherited line, with the ones the patch
+-- restates dropped, then the patch itself. An id the patch does not mention is
+-- inherited verbatim, which is the whole point -- the model pays for what it
+-- changes, not for what it keeps.
+--
+-- Merged BEFORE the reply is parsed, so every gate, every render and every write
+-- below sees a complete engine and needs no notion of a patch at all.
+mergeReply :: Text -> Text -> Text
+mergeReply inheritedLines patch = T.unlines
+  ([ l | l <- T.lines inheritedLines, replyId l `notElem` touched ] ++ T.lines patch)
+  where touched = touchedIds patch
+
+-- | The ids a patch mentions: token 2 of every line that has one, since token 1
+-- of a reply line is its confidence.
+touchedIds :: Text -> [Text]
+touchedIds t = [ i | l <- T.lines t, (_ : i : _) <- [T.words l] ]
+
+-- | What to WRITE after a patch: the rendered engine, except that a line the
+-- patch never touched keeps its committed bytes -- and therefore its own
+-- @\@gen:@ stamp, because that line was minted by the run whose record still
+-- hashes to it (invariant 6). Re-stamping it would claim this event produced a
+-- line its reply never carried.
+--
+-- The same move 'mergeGrammar' makes for a second world's grammar, generalized
+-- to any engine file and to replacement.
+mergeTouched :: [Text] -> Text -> Text -> Text
+mergeTouched touched committed rendered = T.unlines
+  [ fromMaybe l (keep (engineId l)) | l <- T.lines rendered ]
+  where
+    keep i | i `elem` touched = Nothing
+           | otherwise = lookup i [ (engineId c, c) | c <- T.lines committed ]
+
+-- | Token 1 of an engine FILE line (its decision id), as against 'replyId'.
+-- Two functions rather than one that guesses: the two formats put the id in
+-- different places, and a reader that tried both would silently accept either.
+engineId :: Text -> Text
+engineId l = case T.words l of
+  (w : _) -> w
+  []      -> ""
+
+-- | Token 2 of a REPLY line (the id after the confidence).
+replyId :: Text -> Text
+replyId l = case T.words l of
+  (_ : w : _) -> w
+  _           -> ""
 
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
