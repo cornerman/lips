@@ -3914,6 +3914,29 @@ but the loop around it is incomplete; "missing" means specced, not built.
   CONTRACT it wrote for itself, and two of the three were lips' fault (both now
   structural guards). Details in `libero/docs/composition-measurement.md`.
 
+- **A league, and the chain that links it** (2026-08-29, libero's season slice;
+  the first program whose behaviour comes from three languages). `season.lips`
+  names ONE language -- `the meetings come from the match language.` -- and its
+  compiled core holds three: its own clauses, match's, and player's, which
+  arrive because match names player and `resolveImports` follows the chain depth
+  first. No program states the transitive step. Four squads, one seed threaded
+  through twelve fixtures, and the table's goal differences sum to zero.
+  THE GROWTH MINT, measured on real languages rather than a fixture: adding four
+  sentences to season (goals for, goals against, an ordered table, a wider
+  report) cost 4m 28s, $0.92 and 21,369 output tokens as a patch of 64 lines by
+  id, against 16m 04s, $2.82 and 75,549 tokens for the fresh mint of the same
+  language. Growing `match` to serve season (`meeting(a, b, s)`,
+  `squad-name(s)`) cost 5m 33s and a patch of 67 lines, against 24m 23s for the
+  rewrite before it -- and its `.expect` and its measured balance (20 matches,
+  home 1.30, away 1.00) survived both mints unchanged.
+  A NEGATIVE RESULT worth keeping: the first `season.lips` stated the ordered
+  table, both goal tallies and a statistical claim at once. Eleven drafts were
+  refused and the mint never converged. The same slice, cut to fixtures, a
+  result and points, minted at the third draft -- and the rest arrived four
+  minutes later as a patch. State the smallest thing that can fail, then grow it;
+  a program that asks for everything at once asks the mint to be right about
+  everything at once.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
