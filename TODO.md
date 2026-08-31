@@ -79,6 +79,15 @@ tracks only what is still open.
    default inherit with `--fresh` to rewrite, `basis:` recorded as a sealed
    input -- sound because the gates, not the rewrite, are what guard an engine.
 
+0. **Cheaper retries: let a mint patch its own draft** (measured 2026-08-29).
+   Wall time is output tokens (DESIGN §13, "A mint's wall clock IS its output
+   tokens"), and every refused `submit_draft` re-emits the WHOLE engine: the
+   thinking experiment saw three and four submissions per patch, so a retry is
+   the second-largest source of output after thinking itself. `submit_draft`
+   could take a patch of the draft it already staged, exactly as `generate` now
+   takes a patch of the committed engine. Not started; touches the mint tool and
+   the draft door.
+
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
 

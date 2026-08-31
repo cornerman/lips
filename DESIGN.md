@@ -3937,6 +3937,28 @@ but the loop around it is incomplete; "missing" means specced, not built.
   a program that asks for everything at once asks the mint to be right about
   everything at once.
 
+- **A mint's wall clock IS its output tokens, and most of them are thinking**
+  (2026-08-29, measured over five timing records plus a controlled experiment).
+  Across mints differing thirtyfold in size, throughput is flat at 72-83 tokens
+  per second (website 110,257 tokens in 1478.8s; greet 3,765 in 74.5s), so turns,
+  tool calls and prompt size do not appear in wall time at all. Cost decomposes
+  as roughly 60 percent output, 35 percent cache-write, 4 percent cache-read,
+  with fresh input at 6-24 tokens because the prompt is fully cached.
+  CONSEQUENCE FOR THE PROMPT-VERSUS-TOOL QUESTION, which is now settled with
+  numbers rather than taste: front-loading material into the system prompt cannot
+  reduce output tokens, so it cannot make a mint faster; it would only add to
+  cache-write, the second-largest cost line, on every mint including the ones
+  that never need it. The schema tool also scales where a prompt cannot, since
+  NixOS ships tens of thousands of options. Tools stay.
+  THE THINKING EXPERIMENT: one growth patch (libero's season table), same
+  pre-patch engine, only `--thinking` varied. high 639s / 46,246 tokens / $1.73;
+  medium 295s / 22,061 / $0.94; low 177s / 14,615 / $0.72. All three patched the
+  same pattern and rule ids, all three were accepted, all three pass `check`, and
+  more thinking bought no fewer retries (4, 3, 4 submissions). Chained with the
+  patch mint itself, the same change falls from 969s and $2.82 (fresh, high) to
+  177s and $0.72. So the standing advice is: a PATCH runs at low or medium, and
+  high is for a fresh language -- where there is still no low-thinking datapoint.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
