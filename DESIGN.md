@@ -3981,6 +3981,18 @@ but the loop around it is incomplete; "missing" means specced, not built.
   Verified end to end against the real tool code and the real binary: a refused
   submission carrying a bad rule and a good contract, fixed by restating the ONE
   rule, yields an answer holding both lines and no answer at all in between.
+  ONE DEFECT FOUND BY REVIEWING THE CHANGE, and it was older than the change:
+  `mergeReply` addressed LINES while `parseEngineCandidates` reads BLOCKS, so two
+  readers of one format disagreed about a heredoc body. Both directions lost
+  bytes, reproduced before the fix: a patch whose report said "Pattern p1 reads
+  the interval" deleted the committed `p1` (token 2 of a prose sentence read as a
+  touched id, and the program then stopped crystallizing), and replacing a report
+  left the old body and its `lips>>>` behind as orphans. The merge is addressed
+  in UNITS now -- one item line, or one block from its header through its
+  terminator -- and a unit carries an id only where token 1 is a confidence, so a
+  body word shaped like an id addresses nothing. Merging one patch twice is now
+  merging it once, which the tool relies on: it checks each submission once per
+  program.
   NOT YET MEASURED: what this saves on a live mint. The prediction from the
   thinking experiment is that a 3-4 submission patch stops paying for 3-4 whole
   engines, but no mint has been run since the change.

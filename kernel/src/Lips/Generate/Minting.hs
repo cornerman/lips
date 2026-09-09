@@ -44,6 +44,7 @@ module Lips.Generate.Minting
   , sharedFileViolations
   ) where
 
+import           Data.Maybe      (isJust, mapMaybe)
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
@@ -371,21 +372,58 @@ replyLinesOf tag src = T.unlines
 --
 -- Merged BEFORE the reply is parsed, so every gate, every render and every write
 -- below sees a complete engine and needs no notion of a patch at all.
+--
+-- Addressed in UNITS, not in lines, because the reply format is not a list of
+-- lines: a heredoc block's body is verbatim text that may hold anything,
+-- id-shaped words included. Reading it as lines made this merge disagree with
+-- 'parseEngineCandidates', which reads the same reply, and the disagreement lost
+-- bytes both ways: a report sentence "Pattern p1 reads the interval" deleted the
+-- committed p1, and replacing a report left its old body and terminator behind
+-- as orphans.
 mergeReply :: Text -> Text -> Text
 mergeReply inheritedLines patch = T.unlines
-  ([ l | l <- T.lines inheritedLines, replyId l `notElem` touched ] ++ T.lines patch)
-  where touched = touchedIds patch
+  (concat kept ++ T.lines patch)
+  where
+    touched = touchedIds patch
+    kept = [ u | u <- replyUnits inheritedLines
+               , maybe True (`notElem` touched) (unitId u) ]
 
--- | The ids a patch mentions: token 2 of every line that has one, since token 1
--- of a reply line is its confidence.
+-- | The ids a patch mentions, one per unit it carries.
 touchedIds :: Text -> [Text]
-touchedIds t = [ i | l <- T.lines t, (_ : i : _) <- [T.words l] ]
+touchedIds = mapMaybe unitId . replyUnits
 
--- | Token 2 of a REPLY line (the id after the confidence).
-replyId :: Text -> Text
-replyId l = case T.words l of
-  (_ : w : _) -> w
-  _           -> ""
+-- | A reply, split into the units a patch can address: one item LINE, or one
+-- BLOCK (its heredoc header, its body and its terminator). An unterminated block
+-- runs to the end, which is the reading that keeps the merge from cutting a
+-- block in half; the parser refuses it afterwards, naming the missing marker.
+replyUnits :: Text -> [[Text]]
+replyUnits = go . T.lines
+  where
+    go [] = []
+    go (l : ls)
+      | isJust (blockHeader l) =
+          let (body, rest) = break (\x -> T.strip x == closeMarker) ls
+           in case rest of
+                []              -> [l : body]
+                (marker : more)  -> (l : body ++ [marker]) : go more
+      | otherwise = [l] : go ls
+
+-- | Which id a unit carries, if any: token 2 of its FIRST line, and only where
+-- token 1 is a confidence. A line that does not open with a confidence is prose
+-- or a stray marker, so it names no id and no patch can address it -- which is
+-- what keeps a body word shaped like an id from deleting a real line.
+unitId :: [Text] -> Maybe Text
+unitId (l : _) = case T.words l of
+  (c : i : _) | isConfidenceTok c -> Just i
+  _                               -> Nothing
+unitId []      = Nothing
+
+-- | Does this token read as a bare number? Token 1 of every item line is its
+-- confidence, which is how an item is told from prose here and in 'prose'.
+isConfidenceTok :: Text -> Bool
+isConfidenceTok t = case TR.double t of
+  Right (_, rest) -> T.null rest
+  Left _          -> False
 
 
 -- | Parse a model reply into item candidates, collecting per-line errors.
@@ -435,13 +473,10 @@ parseEngineCandidates worlds reply = go (T.lines reply) [] []
 -- the one this must never take. A sentence that merely mentions a keyword
 -- ("I expect this to work") is refused too, which is the safe direction.
 prose :: Text -> Bool
-prose l = not (isConfidence firstTok) && not (any (`elem` keywords) (take 3 toks))
+prose l = not (isConfidenceTok firstTok) && not (any (`elem` keywords) (take 3 toks))
   where
     toks = T.words l
     firstTok = case toks of { (w : _) -> w; [] -> "" }
-    isConfidence t = case TR.double t of
-      Right (_, rest) -> T.null rest
-      Left _          -> False
     keywords :: [Text]
     keywords = ["pattern", "match", "merge", "demand", "ignore", "expect", "because"]
 

@@ -216,15 +216,16 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId: string, params: { draft: string; restart?: boolean }) {
       // One program at a time: check takes exactly one, and the engine-level
       // gates are program-independent, so the first failure is the answer.
-      // Every call names the running draft and merges into it; the merge is
-      // idempotent (the same patch onto the result of that patch), so a second
-      // program's call re-reads what the first wrote without changing it.
-      for (const program of programs) {
+      // Every call names the running draft and merges into it; merging one patch
+      // twice is merging it once (a unit-addressed merge, checked in the suite),
+      // so a second program's call re-reads what the first wrote unchanged.
+      for (const [i, program] of programs.entries()) {
         const args = ["check", "--draft", "--running", draftPath];
-        // Restart is honoured on the FIRST program only: the later calls read
-        // the file this one just wrote, and voiding it again would drop the
-        // merge instead of repeating it.
-        if (params.restart && program === programs[0]) args.push("--restart");
+        // Restart is honoured on the FIRST call only: the later ones read the
+        // file this one just wrote, and voiding it again would drop the merge
+        // instead of repeating it. By INDEX, not by name: two programs of one
+        // path would otherwise each void the draft.
+        if (params.restart && i === 0) args.push("--restart");
         const r = spawnSync(bin, [...args, program], {
           input: params.draft,
           encoding: "utf8",

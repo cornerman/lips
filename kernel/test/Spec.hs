@@ -5445,6 +5445,39 @@ main = hspec $ do
       touchedIds (T.unlines [ "0.9 r1 match fact a => b \"c\"", "0.9 d1 report x" ])
         `shouldBe` ["r1", "d1"]
 
+    -- A reply is not a list of lines: a heredoc block's BODY is verbatim text
+    -- that may hold anything, id-shaped words included. Reading it as lines made
+    -- the merge disagree with the parser that reads the same reply, and a
+    -- disagreement between two readers of one format is where silent loss lives:
+    -- a report saying "Pattern p1 reads the interval" deleted the committed p1.
+    describe "a heredoc block is one unit, to the merge as to the parser" $ do
+      let block = T.unlines
+            [ "0.9 d1 report <<<lips"
+            , "Pattern p1 reads the interval."
+            , "This r1 line installs it."
+            , "lips>>>" ]
+      it "a block body names no id, so it touches none" $
+        touchedIds block `shouldBe` ["d1"]
+      it "a body word shaped like an id cannot delete an inherited line" $ do
+        let merged = mergeReply (replyLinesOf Nothing committed) block
+        merged `shouldSatisfy` T.isInfixOf "1.0 p1 pattern install"
+        merged `shouldSatisfy` T.isInfixOf "1.0 r1 match fact"
+      it "replacing a block takes its body and its terminator with it" $ do
+        let second = T.unlines
+              [ "0.9 d1 report <<<lips", "The second report.", "lips>>>" ]
+            twice = mergeReply block second
+        twice `shouldSatisfy` T.isInfixOf "The second report."
+        twice `shouldNotSatisfy` T.isInfixOf "Pattern p1 reads"
+        -- One block, one terminator: an orphaned marker is the visible half of
+        -- the same defect, and the parser would read the body after it as items.
+        length (filter (== "lips>>>") (T.lines twice)) `shouldBe` 1
+      -- The tool checks one submission single per program, so a two-program mint
+      -- merges the same patch twice. That must be the same engine, not a
+      -- shorter one.
+      it "merging the same patch twice is merging it single" $ do
+        let single = mergeReply (replyLinesOf Nothing committed) block
+        mergeReply single block `shouldBe` single
+
   describe "mint stats (Lips.Generate.Stats)" $ do
     it "renders one key-per-line record a human and a grep can both read" $
       renderStats MintStats
