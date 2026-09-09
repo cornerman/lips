@@ -283,6 +283,53 @@ test-draft:
     if "$lips" check --draft "$grown/one.watch.lips" < "$grown/patch.txt" > "$tmp/out14" 2>&1; then
       echo "FAIL: a bare patch was accepted as a whole engine"; cat "$tmp/out14"; exit 1
     fi
+    # A RESUBMISSION is a patch of the draft this call already submitted, so a
+    # retry restates only what it changes instead of re-emitting the engine
+    # (output tokens are the mint's wall clock, DESIGN 13). The running file is
+    # where the call's submissions accumulate; --running names it.
+    export LIPS_MINT_BASIS="$grown/watch"
+    running="$tmp/running"
+    rm -f "$running"
+    "$lips" check --draft --running "$running" "$grown/one.watch.lips" < "$grown/patch.txt" > "$tmp/out15" 2>&1 \
+      || { echo "FAIL: the first submission of a call was refused"; cat "$tmp/out15"; exit 1; }
+    # The second submission names only the contract, and holds only because the
+    # first one's rule (environment.T, replacing the committed environment.S) is
+    # still in force.
+    printf '0.95 a1 expect systemd.services.w.environment.T from watch.interval\n' > "$grown/patch2.txt"
+    "$lips" check --draft --running "$running" "$grown/one.watch.lips" < "$grown/patch2.txt" > "$tmp/out16" 2>&1 \
+      || { echo "FAIL: a patch of the call's own draft was refused"; cat "$tmp/out16"; exit 1; }
+    grep -q "contract: 1 check" "$tmp/out16" \
+      || { echo "FAIL: the accumulated rule did not reach the contract"; cat "$tmp/out16"; exit 1; }
+    # The same second patch against an EMPTY running file cannot hold: the
+    # committed engine sets environment.S, so the option the contract names is
+    # set by nothing. This is what says the accumulation is doing the work.
+    rm -f "$running"
+    if "$lips" check --draft --running "$running" "$grown/one.watch.lips" < "$grown/patch2.txt" > "$tmp/out17" 2>&1; then
+      echo "FAIL: a contract on an option no rule sets was accepted"; cat "$tmp/out17"; exit 1
+    fi
+    # A REFUSED submission accumulates too, which is the case the cost is in: the
+    # model fixes the line the gate named and keeps everything else it wrote.
+    cat > "$grown/bad.txt" <<'EOF'
+    0.95 r1 match fact watch.interval => systemd.services.w.environment.T "<value.9>"
+    0.95 a1 expect systemd.services.w.environment.T from watch.interval
+    EOF
+    sed -i 's/^    //' "$grown/bad.txt"
+    if "$lips" check --draft --running "$running" "$grown/one.watch.lips" < "$grown/bad.txt" > "$tmp/out18" 2>&1; then
+      echo "FAIL: a rule reading a part that does not exist was accepted"; cat "$tmp/out18"; exit 1
+    fi
+    # Only the offending line is restated; the contract line survives the refusal.
+    "$lips" check --draft --running "$running" "$grown/one.watch.lips" < "$grown/patch.txt" > "$tmp/out19" 2>&1 \
+      || { echo "FAIL: a fix of a refused submission was refused"; cat "$tmp/out19"; exit 1; }
+    grep -q "contract: 1 check" "$tmp/out19" \
+      || { echo "FAIL: a refused submission's other lines were dropped"; cat "$tmp/out19"; exit 1; }
+    # --restart is the escape a patch cannot otherwise give: a line added in an
+    # earlier submission cannot be deleted by id, so the model says the running
+    # draft is void and this submission stands alone (against the committed
+    # engine, which --restart never touches). The contract from before is gone,
+    # so the same patch that just held now fails.
+    if "$lips" check --draft --running "$running" --restart "$grown/one.watch.lips" < "$grown/patch2.txt" > "$tmp/out20" 2>&1; then
+      echo "FAIL: --restart kept the earlier submissions"; cat "$tmp/out20"; exit 1
+    fi
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

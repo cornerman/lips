@@ -158,7 +158,7 @@ main = do
       | coWatch co -> watchCompile (coOut co) (coLangDir co) (coNoContract co) (coFile co)
       | otherwise  -> compileLoose (coOut co) (coLangDir co) (coNoContract co) (coFile co)
     Check co
-      | ceDraft co -> checkDraft (ceFile co)
+      | ceDraft co -> checkDraft (ceRunning co) (ceRestart co) (ceFile co)
       | otherwise  -> checkLoose True True (ceLangDir co) (ceFile co)
                         >>= exitUnlessEveryWorldHeld (ceFile co)
     Options oo  -> do
@@ -728,9 +728,23 @@ checkWorld contract claims dir w file program = do
 -- The gate that DECIDES is unchanged: generate still runs every one of these
 -- checks afterwards, so a model that skips this door is refused exactly as
 -- before.
-checkDraft :: FilePath -> IO ()
-checkDraft file = do
-  patch <- TIO.getContents
+-- A RESUBMISSION is a patch of the draft this call already submitted, not the
+-- engine again: a refused submission used to cost a full re-emission, and output
+-- tokens are the mint's wall clock (DESIGN 13). The running file carries the
+-- call's submissions so far, and is rewritten whether or not the gates pass --
+-- accumulating a REFUSED draft is the point, since fixing the line the gate just
+-- named is exactly when the model has everything else already written.
+checkDraft :: Maybe FilePath -> Bool -> FilePath -> IO ()
+checkDraft running restart file = do
+  submitted <- TIO.getContents
+  -- The same merge the committed-engine basis gets below, one level in: a new id
+  -- adds, a known id replaces, an unmentioned id stays. --restart voids the
+  -- running draft, which is the only way back from a line a patch cannot delete.
+  accumulated <- case running of
+    Just p | not restart -> fmap (fromMaybe "") (tryRead p)
+    _                    -> pure ""
+  let patch = mergeReply accumulated submitted
+  forM_ running $ \p -> TIO.writeFile p patch
   -- Which contract governs is generate's rule, not this function's: it exports
   -- the answer per world (the committed .expect on a regeneration, absent under
   -- --renew or on a first mint) so the two cannot drift apart.

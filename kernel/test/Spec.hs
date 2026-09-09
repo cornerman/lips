@@ -252,12 +252,12 @@ main = hspec $ do
   describe "check argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info checkOpts idm)
     it "defaults --lang to Nothing" $
-      parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts Nothing False "a.backup.lips")
+      parseArgs ["a.backup.lips"] `shouldBe` Just (CheckOpts Nothing False Nothing False "a.backup.lips")
     it "reads --lang in any position" $ do
       parseArgs ["--lang", "services/a/backup", "a.backup.lips"]
-        `shouldBe` Just (CheckOpts (Just "services/a/backup") False "a.backup.lips")
+        `shouldBe` Just (CheckOpts (Just "services/a/backup") False Nothing False "a.backup.lips")
       parseArgs ["a.backup.lips", "--lang", "services/a/backup"]
-        `shouldBe` Just (CheckOpts (Just "services/a/backup") False "a.backup.lips")
+        `shouldBe` Just (CheckOpts (Just "services/a/backup") False Nothing False "a.backup.lips")
     it "fails with no program at all" $
       parseArgs [] `shouldBe` Nothing
     it "defaults to reading the committed engine, not a draft" $
@@ -269,6 +269,14 @@ main = hspec $ do
     it "refuses --draft together with --lang, in either order" $ do
       parseArgs ["--draft", "--lang", "backup", "prog.backup.lips"] `shouldBe` Nothing
       parseArgs ["--lang", "backup", "--draft", "prog.backup.lips"] `shouldBe` Nothing
+    -- The running draft is where a call's submissions accumulate, so a
+    -- resubmission patches the draft before it instead of re-emitting an engine.
+    it "takes a running draft and a restart, only beside --draft" $ do
+      parseArgs ["--draft", "--running", "/tmp/d", "prog.backup.lips"]
+        `shouldBe` Just (CheckOpts Nothing True (Just "/tmp/d") False "prog.backup.lips")
+      parseArgs ["--draft", "--running", "/tmp/d", "--restart", "prog.backup.lips"]
+        `shouldBe` Just (CheckOpts Nothing True (Just "/tmp/d") True "prog.backup.lips")
+      parseArgs ["--running", "/tmp/d", "prog.backup.lips"] `shouldBe` Nothing
 
   describe "options argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info optionsOpts idm)

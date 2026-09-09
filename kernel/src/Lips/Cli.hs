@@ -95,6 +95,15 @@ data CheckOpts = CheckOpts
   -- checks a draft before answering, and the authoritative gate still runs
   -- afterwards in generate.
   , ceDraft   :: Bool
+  -- | Where the call's submissions accumulate, so a resubmission is a PATCH of
+  -- the draft already submitted rather than the whole engine again. The mint
+  -- tool names one file per generate call; a human running @--draft@ by hand
+  -- names none, and then the draft on stdin stands alone.
+  , ceRunning :: Maybe FilePath
+  -- | Void the running draft before merging: a patch cannot delete a line, so
+  -- this is the only way back from one a submission should never have added.
+  -- It resets the CALL's accumulation, never the committed engine underneath.
+  , ceRestart :: Bool
   , ceFile    :: FilePath
   } deriving (Eq, Show)
 
@@ -375,20 +384,27 @@ compileOpts = CompileOpts
 -- is refused -- in either argument order.
 data EngineSource
   = FromLang (Maybe FilePath)
-  | FromDraft
+  | FromDraft (Maybe FilePath) Bool
 
 engineSource :: Parser EngineSource
 engineSource =
-  (FromDraft <$ flag' ()
+  (flag' ()
      (long "draft"
-       <> help "Judge a draft language read from stdin instead of the committed one (this is the door the mint checks itself through)."))
+       <> help "Judge a draft language read from stdin instead of the committed one (this is the door the mint checks itself through).")
+   *> (FromDraft
+        <$> optional (strOption
+              (long "running" <> metavar "FILE"
+                <> help "Accumulate this call's submissions in FILE, so the draft on stdin is read as a patch of the ones before it."))
+        <*> switch
+              (long "restart"
+                <> help "Void the running draft first: this submission stands alone against the committed engine.")))
   <|> (FromLang <$> langDirOpt)
 
 checkOpts :: Parser CheckOpts
 checkOpts = mk <$> engineSource <*> programArg
   where
-    mk FromDraft      f = CheckOpts Nothing  True  f
-    mk (FromLang dir) f = CheckOpts dir      False f
+    mk (FromDraft r x) f = CheckOpts Nothing  True  r       x     f
+    mk (FromLang dir)  f = CheckOpts dir      False Nothing False f
 
 -- | @--limit@'s reader: a positive entry cap. Zero or negative would make
 -- every answer empty, which is a malformed invocation, not a narrow search.
