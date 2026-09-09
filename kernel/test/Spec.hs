@@ -4093,6 +4093,16 @@ main = hspec $ do
         "expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule is \"*-*-* <value.1>:<value.2>:00\""
         `shouldSatisfy` isRight
 
+  -- Retries are the second-largest source of output after thinking itself
+  -- (DESIGN 13), and output tokens are the mint's wall clock. The saving exists
+  -- only if the model knows a resubmission may be a patch, so the prompt must
+  -- say it where it describes the tool.
+  describe "the mint prompt states that a resubmission is a patch" $
+    it "names the rule and the way back from a line a patch cannot delete" $ do
+      let p = systemPromptFor [shippedWorld "nixos"]
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "Submit ONCE in full, then only in patches", "restart: true" ]
+
   describe "the mint prompt states the claim grammar" $ do
     it "names the head and its closed section set" $ do
       let p = systemPromptFor [shippedWorld "nixos"]
@@ -5187,9 +5197,12 @@ main = hspec $ do
           p = promptWithDirection Nothing Nothing (Just e) [shippedWorld "nixos"]
       p `shouldSatisfy` T.isInfixOf e
       p `shouldSatisfy` T.isInfixOf "id you do not mention"
+    -- Matched on the section's own heading, not on the patch rule it states:
+    -- the resubmission door states the same rule about a call's own draft, so a
+    -- phrase from the rule no longer identifies THIS section.
     it "is absent on a fresh mint, which has no engine to patch" $
       promptWithDirection Nothing Nothing Nothing [shippedWorld "nixos"]
-        `shouldNotSatisfy` T.isInfixOf "id you do not mention"
+        `shouldNotSatisfy` T.isInfixOf "THE ENGINE YOU INHERIT"
 
   -- One call writes for every world, so the prompt carries every preamble. Each
   -- is fenced into its own section: two preambles read as one text contradict

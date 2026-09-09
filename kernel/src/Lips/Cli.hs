@@ -66,7 +66,8 @@ data GenerateOpts = GenerateOpts
 -- the same program minted in 6m22s at @high@ and 4m17s at @medium@, with the
 -- same number of drafts and a behaviourally identical engine. What actually
 -- costs a mint is a REFUSED draft, and that is bought with a clearer prompt, not
--- with a higher reasoning level. Raise it per run with @--thinking@ when a
+-- with a higher reasoning level. What a refusal costs is bounded since
+-- 'ceRunning': a retry restates the lines it changes, not the engine. Raise it per run with @--thinking@ when a
 -- program is genuinely hard; the level is recorded either way.
 defaultThinking :: String
 defaultThinking = "medium"

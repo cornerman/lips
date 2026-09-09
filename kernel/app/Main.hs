@@ -1600,7 +1600,11 @@ callPi verbose mmodel thinking system userPrompt worlds files expects schemas ba
   -- directory is created and the file is NOT: its absence is the signal that no
   -- draft was ever submitted.
   withTempDir $ \answerDir -> do
+  -- Two files, and the names say which is which: @answer@ is the last draft that
+  -- passed every gate this door can run, @draft@ is everything submitted so far,
+  -- which the next submission patches. Neither exists until the tool submits.
   let answerPath = answerDir </> "answer"
+      draftPath  = answerDir </> "draft"
   -- The mint's tools ship with the binary; without them a mint would have to
   -- recall option names instead of looking them up, and could not check a draft
   -- before answering -- the guessing this whole path exists to prevent. So a
@@ -1635,6 +1639,10 @@ callPi verbose mmodel thinking system userPrompt worlds files expects schemas ba
              -- Where a checked draft becomes the answer. The tool stages here;
              -- nothing else lips runs writes this path.
              , ("LIPS_MINT_ANSWER",   answerPath)
+             -- Where the call's submissions accumulate, so a REFUSED draft is
+             -- fixed by restating the line the gate named instead of the whole
+             -- engine (output tokens are the mint's wall clock, DESIGN 13).
+             , ("LIPS_MINT_DRAFT",    draftPath)
              -- The language folder whose committed engine a PATCH is merged with
              -- before it is judged. Empty under --fresh and on a first mint, and
              -- then the draft tool judges the reply alone, as it always did. The

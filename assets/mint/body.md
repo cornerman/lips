@@ -103,13 +103,23 @@ locally that another language already exports is the silent failure this tool
 exists to remove -- both engines then work, the program says one thing, and the
 system does two.
 
-submit_draft(draft) is how your engine reaches lips, and the only way it can:
-it runs lips' own gates over the lines you pass and reports the first gate that
-rejects them, in the exact words the refusal would use. A refused submission
-stages nothing, so fix what it names and submit again. A clean one is staged as
-your answer, and the last clean submission is the engine lips takes. Text you
-write outside this tool is read as engine lines by nothing, so a mint that
-never submits produces nothing at all.
+submit_draft(draft, restart) is how your engine reaches lips, and the only way
+it can: it runs lips' own gates over the lines you pass and reports the first
+gate that rejects them, in the exact words the refusal would use. A refused
+submission stages nothing as your answer, so fix what it names and submit again.
+A clean one is staged, and the last clean submission is the engine lips takes.
+Text you write outside this tool is read as engine lines by nothing, so a mint
+that never submits produces nothing at all.
+Submit ONCE in full, then only in patches. Your first submission is the whole
+engine; every later one is read as a patch of what you already submitted -- a
+new id adds that line, a known id replaces it entirely, an id you do not mention
+stays exactly as it is (the same rule a patch of a committed engine follows).
+So when a gate names one line, send that one line. Restating the rest re-emits
+an engine the human pays for twice and risks changing what already held. A
+refused submission is kept as your draft precisely so this works: everything
+else you wrote is still there. `restart: true` voids what you submitted before
+and reads this submission as the whole engine again -- the only way to drop a
+line you should never have added, since a patch cannot delete one.
 The tool does not run the claim gate or the artifact build, and it says so: a
 clean submission is not a guarantee of acceptance, while a refused one is a
 guarantee of refusal. Nothing here judges FOR you and nothing runs your program:

@@ -23,7 +23,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { copyFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 
 // No defaults. A silent fallback would be a lie generator: if the target ever
@@ -54,6 +54,11 @@ const programs = required("LIPS_MINT_PROGRAMS").split("\n").filter(Boolean);
 // Where a clean draft becomes the answer generate reads. Supplied per call, so
 // one mint can never stage into another's directory.
 const answerPath = required("LIPS_MINT_ANSWER");
+// Where this call's submissions accumulate, so a resubmission is a PATCH of the
+// draft already submitted rather than the whole engine again. lips owns the
+// merge (one `mergeReply`, the same one a growth mint's patch goes through);
+// this file only names the file and copies it once every program passes.
+const draftPath = required("LIPS_MINT_DRAFT");
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool({
@@ -183,24 +188,44 @@ export default function (pi: ExtensionAPI) {
     name: "submit_draft",
     label: "Submit draft",
     description:
-      "Submit your engine. This is the ONLY way an engine reaches lips: pass the " +
-      "complete set of lines, and lips runs its own gates over them and reports " +
-      "the first one that rejects them, in the same words the refusal would use. " +
-      "A refused submission stages nothing, so fix what it names and submit " +
-      "again. A clean submission is staged as your answer; it does not guarantee " +
-      "acceptance, because the claim gate and the artifact build still run after " +
-      "you are done. The last clean submission is the engine lips takes, and " +
-      "nothing you write outside this tool is read as engine lines.",
+      "Submit your engine. This is the ONLY way an engine reaches lips: lips runs " +
+      "its own gates over what you pass and reports the first one that rejects it, " +
+      "in the same words the refusal would use. Your FIRST submission is the " +
+      "complete set of lines; every LATER one is a PATCH of what you already " +
+      "submitted -- a new id adds a line, a known id replaces that line entirely, " +
+      "an id you leave out stays as it is. So after a refusal, send only the lines " +
+      "you are changing; restating the rest costs the human money and changes " +
+      "nothing. A refused submission is kept as your draft for exactly this " +
+      "reason, but stages no answer. A clean submission is staged as your answer; " +
+      "it does not guarantee acceptance, because the claim gate and the artifact " +
+      "build still run after you are done. The last clean submission is the engine " +
+      "lips takes, and nothing you write outside this tool is read as engine lines.",
     parameters: Type.Object({
       draft: Type.String({
-        description: "The complete engine, in the answer format.",
+        description:
+          "The complete engine on your first submission; afterwards only the lines " +
+          "you are adding or replacing, by id.",
       }),
+      restart: Type.Optional(Type.Boolean({
+        description:
+          "Discard everything you submitted before in this call and read this " +
+          "submission as the complete engine again. The only way to drop a line " +
+          "you should never have added, since a patch cannot delete one.",
+      })),
     }),
-    async execute(_toolCallId: string, params: { draft: string }) {
+    async execute(_toolCallId: string, params: { draft: string; restart?: boolean }) {
       // One program at a time: check takes exactly one, and the engine-level
       // gates are program-independent, so the first failure is the answer.
+      // Every call names the running draft and merges into it; the merge is
+      // idempotent (the same patch onto the result of that patch), so a second
+      // program's call re-reads what the first wrote without changing it.
       for (const program of programs) {
-        const r = spawnSync(bin, ["check", "--draft", program], {
+        const args = ["check", "--draft", "--running", draftPath];
+        // Restart is honoured on the FIRST program only: the later calls read
+        // the file this one just wrote, and voiding it again would drop the
+        // merge instead of repeating it.
+        if (params.restart && program === programs[0]) args.push("--restart");
+        const r = spawnSync(bin, [...args, program], {
           input: params.draft,
           encoding: "utf8",
         });
@@ -218,10 +243,24 @@ export default function (pi: ExtensionAPI) {
           };
         }
       }
-      // Overwrite on purpose: a later clean submission supersedes an earlier
-      // one, so the model may keep improving, and a submission that FAILS the
-      // loop above leaves the last clean one standing.
-      writeFileSync(answerPath, params.draft);
+      // The answer is the accumulated draft lips just judged, byte for byte,
+      // never the patch that arrived here: the two differ as soon as a
+      // resubmission patches an earlier one, and the answer must be the thing
+      // that passed the gates. Overwrite on purpose -- a later clean submission
+      // supersedes an earlier one, and a submission that FAILS the loop above
+      // leaves the last clean answer standing while still growing the draft.
+      if (!existsSync(draftPath)) {
+        return {
+          content: [{
+            type: "text",
+            text: "lips checked the draft but wrote no running draft file. " +
+              "\u2192 report this: the mint cannot stage an answer.",
+          }],
+          details: {},
+          isError: true,
+        };
+      }
+      copyFileSync(draftPath, answerPath);
       return {
         content: [
           {
@@ -229,9 +268,9 @@ export default function (pi: ExtensionAPI) {
             text:
               "the draft passes every gate lips can run before you are done, and " +
               "is staged as your answer. The claim gate and the artifact build " +
-              "still run after, so this is not acceptance. Submit again to " +
-              "replace it; whatever you write outside this tool is read by " +
-              "nothing.",
+              "still run after, so this is not acceptance. Submit again to patch " +
+              "it -- only the lines you change -- and whatever you write outside " +
+              "this tool is read by nothing.",
           },
         ],
         details: {},
