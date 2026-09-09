@@ -139,7 +139,10 @@ text. The boundary is explicit in the code:
   both in `assets/mint-tools.ts`: the `query_options` lookup, which shells back
   into the `lips options` verb, and `submit_draft`, which shells into
   `lips check --draft` over the engine and, when every gate it can run passes,
-  writes those bytes to the path `generate` supplied in `LIPS_MINT_ANSWER`. The
+  writes those bytes to the path `generate` supplied in `LIPS_MINT_ANSWER`. A
+  submission is the whole engine only the first time: `--running` accumulates a
+  call's submissions in a second file, so a retry restates the line the gate
+  named instead of the engine, and a refused draft is kept for exactly that. The
   mint can therefore confirm an option name instead of recalling it, and learn
   which gate rejects its draft while it can still fix it, but cannot read a
   file, run a command, or judge its own engine: the deciding gate runs

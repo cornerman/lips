@@ -3959,6 +3959,32 @@ but the loop around it is incomplete; "missing" means specced, not built.
   177s and $0.72. So the standing advice is: a PATCH runs at low or medium, and
   high is for a fresh language -- where there is still no low-thinking datapoint.
 
+- **A retry restates a line, not an engine** (2026-08-30, the door's own patch
+  form). `submit_draft` re-emitted the WHOLE engine on every attempt, and the
+  thinking experiment above counted three and four submissions per accepted
+  patch, so a retry was the second-largest source of output tokens after
+  thinking itself. A submission is now the complete engine ONCE; every later one
+  is a patch of what the same call already submitted, by the rule a growth mint
+  already follows (new id adds, known id replaces, unmentioned id inherited).
+  The physics is unchanged: one `mergeReply`, applied twice -- the call's
+  submissions merge into a running draft, and that draft merges onto the
+  committed engine before any gate sees it, so `generate` still reads one patch
+  against one basis and its "patching N lines" note still names what the model
+  wrote.
+  A REFUSED submission accumulates too, which is the whole point: the gate names
+  one line, and everything else the model wrote is still standing when it fixes
+  that line. Two files in the call's scratch directory say which is which --
+  `draft` is everything submitted, `answer` only the last draft that passed, so
+  a refusal still stages nothing. Since a patch cannot delete, `restart: true`
+  voids the running draft and reads the submission as a whole engine again; it
+  never touches the committed engine underneath.
+  Verified end to end against the real tool code and the real binary: a refused
+  submission carrying a bad rule and a good contract, fixed by restating the ONE
+  rule, yields an answer holding both lines and no answer at all in between.
+  NOT YET MEASURED: what this saves on a live mint. The prediction from the
+  thinking experiment is that a 3-4 submission patch stops paying for 3-4 whole
+  engines, but no mint has been run since the change.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
