@@ -3993,9 +3993,26 @@ but the loop around it is incomplete; "missing" means specced, not built.
   body word shaped like an id addresses nothing. Merging one patch twice is now
   merging it once, which the tool relies on: it checks each submission once per
   program.
-  NOT YET MEASURED: what this saves on a live mint. The prediction from the
-  thinking experiment is that a 3-4 submission patch stops paying for 3-4 whole
-  engines, but no mint has been run since the change.
+  MEASURED ON A LIVE MINT (2026-09-10), by rerunning the thinking experiment's
+  medium arm unchanged (`.mintlogs/retry-experiment.sh`: libero at 1b164dc, the
+  same growth patch, claude-opus-5, thinking medium), so only the binary
+  differs. Before: 295s, 3 submissions, 22,061 output tokens, $0.94. After:
+  269s, 4 submissions, 15,856 output tokens, $0.77 -- accepted, `check` green,
+  five claims. Output per submission fell from 7,354 to 3,964 (46 percent), and
+  total output fell 28 percent although the model submitted one more time.
+  THE AFFORDANCE WAS USED, which the log shows directly: submission 1 begins at
+  `p7` (the whole engine) and submissions 2, 3 and 4 begin at `a1`, `r10` and
+  `d1`, where all three baseline submissions began at `p7`. So the falsifier
+  (output per submission unchanged, which would have made it a prompt defect in
+  `assets/mint/body.md`) did not fire. `restart` was never reached for, and no
+  refusal named a stale line.
+  The unit-addressed merge shows in the same pair: the note reads "patching 21
+  lines" over real ids, against the baseline's "patching 52 lines" whose list
+  carried prose words (`order.`, `field.`, `since`) read as touched ids.
+  HONEST LIMIT: one run per side, and output tokens are mostly thinking, which
+  varies between runs, so the 28 percent is one datapoint and not a measured
+  mean. The engine differs from the committed one (renamed clauses, a claim
+  reformulated through `emitted`), as a re-mint may.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every

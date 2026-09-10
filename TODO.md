@@ -79,37 +79,16 @@ tracks only what is still open.
    default inherit with `--fresh` to rewrite, `basis:` recorded as a sealed
    input -- sound because the gates, not the rewrite, are what guard an engine.
 
-0. **Measure the patched retry on a live mint** (the open half of "Cheaper
-   retries", which LANDED 2026-08-30 -- DESIGN §13 "A retry restates a line, not
-   an engine", plus the unit-addressed merge that review found and fixed). The
-   mechanism is built and gated: a submission is the whole engine once and a
-   patch of the call's own draft thereafter, a refused submission accumulates,
-   `restart: true` voids it, and `mergeReply` addresses units so a heredoc body
-   cannot delete a line. NOTHING has been measured, because no mint has run
-   since -- so the saving is a prediction and the model's willingness to use the
-   affordance is an assumption.
-
-   The experiment, one growth patch on a committed language (~$1, ~5 min):
-   `nix run . -- generate <program>` after adding ONE sentence, `--thinking
-   medium`, and read the new `.timing` record.
-
-   What decides it, from the record's own fields:
-   - `tool submit_draft` must be >= 2, or the run measures nothing about
-     retries. A single-submission run is not a datapoint; keep it and try a
-     harder sentence.
-   - `tokens output` against the pre-change medium datapoint of the thinking
-     experiment (DESIGN §13): 295s, 22,061 output tokens, $0.94, 3 submissions,
-     on libero's season table. If a retry now restates lines instead of the
-     engine, output falls visibly at equal submission count.
-   - FALSIFIER, and the reason to run this at all: output per submission
-     unchanged means the model ignored the patch affordance, which makes it a
-     PROMPT defect (`assets/mint/body.md`, the submit_draft paragraph) and not a
-     mechanism defect. Say which it was.
-
-   Two things to watch while it runs, both new risks the accumulation creates:
-   whether `restart` is ever reached for, and whether any refusal names a stale
-   line an earlier submission left in the draft (the patch form cannot delete,
-   so a wrong line has to be replaced by id or voided wholesale).
+0. **The patched retry is measured, on one run per side** (2026-09-10; the item
+   that stood here is CLOSED -- DESIGN §13, "A retry restates a line, not an
+   engine"). Rerunning the thinking experiment's medium arm against the new
+   binary took a growth patch of libero's season table from 295s / 3 submissions
+   / 22,061 output tokens / $0.94 to 269s / 4 / 15,856 / $0.77, accepted and
+   `check` green, with submissions 2-4 beginning at `a1`, `r10` and `d1` instead
+   of `p7`. What is still open is only the sample: one run per side, and output
+   is mostly thinking, so the 28 percent is a datapoint, not a mean. Repeat the
+   arm the next time a mint runs for another reason rather than as its own
+   errand, and only then decide whether a patch is sonnet-able.
 
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
