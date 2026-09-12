@@ -3937,82 +3937,32 @@ but the loop around it is incomplete; "missing" means specced, not built.
   a program that asks for everything at once asks the mint to be right about
   everything at once.
 
-- **A mint's wall clock IS its output tokens, and most of them are thinking**
-  (2026-08-29, measured over five timing records plus a controlled experiment).
-  Across mints differing thirtyfold in size, throughput is flat at 72-83 tokens
-  per second (website 110,257 tokens in 1478.8s; greet 3,765 in 74.5s), so turns,
-  tool calls and prompt size do not appear in wall time at all. Cost decomposes
-  as roughly 60 percent output, 35 percent cache-write, 4 percent cache-read,
-  with fresh input at 6-24 tokens because the prompt is fully cached.
-  CONSEQUENCE FOR THE PROMPT-VERSUS-TOOL QUESTION, which is now settled with
-  numbers rather than taste: front-loading material into the system prompt cannot
-  reduce output tokens, so it cannot make a mint faster; it would only add to
-  cache-write, the second-largest cost line, on every mint including the ones
-  that never need it. The schema tool also scales where a prompt cannot, since
-  NixOS ships tens of thousands of options. Tools stay.
-  THE THINKING EXPERIMENT: one growth patch (libero's season table), same
-  pre-patch engine, only `--thinking` varied. high 639s / 46,246 tokens / $1.73;
-  medium 295s / 22,061 / $0.94; low 177s / 14,615 / $0.72. All three patched the
-  same pattern and rule ids, all three were accepted, all three pass `check`, and
-  more thinking bought no fewer retries (4, 3, 4 submissions). Chained with the
-  patch mint itself, the same change falls from 969s and $2.82 (fresh, high) to
-  177s and $0.72. So the standing advice is: a PATCH runs at low or medium, and
-  high is for a fresh language -- where there is still no low-thinking datapoint.
-
-- **A retry restates a line, not an engine** (2026-08-30, the door's own patch
-  form). `submit_draft` re-emitted the WHOLE engine on every attempt, and the
-  thinking experiment above counted three and four submissions per accepted
-  patch, so a retry was the second-largest source of output tokens after
-  thinking itself. A submission is now the complete engine ONCE; every later one
-  is a patch of what the same call already submitted, by the rule a growth mint
-  already follows (new id adds, known id replaces, unmentioned id inherited).
-  The physics is unchanged: one `mergeReply`, applied twice -- the call's
-  submissions merge into a running draft, and that draft merges onto the
-  committed engine before any gate sees it, so `generate` still reads one patch
-  against one basis and its "patching N lines" note still names what the model
-  wrote.
-  A REFUSED submission accumulates too, which is the whole point: the gate names
-  one line, and everything else the model wrote is still standing when it fixes
-  that line. Two files in the call's scratch directory say which is which --
-  `draft` is everything submitted, `answer` only the last draft that passed, so
-  a refusal still stages nothing. Since a patch cannot delete, `restart: true`
-  voids the running draft and reads the submission as a whole engine again; it
-  never touches the committed engine underneath.
-  Verified end to end against the real tool code and the real binary: a refused
-  submission carrying a bad rule and a good contract, fixed by restating the ONE
-  rule, yields an answer holding both lines and no answer at all in between.
-  ONE DEFECT FOUND BY REVIEWING THE CHANGE, and it was older than the change:
-  `mergeReply` addressed LINES while `parseEngineCandidates` reads BLOCKS, so two
-  readers of one format disagreed about a heredoc body. Both directions lost
-  bytes, reproduced before the fix: a patch whose report said "Pattern p1 reads
-  the interval" deleted the committed `p1` (token 2 of a prose sentence read as a
-  touched id, and the program then stopped crystallizing), and replacing a report
-  left the old body and its `lips>>>` behind as orphans. The merge is addressed
-  in UNITS now -- one item line, or one block from its header through its
-  terminator -- and a unit carries an id only where token 1 is a confidence, so a
-  body word shaped like an id addresses nothing. Merging one patch twice is now
-  merging it once, which the tool relies on: it checks each submission once per
-  program.
-  MEASURED ON A LIVE MINT (2026-09-10), by rerunning the thinking experiment's
-  medium arm unchanged (`.mintlogs/retry-experiment.sh`: libero at 1b164dc, the
-  same growth patch, claude-opus-5, thinking medium), so only the binary
-  differs. Before: 295s, 3 submissions, 22,061 output tokens, $0.94. After:
-  269s, 4 submissions, 15,856 output tokens, $0.77 -- accepted, `check` green,
-  five claims. Output per submission fell from 7,354 to 3,964 (46 percent), and
-  total output fell 28 percent although the model submitted one more time.
-  THE AFFORDANCE WAS USED, which the log shows directly: submission 1 begins at
-  `p7` (the whole engine) and submissions 2, 3 and 4 begin at `a1`, `r10` and
-  `d1`, where all three baseline submissions began at `p7`. So the falsifier
-  (output per submission unchanged, which would have made it a prompt defect in
-  `assets/mint/body.md`) did not fire. `restart` was never reached for, and no
-  refusal named a stale line.
-  The unit-addressed merge shows in the same pair: the note reads "patching 21
-  lines" over real ids, against the baseline's "patching 52 lines" whose list
-  carried prose words (`order.`, `field.`, `since`) read as touched ids.
-  HONEST LIMIT: one run per side, and output tokens are mostly thinking, which
-  varies between runs, so the 28 percent is one datapoint and not a measured
-  mean. The engine differs from the committed one (renamed clauses, a claim
-  reformulated through `emitted`), as a re-mint may.
+- **A mint's wall clock IS its output tokens; how much of them is thinking is
+  NOT established** (2026-08-29, five timing records plus six runs of one
+  controlled patch). What holds firmly: throughput is flat at 72-83 tokens per
+  second across mints differing thirtyfold in size (website 110,257 tokens in
+  1478.8s; greet 3,765 in 74.5s), so turns, tool calls and prompt size do not
+  appear in wall time; and cost decomposes as roughly 60 percent output, 35
+  percent cache-write, 4 percent cache-read, with fresh input at 6-24 tokens
+  because the prompt is fully cached.
+  WHAT DOES NOT HOLD, recorded because the first version of this entry claimed it
+  did: that lowering `--thinking` makes a patch cheaper. Six runs of ONE patch
+  (libero's season table) spread from 14,615 to 46,246 output tokens, and the two
+  runs at the SAME level differed by 2.2x (21,369 and 46,246, both high). The
+  per-level numbers (high 46,246, medium 22,061, low 14,615) sit inside that
+  spread, so the ordering is suggestive and unproven; separating it needs several
+  runs per level, which nobody has spent yet.
+  THE PROMPT-VERSUS-TOOL QUESTION, tested rather than argued. The hypothesis was
+  that a tool call costs more than its round trip, because each tool result opens
+  another turn and every turn opens another thinking block. Pasting the imported
+  language's exports into `.direction` (which rides in the system prompt) did
+  remove the tool calls -- zero queries against one in the control -- and the run
+  was WORSE on every axis: 304s against 177s, 23,659 tokens against 14,615, seven
+  submissions against four. One datapoint inside a 2.2x noise band proves
+  nothing, which is exactly the point: the effect of front-loading, if any, is
+  smaller than the variance between two identical mints. Tools stay, now for a
+  measured reason rather than a guessed one. The schema tool also scales where a
+  prompt cannot, since NixOS ships tens of thousands of options.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
