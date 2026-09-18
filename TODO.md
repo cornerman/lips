@@ -147,6 +147,13 @@ tracks only what is still open.
       flake helper (`lib.modulesFromDir`, which already has a `pkgs`) instead.
       Decide where before building anything.
 
+      One corpus instance, 2026-09-18: `examples/nono.world` grounds against
+      nono 0.68.0 (the pinned nixpkgs) while the compiled directory's ambient
+      `flake:nixpkgs` resolved to nono 0.74.0, so the schema that admitted the
+      rules and the validator that judged the render were two different
+      versions of the same tool. Both accepted this profile, and nothing
+      compared them.
+
    b. `--schema` IS PER INVOCATION AND REMEMBERED NOWHERE. A caller on a stable
       channel must pass it on every mint of every language, and forgetting it
       silently reverts to the baked pin (the record shows which, after the fact,
@@ -273,7 +280,27 @@ tracks only what is still open.
    recurs, is the twin of `diagInert`: a word whose only landing is a claim is
    inert in the same sense and should be named.
 
-6. **Remaining known gaps on the clause axis** (none blocking).
+6. **A world's own render gate runs at build time, not at mint time**
+   (filed 2026-09-18 by `examples/nono.world`, DESIGN §13 "A world lips never
+   heard of").
+
+   `generate` accepts an engine on crystallization, the contract and its
+   claims, and never builds the world's `builds` slot. So the nono world's
+   `nono profile validate` -- the only thing that knows the profile fields its
+   deliberately weak schema leaves free-form -- did not see the first mint, and
+   an engine whose render nono refuses was accepted and committed. `nix flake
+   check`'s `lipsModules-eval` enumerates the four shipped world attributes by
+   name, so `nonoModules` is outside that net as well, and the gate fires only
+   when a human runs `nix build path:examples/policy/out/dev/nono#profile`.
+
+   Two candidate remedies, neither built. Let a world declare a package the
+   mint gate must build (a world-level statement, so no kernel branch), which
+   is the general form and costs a build inside every mint. Or let
+   `lipsModules-eval` find world attributes by looking rather than by name,
+   which closes the CI half only and leaves an accepted-but-invalid engine
+   possible.
+
+7. **Remaining known gaps on the clause axis** (none blocking).
 
    a. **`app/Main.hs` grew back to 1360 lines** (990 after the 2026-08-05
       extraction, 2135 before it; the worlds arc added the difference). Four

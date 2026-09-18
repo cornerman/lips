@@ -925,6 +925,45 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A world lips never heard of, minted without touching lips.**
+  `examples/nono.world` targets nono (https://nono.sh), a capability-based
+  sandbox that runs an agent under a JSON policy and has no Nix module
+  anywhere: `lips options nono` finds nothing in nixpkgs and nothing in
+  home-manager, only the package. The world file sits beside the program, where
+  `Lips.World.Resolve` looks first, so nothing in `kernel/` or `assets/worlds/`
+  changed and the README's claim that an unforeseen world costs no lips change
+  has its first committed instance.
+
+  Grounding comes from the tool's own published schema. The `--- schema ---`
+  slot runs `nono profile schema` out of the pinned nixpkgs and a jq pass keeps
+  the 28 top-level sections, mapping JSON Schema types onto the type wording
+  `Lips.Nix.Options` classifies. It is WEAK on purpose, as in terranix: the
+  lookup confirms a section and calls every field below it free-form. What
+  holds the deeper names to account is nono's own validator, which
+  `--- builds ---` runs over the rendered profile, and which names an unknown
+  field (49 of the 51 object definitions in that schema are
+  `additionalProperties: false`).
+
+  MEASURED, two opus-5 mints of `examples/dev.policy.lips` (7 permission
+  sentences), 2026-09-18. The first took 3m49s, 17,373 output tokens and $0.74,
+  and was accepted; `nix build path:...#profile` then failed, because nono
+  refuses a `from.<caller>` entry carrying only an `invocation_policy` ("data
+  did not match any variant of untagged enum CommandFromConfig") and refuses an
+  `approve` entry with no approval backend (`missing_approval_backend`). Both
+  are facts about the world, so the remedy went into the world's preamble and
+  not into the output (invariant 4). The patch mint that followed cost 60s,
+  4,153 output tokens and $0.33, and moved three lines (`r1`, `r5`, `d1`):
+  `r5` now emits an empty `sandbox` object per command, `r1` declares the
+  terminal approval backend once. Total $1.07, against $3 to $4 for a
+  service-shaped nixos mint.
+
+  THE GAP this leaves, stated because it is why an invalid engine was accepted:
+  `generate` never builds a world's `builds` slot, so the validator is a
+  build-time gate, not a mint gate. `nix flake check`'s `lipsModules-eval`
+  enumerates the four shipped world attributes by name, so a local world's
+  `nonoModules` sits outside it as well. The validator runs today only when a
+  human runs `nix build path:examples/policy/out/dev/nono#profile`.
+
 - **Where the rules make something RUN, one claim must boot -- and it caught the
   broken example on the first try.** `examples/website` shipped a unit that could
   not start for eight days with every gate green: `StandardOutput=file:` into a

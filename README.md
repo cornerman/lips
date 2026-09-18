@@ -257,7 +257,10 @@ language. For intent that needs something built rather than only configured, see
 `examples/greet.lips`, whose engine builds the command it names and puts it on
 your PATH. Other examples cover the other worlds: `examples/report.cron.lips`
 compiles to NixOS and kubenix at once, `examples/assets.bucket.lips` to
-terranix, `examples/board.lips` to home-manager.
+terranix, `examples/board.lips` to home-manager. For a world lips does not
+ship, see `examples/dev.policy.lips`: seven permission sentences compile to a
+[nono](https://nono.sh) agent-sandbox profile through `examples/nono.world`, a
+world file that lives beside the program rather than inside lips.
 
 ## Layout
 
