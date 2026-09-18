@@ -1,0 +1,9 @@
+q1 meta engine.demand.q1 stated "demand workdir.access \"what may the agent do in the directory it is started in -- read and write it, only read it, or not touch it?\"" @gen:a821043252ced48e
+r1 meta engine.rule.r1 stated "match fact workdir.access => workdir.access \"\\\"<value>\\\"\" ; meta.name \"\\\"<self>\\\"\" ; command_policies.approval_backends.terminal.type \"\\\"terminal\\\"\" ; command_policies.approval_defaults.backend \"\\\"terminal\\\"\"" @gen:a821043252ced48e
+r2 meta engine.rule.r2 stated "match fact fs.read.<n> => filesystem.read \"[ \\\"<value>\\\" ]\"" @gen:a821043252ced48e
+r3 meta engine.rule.r3 stated "match fact fs.allow.<n> => filesystem.allow \"[ \\\"<value>\\\" ]\"" @gen:a821043252ced48e
+r4 meta engine.rule.r4 stated "match fact fs.deny.<n> => filesystem.deny \"[ \\\"<value>\\\" ]\"" @gen:a821043252ced48e
+r5 meta engine.rule.r5 stated "match fact cmd.<name>.policy => command_policies.commands.<name>.from.session.invocation_policy.default \"\\\"<value>\\\"\" ; command_policies.commands.<name>.from.session.sandbox \"{}\"" @gen:a821043252ced48e
+r6 meta engine.rule.r6 stated "match fact cmd.<name>.approve => command_policies.commands.<name>.from.session.invocation_policy.approve \"[ { argv = { prefix = [ \\\"<value>\\\" ]; }; } ]\"" @gen:a821043252ced48e
+r7 meta engine.rule.r7 stated "match fact net.allow.<n> => network.allow_domain \"[ \\\"<value>\\\" ]\"" @gen:a821043252ced48e
+r8 meta engine.rule.r8 stated "match fact net.block => network.block \"<value:bool>\"" @gen:a821043252ced48e

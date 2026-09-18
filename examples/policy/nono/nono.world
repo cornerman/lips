@@ -1,0 +1,161 @@
+format: 1
+world: nono
+module-attr: nonoModules
+schema-pin: LIPS_NIXPKGS_FLAKE
+
+--- preamble ---
+TARGET WORLD: nono (https://nono.sh), a capability-based sandbox that runs one
+agent, or one tool an agent calls, under a JSON policy. A nono profile
+CONFIGURES A SANDBOX, not a machine and not a home: nothing is installed and
+no service is wired, so never emit a NixOS or home-manager option here (no
+services.*, no systemd.*, no environment.systemPackages, no programs.*). The
+namespaces are the profile's own top-level sections, and an option path is a
+path into the profile JSON: filesystem.read, network.allow_domain,
+command_policies.commands.<tool>.from.session.invocation_policy.default.
+
+<self> is the profile's name: put it in meta.name, which a human then runs as
+`nono run --profile <dir>/profile.json -- <agent>`.
+
+WHERE EACH KIND OF PERMISSION BELONGS (distilled from `nono profile guide`,
+nono 0.68.0; that guide is the full reference and this is only the part every
+program meets):
+
+- Reaching files: filesystem.allow (read+write), filesystem.read (read-only),
+  filesystem.write, filesystem.deny, and the single-file forms allow_file,
+  read_file, write_file. All are arrays of paths, and this is the enforcement
+  that holds against child processes.
+- The working directory: workdir.access, one of "none", "read", "write",
+  "readwrite".
+- Reaching the network: network.allow_domain (array of hostnames, or objects
+  carrying endpoint rules), network.deny_domain, network.block (a boolean that
+  cannot be combined with proxy settings), network.open_port,
+  network.listen_port.
+- Running a command: command_policies.commands.<tool>.from.session, which
+  carries that tool's own sandbox (fs_read, fs_write, network) and its
+  invocation_policy. The invocation_policy has "default" plus the arrays
+  "deny", "approve" and "allow", evaluated in that order, whose entries match
+  argv AFTER the command name: {"argv": {"prefix": ["push"]}} matches
+  `git push`. "approve" is the tier that asks a human before running.
+  Two shapes the validator REQUIRES here, measured against nono 0.68.0 and
+  0.74.0, because a profile that omits them is refused and neither is
+  guessable from the field list:
+    * every from.<caller> must carry a sandbox object, even an empty one. An
+      entry holding only invocation_policy is refused with "data did not match
+      any variant of untagged enum CommandFromConfig".
+    * an approve entry needs an approval backend, or the profile is refused
+      with missing_approval_backend. Declare one --
+      command_policies.approval_backends.<name>.type, one of "terminal",
+      "webhook" or "chain" -- and name it in
+      command_policies.approval_defaults.backend. "terminal" is the one that
+      asks the human sitting at the session.
+- Which deny groups apply: groups.include (a profile with no groups.include
+  carries no deny rules at all) and groups.exclude.
+
+DO NOT EMIT commands.allow OR commands.deny. That section is deprecated since
+nono v0.33.0: it gates only the command that starts the session, is not
+enforced on child processes, and a rule written there silently fails to
+constrain the agent. Command permission belongs in command_policies.
+
+query_options searches exactly this world's pinned schema, and here it is
+WEAK on purpose, as in terranix: the schema carries only the top-level
+sections nono's own `nono profile schema` publishes, so the lookup confirms
+that a section exists and nothing below it. Treat every deeper field as
+unverified: emit only fields you have from the guide above, and refuse rather
+than guess a field name. What holds the deeper names to account is nono's own
+validator, which `builds` runs over the rendered profile and which rejects an
+unknown field by name (49 of the 51 object definitions in its schema are
+additionalProperties:false).
+
+THIS WORLD HOSTS NO CLAIM: there is no machine to boot and no artifact to run,
+so state no observable. The profile is gated by `nono profile validate`, which
+every render of this module runs.
+
+--- schema ---
+# nono ships no Nix module, so the option tree comes from nono's OWN published
+# JSON Schema (`nono profile schema`), read out of the nono package in this
+# world's pinned nixpkgs -- the same pin every other world grounds against.
+#
+# Only the TOP-LEVEL sections become options. The schema's 71 nested
+# definitions are left unmodelled on purpose, which makes every deeper path
+# free-form here (a lookup answers "accepted, and this schema cannot confirm
+# it"), exactly as terranix's resource fields are. The deeper names are held to
+# account by nono's validator at build time instead.
+#
+# The jq pass maps JSON Schema types onto the type WORDING a Nix options
+# document uses, because that wording is what lips classifies. A section that
+# is not a plain scalar stays "JSON value", an unmodelled type, so its fields
+# are accepted and left to the validator. The key filter drops "$schema",
+# which is a JSON-Schema marker rather than a policy section.
+#
+# Known gap, stated because it will surprise a reader: nono's parser accepts a
+# few top-level names its published schema does not list (policy,
+# brokered_commands, binary, skipdirs, platform_overrides). Grounding follows
+# the published schema, so a rule writing one of those is refused at mint time
+# even though nono would take it. Deduce-or-fail is the right side to err on:
+# the remedy is to widen this pass when the schema catches up.
+let np = builtins.getFlake "<flakeref>";
+    pkgs = import np { system = <system>; };
+in pkgs.runCommand "options.json" { } ''
+  # HOME and -s are both about what lands on STDOUT: with no home directory
+  # and no terminal, nono prints a canonicalize warning and its banner into
+  # the redirected stream, and jq then reads a log line as JSON.
+  export HOME=$PWD
+  ${pkgs.nono}/bin/nono -s profile schema > schema.json
+  ${pkgs.jq}/bin/jq '
+    .properties
+    | with_entries(select(.key | test("^[A-Za-z_][A-Za-z0-9_]*$")))
+    | with_entries(.value = { type:
+        (if .value.type == "boolean" then "boolean"
+         elif .value.type == "string" then "string"
+         elif .value.type == "integer" then "signed integer"
+         else "JSON value" end) })
+  ' schema.json > $out
+''
+
+--- builds ---
+      # nono has no module system of its own, so the profile is an ordinary
+      # free-form module evaluation: every option a rule writes is a key in the
+      # profile JSON, and nothing here computes. `_module` is the module
+      # system's own bookkeeping, so it is dropped rather than serialized.
+      builds = system:
+        let
+          p = pkgsFor system;
+          cfg = (p.lib.evalModules {
+            modules = [
+              { freeformType = p.lib.types.attrsOf p.lib.types.anything;
+                _module.args = { pkgs = p; }; }
+              ./default.nix
+            ];
+          }).config;
+          rendered = p.writeText "profile.json"
+            (builtins.toJSON (removeAttrs cfg [ "_module" ]));
+          # The gate: nono's own validator decides whether the rendered file is
+          # a profile. It is the only thing that knows the nested definitions
+          # this world's schema deliberately leaves unmodelled, so a field name
+          # no rule could ground dies here rather than in a running sandbox.
+          profile = p.runCommand "profile.json" { } ''
+            # A writable HOME only to keep nono's warning out of the log; the
+            # validator itself reads nothing but the file named here.
+            export HOME=$PWD
+            ${p.nono}/bin/nono profile validate ${rendered}
+            cp ${rendered} $out
+          '';
+        in { inherit profile; };
+
+--- packages ---
+        profile = (builds system).profile;
+
+--- apps ---
+        let b = builds system; p = pkgsFor system; in {
+          profile = { type = "app"; program = "${p.writeShellScript "print-profile" "cat ${b.profile}"}"; };
+        }
+
+--- devShells ---
+        let p = pkgsFor system; in {
+          default = p.mkShell { packages = [ p.nono ]; };
+        }
+
+--- rungs ---
+write the profile | run | profile | > profile.json
+check it validates | build | profile |
+a shell with nono | develop | | (nono run --profile ./profile.json -- <agent>)

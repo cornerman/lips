@@ -1,0 +1,7 @@
+a1 expect workdir.access from workdir.access
+a2 expect filesystem.read from fs.read.<n>
+a3 expect command_policies.commands.<name>.from.session.invocation_policy.approve from cmd.<name>.approve
+a4 expect filesystem.deny from fs.deny.<n>
+a5 expect command_policies.commands.<name>.from.session.invocation_policy.default from cmd.<name>.policy
+a6 expect network.allow_domain from net.allow.<n>
+a7 expect filesystem.read from fs.read.1

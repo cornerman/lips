@@ -1,0 +1,16 @@
+format: 1
+verdict: accepted
+model: claude-opus-5
+thinking: medium
+wall: 60.5
+phase 0.5 nono option schema
+phase 59.9 mint .policy from 1 program for nono
+phase 0.0 write examples/policy
+turns: 3
+tool query_options: 2
+tool submit_draft: 1
+tokens input: 6
+tokens output: 4153
+tokens cache-read: 58509
+tokens cache-write: 31859
+cost-usd: 0.33222825
