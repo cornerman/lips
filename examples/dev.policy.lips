@@ -1,0 +1,7 @@
+the agent works in the directory it is started in and may read and write it.
+it may read $HOME/.config/git.
+it may never read $HOME/.ssh, $HOME/.aws or $HOME/.config/gh.
+it may run git, rg, ls and cat.
+it must ask me before running git push.
+it may never run curl, wget or ssh.
+on the network it may reach github.com and crates.io, and nothing else.
