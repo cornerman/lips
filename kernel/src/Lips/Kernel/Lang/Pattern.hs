@@ -50,6 +50,7 @@ module Lips.Kernel.Lang.Pattern
   , patUnder
   , parsePatternId
   , renderPatternId
+  , patEach
   , normalizeToken
   , stripTrailingPunct
   , stripTerminator
@@ -292,6 +293,13 @@ data PatEmit = PatEmit
 data Pattern = Pattern
   { pId       :: Text
   , pParents  :: [Text]
+    -- | @Just h@: this pattern reads ONE ITEM of its parent's list hole @h@
+    -- (spelled @p10.each.p9.h@), instead of a following LINE of its parent's
+    -- block. Everything else about nesting is unchanged -- the parent is in
+    -- 'pParents', so scope, keys and the nesting gates read it as any other
+    -- child -- because an item IS a child; only where its tokens come from
+    -- differs.
+  , pItemHole :: Maybe Text
   , pTemplate :: [TplTok]
   , pEmits    :: [PatEmit]
   }
@@ -300,11 +308,15 @@ data Pattern = Pattern
 -- | The common single-emit, top-level pattern (one loose line to one decision),
 -- spelled out so call sites and tests stay readable.
 patOne :: Text -> [TplTok] -> Kind -> [StrPart] -> [StrPart] -> Pattern
-patOne i tpl k subj assn = Pattern i [] tpl [PatEmit k subj assn]
+patOne i tpl k subj assn = Pattern i [] Nothing tpl [PatEmit k subj assn]
 
 -- | A pattern nested under another, by parent id.
 patUnder :: Text -> Text -> [TplTok] -> [PatEmit] -> Pattern
-patUnder i parent = Pattern i [parent]
+patUnder i parent = Pattern i [parent] Nothing
+
+-- | A pattern reading one ITEM of a parent's list hole.
+patEach :: Text -> Text -> Text -> [TplTok] -> [PatEmit] -> Pattern
+patEach i parent hole = Pattern i [parent] (Just hole)
 
 -- | Split a pattern id token into the pattern's own id and the parent it nests
 -- under: @p3.under.p2@ is the pattern @p3@ inside @p2@'s block. One spelling at
@@ -316,17 +328,30 @@ patUnder i parent = Pattern i [parent]
 -- that legitimately begins with the word @under@, and refusing such a template
 -- would be a missing grammar case (invariant 3). On the id it is also
 -- structurally at most one parent, so \"two parents\" needs no check.
-parsePatternId :: Text -> Either Text (Text, [Text])
-parsePatternId tok = case T.splitOn ".under." tok of
-  parts@(i : parents)
-    | all (not . T.null) parts -> Right (i, parents)
-  _ -> Left ("pattern id " <> tok <> ": a nested id is <id>.under.<parent>")
+parsePatternId :: Text -> Either Text (Text, [Text], Maybe Text)
+parsePatternId tok
+  -- An ITEM pattern names one parent and the parent's list hole, so it has
+  -- exactly one place to sit: there is no chain to fall back through.
+  | (i, marked) <- T.breakOn ".each." tok, not (T.null marked) =
+      case T.breakOn "." (T.drop (T.length (".each." :: Text)) marked) of
+        (parent, dotHole)
+          | not (T.null i), not (T.null parent)
+          , Just hole <- T.stripPrefix "." dotHole
+          , not (T.null hole), not (T.isInfixOf "." hole)
+          , not (T.isInfixOf ".under." i) -> Right (i, [parent], Just hole)
+        _ -> Left ("pattern id " <> tok <> ": an item id is <id>.each.<parent>.<hole>")
+  | otherwise = case T.splitOn ".under." tok of
+      parts@(i : parents)
+        | all (not . T.null) parts -> Right (i, parents, Nothing)
+      _ -> Left ("pattern id " <> tok <> ": a nested id is <id>.under.<parent>")
 
 -- | The id token a pattern is stored and minted under (inverse of
 -- 'parsePatternId'): the bare id, or @\<id\>.under.\<parent\>@ (repeated for a
 -- recursive item's fallback chain).
 renderPatternId :: Pattern -> Text
-renderPatternId p = T.intercalate ".under." (pId p : pParents p)
+renderPatternId p = case (pItemHole p, pParents p) of
+  (Just h, parent : _) -> pId p <> ".each." <> parent <> "." <> h
+  _                    -> T.intercalate ".under." (pId p : pParents p)
 
 -- | The hole names a pattern's TEMPLATE binds, in template order. A multi-token
 -- hole binds a name too, so a target @<name>@ may be filled from such a capture

@@ -47,6 +47,7 @@ module Lips.Kernel.Lang.Nest
   , Frames
   , noFrames
   , scopeLine
+  , scopeItem
   , recordLine
   ) where
 
@@ -59,7 +60,7 @@ import qualified Data.Text       as T
 import Lips.Kernel.Decision     (Subject (..))
 import Lips.Kernel.Lang.Pattern (PatEmit (..), Pattern (..), StrPart (..),
                                  StructType (..), applyPattern, holesOf,
-                                 refName, structHoles)
+                                 listHoles, refName, structHoles)
 import Lips.Kernel.Reader       (joinSubject)
 
 -- | An engine whose nesting does not close. Every case is refused at the one
@@ -78,6 +79,12 @@ data NestError
   | -- | A top-level pattern declaring @\<k:key\>@: there is no enclosing line
     -- for it to name.
     KeyWithoutBlock Text
+  | -- | An item pattern naming a hole its parent does not bind as a LIST: there
+    -- are no items for it to read.
+    NotAListHole Text Text Text
+  | -- | A pattern nesting under an ITEM pattern. An item is part of one line, so
+    -- it heads no block and no later line can scope to it.
+    BlockUnderItem Text Text
   deriving (Eq, Show)
 
 -- | One nesting failure in the words its author (the model, at the mint gate)
@@ -92,6 +99,11 @@ renderNestError (UnboundInScope p hs) =
     <> ">, which neither it nor every block it can sit in binds"
 renderNestError (KeyWithoutBlock p) =
   "pattern " <> p <> " names <key>, but it nests under nothing, so it heads no block"
+renderNestError (NotAListHole p q h) =
+  "pattern " <> p <> " reads an item of <" <> h <> "> in " <> q
+    <> ", which binds no list hole of that name"
+renderNestError (BlockUnderItem p q) =
+  "pattern " <> p <> " nests under " <> q <> ", which reads an ITEM of a line, so it heads no block"
 
 -- | The patterns enclosing this one, nearest first, excluding itself. Follows
 -- the FIRST declared parent, which is the nesting a reader means by \"the block
@@ -181,8 +193,21 @@ scopedBindings mark pats = go []
 -- sit in.
 checkNesting :: [Pattern] -> [NestError]
 checkNesting pats =
-  concatMap unknown ordered ++ cycles ++ concatMap keyless ordered ++ concatMap unbound ordered
+  concatMap unknown ordered ++ cycles ++ concatMap keyless ordered
+    ++ concatMap itemHole ordered ++ concatMap underItem ordered
+    ++ concatMap unbound ordered
   where
+    -- An item pattern must name a LIST hole of its parent: that is where its
+    -- tokens come from, and a name the parent does not cut is unreadable.
+    itemHole p =
+      [ NotAListHole (pId p) q h
+      | Just h <- [pItemHole p], q <- pParents p
+      , Just a <- [find ((== q) . pId) pats]
+      , h `notElem` map fst (listHoles a) ]
+    underItem p =
+      [ BlockUnderItem (pId p) q
+      | Nothing <- [pItemHole p], q <- pParents p, q /= pId p
+      , Just a <- [find ((== q) . pId) pats], Just _ <- [pItemHole a] ]
     ordered = map snd (Map.toAscList (Map.fromList [(pId p, p) | p <- pats]))
     known q = any ((== q) . pId) pats
     unknown p = [UnknownParent (pId p) q | q <- pParents p, not (known q)]
@@ -267,6 +292,23 @@ scopeLine frames p indent own = case pParents p of
       ]
     lastOf [] = Nothing
     lastOf xs = Just (last xs)
+
+-- | Scope one ITEM of a matched line's list hole: the bindings its pattern's
+-- emits are read under. Same shape as 'scopeLine' and deliberately beside it,
+-- since this is the same knowledge (a child sees its own captures first, then
+-- what the structure gives it, then its parent's) for the one case where the
+-- child is part of its parent's line: @\<n:index\>@ is the item's position
+-- among the items, and @\<k:key\>@ the key of the line that carries them.
+scopeItem :: Pattern -> Int -> Text -> Map Text Text -> Map Text Text -> Map Text Text
+scopeItem p i pkey own penv = own `Map.union` structBinds `Map.union` penv
+  where
+    structBinds = Map.fromList
+      [ (n, val)
+      | (n, st) <- structHoles p
+      , let val = case st of
+              SIndex -> T.pack (show i)
+              SKey   -> pkey
+      ]
 
 -- | Remember a scoped line, so the lines after it can sit in its block. Called
 -- once the line's decisions exist, since a line's block key is the subject of

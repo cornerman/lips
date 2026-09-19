@@ -2195,6 +2195,104 @@ main = hspec $ do
                      | w <- ["cat", "git", "jq", "ls", "rg"] ]
         Left errs  -> expectationFailure (show errs)
 
+  describe "an item with structure (.each: a list item binding several holes)" $ do
+    -- The gap this closes: an item that is not one value froze its pattern at
+    -- the count its author wrote. `examples/habit` p9 spelled three log entries
+    -- into the template AND its rule read six parts by position, so a program
+    -- with two or four entries simply could not be read (TODO 1c,
+    -- fixed-arity-witness). An item pattern reads ONE entry, so both sides free
+    -- up: each entry becomes its own decision, which the rule side aggregates.
+    let pat i body = case parsePatternBody i body of
+          Right ok -> ok
+          Left e   -> error (T.unpack e)
+        -- The habit witness, as the language would now spell it.
+        logP  = pat "p9" "given the log of <e.list:,|and> the habit <q> prints <out> \
+                         \=> fact witness.<q>.expected \"<out>\""
+        entryP = pat "p10.each.p9.e" "<d> for <h> => fact witness.<q>.entry.<n:index> \"<d> <h>\""
+        logLine ents = "given the log of " <> ents
+                         <> ", the habit \"run\" prints \"#..#\".\n"
+        three = "\"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\""
+        factsOf src = case crystallize "habit.lips" [logP, entryP] src of
+          Right base -> Right (sort [ (dSubject d, dAssertion d) | d <- toList base ])
+          Left errs  -> Left errs
+
+    it "reads the id as a parent plus the list hole it reads an item of" $ do
+      (pId entryP, pParents entryP, pItemHole entryP) `shouldBe` ("p10", ["p9"], Just "e")
+      (decisionToPattern . patternToDecision) entryP `shouldBe` Right entryP
+      -- The stored subject is the path the id spells, so the two cannot drift.
+      dSubject (patternToDecision entryP)
+        `shouldBe` Subject ["lang", "pattern", "p10", "each", "p9", "e"]
+    it "states one decision per entry, keyed by its position" $
+      factsOf (logLine three) `shouldBe` Right
+        [ (Subject ["witness", "run", "entry", "1"], Assertion "\"2026-01-01\" \"run\"")
+        , (Subject ["witness", "run", "entry", "2"], Assertion "\"2026-01-02\" \"read\"")
+        , (Subject ["witness", "run", "entry", "3"], Assertion "\"2026-01-04\" \"run\"")
+        , (Subject ["witness", "run", "expected"], Assertion "#..#")
+        ]
+    it "reads the same sentence at two entries and at five" $ do
+      -- The completeness test: the counts nobody foresaw need no new pattern.
+      let two  = "\"2026-01-01\" for \"run\" and \"2026-01-02\" for \"read\""
+          five = T.intercalate ", " ["\"2026-01-0" <> T.pack (show i) <> "\" for \"run\""
+                                    | i <- [1 :: Int .. 4]]
+                   <> " and \"2026-01-05\" for \"read\""
+      fmap length (factsOf (logLine two))  `shouldBe` Right 3
+      fmap length (factsOf (logLine five)) `shouldBe` Right 6
+    it "an entry sees the words its line states around the list" $
+      -- <q> is the parent's capture: the entries key under the habit asked for,
+      -- which is what makes two witness lines in one program not collide.
+      factsOf ("given the log of \"2026-01-01\" for \"run\" "
+                 <> "the habit \"read\" prints \"#\".\n")
+        `shouldBe` Right
+          [ (Subject ["witness", "read", "entry", "1"], Assertion "\"2026-01-01\" \"run\"")
+          , (Subject ["witness", "read", "expected"], Assertion "#")
+          ]
+    it "decision ids stay line-anchored across the line and its entries" $
+      case crystallize "habit.lips" [logP, entryP] (logLine three) of
+        Right base -> sort [dId d | d <- toList base]
+          `shouldBe` map DecisionId ["d1.1", "d1.2", "d1.3", "d1.4"]
+        Left errs  -> expectationFailure (show errs)
+    it "an entry no item pattern reads fails loud, naming the entry" $
+      -- Deduce-or-fail at item scale: half a list read is worse than none.
+      crystallize "habit.lips" [logP, entryP]
+        (logLine "\"2026-01-01\" for \"run\" and \"2026-01-02\"")
+        `shouldBe` Left [NoItemPattern 1 "2026-01-02" ["p10"]]
+    it "two lists in one sentence keep their own item patterns" $ do
+      -- board p8's shape: five input lines and three output lines, each list
+      -- with its own child, so neither freezes the other.
+      let boardP = pat "p8" "given the lines <i.list:,|and> print the lines <o.list:,|and> \
+                            \=> fact witness.stated \"true\""
+          inP    = pat "p9.each.p8.i" "<l> => fact witness.in.<n:index> \"<l>\""
+          outP   = pat "p10.each.p8.o" "<l> => fact witness.out.<n:index> \"<l>\""
+          src    = "given the lines \"a\", \"b\" and \"c\" print the lines \"x\" and \"y\".\n"
+      case crystallize "board.lips" [boardP, inP, outP] src of
+        Right base -> sort [ (dSubject d, dAssertion d) | d <- toList base ]
+          `shouldBe`
+            [ (Subject ["witness", "in", "1"], Assertion "a")
+            , (Subject ["witness", "in", "2"], Assertion "b")
+            , (Subject ["witness", "in", "3"], Assertion "c")
+            , (Subject ["witness", "out", "1"], Assertion "x")
+            , (Subject ["witness", "out", "2"], Assertion "y")
+            , (Subject ["witness", "stated"], Assertion "true")
+            ]
+        Left errs -> expectationFailure (show errs)
+    it "refuses an item pattern whose parent binds no such list" $ do
+      let parentP = pat "p1" "track <what.words> => fact tool.purpose \"<what>\""
+          childP  = pat "p2.each.p1.e" "<d> for <h> => fact x.<n:index> \"<d> <h>\""
+          plainP  = pat "p2.each.p1.what" "<d> => fact x.<n:index> \"<d>\""
+      checkNesting [parentP, childP] `shouldBe` [NotAListHole "p2" "p1" "e"]
+      -- A multi-token hole is not a list either: nothing cut it into items.
+      checkNesting [parentP, plainP] `shouldBe` [NotAListHole "p2" "p1" "what"]
+    it "refuses a block nested under an item, which heads no block" $ do
+      let p = pat "p3.under.p10" "- <x> => fact y \"<x>\""
+      checkNesting [logP, entryP, p] `shouldBe` [BlockUnderItem "p3" "p10"]
+    it "an item pattern is never offered as a line to write" $ do
+      -- It reads an entry inside another line, so completing a fresh line with
+      -- it would offer a sentence that can never crystallize.
+      let eng = EngineData [logP, entryP] [] [] [] []
+          labels = map ciLabel (completionItems eng)
+      length labels `shouldBe` 1
+      labels `shouldSatisfy` any (T.isInfixOf "given the log of")
+
   describe "source fills (a program word inside baked source)" $ do
     it "reads the markers a source text names, once each, in order" $
       sourceMarkers "module @name@\nfunc main() { print(\"@name@ @greeting@\") }"
@@ -2312,7 +2410,7 @@ main = hspec $ do
     -- "http server in <lang> on port <port>" states BOTH language and port; the
     -- one pattern that matches the line must emit both, or a demand on the
     -- second could never be met (the bug that motivated this).
-    let denseP = Pattern "p1" []
+    let denseP = Pattern "p1" [] Nothing
                    [ TLit "http", TLit "server", TLit "in", THole "lang"
                    , TLit "on", TLit "port", THole "port" ]
                    [ PatEmit Steer [SLit "server.language"] [SHole "lang"]
@@ -2600,7 +2698,7 @@ main = hspec $ do
     -- through crystallize -> refine -> realize into two DISTINCT keyed options
     -- (the collision the value-keyed-options gap caused is gone).
     it "end to end: two routes fan out to two path-keyed options" $ do
-      let routeP = Pattern "pr" []
+      let routeP = Pattern "pr" [] Nothing
                      [ TLit "-", THole "path", TLit "=>", TLit "status", THole "code" ]
                      [ PatEmit Fact [SLit "route.", SHole "path", SLit ".status"] [SHole "code"] ]
           routeRule = MapRule "r" Fact ["route", "<path>", "status"]
@@ -2933,7 +3031,7 @@ main = hspec $ do
       -- the order the id declares them. This is the ONLY place leading whitespace
       -- means anything.
       let root = patOne "n0" [TLit "tree"] Concept [SLit "tree"] [SLit "a tree"]
-          node = Pattern "n1" ["n1", "n0"] [TLit "-", THole "name"]
+          node = Pattern "n1" ["n1", "n0"] Nothing [TLit "-", THole "name"]
                    [PatEmit Fact [SHole "k:key", SLit ".", SHole "name"] [SLit "a node"]]
           src = T.unlines ["tree:", "- File", "  - New", "    - Item", "- Edit", "  - New"]
       fmap subjectsOf (crystallize "t" [root, node] src) `shouldBe` Right
@@ -3580,7 +3678,7 @@ main = hspec $ do
     it "names a word whose only landing is a concept" $ do
       let engC = EngineData
             { edPatterns =
-                [ Pattern "p3" []
+                [ Pattern "p3" [] Nothing
                     [TLit "serve", THole "port", TLit "for", THole "who"]
                     [ PatEmit Fact [SLit "http.port"] [SHole "port"]
                     , PatEmit Concept [SLit "http.audience"] [SHole "who"] ] ]
@@ -3603,9 +3701,9 @@ main = hspec $ do
     it "calls no block-head word decorative when the lines inside key on it" $ do
       let engH = EngineData
             { edPatterns =
-                [ Pattern "p2" [] [TLit "host", THole "domain"]
+                [ Pattern "p2" [] Nothing [TLit "host", THole "domain"]
                     [ PatEmit Concept [SLit "host.", SHole "domain"] [SHole "domain"] ]
-                , Pattern "p3" ["p2"] [TLit "-", THole "path", TLit "proxies", TLit "to", THole "url"]
+                , Pattern "p3" ["p2"] Nothing [TLit "-", THole "path", TLit "proxies", TLit "to", THole "url"]
                     [ PatEmit Fact [SLit "host.", SHole "domain", SLit ".location.", SHole "path", SLit ".proxy"]
                               [SHole "url"] ] ]
             , edRules = [ MapRule "r3" Fact ["host", "<d>", "location", "<p>", "proxy"]
@@ -3620,7 +3718,7 @@ main = hspec $ do
     it "calls no word decorative when a rule carries it" $ do
       let engK = EngineData
             { edPatterns =
-                [ Pattern "p3" []
+                [ Pattern "p3" [] Nothing
                     [TLit "serve", THole "port", TLit "for", THole "who"]
                     [ PatEmit Fact [SLit "http.port"] [SHole "port"]
                     , PatEmit Concept [SLit "http.audience"] [SHole "who"]

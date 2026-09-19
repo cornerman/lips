@@ -57,7 +57,13 @@ data CItem = CItem
 -- Takes the whole engine, not its patterns: a hole's TYPE is fixed by the rule
 -- that spends the word, so the sentence alone cannot state it.
 completionItems :: EngineData -> [CItem]
-completionItems eng = map (renderPattern eng Map.empty) (edPatterns eng)
+completionItems eng = map (renderPattern eng Map.empty) (linePatterns eng)
+
+-- | The patterns that read a LINE. An item pattern reads one entry of another
+-- pattern's list, so offering it as a sentence would offer a line that can
+-- never crystallize.
+linePatterns :: EngineData -> [Pattern]
+linePatterns eng = [p | p <- edPatterns eng, pItemHole p == Nothing]
 
 -- | Contextual completion: complete the sentence a line has already started.
 -- @line@ is the whole current line and @col@ is the 0-based cursor column. A
@@ -74,7 +80,7 @@ completionItems eng = map (renderPattern eng Map.empty) (edPatterns eng)
 completionItemsAt :: EngineData -> Text -> Int -> [CItem]
 completionItemsAt eng line col =
   [ renderPattern eng binds p
-  | p <- edPatterns eng
+  | p <- linePatterns eng
   , let (toks, mfrag) = splitPrefix prefix
   , Just (binds, remaining) <- [matchPrefix (pTemplate p) toks mfrag]
   , not (null remaining)            -- nothing left to complete -> skip
@@ -286,6 +292,15 @@ diagsOf d = concatMap lineDiag (diagLines d) ++ unfitDiags ++ decorativeDiags
       [Diag (n - 1) 0 (T.length t) 1
         ("This line is an item of a block, and no line above it opens one ("
           <> T.intercalate " or " qs <> ").")]
+    -- The line reads; one entry of a list it states does not. Naming the entry
+    -- is the remedy, since the rest of the line is fine.
+    lineDiag (ItemUnread n t item several ids) =
+      [Diag (n - 1) 0 (T.length t) 1
+        (if several
+           then "The entry \"" <> item <> "\" is read by several item patterns ("
+                  <> T.intercalate ", " ids <> ")."
+           else "No item pattern reads the entry \"" <> item <> "\" ("
+                  <> T.intercalate ", " ids <> " read the other entries).")]
     -- The remedy is the engine's, not the program's: a subject keyed by a
     -- multi-word capture must be keyed by <n:index> instead.
     lineDiag (Illegible n t why) =
@@ -342,6 +357,7 @@ hoverAt eng inst d line = case [ o | o <- diagLines d, lineNo o == Just (line + 
     lineNo (Ambiguous n _ _)   = Just n
     lineNo (Orphan n _ _)      = Just n
     lineNo (Illegible n _ _)   = Just n
+    lineNo (ItemUnread n _ _ _ _) = Just n
 
     render (Matched _ _ pid par decs) = T.intercalate "\n\n" (patLine : facts : rest)
       where
@@ -364,6 +380,11 @@ hoverAt eng inst d line = case [ o | o <- diagLines d, lineNo o == Just (line + 
       "This line is an item of a block, and no line above it opens one ("
         <> T.intercalate " or " qs <> ")."
     render (Illegible _ _ why) = "A decision this line states cannot be read back: " <> why
+    render (ItemUnread _ _ item several ids)
+      | several   = "The entry \"" <> item <> "\" is read by several item patterns ("
+                      <> T.intercalate ", " ids <> ")."
+      | otherwise = "No item pattern reads the entry \"" <> item <> "\" ("
+                      <> T.intercalate ", " ids <> " read the other entries)."
 
     -- One rewrite step per decision, exactly as refine runs it: the emitted
     -- decisions ARE the option assignments, so nothing is re-derived here. A

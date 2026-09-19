@@ -128,6 +128,8 @@ readLang src =
       UnknownParent p _  -> p
       UnboundInScope p _ -> p
       KeyWithoutBlock p  -> p
+      NotAListHole p _ _ -> p
+      BlockUnderItem p _ -> p
       NestCycle (p : _)  -> p
       NestCycle []       -> ""
     -- Read the decision envelope (re-stamping its line), then classify and
@@ -141,7 +143,7 @@ classify n d = case dSubject d of
   -- A nested pattern names its parents in the path, in the order they are
   -- tried: lang.pattern.p3.under.p2, or lang.pattern.n1.under.n1.under.n0.
   Subject ("lang" : "pattern" : i : rest)
-    | Just parents <- underChain rest -> tag ELPat (parsePatternBody (T.intercalate ".under." (i : parents)) body)
+    | Just tok <- idTail rest -> tag ELPat (parsePatternBody (i <> tok) body)
   Subject ["engine", "rule", i]    -> tag ELRule (parseRuleBody   i body)
   Subject ["engine", "demand", i]  -> tag ELDem  (parseDemandBody i body)
   Subject ["engine", "merge", i]    -> tag ELMerge (parseMergeBody i body)
@@ -188,14 +190,16 @@ patternToDecision p = metaDecision (pId p) ("lang" : "pattern" : idSegs) (render
   where
     -- Segments, not one dotted segment: the canonical renderer escapes a dot
     -- INSIDE a segment, so a nested id has to be spelled as the path it is.
-    idSegs = pId p : concat [["under", q] | q <- pParents p]
+    idSegs = pId p : case (pItemHole p, pParents p) of
+      (Just h, parent : _) -> ["each", parent, h]
+      _                    -> concat [["under", q] | q <- pParents p]
 
 -- | Parse a @lang.pattern.*@ decision back into a pattern, or explain why not.
 decisionToPattern :: Decision -> Either Text Pattern
 decisionToPattern d = do
   pid <- case dSubject d of
     Subject ("lang" : "pattern" : i : rest)
-      | Just parents <- underChain rest -> Right (T.intercalate ".under." (i : parents))
+      | Just tok <- idTail rest -> Right (i <> tok)
     _ -> Left "not a lang.pattern subject"
   parseBody pid (unAssertion (dAssertion d))
   where
@@ -249,7 +253,7 @@ quoteParts = quoteText . renderParts
 
 parseBody :: Text -> Text -> Either Text Pattern
 parseBody idTok body = do
-  (pid, parents) <- parsePatternId idTok
+  (pid, parents, itemHole) <- parsePatternId idTok
   (tplStr, rest0) <- maybe (Left ("pattern " <> pid <> ": missing =>")) Right
                        (splitOnSeparator body)
   -- Drop empty-literal tokens (a lone terminator), symmetric with
@@ -272,7 +276,8 @@ parseBody idTok body = do
                        <> ".list:> declares no separator; an uncut run is <" <> h <> ".words>")
     []      -> Right ()
   emits <- mapM (parseEmit pid . T.strip) (splitOutsideQuotes " ; " rest0)
-  let p = Pattern { pId = pid, pParents = parents, pTemplate = template, pEmits = emits }
+  let p = Pattern { pId = pid, pParents = parents, pItemHole = itemHole
+                  , pTemplate = template, pEmits = emits }
   -- Every hole in the target must be bound, so 'applyPattern' is total. A
   -- top-level pattern binds only through its own template, and is judged here.
   -- A NESTED one also sees its ancestors' captures, which one pattern's parse
@@ -449,3 +454,13 @@ underChain :: [Text] -> Maybe [Text]
 underChain []                    = Just []
 underChain ("under" : q : rest)  = (q :) <$> underChain rest
 underChain _                     = Nothing
+
+-- | Rebuild the id TOKEN's tail from a pattern subject's tail: @\"\"@ for a
+-- top-level pattern, @.under.p2@ (repeatable) for a block child, @.each.p9.e@
+-- for an ITEM child. One inverse for both nesting forms, so the stored subject
+-- path and the minted id token cannot drift.
+idTail :: [Text] -> Maybe Text
+idTail ["each", q, h] = Just (".each." <> q <> "." <> h)
+idTail rest = case underChain rest of
+  Just parents -> Just (T.concat [".under." <> q | q <- parents])
+  Nothing      -> Nothing

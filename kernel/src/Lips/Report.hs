@@ -79,6 +79,12 @@ renderDiagnosis file d =
         <> T.intercalate " or " qs
     row (Illegible n _ why) =
       "  line " <> tshow n <> "  unreadable  " <> why
+    -- The line reads and one ENTRY of a list it states does not, so the row
+    -- names the entry rather than the whole line.
+    row (ItemUnread n _ item several ids)
+      | several   = "  line " <> tshow n <> "  ambiguous entry \"" <> item <> "\"  "
+                      <> T.intercalate "," ids
+      | otherwise = "  line " <> tshow n <> "  no entry match  \"" <> item <> "\""
     -- A line the language reads and then drops realizes nothing, so editing it
     -- changes nothing. Naming it is the point: a heading is legitimately
     -- decorative, but so is a line the mint quietly declined to honor, and only
@@ -183,6 +189,12 @@ failureReport file (FailRead errs) =
     crystDetail (Unreadable n t why) =
       "line " <> tshow n <> ": " <> t
         <> " -- what this line states cannot be written down and read back (" <> why <> ")"
+    -- The line reads; one entry of a list it states does not. Naming the entry
+    -- is the remedy, since every other entry of the same line was read.
+    crystDetail (NoItemPattern n item _) =
+      "line " <> tshow n <> ": no entry pattern reads \"" <> item <> "\""
+    crystDetail (OverlappingItem n item _) =
+      "line " <> tshow n <> ": the setup reads the entry \"" <> item <> "\" more than one way"
 failureReport file (FailRun err) = case err of
   ParseRejected es ->
     reportHead (T.pack file <> " has lines that couldn't be read:")
