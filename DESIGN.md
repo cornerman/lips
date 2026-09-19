@@ -953,11 +953,38 @@ but the loop around it is incomplete; "missing" means specced, not built.
   and `it may run git, rg, ls, cat, jq, fd and sed.` crystallizes with no kernel
   and no grammar change -- the completeness test for the construct.
 
-  STILL FROZEN: an item that carries STRUCTURE (`habit` p9's `<d> for "<h>"`,
-  `board` p8's two lists in one sentence). The layered remedy is designed and
-  not built: a `.each` child pattern parsing one item, nesting on the parent's
-  HOLE the way `p.under.q` nests on its line. It waits for the language that
-  needs it, so its shape is decided by a real re-mint (TODO 1c).
+  THE SECOND DEPTH, landed the same day: an ITEM PATTERN `p10.each.p9.e` reads
+  ONE item of `p9`'s list hole `e`, so an item may bind several holes. It is a
+  nested pattern whose block is a HOLE rather than a run of lines, which is why
+  it cost no new scope machinery: the parent stays in `pParents`, so scope,
+  `<k:key>` families, the cycle gate and the unbound-in-scope gate read it as
+  any other child. What differs is where its tokens come from. Its `<n:index>`
+  is the item's position, its captures shadow the parent's, and an item no child
+  reads fails the line naming that item (`NoItemPattern`) -- deduce-or-fail at
+  item scale, since half a list read is worse than none. Two guards keep the
+  form honest: an item pattern must name a LIST hole of its parent
+  (`NotAListHole`), and nothing may nest under an item (`BlockUnderItem`), which
+  reads part of a line and therefore heads no block.
+
+  MEASURED, one opus-5 `--fresh` re-mint of `examples/habit.lips` into
+  `home-manager`, 2026-09-19: 8m00s, 32,506 output tokens, $1.29. It used both
+  depths unprompted by anything but the paragraph in `assets/mint/body.md`:
+  `p9` cuts the entries, `p10.each.p9.e` reads `<d> for <h>` into
+  `witness.<q>.entry.<n:index>`, and `r10` aggregates those per-entry facts into
+  `claim.<q>.feed` -- the Append path that already assembles
+  `filesystem.read`. The witness now reads at ANY entry count, verified by
+  running it: a two-entry and a five-entry `habit` program each crystallize and
+  each pass their clause claim, which builds the tool and compares its real
+  output (`#.` and `#.#..#`).
+
+  WHAT IT COST, recorded because invariant 5 fired exactly as designed: the
+  first re-mint (8m00s, 35,262 output tokens, $1.48) kept the committed
+  `.expect`, which pinned the printed output to PART 8 of the old eight-part
+  witness fact. The mint padded the new assertion with seven copies of `<q>` to
+  hold that position and filed the gap `contract-part-shape` itself ("it is ugly
+  and it carries no meaning"). A contract about a fact that no longer exists is
+  a human decision, so the `.expect` was deleted (the documented re-bless) and
+  the language re-minted; the second engine carries no padding.
 
 - **A world lips never heard of, minted without touching lips.**
   `examples/nono.world` targets nono (https://nono.sh), a capability-based

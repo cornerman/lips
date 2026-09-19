@@ -1,7 +1,7 @@
 # An Item With Structure (`.each`)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to
-> implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
+> implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax.
 
 **Goal:** an item of a list may carry several holes, so a sentence like `habit`
 p9 stops freezing at the count its author happened to write:
@@ -49,38 +49,38 @@ a run of lines.
 
 ### Task 1: The Id and Its Guards
 
-- [ ] Test: `p10.each.p9.e` parses to id `p10`, parent `p9`, item hole `e`, and
+- [x] Test: `p10.each.p9.e` parses to id `p10`, parent `p9`, item hole `e`, and
       round-trips through `patternToDecision` / `decisionToPattern`.
-- [ ] Test: `.each` naming a hole the parent does not bind is refused, naming
+- [x] Test: `.each` naming a hole the parent does not bind is refused, naming
       both pattern and hole.
-- [ ] Test: `.each` naming a hole that is not a LIST hole is refused.
-- [ ] Test: an item pattern with a self-reference or two parents is refused
+- [x] Test: `.each` naming a hole that is not a LIST hole is refused.
+- [x] Test: an item pattern with a self-reference or two parents is refused
       (an item has exactly one list it belongs to).
 
 ### Task 2: Items Are Matched, Not Lines
 
-- [ ] Test: the `habit` p9 shape reads three entries, and the same pattern reads
+- [x] Test: the `habit` p9 shape reads three entries, and the same pattern reads
       two and five, each entry its own decision with `<n:index>`.
-- [ ] Test: the child sees the parent's captures (`<q>` in the child's subject).
-- [ ] Test: an item no child reads fails loud, naming the item.
-- [ ] Test: two children reading one item is reported as an ambiguity.
-- [ ] Test: two lists in one sentence keep their own children (`board` p8).
-- [ ] Test: decision ids stay line-anchored and distinct (`d9.1 .. d9.k`).
+- [x] Test: the child sees the parent's captures (`<q>` in the child's subject).
+- [x] Test: an item no child reads fails loud, naming the item.
+- [x] Test: two children reading one item is reported as an ambiguity.
+- [x] Test: two lists in one sentence keep their own children (`board` p8).
+- [x] Test: decision ids stay line-anchored and distinct (`d9.1 .. d9.k`).
 
 ### Task 3: The Static Gates and the Editor
 
-- [ ] Test: a demand over an item pattern's subject is answerable (the marker
+- [x] Test: a demand over an item pattern's subject is answerable (the marker
       path runs through `holesInScope`, which already inherits the parent's).
-- [ ] Item patterns are not offered as line completions in the LSP (they read an
+- [x] Item patterns are not offered as line completions in the LSP (they read an
       item, never a line).
 
 ### Task 4: Teach the Mint, Then Re-Mint `habit`
 
-- [ ] `assets/mint/body.md`: the `.each` form beside the list hole, with the
+- [x] `assets/mint/body.md`: the `.each` form beside the list hole, with the
       witness sentence as its example, and a test that the prompt states it.
-- [ ] `lips generate examples/habit.lips` on opus-5, `--fresh`.
-- [ ] The re-minted engine reads the witness at three entries AND at five, with
+- [x] `lips generate examples/habit.lips` on opus-5, `--fresh`.
+- [x] The re-minted engine reads the witness at three entries AND at five, with
       `claim.<q>.feed` aggregated from the per-item facts.
-- [ ] `just test`, `just check-expect`, `just test-draft`, `nix flake check -L`.
-- [ ] DESIGN §13 entry extended; `TODO.md` 1c closed for the pattern side, with
+- [x] `just test`, `just check-expect`, `just test-draft`, `nix flake check -L`.
+- [x] DESIGN §13 entry extended; `TODO.md` 1c closed for the pattern side, with
       whatever remains stated in its own words.
