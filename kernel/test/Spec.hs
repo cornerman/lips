@@ -2168,6 +2168,12 @@ main = hspec $ do
       -- Every spelling survives the store, which is what lets a mint write it.
       map (decisionToPattern . patternToDecision) [pipeP, angP, twoP]
         `shouldBe` map Right [pipeP, angP, twoP]
+    it "a bare angle bracket in a template is still literal text" $ do
+      -- The hole scan ends at the > OUTSIDE quotes, so a shell redirect keeps
+      -- meaning what it meant and <a><b> is still two holes in one token.
+      pTemplate (pat "pr" "write <f> > <g> => fact out.<f> \"<g>\"")
+        `shouldBe` [TLit "write", THole "f", TLit ">", THole "g"]
+      holesOf (pat "pf" "<a><b> => fact x.<a> \"<b>\"") `shouldBe` ["a", "b"]
     it "refuses a list hole that declares no separator" $
       parsePatternBody "px" "it may never read <p.list:> => fact fs.deny.1 \"<p>\""
         `shouldSatisfy` isLeft

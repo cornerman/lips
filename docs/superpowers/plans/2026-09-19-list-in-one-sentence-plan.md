@@ -1,7 +1,7 @@
 # A List Within One Sentence
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to
-> implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
+> implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax.
 
 **Goal:** one pattern reads a sentence that lists N items, for any N. Today every
 list-shaped sentence is spelled once per item count, so `examples/policy` carries
@@ -57,35 +57,38 @@ separator containing `>` could not be written. Use the quote-aware helpers in
 `Lips.Kernel.Surface` (the module whose header already records why the careful
 rule became the only rule).
 
-- [ ] Test: `<z.list:">">` parses as one list hole whose separator is `>`.
-- [ ] Test: an ordinary shell redirect in a template (`cmd > file`) still reads
+- [x] Test: `<z.list:">">` parses as one list hole whose separator is `>`.
+- [x] Test: an ordinary shell redirect in a template (`cmd > file`) still reads
       as literals, and `<a><b>` still reads as a fused token.
-- [ ] Implement; `just test` green.
+- [x] Implement; `just test` green.
 
 ### Task 2: `TList` — Parse, Render, Match, Split
 
-- [ ] Test: `parsePatternBody` reads `it may never read <p.list:,|or> => ...`
+- [x] Test: `parsePatternBody` reads `it may never read <p.list:,|or> => ...`
       and `renderBody` round-trips it byte for byte.
-- [ ] Test: `matchTemplate` on `it may never read a, b or c` binds the run, and
+- [x] Test: `matchTemplate` on `it may never read a, b or c` binds the run, and
       the split yields `["a","b","c"]` (glued `,` stripped, standalone `or`
       consumed).
-- [ ] Test: backtracking — `on the network it may reach <d.list:,|and> and
+- [x] Test: backtracking — `on the network it may reach <d.list:,|and> and
       nothing else` over `github.com and crates.io, and nothing else` yields
       exactly `["github.com","crates.io"]`.
-- [ ] Test: a quoted item keeps its content (`"a, b"` stays one item).
-- [ ] Test: a list hole with an empty separator list is refused at read time,
+- [x] Test: a quoted item keeps its content (`"a, b"` stays one item).
+- [x] Test: a list hole with an empty separator list is refused at read time,
       naming `.words` as the form for an unsplit run.
 
 ### Task 3: Emits Repeat Per Item
 
-- [ ] Test: `... => fact fs.deny.<p:index> "<p>"` on a three-item line emits
+- [x] Test: `... => fact fs.deny.<p:index> "<p>"` on a three-item line emits
       `fs.deny.1`, `fs.deny.2`, `fs.deny.3`.
-- [ ] Test: an emit that does NOT mention the list hole is emitted once.
-- [ ] Test: `<p>` as a subject segment repeats too (`cmd.<p>.policy`).
-- [ ] The clash check in `parseBody` must allow `<p:index>` for a LIST hole
+- [x] Test: an emit that does NOT mention the list hole is emitted once.
+- [x] Test: `<p>` as a subject segment repeats too (`cmd.<p>.policy`).
+- [x] The clash check in `parseBody` must allow `<p:index>` for a LIST hole
       (the index OF that list) while still refusing it for a plain hole.
 
-### Task 4: `.each` — An Item With Structure
+### Task 4: `.each` — An Item With Structure (DEFERRED)
+
+Not built: deferred until `habit` or `board` is re-minted, so a real mint
+decides its shape rather than the suite alone (TODO 1c, DESIGN §13).
 
 - [ ] Test: `pe.each.p9.log :: <d> for "<h>" => ...` emits one decision per
       item, with the item's own captures and `<n:index>`.
@@ -98,10 +101,10 @@ rule became the only rule).
 
 ### Task 5: Re-Mint `policy`, Then The Ledger
 
-- [ ] `lips generate examples/dev.policy.lips` on opus-5; the 30-pattern grammar
+- [x] `lips generate examples/dev.policy.lips` on opus-5; the 30-pattern grammar
       should come back at 6 or so, with the arity clones gone.
-- [ ] `just check-expect` holds against the committed `.expect`.
-- [ ] `it may run git, rg, ls, cat and jq.` crystallizes without any kernel or
+- [x] `just check-expect` holds against the committed `.expect`.
+- [x] `it may run git, rg, ls, cat and jq.` crystallizes without any kernel or
       grammar change — the completeness test.
-- [ ] DESIGN §13 milestone entry; `TODO.md` 1c rewritten to point at the
+- [x] DESIGN §13 milestone entry; `TODO.md` 1c rewritten to point at the
       construct and to name `habit`/`board`/`logscan` as the remaining re-mints.

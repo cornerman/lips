@@ -925,6 +925,40 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A list within one sentence (`<p.list:,|or>`).** A template hole may bind a
+  run of tokens and cut it into ITEMS on the separators the engine declares;
+  every emit mentioning the hole is produced once per item, with `<p>` the item
+  and `<p:index>` its position. One pattern then reads the sentence at any item
+  count. Before it, a list-shaped sentence had to be spelled once per count:
+  `examples/policy` carried 24 arity clones (`pr1..pr4`, `px1..px4`, ...) and
+  refused `it may run git, rg, ls, cat and jq.` outright. An enumerated arity is
+  an open list with an arbitrary stop, so this was a missing grammar case, not a
+  program defect (the same freeze TODO 1c files for witness sentences).
+
+  The kernel learns no conjunction: `,` and `or` come from the engine, as a
+  block's marker does. Separators are a `|`-separated list whose items are bare
+  words or `"..."` spans with `Lips.Kernel.Surface`'s escapes, so a language may
+  list on a pipe (`<c.list:"|">`), on an angle bracket or on two words
+  (`<c.list:","|"and then">`) with no second escaping scheme. A quoted item is
+  atomic, since the quote is the mark that says "these characters are a value";
+  a word separator has no glued form, so `/etc/curator or /etc/shadow` cuts once.
+  A comma the sentence itself carries after the last item is punctuation, not an
+  empty item.
+
+  MEASURED, one opus-5 `--fresh` re-mint of `examples/dev.policy.lips` into
+  `nono`, 2026-09-19: 3m04s, 8 turns, 13,994 output tokens, $0.73. The grammar
+  came back at 8 patterns instead of 30, with every arity clone gone and three
+  separators declared (`<p.list:,|and|or>`). The committed `.expect` (7 checks)
+  was untouched and still holds, so invariant 5's gate passed on the re-mint,
+  and `it may run git, rg, ls, cat, jq, fd and sed.` crystallizes with no kernel
+  and no grammar change -- the completeness test for the construct.
+
+  STILL FROZEN: an item that carries STRUCTURE (`habit` p9's `<d> for "<h>"`,
+  `board` p8's two lists in one sentence). The layered remedy is designed and
+  not built: a `.each` child pattern parsing one item, nesting on the parent's
+  HOLE the way `p.under.q` nests on its line. It waits for the language that
+  needs it, so its shape is decided by a real re-mint (TODO 1c).
+
 - **A world lips never heard of, minted without touching lips.**
   `examples/nono.world` targets nono (https://nono.sh), a capability-based
   sandbox that runs an agent under a JSON policy and has no Nix module

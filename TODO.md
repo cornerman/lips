@@ -113,6 +113,17 @@ tracks only what is still open.
       BULLETED block, never inside one prose line. The engine is honest (a
       program with two or four entries simply fails to crystallize, loud), so
       this is a completeness question, not a soundness one.
+      HALF CLOSED 2026-09-19 (DESIGN §13 "A list within one sentence"): a list
+      hole `<p.list:,|or>` cuts a run into items on the engine's own separators
+      and repeats every emit that mentions it, so a sentence whose items are
+      plain VALUES reads at any count; `examples/policy` re-minted from 30
+      patterns to 8 and its clones are gone. What stays frozen is an item with
+      STRUCTURE -- `habit` p9's `<d> for "<h>"`, `board` p8's two lists in one
+      sentence -- because one item then binds several holes. The designed
+      remedy is a `.each` child pattern that parses one item, nesting on the
+      parent's HOLE as `p.under.q` nests on its line; it is deliberately unbuilt
+      until `habit` or `board` is re-minted, so a real mint decides its shape.
+      The expected-output half below is a separate defect and is untouched.
       The bulleted block is NOT the answer, measured 2026-08-06: it aggregates
       into a Nix list, and only `claim.<id>.feed` and `.args` are Nix lists.
       `ccEquals` and `ccCall` are `parseSexp` of ONE assertion, and a command
