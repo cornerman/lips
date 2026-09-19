@@ -4321,6 +4321,13 @@ main = hspec $ do
       parsePatternBody "p3"
         "it may never read <p.list:,|or> => fact fs.deny.<p:index> \"<p>\""
         `shouldSatisfy` isRight
+    it "teaches the item pattern for an entry that is not one value" $ do
+      let p = systemPromptFor [shippedWorld "nixos"]
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "<id>.each.<parent>.<hole>", "must read EVERY item of that hole" ]
+      parsePatternBody "p4.each.p3.e"
+        "<d> for <h> => fact witness.<q>.entry.<n:index> \"<d> <h>\""
+        `shouldSatisfy` isRight
 
   describe "the mint prompt states that a resubmission is a patch" $
     it "names the rule and the way back from a line a patch cannot delete" $ do

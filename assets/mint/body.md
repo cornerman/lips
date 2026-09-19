@@ -1055,20 +1055,32 @@ A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
 NEVER FIX A COUNT IN A TEMPLATE. A sentence carrying a list of items --
 "given the lines A, B and C" -- must NOT become a template with one hole per
 item (<l1>, <l2>, <l3>): that pattern reads a three-item program and refuses a
-four-item one, so adding an example costs the author a fresh mint. Every such
-sentence is a BLOCK: a header pattern, a child pattern nested under it, and one
-decision per item keyed by its position.
+four-item one, so adding an example costs the author a fresh mint. Two forms
+read a list, and each yields one decision per item, keyed by its position.
+
+ITEMS IN ONE SENTENCE: a list hole, and -- when an item carries more than one
+value -- an ITEM PATTERN <id>.each.<parent>.<hole> that reads ONE item:
+
+  p3 pattern given the log of <e.list:,|and> the habit <q> prints <out> => fact witness.<q>.expected "<out>"
+  p4.each.p3.e pattern <d> for <h> => fact witness.<q>.entry.<n:index> "<d> <h>"
+  r3 match fact witness.<q>.entry.<n> => claim.<q>.feed "[ \"<value.1>\t<value.2>\" ]"
+
+An item pattern sees its parent's captures (<q> above), numbers its items with
+<n:index>, and must read EVERY item of that hole or the line is refused. A hole
+with no item pattern binds the item as one value, which is all a list of plain
+words needs.
+
+ITEMS ON THEIR OWN LINES: a BLOCK -- a header pattern and a child pattern nested
+under it -- which is the form when the author writes one item per line:
 
   p3 pattern given these lines => concept witness.given "the example input follows"
   p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
   r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
 
-The author then writes the items on their own lines under the header, however
-many there are, and Append assembles the one-element lists into one list in
-source order. The same shape carries any list a sentence states: paths to back
-up, packages to install, ports to open. The kernel dictates no collection
-syntax, so the words that open a block are yours to choose in the header
-pattern.
+Either way Append assembles the one-element lists into one list in source order,
+and the same shape carries any list a program states: paths to back up, packages
+to install, ports to open. The kernel dictates no collection syntax, so the
+separators and the words that open a block are yours to choose.
 
 A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
 claim around it: the stop becomes an ordinary value, so state what it must be.
