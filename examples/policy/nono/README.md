@@ -2,36 +2,58 @@
 
 # The `policy` language
 
-This patch changes two rules of the existing policy language; every line shape
-the language already read is unchanged, and no new sentence is needed.
+This language writes a nono sandbox profile from plain sentences about what an
+agent may touch.
 
-What changed and why:
+Line shapes it accepts:
 
-- `r5` (the rule behind "it may run X" / "it may never run X" / "it must ask me
-  before running X") now also emits an empty `sandbox` object for the command's
-  `from.session` entry. nono's validator refuses a `from.<caller>` entry that
-  carries only an `invocation_policy` ("data did not match any variant of
-  untagged enum CommandFromConfig"), so without this the rendered profile for
-  `dev.policy.lips` would not validate at all. The sandbox is left empty: the
-  programs say nothing about giving a tool its own narrower filesystem or
-  network view, so nothing is invented there.
+- `the agent works in the directory it is started in and may read and write it.`
+  (or `... and may read it.`) -- sets `workdir.access` to `readwrite` or `read`.
+  Every profile must say this; a program that is silent is asked for it.
+- `it may read A, B and C.` -- each path becomes an element of `filesystem.read`.
+- `it may never read A, B or C.` -- each path becomes an element of
+  `filesystem.deny`.
+- `it may run git, rg, ls and cat.` -- each name becomes
+  `command_policies.commands.<tool>.from.session` with `invocation_policy.default
+  = "allow"`.
+- `it may never run curl, wget or ssh.` -- the same slot with default `"deny"`.
+- `it must ask me before running git push.` -- an `approve` entry matching the
+  argv prefix (`{ argv = { prefix = [ "push" ] }; }`) on that tool, plus a
+  `terminal` approval backend named as the approval default, because nono
+  refuses an approve entry with no backend. One subcommand word is read; a
+  longer argv prefix has no form in this language yet.
+- `on the network it may reach github.com and crates.io, and nothing else.` --
+  each host becomes an element of `network.allow_domain`. The closing "and
+  nothing else" is fixed wording: allow-listing is already exclusive in nono.
 
-- `r1` (the rule behind "the agent works in the directory it is started in ...",
-  the one line every program must state) now also declares the approval backend:
-  `command_policies.approval_backends.terminal.type = "terminal"` and
-  `command_policies.approval_defaults.backend = "terminal"`. An `approve` entry
-  without a declared backend is refused with `missing_approval_backend`, and
-  "terminal" is the backend that asks the human sitting at the session, which is
-  exactly what "it must ask me" means. It is attached to the workdir rule, not to
-  the approve rule, because that line appears exactly once in every program (it
-  is the one demanded line), so the declaration is emitted exactly once no matter
-  how many commands need approval -- two rules writing one option path would be a
-  conflict.
+All list sentences are read with list holes, so they take any number of items;
+there is no pattern per item count.
 
-One limit worth knowing, unchanged by this patch: the sandbox object is emitted
-by the *policy* rule, so a command that is only ever named by "it must ask me
-before running <cmd> <sub>" and never by an "it may run <cmd>" line gets an
-approve entry with no sandbox. In practice a program states both, as
-`dev.policy.lips` does ("it may run git, rg, ls and cat." plus "it must ask me
-before running git push."). If you want approval for a subcommand, also name the
-command in an "it may run" line.
+Mechanism notes and things I had to decide:
+
+- Permission lives where nono enforces it against child processes:
+  `filesystem.*`, `workdir.access`, `network.allow_domain`, and
+  `command_policies.commands.*`. The deprecated `commands.allow/deny` section is
+  never emitted.
+- The schema lookup could not read this world at mint time, so the paths below
+  `command_policies.commands.<tool>.from.session` come from the profile guide
+  alone. Each command entry carries a sandbox object (written as an empty
+  `sandbox.fs_read` list) beside its invocation policy, because an entry holding
+  only an invocation policy is rejected by nono's validator.
+- A command you want to gate with "ask me first" should also appear in an
+  `it may run ...` sentence: the sandbox object for that tool comes from the
+  run/never-run sentence, not from the approval sentence.
+- `meta.name` is the program's own instance name.
+- Subject vocabulary follows the previous engine: `workdir.access`, `fs.read.<n>`,
+  `fs.deny.<n>`, `cmd.<tool>.policy`, `cmd.<tool>.approve`, `net.allow.<n>`.
+  Paths and domains are keyed by their position in their sentence, so state all
+  read paths in one sentence and all denied paths in one sentence; two separate
+  `it may read ...` lines would collide on position 1.
+- No `groups.include` is emitted: the programs name no deny group, and inventing
+  one would silently add rules nobody asked for. Denials are exactly the paths
+  and commands the program names.
+
+The contract pins every value the sentences carry -- workdir access mode, each
+read path, each denied path, each command's default decision, each allowed
+domain. The approve entry is not expected, because its value is a record the
+expect grammar compares poorly; the rule that emits it is its whole contract.

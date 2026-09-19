@@ -1,6 +1,6 @@
 format: 1
 model: claude-opus-5
-basis: inherited dbbe86bd08f05911
+basis: fresh
 world: nono bb1bf42d650aae89
 schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
 thinking: medium
@@ -314,7 +314,29 @@ token, fused to punctuation, which is how a call or a flag is read:
 'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
 reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
 cannot be a multi-token hole; a value with spaces must be quoted (a quoted
-span is one token wherever it starts). A BULLETED list item begins
+span is one token wherever it starts).
+To read a LIST of items stated in ONE sentence, use a list hole
+<name.list:SEP|SEP>: it binds a run of tokens like <name.words> and then cuts
+that run into items on the separators you declare, separated by | in the hole
+itself. Every emit mentioning the hole is then produced once per item, with
+<name> the item's text and <name:index> its position from 1. One pattern reads
+the sentence at ANY item count, so never write one pattern per count
+(`... <p1> and <p2>` beside `... <p1>, <p2> and <p3>`): that stops at the
+count you guessed. A comma written against the word before it is cut as a
+separator; a separator that is a WORD must stand alone (`or`, `and then`). A
+separator carrying |, <, > or a space is quoted: <c.list:"|">, <c.list:","|"and
+then">. Use a list hole when each item becomes its own decision; use
+<name.words> when the whole run is ONE value.
+
+```lips-engine
+0.95 p3 pattern it may never read <p.list:,|or> => fact fs.deny.<p:index> "<p>"
+0.95 p4 pattern it may run <c.list:,|and> => fact cmd.<c>.policy "allow"
+```
+
+reads 'it may never read ~/.ssh, ~/.aws or ~/.config/gh' as three facts and
+'it may run git, rg, ls, cat and jq' as five, with no pattern per count.
+
+A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -1171,66 +1193,6 @@ express. Prefer clauses every time you can: a source file is traceable to no
 program line, is rewritten wholesale on the next mint, and is the one thing lips
 cannot check.
 
-THE ENGINE YOU INHERIT (this language is already minted; you are EXTENDING it).
-
-Below is the committed engine, written in the same line format you answer in. It
-already passes every gate and already serves every program of the corpus.
-
-Answer with a PATCH, not with a whole engine:
-  - a line whose id is NEW adds that line,
-  - a line whose id ALREADY EXISTS below replaces that line entirely,
-  - an id you do not mention stays exactly as it is.
-
-Do not restate a line you are not changing. Restating costs the human money and
-risks changing what already holds. There is no way to delete a line: if the
-language can only be read by dropping something, say so in the report and leave
-it, so the human decides.
-
-Change an existing line only where a program cannot be read otherwise, and say in
-the report which ids you changed and why. Everything else in this prompt applies
-unchanged: the same value grammar, the same confidence rule, the same demands and
-expects, the same report.
-
-1.0 pa1 pattern it may read and write <p1> => fact fs.allow.1 "<p1>"
-1.0 pa2 pattern it may read and write <p1> and <p2> => fact fs.allow.1 "<p1>" ; fact fs.allow.2 "<p2>"
-1.0 pa3 pattern it may read and write <p1>, <p2> and <p3> => fact fs.allow.1 "<p1>" ; fact fs.allow.2 "<p2>" ; fact fs.allow.3 "<p3>"
-1.0 pa4 pattern it may read and write <p1>, <p2>, <p3> and <p4> => fact fs.allow.1 "<p1>" ; fact fs.allow.2 "<p2>" ; fact fs.allow.3 "<p3>" ; fact fs.allow.4 "<p4>"
-1.0 pc1 pattern it may run <c1> => fact cmd.<c1>.policy "allow"
-1.0 pc2 pattern it may run <c1> and <c2> => fact cmd.<c1>.policy "allow" ; fact cmd.<c2>.policy "allow"
-1.0 pc3 pattern it may run <c1>, <c2> and <c3> => fact cmd.<c1>.policy "allow" ; fact cmd.<c2>.policy "allow" ; fact cmd.<c3>.policy "allow"
-1.0 pc4 pattern it may run <c1>, <c2>, <c3> and <c4> => fact cmd.<c1>.policy "allow" ; fact cmd.<c2>.policy "allow" ; fact cmd.<c3>.policy "allow" ; fact cmd.<c4>.policy "allow"
-1.0 pk1 pattern it may never run <c1> => fact cmd.<c1>.policy "deny"
-1.0 pk2 pattern it may never run <c1> or <c2> => fact cmd.<c1>.policy "deny" ; fact cmd.<c2>.policy "deny"
-1.0 pk3 pattern it may never run <c1>, <c2> or <c3> => fact cmd.<c1>.policy "deny" ; fact cmd.<c2>.policy "deny" ; fact cmd.<c3>.policy "deny"
-1.0 pk4 pattern it may never run <c1>, <c2>, <c3> or <c4> => fact cmd.<c1>.policy "deny" ; fact cmd.<c2>.policy "deny" ; fact cmd.<c3>.policy "deny" ; fact cmd.<c4>.policy "deny"
-1.0 pn0 pattern it may never use the network => fact net.block "true"
-1.0 pn1 pattern on the network it may reach <d1>, and nothing else => fact net.allow.1 "<d1>"
-1.0 pn2 pattern on the network it may reach <d1> and <d2>, and nothing else => fact net.allow.1 "<d1>" ; fact net.allow.2 "<d2>"
-1.0 pn3 pattern on the network it may reach <d1>, <d2> and <d3>, and nothing else => fact net.allow.1 "<d1>" ; fact net.allow.2 "<d2>" ; fact net.allow.3 "<d3>"
-1.0 pn4 pattern on the network it may reach <d1>, <d2>, <d3> and <d4>, and nothing else => fact net.allow.1 "<d1>" ; fact net.allow.2 "<d2>" ; fact net.allow.3 "<d3>" ; fact net.allow.4 "<d4>"
-1.0 pq1 pattern it must ask me before running <cmd> <sub> => fact cmd.<cmd>.approve "<sub>"
-1.0 pq2 pattern it must ask me before running <cmd> => fact cmd.<cmd>.policy "approve"
-1.0 pr1 pattern it may read <p1> => fact fs.read.1 "<p1>"
-1.0 pr2 pattern it may read <p1> and <p2> => fact fs.read.1 "<p1>" ; fact fs.read.2 "<p2>"
-1.0 pr3 pattern it may read <p1>, <p2> and <p3> => fact fs.read.1 "<p1>" ; fact fs.read.2 "<p2>" ; fact fs.read.3 "<p3>"
-1.0 pr4 pattern it may read <p1>, <p2>, <p3> and <p4> => fact fs.read.1 "<p1>" ; fact fs.read.2 "<p2>" ; fact fs.read.3 "<p3>" ; fact fs.read.4 "<p4>"
-1.0 pw1 pattern the agent works in the directory it is started in and may read and write it => fact workdir.access "readwrite"
-1.0 pw2 pattern the agent works in the directory it is started in and may read it => fact workdir.access "read"
-1.0 pw3 pattern the agent works in the directory it is started in and may not touch it => fact workdir.access "none"
-1.0 px1 pattern it may never read <p1> => fact fs.deny.1 "<p1>"
-1.0 px2 pattern it may never read <p1> or <p2> => fact fs.deny.1 "<p1>" ; fact fs.deny.2 "<p2>"
-1.0 px3 pattern it may never read <p1>, <p2> or <p3> => fact fs.deny.1 "<p1>" ; fact fs.deny.2 "<p2>" ; fact fs.deny.3 "<p3>"
-1.0 px4 pattern it may never read <p1>, <p2>, <p3> or <p4> => fact fs.deny.1 "<p1>" ; fact fs.deny.2 "<p2>" ; fact fs.deny.3 "<p3>" ; fact fs.deny.4 "<p4>"
-1.0 q1 demand workdir.access "what may the agent do in the directory it is started in -- read and write it, only read it, or not touch it?"
-1.0 r1 match fact workdir.access => workdir.access "\"<value>\"" ; meta.name "\"<self>\""
-1.0 r2 match fact fs.read.<n> => filesystem.read "[ \"<value>\" ]"
-1.0 r3 match fact fs.allow.<n> => filesystem.allow "[ \"<value>\" ]"
-1.0 r4 match fact fs.deny.<n> => filesystem.deny "[ \"<value>\" ]"
-1.0 r5 match fact cmd.<name>.policy => command_policies.commands.<name>.from.session.invocation_policy.default "\"<value>\""
-1.0 r6 match fact cmd.<name>.approve => command_policies.commands.<name>.from.session.invocation_policy.approve "[ { argv = { prefix = [ \"<value>\" ]; }; } ]"
-1.0 r7 match fact net.allow.<n> => network.allow_domain "[ \"<value>\" ]"
-1.0 r8 match fact net.block => network.block "<value:bool>"
-
 --- program (input) ---
 === program dev.policy.lips ===
 the agent works in the directory it is started in and may read and write it.
@@ -1242,8 +1204,8 @@ it may never run curl, wget or ssh.
 on the network it may reach github.com and crates.io, and nothing else.
 
 --- tool transcript ---
+-> query_options "filesystem" "nono"
 -> query_options "command_policies" "nono"
--> query_options "network" "nono"
 <- query_options
 lips can't use the world nono:
 
@@ -1258,83 +1220,179 @@ lips can't use the world nono:
 
 → name a world lips ships (lips world), or write one beside the program.
 
--> submit_draft "1.0 r1 match fact workdir.access => workdir.access \"\\\"<value>\\\"\" ; meta.name \"\\\"<self>\\\"\" ; command_policies.approval_backends.terminal.type \"\\\"terminal\\\"\" ; command_policies.approval_defaults.backend \"\\\"terminal\\\"\"\n1.0 r5 match fact cmd.<name>.policy => command_policies.commands.<name>.from.session.invocation_policy.default \"\\\"<value>\\\"\" ; command_policies.commands.<name>.from.session.sandbox \"{ }\"\n0.95 d1 report <<<lips\nThis patch changes two rules of the existing policy language; every line shape\nthe language already read is unchanged, and no new sentence is needed.\n\nWhat changed and why:\n\n- `r5` (the rule behind \"it may run X\" / \"it may never run X\" / \"it must ask me\n  before running X\") now also emits an empty `sandbox` object for the command's\n  `from.session` entry. nono's validator refuses a `from.<caller>` entry that\n  carries only an `invocation_policy` (\"data did not match any variant of\n  untagged enum CommandFromConfig\"), so without this the rendered profile for\n  `dev.policy.lips` would not validate at all. The sandbox is left empty: the\n  programs say nothing about giving a tool its own narrower filesystem or\n  network view, so nothing is invented there.\n\n- `r1` (the rule behind \"the agent works in the directory it is started in ...\",\n  the one line every program must state) now also declares the approval backend:\n  `command_policies.approval_backends.terminal.type = \"terminal\"` and\n  `command_policies.approval_defaults.backend = \"terminal\"`. An `approve` entry\n  without a declared backend is refused with `missing_approval_backend`, and\n  \"terminal\" is the backend that asks the human sitting at the session, which is\n  exactly what \"it must ask me\" means. It is attached to the workdir rule, not to\n  the approve rule, because that line appears exactly once in every program (it\n  is the one demanded line), so the declaration is emitted exactly once no matter\n  how many commands need approval -- two rules writing one option path would be a\n  conflict.\n\nOne limit worth knowing, unchanged by this patch: the sandbox object is emitted\nby the *policy* rule, so a command that is only ever named by \"it must ask me\nbefore running <cmd> <sub>\" and never by an \"it may run <cmd>\" line gets an\napprove entry with no sandbox. In practice a program states both, as\n`dev.policy.lips` does (\"it may run git, rg, ls and cat.\" plus \"it must ask me\nbefore running git push.\"). If you want approval for a subcommand, also name the\ncommand in an \"it may run\" line.\nlips>>>"
+-> submit_draft "0.95 p1 pattern the agent works in the directory it is started in and may read and write it. => fact workdir.mode \"readwrite\"\n0.9 p2 pattern the agent works in the directory it is started in and may read it. => fact workdir.mode \"read\"\n0.93 p3 pattern it may read <p.list:,|and|or> => fact fs.read.<p:index> \"<p>\"\n0.93 p4 pattern it may never read <p.list:,|and|or> => fact fs.deny.<p:index> \"<p>\"\n0.93 p5 pattern it may run <c.list:,|and|or> => fact cmd.<c>.policy \"allow\"\n0.93 p6 pattern it may never run <c.list:,|and|or> => fact cmd.<c>.policy \"deny\"\n0.9 p7 pattern it must ask me before running <cmd> <sub> => fact cmd.<cmd>.approve \"<sub>\"\n0.85 p8 pattern on the network it may reach <d.list:,|and> and nothing else. => fact net.allow.<d:index> \"<d>\"\n0.9 r1 match fact workdir.mode => workdir.access \"\\\"<value>\\\"\" ; meta.name \"\\\"<self>\\\"\"\n0.95 r2 match fact fs.read.<n> => filesystem.read \"[ \\\"<value>\\\" ]\"\n0.95 r3 match fact fs.deny.<n> => filesystem.deny \"[ \\\"<value>\\\" ]\"\n0.8 r4 match fact cmd.<c>.policy => command_policies.commands.<c>.from.session.invocation_policy.default \"\\\"<value>\\\"\" ; command_policies.commands.<c>.from.session.sandbox.fs_read \"[ ]\"\n0.8 r5 match fact cmd.<cmd>.approve => command_policies.commands.<cmd>.from.session.invocation_policy.approve \"[ { argv = { prefix = [ \\\"<value>\\\" ] }; } ]\" ; command_policies.approval_backends.terminal.type \"\\\"terminal\\\"\" ; command_policies.approval_defaults.backend \"\\\"terminal\\\"\"\n0.95 r6 match fact net.allow.<n> => network.allow_domain \"[ \\\"<value>\\\" ]\"\n0.8 r4 because \"the schema tool could not read this world, so the empty sandbox object required beside an invocation_policy is written as an empty fs_read list\"\n0.8 r5 because \"the approval entry's record shape and the terminal backend are taken from the profile guide, not from a schema lookup\"\n0.9 q1 demand workdir.mode \"how may the agent use the directory it is started in -- read and write it, or only read it?\"\n0.95 a1 expect workdir.access from workdir.mode\n0.95 a2 expect filesystem.read from fs.read.<n>\n0.95 a3 expect filesystem.deny from fs.deny.<n>\n0.9 a4 expect command_policies.commands.<c>.from.session.invocation_policy.default from cmd.<c>.policy\n0.95 a5 expect network.allow_domain from net.allow.<n>\n0.95 d1 report <<<lips\nThis language writes a nono sandbox profile from plain sentences about what an\nagent may touch.\n\nLine shapes it accepts:\n\n- `the agent works in the directory it is started in and may read and write it.`\n  (or `... and may read it.`) -- sets `workdir.access` to `readwrite` or `read`.\n  Every profile must say this; a program that is silent is asked for it.\n- `it may read A, B and C.` -- each path becomes an element of `filesystem.read`.\n- `it may never read A, B or C.` -- each path becomes an element of\n  `filesystem.deny`.\n- `it may run git, rg, ls and cat.` -- each name becomes\n  `command_policies.commands.<tool>.from.session` with `invocation_policy.default\n  = \"allow\"`.\n- `it may never run curl, wget or ssh.` -- the same slot with default `\"deny\"`.\n- `it must ask me before running git push.` -- an `approve` entry matching the\n  argv prefix (`{ argv = { prefix = [ \"push\" ] }; }`) on that tool, plus a\n  `terminal` approval backend named as the approval default, because nono\n  refuses an approve entry with no backend.\n- `on the network it may reach github.com and crates.io, and nothing else.` --\n  each host becomes an element of `network.allow_domain`. The closing \"and\n  nothing else\" is fixed wording: allow-listing is already exclusive in nono.\n\nAll list sentences are read with list holes, so they take any number of items;\nnever add one pattern per count.\n\nMechanism notes and things I had to decide:\n\n- Permission lives where nono enforces it against child processes:\n  `filesystem.*`, `workdir.access`, `network.allow_domain`, and\n  `command_policies.commands.*`. The deprecated `commands.allow/deny` section is\n  never emitted.\n- The schema lookup tool could not read this world at mint time, so the paths\n  below `command_policies.commands.<tool>.from.session` come from the profile\n  guide alone. Each command entry carries a sandbox object (written as an empty\n  `sandbox.fs_read` list) beside its invocation policy, because an entry holding\n  only an invocation policy is rejected by nono's validator.\n- A command you want to gate with \"ask me first\" should also appear in an\n  `it may run ...` sentence: the sandbox object for that tool is emitted by the\n  run/never-run sentence, not by the approval sentence.\n- `meta.name` is the program's own instance name.\n- Read-paths and deny-paths are keyed by their position in their sentence, so\n  state all read paths in one sentence and all denied paths in one sentence;\n  two separate `it may read ...` lines would collide.\n- No `groups.include` is emitted: the programs name no deny group, and inventing\n  one would silently add rules nobody asked for. Denials are exactly the paths\n  and commands the program names.\n\nThe contract pins every value the sentences carry -- workdir access mode, each\nread path, each denied path, each command's default decision, each allowed\ndomain. The approve entry is not expected, because its value is a record the\nexpect grammar compares poorly; the rule that emits it is its whole contract.\nlips>>>\n"
+<- submit_draft
+examples/dev.policy.lips: 7 of 7 lines crystallize.
+  line 1  ok        p1  workdir.mode
+  line 2  ok        p3  fs.read.1
+  line 3  ok        p4  fs.deny.1, fs.deny.2, fs.deny.3
+  line 4  ok        p5  cmd.git.policy, cmd.rg.policy, cmd.ls.policy, cmd.cat.policy
+  line 5  ok        p7  cmd.git.approve
+  line 6  ok        p6  cmd.curl.policy, cmd.wget.policy, cmd.ssh.policy
+  line 7  ok        p8  net.allow.1, net.allow.2
+
+world nono:
+· crystallize examples/dev.policy.lips
+✓ crystallize examples/dev.policy.lips  (0.0s)
+· contract: 7 checks
+✗ contract: 7 checks  (0.0s)
+examples/dev.policy.lips no longer produces what it promised:
+
+  lips can't match a check to the program: expect a1: no decision with subject workdir.access
+
+→ if you changed the program on purpose, rebuild: lips generate examples/dev.policy.lips
+
+-> submit_draft "0.95 p1 pattern the agent works in the directory it is started in and may read and write it. => fact dir.mode \"readwrite\"\n0.9 p2 pattern the agent works in the directory it is started in and may read it. => fact dir.mode \"read\"\n0.9 r1 match fact dir.mode => workdir.access \"\\\"<value>\\\"\" ; meta.name \"\\\"<self>\\\"\"\n0.9 q1 demand dir.mode \"how may the agent use the directory it is started in -- read and write it, or only read it?\"\n0.95 a1 expect workdir.access from dir.mode"
+<- submit_draft
+examples/dev.policy.lips: 7 of 7 lines crystallize.
+  line 1  ok        p1  dir.mode
+  line 2  ok        p3  fs.read.1
+  line 3  ok        p4  fs.deny.1, fs.deny.2, fs.deny.3
+  line 4  ok        p5  cmd.git.policy, cmd.rg.policy, cmd.ls.policy, cmd.cat.policy
+  line 5  ok        p7  cmd.git.approve
+  line 6  ok        p6  cmd.curl.policy, cmd.wget.policy, cmd.ssh.policy
+  line 7  ok        p8  net.allow.1, net.allow.2
+
+world nono:
+· crystallize examples/dev.policy.lips
+✓ crystallize examples/dev.policy.lips  (0.0s)
+· contract: 7 checks
+✗ contract: 7 checks  (0.0s)
+examples/dev.policy.lips no longer produces what it promised:
+
+  lips can't match a check to the program: expect a1: no decision with subject workdir.access
+
+→ if you changed the program on purpose, rebuild: lips generate examples/dev.policy.lips
+
+-> submit_draft "0.95 a1 expect dir.mode from workdir.access"
+<- submit_draft
+examples/dev.policy.lips: 7 of 7 lines crystallize.
+  line 1  ok        p1  dir.mode
+  line 2  ok        p3  fs.read.1
+  line 3  ok        p4  fs.deny.1, fs.deny.2, fs.deny.3
+  line 4  ok        p5  cmd.git.policy, cmd.rg.policy, cmd.ls.policy, cmd.cat.policy
+  line 5  ok        p7  cmd.git.approve
+  line 6  ok        p6  cmd.curl.policy, cmd.wget.policy, cmd.ssh.policy
+  line 7  ok        p8  net.allow.1, net.allow.2
+
+world nono:
+· crystallize examples/dev.policy.lips
+✓ crystallize examples/dev.policy.lips  (0.0s)
+· contract: 7 checks
+✗ contract: 7 checks  (0.0s)
+examples/dev.policy.lips no longer produces what it promised:
+
+  lips can't match a check to the program: expect a1: no decision with subject workdir.access
+
+→ if you changed the program on purpose, rebuild: lips generate examples/dev.policy.lips
+
+-> submit_draft "0.95 a1 expect filesystem.read from fs.read.<n>"
+<- submit_draft
+examples/dev.policy.lips: 7 of 7 lines crystallize.
+  line 1  ok        p1  dir.mode
+  line 2  ok        p3  fs.read.1
+  line 3  ok        p4  fs.deny.1, fs.deny.2, fs.deny.3
+  line 4  ok        p5  cmd.git.policy, cmd.rg.policy, cmd.ls.policy, cmd.cat.policy
+  line 5  ok        p7  cmd.git.approve
+  line 6  ok        p6  cmd.curl.policy, cmd.wget.policy, cmd.ssh.policy
+  line 7  ok        p8  net.allow.1, net.allow.2
+
+world nono:
+· crystallize examples/dev.policy.lips
+✓ crystallize examples/dev.policy.lips  (0.0s)
+· contract: 7 checks
+✗ contract: 7 checks  (0.0s)
+examples/dev.policy.lips no longer produces what it promised:
+
+  lips can't match a check to the program: expect a1: no decision with subject workdir.access
+
+→ if you changed the program on purpose, rebuild: lips generate examples/dev.policy.lips
+
+-> submit_draft "0.95 p1 pattern the agent works in the directory it is started in and may read and write it. => fact workdir.access \"readwrite\"\n0.9 p2 pattern the agent works in the directory it is started in and may read it. => fact workdir.access \"read\"\n0.9 r1 match fact workdir.access => workdir.access \"\\\"<value>\\\"\" ; meta.name \"\\\"<self>\\\"\"\n0.9 q1 demand workdir.access \"how may the agent use the directory it is started in -- read and write it, or only read it?\"\n0.95 a1 expect workdir.access from workdir.access"
+<- submit_draft
+the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to patch it -- only the lines you change -- and whatever you write outside this tool is read by nothing.
+-> submit_draft "0.95 d1 report <<<lips\nThis language writes a nono sandbox profile from plain sentences about what an\nagent may touch.\n\nLine shapes it accepts:\n\n- `the agent works in the directory it is started in and may read and write it.`\n  (or `... and may read it.`) -- sets `workdir.access` to `readwrite` or `read`.\n  Every profile must say this; a program that is silent is asked for it.\n- `it may read A, B and C.` -- each path becomes an element of `filesystem.read`.\n- `it may never read A, B or C.` -- each path becomes an element of\n  `filesystem.deny`.\n- `it may run git, rg, ls and cat.` -- each name becomes\n  `command_policies.commands.<tool>.from.session` with `invocation_policy.default\n  = \"allow\"`.\n- `it may never run curl, wget or ssh.` -- the same slot with default `\"deny\"`.\n- `it must ask me before running git push.` -- an `approve` entry matching the\n  argv prefix (`{ argv = { prefix = [ \"push\" ] }; }`) on that tool, plus a\n  `terminal` approval backend named as the approval default, because nono\n  refuses an approve entry with no backend. One subcommand word is read; a\n  longer argv prefix has no form in this language yet.\n- `on the network it may reach github.com and crates.io, and nothing else.` --\n  each host becomes an element of `network.allow_domain`. The closing \"and\n  nothing else\" is fixed wording: allow-listing is already exclusive in nono.\n\nAll list sentences are read with list holes, so they take any number of items;\nthere is no pattern per item count.\n\nMechanism notes and things I had to decide:\n\n- Permission lives where nono enforces it against child processes:\n  `filesystem.*`, `workdir.access`, `network.allow_domain`, and\n  `command_policies.commands.*`. The deprecated `commands.allow/deny` section is\n  never emitted.\n- The schema lookup could not read this world at mint time, so the paths below\n  `command_policies.commands.<tool>.from.session` come from the profile guide\n  alone. Each command entry carries a sandbox object (written as an empty\n  `sandbox.fs_read` list) beside its invocation policy, because an entry holding\n  only an invocation policy is rejected by nono's validator.\n- A command you want to gate with \"ask me first\" should also appear in an\n  `it may run ...` sentence: the sandbox object for that tool comes from the\n  run/never-run sentence, not from the approval sentence.\n- `meta.name` is the program's own instance name.\n- Subject vocabulary follows the previous engine: `workdir.access`, `fs.read.<n>`,\n  `fs.deny.<n>`, `cmd.<tool>.policy`, `cmd.<tool>.approve`, `net.allow.<n>`.\n  Paths and domains are keyed by their position in their sentence, so state all\n  read paths in one sentence and all denied paths in one sentence; two separate\n  `it may read ...` lines would collide on position 1.\n- No `groups.include` is emitted: the programs name no deny group, and inventing\n  one would silently add rules nobody asked for. Denials are exactly the paths\n  and commands the program names.\n\nThe contract pins every value the sentences carry -- workdir access mode, each\nread path, each denied path, each command's default decision, each allowed\ndomain. The approve entry is not expected, because its value is a record the\nexpect grammar compares poorly; the rule that emits it is its whole contract.\nlips>>>\n"
 <- submit_draft
 the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to patch it -- only the lines you change -- and whatever you write outside this tool is read by nothing.
 
 --- raw reply ---
-1.0 pa1 pattern it may read and write <p1> => fact fs.allow.1 "<p1>"
-1.0 pa2 pattern it may read and write <p1> and <p2> => fact fs.allow.1 "<p1>" ; fact fs.allow.2 "<p2>"
-1.0 pa3 pattern it may read and write <p1>, <p2> and <p3> => fact fs.allow.1 "<p1>" ; fact fs.allow.2 "<p2>" ; fact fs.allow.3 "<p3>"
-1.0 pa4 pattern it may read and write <p1>, <p2>, <p3> and <p4> => fact fs.allow.1 "<p1>" ; fact fs.allow.2 "<p2>" ; fact fs.allow.3 "<p3>" ; fact fs.allow.4 "<p4>"
-1.0 pc1 pattern it may run <c1> => fact cmd.<c1>.policy "allow"
-1.0 pc2 pattern it may run <c1> and <c2> => fact cmd.<c1>.policy "allow" ; fact cmd.<c2>.policy "allow"
-1.0 pc3 pattern it may run <c1>, <c2> and <c3> => fact cmd.<c1>.policy "allow" ; fact cmd.<c2>.policy "allow" ; fact cmd.<c3>.policy "allow"
-1.0 pc4 pattern it may run <c1>, <c2>, <c3> and <c4> => fact cmd.<c1>.policy "allow" ; fact cmd.<c2>.policy "allow" ; fact cmd.<c3>.policy "allow" ; fact cmd.<c4>.policy "allow"
-1.0 pk1 pattern it may never run <c1> => fact cmd.<c1>.policy "deny"
-1.0 pk2 pattern it may never run <c1> or <c2> => fact cmd.<c1>.policy "deny" ; fact cmd.<c2>.policy "deny"
-1.0 pk3 pattern it may never run <c1>, <c2> or <c3> => fact cmd.<c1>.policy "deny" ; fact cmd.<c2>.policy "deny" ; fact cmd.<c3>.policy "deny"
-1.0 pk4 pattern it may never run <c1>, <c2>, <c3> or <c4> => fact cmd.<c1>.policy "deny" ; fact cmd.<c2>.policy "deny" ; fact cmd.<c3>.policy "deny" ; fact cmd.<c4>.policy "deny"
-1.0 pn0 pattern it may never use the network => fact net.block "true"
-1.0 pn1 pattern on the network it may reach <d1>, and nothing else => fact net.allow.1 "<d1>"
-1.0 pn2 pattern on the network it may reach <d1> and <d2>, and nothing else => fact net.allow.1 "<d1>" ; fact net.allow.2 "<d2>"
-1.0 pn3 pattern on the network it may reach <d1>, <d2> and <d3>, and nothing else => fact net.allow.1 "<d1>" ; fact net.allow.2 "<d2>" ; fact net.allow.3 "<d3>"
-1.0 pn4 pattern on the network it may reach <d1>, <d2>, <d3> and <d4>, and nothing else => fact net.allow.1 "<d1>" ; fact net.allow.2 "<d2>" ; fact net.allow.3 "<d3>" ; fact net.allow.4 "<d4>"
-1.0 pq1 pattern it must ask me before running <cmd> <sub> => fact cmd.<cmd>.approve "<sub>"
-1.0 pq2 pattern it must ask me before running <cmd> => fact cmd.<cmd>.policy "approve"
-1.0 pr1 pattern it may read <p1> => fact fs.read.1 "<p1>"
-1.0 pr2 pattern it may read <p1> and <p2> => fact fs.read.1 "<p1>" ; fact fs.read.2 "<p2>"
-1.0 pr3 pattern it may read <p1>, <p2> and <p3> => fact fs.read.1 "<p1>" ; fact fs.read.2 "<p2>" ; fact fs.read.3 "<p3>"
-1.0 pr4 pattern it may read <p1>, <p2>, <p3> and <p4> => fact fs.read.1 "<p1>" ; fact fs.read.2 "<p2>" ; fact fs.read.3 "<p3>" ; fact fs.read.4 "<p4>"
-1.0 pw1 pattern the agent works in the directory it is started in and may read and write it => fact workdir.access "readwrite"
-1.0 pw2 pattern the agent works in the directory it is started in and may read it => fact workdir.access "read"
-1.0 pw3 pattern the agent works in the directory it is started in and may not touch it => fact workdir.access "none"
-1.0 px1 pattern it may never read <p1> => fact fs.deny.1 "<p1>"
-1.0 px2 pattern it may never read <p1> or <p2> => fact fs.deny.1 "<p1>" ; fact fs.deny.2 "<p2>"
-1.0 px3 pattern it may never read <p1>, <p2> or <p3> => fact fs.deny.1 "<p1>" ; fact fs.deny.2 "<p2>" ; fact fs.deny.3 "<p3>"
-1.0 px4 pattern it may never read <p1>, <p2>, <p3> or <p4> => fact fs.deny.1 "<p1>" ; fact fs.deny.2 "<p2>" ; fact fs.deny.3 "<p3>" ; fact fs.deny.4 "<p4>"
-1.0 q1 demand workdir.access "what may the agent do in the directory it is started in -- read and write it, only read it, or not touch it?"
-1.0 r2 match fact fs.read.<n> => filesystem.read "[ \"<value>\" ]"
-1.0 r3 match fact fs.allow.<n> => filesystem.allow "[ \"<value>\" ]"
-1.0 r4 match fact fs.deny.<n> => filesystem.deny "[ \"<value>\" ]"
-1.0 r6 match fact cmd.<name>.approve => command_policies.commands.<name>.from.session.invocation_policy.approve "[ { argv = { prefix = [ \"<value>\" ]; }; } ]"
-1.0 r7 match fact net.allow.<n> => network.allow_domain "[ \"<value>\" ]"
-1.0 r8 match fact net.block => network.block "<value:bool>"
-1.0 r1 match fact workdir.access => workdir.access "\"<value>\"" ; meta.name "\"<self>\"" ; command_policies.approval_backends.terminal.type "\"terminal\"" ; command_policies.approval_defaults.backend "\"terminal\""
-1.0 r5 match fact cmd.<name>.policy => command_policies.commands.<name>.from.session.invocation_policy.default "\"<value>\"" ; command_policies.commands.<name>.from.session.sandbox "{ }"
+0.93 p3 pattern it may read <p.list:,|and|or> => fact fs.read.<p:index> "<p>"
+0.93 p4 pattern it may never read <p.list:,|and|or> => fact fs.deny.<p:index> "<p>"
+0.93 p5 pattern it may run <c.list:,|and|or> => fact cmd.<c>.policy "allow"
+0.93 p6 pattern it may never run <c.list:,|and|or> => fact cmd.<c>.policy "deny"
+0.9 p7 pattern it must ask me before running <cmd> <sub> => fact cmd.<cmd>.approve "<sub>"
+0.85 p8 pattern on the network it may reach <d.list:,|and> and nothing else. => fact net.allow.<d:index> "<d>"
+0.95 r2 match fact fs.read.<n> => filesystem.read "[ \"<value>\" ]"
+0.95 r3 match fact fs.deny.<n> => filesystem.deny "[ \"<value>\" ]"
+0.8 r4 match fact cmd.<c>.policy => command_policies.commands.<c>.from.session.invocation_policy.default "\"<value>\"" ; command_policies.commands.<c>.from.session.sandbox.fs_read "[ ]"
+0.8 r5 match fact cmd.<cmd>.approve => command_policies.commands.<cmd>.from.session.invocation_policy.approve "[ { argv = { prefix = [ \"<value>\" ] }; } ]" ; command_policies.approval_backends.terminal.type "\"terminal\"" ; command_policies.approval_defaults.backend "\"terminal\""
+0.95 r6 match fact net.allow.<n> => network.allow_domain "[ \"<value>\" ]"
+0.8 r4 because "the schema tool could not read this world, so the empty sandbox object required beside an invocation_policy is written as an empty fs_read list"
+0.8 r5 because "the approval entry's record shape and the terminal backend are taken from the profile guide, not from a schema lookup"
+0.95 a2 expect filesystem.read from fs.read.<n>
+0.95 a3 expect filesystem.deny from fs.deny.<n>
+0.9 a4 expect command_policies.commands.<c>.from.session.invocation_policy.default from cmd.<c>.policy
+0.95 a5 expect network.allow_domain from net.allow.<n>
+0.95 p1 pattern the agent works in the directory it is started in and may read and write it. => fact workdir.access "readwrite"
+0.9 p2 pattern the agent works in the directory it is started in and may read it. => fact workdir.access "read"
+0.9 r1 match fact workdir.access => workdir.access "\"<value>\"" ; meta.name "\"<self>\""
+0.9 q1 demand workdir.access "how may the agent use the directory it is started in -- read and write it, or only read it?"
+0.95 a1 expect workdir.access from workdir.access
 0.95 d1 report <<<lips
-This patch changes two rules of the existing policy language; every line shape
-the language already read is unchanged, and no new sentence is needed.
+This language writes a nono sandbox profile from plain sentences about what an
+agent may touch.
 
-What changed and why:
+Line shapes it accepts:
 
-- `r5` (the rule behind "it may run X" / "it may never run X" / "it must ask me
-  before running X") now also emits an empty `sandbox` object for the command's
-  `from.session` entry. nono's validator refuses a `from.<caller>` entry that
-  carries only an `invocation_policy` ("data did not match any variant of
-  untagged enum CommandFromConfig"), so without this the rendered profile for
-  `dev.policy.lips` would not validate at all. The sandbox is left empty: the
-  programs say nothing about giving a tool its own narrower filesystem or
-  network view, so nothing is invented there.
+- `the agent works in the directory it is started in and may read and write it.`
+  (or `... and may read it.`) -- sets `workdir.access` to `readwrite` or `read`.
+  Every profile must say this; a program that is silent is asked for it.
+- `it may read A, B and C.` -- each path becomes an element of `filesystem.read`.
+- `it may never read A, B or C.` -- each path becomes an element of
+  `filesystem.deny`.
+- `it may run git, rg, ls and cat.` -- each name becomes
+  `command_policies.commands.<tool>.from.session` with `invocation_policy.default
+  = "allow"`.
+- `it may never run curl, wget or ssh.` -- the same slot with default `"deny"`.
+- `it must ask me before running git push.` -- an `approve` entry matching the
+  argv prefix (`{ argv = { prefix = [ "push" ] }; }`) on that tool, plus a
+  `terminal` approval backend named as the approval default, because nono
+  refuses an approve entry with no backend. One subcommand word is read; a
+  longer argv prefix has no form in this language yet.
+- `on the network it may reach github.com and crates.io, and nothing else.` --
+  each host becomes an element of `network.allow_domain`. The closing "and
+  nothing else" is fixed wording: allow-listing is already exclusive in nono.
 
-- `r1` (the rule behind "the agent works in the directory it is started in ...",
-  the one line every program must state) now also declares the approval backend:
-  `command_policies.approval_backends.terminal.type = "terminal"` and
-  `command_policies.approval_defaults.backend = "terminal"`. An `approve` entry
-  without a declared backend is refused with `missing_approval_backend`, and
-  "terminal" is the backend that asks the human sitting at the session, which is
-  exactly what "it must ask me" means. It is attached to the workdir rule, not to
-  the approve rule, because that line appears exactly once in every program (it
-  is the one demanded line), so the declaration is emitted exactly once no matter
-  how many commands need approval -- two rules writing one option path would be a
-  conflict.
+All list sentences are read with list holes, so they take any number of items;
+there is no pattern per item count.
 
-One limit worth knowing, unchanged by this patch: the sandbox object is emitted
-by the *policy* rule, so a command that is only ever named by "it must ask me
-before running <cmd> <sub>" and never by an "it may run <cmd>" line gets an
-approve entry with no sandbox. In practice a program states both, as
-`dev.policy.lips` does ("it may run git, rg, ls and cat." plus "it must ask me
-before running git push."). If you want approval for a subcommand, also name the
-command in an "it may run" line.
+Mechanism notes and things I had to decide:
+
+- Permission lives where nono enforces it against child processes:
+  `filesystem.*`, `workdir.access`, `network.allow_domain`, and
+  `command_policies.commands.*`. The deprecated `commands.allow/deny` section is
+  never emitted.
+- The schema lookup could not read this world at mint time, so the paths below
+  `command_policies.commands.<tool>.from.session` come from the profile guide
+  alone. Each command entry carries a sandbox object (written as an empty
+  `sandbox.fs_read` list) beside its invocation policy, because an entry holding
+  only an invocation policy is rejected by nono's validator.
+- A command you want to gate with "ask me first" should also appear in an
+  `it may run ...` sentence: the sandbox object for that tool comes from the
+  run/never-run sentence, not from the approval sentence.
+- `meta.name` is the program's own instance name.
+- Subject vocabulary follows the previous engine: `workdir.access`, `fs.read.<n>`,
+  `fs.deny.<n>`, `cmd.<tool>.policy`, `cmd.<tool>.approve`, `net.allow.<n>`.
+  Paths and domains are keyed by their position in their sentence, so state all
+  read paths in one sentence and all denied paths in one sentence; two separate
+  `it may read ...` lines would collide on position 1.
+- No `groups.include` is emitted: the programs name no deny group, and inventing
+  one would silently add rules nobody asked for. Denials are exactly the paths
+  and commands the program names.
+
+The contract pins every value the sentences carry -- workdir access mode, each
+read path, each denied path, each command's default decision, each allowed
+domain. The approve entry is not expected, because its value is a record the
+expect grammar compares poorly; the rule that emits it is its whole contract.
 lips>>>
 
