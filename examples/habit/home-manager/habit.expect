@@ -1,1 +1,1 @@
-a2 expect claim.<q>.equals from witness.<q>.prints is "(list \"<value.8>\")"
+a2 expect claim.<q>.equals from witness.<q>.expected is "(list \"<value>\")"

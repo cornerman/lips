@@ -1,0 +1,17 @@
+format: 1
+verdict: accepted
+model: claude-opus-5
+thinking: medium
+wall: 418.0
+phase 0.7 home-manager option schema
+phase 416.2 mint .habit from 1 program for home-manager
+phase 0.9 clause claims: 1 claim
+phase 0.1 write examples/habit
+turns: 6
+tool query_options: 2
+tool submit_draft: 4
+tokens input: 12
+tokens output: 32506
+tokens cache-read: 224170
+tokens cache-write: 58167
+cost-usd: 1.2883387499999999

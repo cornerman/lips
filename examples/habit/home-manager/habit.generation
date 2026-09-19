@@ -1,5 +1,6 @@
 format: 1
 model: claude-opus-5
+basis: fresh
 world: home-manager ea8e044c7d9df134
 schema: github:nix-community/home-manager/041a999e8c1c5b731913855909e68d30ca69b8e0?narHash=sha256-J5%2BC9wsO0lhDyUalQzfplDbRjyHDYeEH5%2B9sdyXtwa8%3D
 thinking: medium
@@ -102,8 +103,9 @@ yourself: crystallizing programs you were never shown, realizing a module,
 evaluating your own expects. Verify beforehand everything you can, since
 nothing you get wrong here is caught before it costs the human a fresh mint.
 
-YOU HAVE TWO TOOLS. One grounds the names you use; the other is the door your
-engine walks through, and there is no second door.
+YOU HAVE THREE TOOLS. Two ground the names you use -- the option paths of a
+world, and the clauses another language already defines; the third is the door
+your engine walks through, and there is no second door.
 
 query_options(query) searches the pinned option schema of the target world
 named above. A dotted
@@ -115,13 +117,33 @@ are not certain of, look it up instead of recalling it: a rule naming an
 option that does not exist, or filling one with the wrong type, is rejected
 outright and the whole mint fails.
 
-submit_draft(draft) is how your engine reaches lips, and the only way it can:
-it runs lips' own gates over the lines you pass and reports the first gate that
-rejects them, in the exact words the refusal would use. A refused submission
-stages nothing, so fix what it names and submit again. A clean one is staged as
-your answer, and the last clean submission is the engine lips takes. Text you
-write outside this tool is read as engine lines by nothing, so a mint that
-never submits produces nothing at all.
+query_language(world, language) lists what another language gives you: one
+`name arity` line per clause it defines, in that world. A program line naming
+another language is a QUESTION, not a definition -- ask it here. Call the names
+it prints, exactly as printed; never define one of them yourself, and never call
+a name it did not print. A language that answers with an error is not minted
+yet, which makes the line unreadable: refuse, and say so. Defining a name
+locally that another language already exports is the silent failure this tool
+exists to remove -- both engines then work, the program says one thing, and the
+system does two.
+
+submit_draft(draft, restart) is how your engine reaches lips, and the only way
+it can: it runs lips' own gates over the lines you pass and reports the first
+gate that rejects them, in the exact words the refusal would use. A refused
+submission stages nothing as your answer, so fix what it names and submit again.
+A clean one is staged, and the last clean submission is the engine lips takes.
+Text you write outside this tool is read as engine lines by nothing, so a mint
+that never submits produces nothing at all.
+Submit ONCE in full, then only in patches. Your first submission is the whole
+engine; every later one is read as a patch of what you already submitted -- a
+new id adds that line, a known id replaces it entirely, an id you do not mention
+stays exactly as it is (the same rule a patch of a committed engine follows).
+So when a gate names one line, send that one line. Restating the rest re-emits
+an engine the human pays for twice and risks changing what already held. A
+refused submission is kept as your draft precisely so this works: everything
+else you wrote is still there. `restart: true` voids what you submitted before
+and reads this submission as the whole engine again -- the only way to drop a
+line you should never have added, since a patch cannot delete one.
 The tool does not run the claim gate or the artifact build, and it says so: a
 clean submission is not a guarantee of acceptance, while a refused one is a
 guarantee of refusal. Nothing here judges FOR you and nothing runs your program:
@@ -242,7 +264,29 @@ token, fused to punctuation, which is how a call or a flag is read:
 'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
 reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
 cannot be a multi-token hole; a value with spaces must be quoted (a quoted
-span is one token wherever it starts). A BULLETED list item begins
+span is one token wherever it starts).
+To read a LIST of items stated in ONE sentence, use a list hole
+<name.list:SEP|SEP>: it binds a run of tokens like <name.words> and then cuts
+that run into items on the separators you declare, separated by | in the hole
+itself. Every emit mentioning the hole is then produced once per item, with
+<name> the item's text and <name:index> its position from 1. One pattern reads
+the sentence at ANY item count, so never write one pattern per count
+(`... <p1> and <p2>` beside `... <p1>, <p2> and <p3>`): that stops at the
+count you guessed. A comma written against the word before it is cut as a
+separator; a separator that is a WORD must stand alone (`or`, `and then`). A
+separator carrying |, <, > or a space is quoted: <c.list:"|">, <c.list:","|"and
+then">. Use a list hole when each item becomes its own decision; use
+<name.words> when the whole run is ONE value.
+
+```lips-engine
+0.95 p3 pattern it may never read <p.list:,|or> => fact fs.deny.<p:index> "<p>"
+0.95 p4 pattern it may run <c.list:,|and> => fact cmd.<c>.policy "allow"
+```
+
+reads 'it may never read ~/.ssh, ~/.aws or ~/.config/gh' as three facts and
+'it may run git, rg, ls, cat and jq' as five, with no pattern per count.
+
+A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -349,11 +393,28 @@ every block it can sit in; `<k:key>` in a pattern that nests under nothing.
 ### Kinds
 
 kind: one of
-concept fact oblige forbid allow invariant view assume steer glue meta --
-all but one are ordinary decision kinds a rule must map to an option;
-'concept' is the one EXCEPTION, reserved for a decorative heading that
+concept fact oblige forbid allow invariant view assume steer glue meta uses --
+all but two are ordinary decision kinds a rule must map to an option.
+'concept' is one EXCEPTION, reserved for a decorative heading that
 carries no value of its own (the PATTERNS subsection above shows the form),
-so it alone needs no rule.
+so it needs no rule.
+
+'uses' is the other, and it is how a program names ANOTHER LANGUAGE whose
+clauses it calls. No rule maps it: composing with a language is not an option a
+world sets, so a `uses` emit is complete on its own. The SUBJECT is the language
+as a program names it (the .lips extension), and the ASSERTION is which instance
+of it -- the instance is the file basename before that extension, and naming the
+language itself means the single `<language>.lips` beside this program:
+
+```lips-engine
+0.95 p1 pattern the players come from <lang>. => uses <lang> "<lang>"
+0.95 p2 pattern the players come from the <inst> <lang>. => uses <lang> "<inst>"
+```
+
+A line like this is a QUESTION about a vocabulary that already exists: ask
+`query_language` what that language defines, and have your clauses CALL those
+names. Defining them again locally is the failure composition removes -- the
+program would say one thing and the system would do two.
 
 ### Subjects and Orthogonality
 
@@ -903,6 +964,7 @@ Before you submit, run this list against your own engine:
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
+4b. Does every line naming another language call a clause `query_language` printed, rather than a definition of your own?
 5. Does every expect name a value option, never a package or artifact-build option?
 6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
 7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
@@ -911,9 +973,16 @@ Before you submit, run this list against your own engine:
 
 When the program states BEHAVIOUR -- what it decides, keeps, rejects, computes
 -- emit CLAUSES, not a source file. A clause is one named definition under the
-subject root clause.<name>, and its rhs is an s-expression:
+subject root clause.<language>-<name>, and its rhs is an s-expression:
 
-  clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) (else #f)))"
+  clause.logscan-keep? "(define (logscan-keep? record spec) (cond ((null? spec) #t) (else #f)))"
+
+EVERY CLAUSE IS NAMED AFTER ITS OWN LANGUAGE, prefix included, in the subject
+and in the definition alike -- `logscan-keep?` for a language written in
+.logscan. lips refuses an engine whose clause is named otherwise, because two
+languages composed into one program would otherwise collide on a name neither
+author chose to share. It is also what makes another language's clauses safe to
+call: what `query_language` prints already carries its prefix.
 
 One definition per thing the program says, and nothing else. Every clause is a
 decision, so it carries the program line that caused it for free; a clause no
@@ -924,12 +993,12 @@ SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE, which is how a program whose lines
 are STATEMENTS gets an entry point. Write the rhs as a one-element LIST holding
 the whole definition, exactly as a list-typed option takes one element per line:
 
-  clause.main "[ (define (main) (println \"#<value>\")) ]"
+  clause.logscan-main "[ (define (logscan-main) (println \"#<value>\")) ]"
 
 Every line that rule matches contributes its own definition, and lips folds them
 into one whose body is theirs in the program's own order:
 
-  (define (main) (println "hallo") (println "du") (println "!"))
+  (define (logscan-main) (println "hallo") (println "du") (println "!"))
 
 Every contributor must define the same name with the same parameters, or lips
 refuses the engine. A repeat is kept -- two lines saying the same thing are two
@@ -943,6 +1012,19 @@ let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
 #\=), recursion (a clause may call itself and any other clause), and a call to
 a base procedure or a CONTRACT. You may NOT write: a macro, set! or any
 mutation, eval, an internal define, or a name nothing grounds.
+
+THE BASE PROCEDURES ARE THESE, and there are no others. Reading them is
+cheaper than rediscovering them: a mint that forgot `number->string` filed a
+gap for report formatting, and one that forgot `quotient` wrote integer
+division as repeated subtraction. Nothing outside this list and the contracts
+below grounds a name.
+
+  cons car cdr caar cadr cdar cddr null? pair? list
+  list? length append reverse eq? eqv? equal? + - *
+  / = < > <= >= min max abs quotient
+  remainder modulo number? string? boolean? symbol? char? procedure? string=? string<?
+  string-length string-append substring string->number number->string char=? apply
+
 
 THE HOLE MARKER INSIDE A CLAUSE IS #<name>, NOT <name>. Both < and > are
 ordinary Scheme identifier characters, so a clause must be able to write
@@ -967,6 +1049,7 @@ available are:
   die (2) -- message subject -> stops the program, naming the subject
   emitted (0) -- -> the lines the program printed, in order
   random-step (1) -- seed -> (value . next-seed), value 0..999
+  elements-of (1) -- array -> its elements as a list, or #f when it is not an array
 
 
 If the program needs a capability no contract offers, that is a GAP: report it
@@ -979,7 +1062,7 @@ CLAIM WHAT THE BEHAVIOUR DOES. A claim over clauses is judged offline, with no
 binary built and no machine booted, so an observable here is cheap enough that
 every behaviour sentence should have one:
 
-  claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
+  claim.<id>.call "(logscan-keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (logscan-parse-spec (list \"a=1\")))" ;
   claim.<id>.equals "#t"
 
 EVERY CLAUSE MUST BE REACHED BY A CLAIM, following calls from the claim's own
@@ -989,10 +1072,10 @@ clause no claim reaches is behaviour the next mint may rewrite with every gate
 still green. So claim the ENTRY, not only the helpers: one claim of the shape
 
   claim.whole.feed "[ \"first line\" \"second line\" ]" ;
-  claim.whole.call "(begin (main) (emitted))" ;
+  claim.whole.call "(begin (logscan-main) (emitted))" ;
   claim.whole.equals "(list \"what it prints\")"
 
-reaches main and everything main calls, which is usually the whole program.
+reaches the entry and everything it calls, which is usually the whole program.
 Claims over single definitions are good beside it, never instead of it.
 
 Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
@@ -1007,27 +1090,39 @@ the real effects: (emitted) is the lines the program printed, in order, and
 feed-lines / feed-args are what claim.<id>.feed and claim.<id>.args compile to.
 So a program whose whole job is to print is claimed end to end:
   claim.<id>.feed "[ \"2\" \"3\" ]" ;
-  claim.<id>.call "(begin (main) (emitted))" ;
+  claim.<id>.call "(begin (logscan-main) (emitted))" ;
   claim.<id>.equals "(list \"5\")"
 A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
 
 NEVER FIX A COUNT IN A TEMPLATE. A sentence carrying a list of items --
 "given the lines A, B and C" -- must NOT become a template with one hole per
 item (<l1>, <l2>, <l3>): that pattern reads a three-item program and refuses a
-four-item one, so adding an example costs the author a fresh mint. Every such
-sentence is a BLOCK: a header pattern, a child pattern nested under it, and one
-decision per item keyed by its position.
+four-item one, so adding an example costs the author a fresh mint. Two forms
+read a list, and each yields one decision per item, keyed by its position.
+
+ITEMS IN ONE SENTENCE: a list hole, and -- when an item carries more than one
+value -- an ITEM PATTERN <id>.each.<parent>.<hole> that reads ONE item:
+
+  p3 pattern given the log of <e.list:,|and> the habit <q> prints <out> => fact witness.<q>.expected "<out>"
+  p4.each.p3.e pattern <d> for <h> => fact witness.<q>.entry.<n:index> "<d> <h>"
+  r3 match fact witness.<q>.entry.<n> => claim.<q>.feed "[ \"<value.1>\t<value.2>\" ]"
+
+An item pattern sees its parent's captures (<q> above), numbers its items with
+<n:index>, and must read EVERY item of that hole or the line is refused. A hole
+with no item pattern binds the item as one value, which is all a list of plain
+words needs.
+
+ITEMS ON THEIR OWN LINES: a BLOCK -- a header pattern and a child pattern nested
+under it -- which is the form when the author writes one item per line:
 
   p3 pattern given these lines => concept witness.given "the example input follows"
   p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
   r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
 
-The author then writes the items on their own lines under the header, however
-many there are, and Append assembles the one-element lists into one list in
-source order. The same shape carries any list a sentence states: paths to back
-up, packages to install, ports to open. The kernel dictates no collection
-syntax, so the words that open a block are yours to choose in the header
-pattern.
+Either way Append assembles the one-element lists into one list in source order,
+and the same shape carries any list a program states: paths to back up, packages
+to install, ports to open. The kernel dictates no collection syntax, so the
+separators and the words that open a block are yours to choose.
 
 A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
 claim around it: the stop becomes an ordinary value, so state what it must be.
@@ -1081,7 +1176,7 @@ home.packages : list of package
 <- query_options
 home.sessionVariables : integer
 
--> submit_draft "0.9 p1 pattern track <what.words> from the terminal => concept tool.purpose \"<what>\"\n0.9 p2 pattern the first argument names the habit to print => fact input.habit \"the first argument names the habit to print\"\n0.8 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source \"the second argument names a log file, otherwise standard input\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format \"an ISO date and a habit name separated by a tab\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.days \"one character per day from the earliest to the latest date\"\n0.95 p6 pattern mark a day the named habit was logged with \"<mark>\" => fact mark.present \"<mark>\"\n0.95 p7 pattern mark a day it was not logged with \"<mark>\" => fact mark.absent \"<mark>\"\n0.95 p8 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.85 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<q>\" prints \"<out>\" => fact witness.<q>.prints \"<d1> <h1> <d2> <h2> <d3> <h3> <q> <out>\"\n0.9 r1 match fact input.habit => clause.habit-name \"(define (habit-name) (car (arguments)))\"\n0.75 r2 match fact input.source => clause.read-log \"(define (read-log) (let ((line (read-a-line))) (if (end-of-input? line) (quote ()) (let ((entry (parse-entry line))) (cons entry (read-log))))))\"\n0.75 r2 because \"no contract opens a file, so the clauses can only read standard input; the file named by the second argument is not honoured\"\n0.85 r3 match fact log.format => clause.parse-entry \"(define (parse-entry line) (let ((cut (string-cut line #\\\\tab))) (if (not cut) (die \\\"log line is not a date and a habit separated by a tab:\\\" line) (cons (parse-date (car cut)) (cdr cut)))))\" ; clause.parse-date \"(define (parse-date text) (let ((a (string-cut text #\\\\-))) (if (not a) (die \\\"not an ISO date:\\\" text) (let ((b (string-cut (cdr a) #\\\\-))) (if (not b) (die \\\"not an ISO date:\\\" text) (list (string->number (car a)) (string->number (car b)) (string->number (cdr b))))))))\"\n0.85 r4 match fact render.days => clause.main \"(define (main) (let* ((habit (habit-name)) (entries (read-log))) (if (null? entries) (emit \\\"\\\") (emit (render habit entries)))))\" ; clause.render \"(define (render habit entries) (let* ((dates (dates-of entries)) (days (logged-days habit entries))) (marks (earliest dates) (latest dates) days)))\" ; clause.marks \"(define (marks day last days) (if (date<? last day) \\\"\\\" (string-append (if (logged? day days) (present-mark) (absent-mark)) (marks (next-day day) last days))))\" ; clause.dates-of \"(define (dates-of entries) (if (null? entries) (quote ()) (cons (car (car entries)) (dates-of (cdr entries)))))\" ; clause.logged-days \"(define (logged-days habit entries) (cond ((null? entries) (quote ())) ((string=? (cdr (car entries)) habit) (cons (car (car entries)) (logged-days habit (cdr entries)))) (else (logged-days habit (cdr entries)))))\" ; clause.logged? \"(define (logged? day days) (cond ((null? days) #f) ((date=? day (car days)) #t) (else (logged? day (cdr days)))))\" ; clause.earliest \"(define (earliest dates) (if (null? (cdr dates)) (car dates) (let ((rest (earliest (cdr dates)))) (if (date<? (car dates) rest) (car dates) rest))))\" ; clause.latest \"(define (latest dates) (if (null? (cdr dates)) (car dates) (let ((rest (latest (cdr dates)))) (if (date<? rest (car dates)) (car dates) rest))))\" ; clause.date=? \"(define (date=? a b) (and (= (car a) (car b)) (= (car (cdr a)) (car (cdr b))) (= (car (cdr (cdr a))) (car (cdr (cdr b))))))\" ; clause.date<? \"(define (date<? a b) (cond ((not (= (car a) (car b))) (< (car a) (car b))) ((not (= (car (cdr a)) (car (cdr b)))) (< (car (cdr a)) (car (cdr b)))) (else (< (car (cdr (cdr a))) (car (cdr (cdr b)))))))\" ; clause.next-day \"(define (next-day day) (let ((y (car day)) (m (car (cdr day))) (d (car (cdr (cdr day))))) (cond ((< d (days-in-month y m)) (list y m (+ d 1))) ((< m 12) (list y (+ m 1) 1)) (else (list (+ y 1) 1 1)))))\" ; clause.days-in-month \"(define (days-in-month y m) (cond ((= m 2) (if (leap-year? y) 29 28)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))\" ; clause.leap-year? \"(define (leap-year? y) (cond ((= (remainder y 400) 0) #t) ((= (remainder y 100) 0) #f) (else (= (remainder y 4) 0))))\"\n0.95 r5 match fact mark.present => clause.present-mark \"(define (present-mark) \\\"#<value>\\\")\"\n0.95 r6 match fact mark.absent => clause.absent-mark \"(define (absent-mark) \\\"#<value>\\\")\"\n0.9 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.85 r8 match fact witness.<q>.prints => claim.<q>.args \"[ \\\"<value.7>\\\" ]\" ; claim.<q>.feed \"[ \\\"<value.1>\\t<value.2>\\\" \\\"<value.3>\\t<value.4>\\\" \\\"<value.5>\\t<value.6>\\\" ]\" ; claim.<q>.call \"(begin (main) (emitted))\" ; claim.<q>.equals \"(list \\\"<value.8>\\\")\"\n0.9 q1 demand input.habit \"which argument names the habit to print?\"\n0.9 q2 demand input.source \"where is the habit log read from?\"\n0.9 q3 demand log.format \"what does one log line hold?\"\n0.9 q4 demand render.days \"what is printed, one character per day, and over which range?\"\n0.9 q5 demand mark.present \"which character marks a day the habit was logged?\"\n0.9 q6 demand mark.absent \"which character marks a day the habit was not logged?\"\n0.9 q7 demand tool.command \"under which command name is the tool installed?\"\n0.9 q8 demand witness.<q>.prints \"give an example log and what a habit prints for it\"\n0.9 a1 expect site.<self>.command from tool.command\n0.85 a2 expect claim.<q>.equals from witness.<q>.prints is \"(list \\\"<value.8>\\\")\"\n0.8 g1 gap no-file-contract <<<lips\nblocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.\nno contract opens a named file: the clause layer offers read-a-line (standard\ninput) and nothing else, so only the standard-input half of that sentence is\nrealized. A file-reading contract (open a path, read its lines) would close this.\nlips>>>\n0.8 g2 gap one-line-item-list <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nthe example log is a list of items written inside ONE sentence, and a template\ncannot repeat a hole, so the witness pattern fixes three entries. A four-entry\nexample needs a fresh mint, or the author must be able to write the entries as\nlines of a block. A repeating hole (or a list hole binding a comma-separated\nrun of items) would close this.\nlips>>>\n0.95 d1 report <<<lips\nThis language describes a small terminal habit tracker, and it is realized as\nbehaviour clauses (a real little program), not as configuration.\n\nLine shapes it accepts, one per sentence of the program:\n\n- `track <what> from the terminal.` -- a decorative title. The words are read\n  but nothing is realized from them.\n- `the first argument names the habit to print.` -- fixes where the habit name\n  comes from: the first command-line argument.\n- `read the habit log from the file named as the second argument, or from\n  standard input when no file is named.` -- fixes the input. See the caveat\n  below.\n- `each log line holds an ISO date and a habit name separated by a tab.` --\n  fixes the line format: this is what the parser is written from.\n- `print one character per day from the log's earliest date to its latest\n  date.` -- fixes the rendering: the whole day-by-day walk, including the\n  calendar arithmetic (month lengths, leap years), comes from this sentence.\n- `mark a day the named habit was logged with \"#\".` and\n  `mark a day it was not logged with \".\".` -- the two marks. Both characters\n  are holes: change them in the program and the built tool changes.\n- `install the tool as the command habit.` -- the command name is a hole; it\n  becomes the name of the installed program (`site.<self>.command`) and the\n  program is added to `home.packages`.\n- `given the log of \"<date>\" for \"<habit>\", ... , the habit \"<name>\" prints\n  \"<out>\".` -- the worked example. It becomes a claim: the three log lines are\n  fed to the program, the habit name is its argument, and what it prints is\n  compared byte for byte. This is the only thing that holds the minted code to\n  the program's words, so every program must state one.\n\nMechanism: the behaviour is clauses (habit-name, read-log, parse-entry,\nparse-date, render, marks, earliest, latest, logged-days, logged?, next-day,\ndays-in-month, leap-year?, date=?, date<?, present-mark, absent-mark, main).\nDates are parsed with the string-cut contract, compared as (year month day)\nlists, and the range is walked one day at a time. Because home-manager is\nunprivileged and there is nothing to boot, the tool is simply installed into\nthe user's profile: `home.packages` gets the built site, named by the command\nsentence.\n\nTwo things I could not derive and one I had to choose:\n\n- No contract opens a named file, so the clauses read standard input only; the\n  \"file named as the second argument\" half of that sentence is not honoured.\n  Filed as a gap (no-file-contract), and the rule that reads the log carries\n  lowered confidence for it.\n- The worked-example sentence lists its log entries inside one line, so the\n  pattern fixes three entries. Filed as a gap (one-line-item-list); an example\n  with a different number of entries needs a regeneration.\n- The program says nothing about an empty log; the tool prints an empty line in\n  that case.\n\nThe contract pinned on every future compile: the command name reaches\n`site.<self>.command`, and the example's expected output reaches the claim that\nruns the program end to end.\nlips>>>"
+-> submit_draft "0.95 p1 pattern track daily habits from the terminal => concept habit.purpose \"tracking daily habits from the terminal\"\n0.92 p2 pattern the first argument names the habit to print => fact cli.habit \"the first argument names the habit\"\n0.85 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source \"file argument or standard input\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format \"date tab habit\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.span \"earliest to latest, one character per day\"\n0.93 p6 pattern mark a day the named habit was logged with \"<mark>\" => fact mark.logged \"<mark>\"\n0.93 p7 pattern mark a day it was not logged with \"<mark>\" => fact mark.missing \"<mark>\"\n0.93 p8 pattern install the tool as the command <cmd> => fact install.command \"<cmd>\"\n0.85 p9 pattern given the log of <e.list:,|and> the habit \"<q>\" prints \"<out>\" => fact witness.<q>.expected \"<out>\"\n0.85 p10.each.p9.e pattern \"<d>\" for \"<h>\" => fact witness.<q>.entry.<n:index> \"<d> <h>\"\n0.9 r2 match fact cli.habit => clause.habit-habit-name \"(define (habit-habit-name args) (cond ((null? args) (die \\\"no habit named\\\" \\\"arguments\\\")) (else (car args))))\"\n0.7 r3 match fact input.source => clause.habit-read-log \"(define (habit-read-log) (habit-collect (read-a-line)))\" ; clause.habit-collect \"(define (habit-collect l) (cond ((end-of-input? l) (quote ())) ((eq? (habit-parse-line l) #f) (habit-read-log)) (else (cons (habit-parse-line l) (habit-read-log)))))\"\n0.7 r3 because \"no contract can open a file, so only the standard-input half of this sentence is realized; the file named as the second argument is ignored\"\n0.9 r4 match fact log.format => clause.habit-parse-line \"(define (habit-parse-line s) (habit-cut s (habit-find-tab s 0)))\" ; clause.habit-cut \"(define (habit-cut s i) (cond ((eq? i #f) #f) (else (cons (substring s 0 i) (substring s (+ i 1) (string-length s))))))\" ; clause.habit-find-tab \"(define (habit-find-tab s i) (cond ((>= i (string-length s)) #f) ((string=? (substring s i (+ i 1)) \\\"\\t\\\") i) (else (habit-find-tab s (+ i 1)))))\"\n0.88 r5 match fact render.span => clause.habit-main \"(define (habit-main) (emit (habit-render (habit-read-log) (habit-habit-name (arguments)))))\" ; clause.habit-render \"(define (habit-render entries name) (cond ((null? entries) \\\"\\\") (else (habit-marks entries name (habit-earliest entries) (habit-latest entries)))))\" ; clause.habit-earliest \"(define (habit-earliest entries) (cond ((null? (cdr entries)) (car (car entries))) (else (habit-smaller (car (car entries)) (habit-earliest (cdr entries))))))\" ; clause.habit-latest \"(define (habit-latest entries) (cond ((null? (cdr entries)) (car (car entries))) (else (habit-larger (car (car entries)) (habit-latest (cdr entries))))))\" ; clause.habit-smaller \"(define (habit-smaller a b) (cond ((string<? a b) a) (else b)))\" ; clause.habit-larger \"(define (habit-larger a b) (cond ((string<? a b) b) (else a)))\" ; clause.habit-logged? \"(define (habit-logged? entries date name) (cond ((null? entries) #f) ((and (string=? (car (car entries)) date) (string=? (cdr (car entries)) name)) #t) (else (habit-logged? (cdr entries) date name))))\" ; clause.habit-marks \"(define (habit-marks entries name date last) (cond ((string<? last date) \\\"\\\") (else (string-append (habit-mark entries date name) (habit-marks entries name (habit-next-date date) last)))))\" ; clause.habit-mark \"(define (habit-mark entries date name) (cond ((habit-logged? entries date name) (habit-mark-logged)) (else (habit-mark-missing))))\" ; clause.habit-next-date \"(define (habit-next-date s) (habit-roll (string->number (substring s 0 4)) (string->number (substring s 5 7)) (string->number (substring s 8 10))))\" ; clause.habit-roll \"(define (habit-roll y m d) (cond ((< d (habit-days-in-month y m)) (habit-iso y m (+ d 1))) ((< m 12) (habit-iso y (+ m 1) 1)) (else (habit-iso (+ y 1) 1 1))))\" ; clause.habit-days-in-month \"(define (habit-days-in-month y m) (cond ((= m 2) (habit-feb y)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))\" ; clause.habit-feb \"(define (habit-feb y) (cond ((habit-leap? y) 29) (else 28)))\" ; clause.habit-leap? \"(define (habit-leap? y) (and (= 0 (remainder y 4)) (or (not (= 0 (remainder y 100))) (= 0 (remainder y 400)))))\" ; clause.habit-iso \"(define (habit-iso y m d) (string-append (number->string y) \\\"-\\\" (habit-pad2 m) \\\"-\\\" (habit-pad2 d)))\" ; clause.habit-pad2 \"(define (habit-pad2 n) (cond ((< n 10) (string-append \\\"0\\\" (number->string n))) (else (number->string n))))\"\n0.93 r6 match fact mark.logged => clause.habit-mark-logged \"(define (habit-mark-logged) \\\"#<value>\\\")\"\n0.93 r7 match fact mark.missing => clause.habit-mark-missing \"(define (habit-mark-missing) \\\"#<value>\\\")\"\n0.9 r8 match fact install.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.85 r9 match fact witness.<q>.expected => claim.<q>.args \"[ \\\"<q>\\\" ]\" ; claim.<q>.call \"(begin (habit-main) (emitted))\" ; claim.<q>.equals \"(list \\\"<value>\\\")\"\n0.85 r10 match fact witness.<q>.entry.<n> => claim.<q>.feed \"[ \\\"<value.1>\\t<value.2>\\\" ]\"\n0.8 m1 merge claim.<q>.feed list\n0.9 q1 demand cli.habit \"which argument names the habit to print?\"\n0.85 q2 demand input.source \"where is the habit log read from?\"\n0.9 q3 demand log.format \"how is one log line laid out?\"\n0.9 q4 demand render.span \"what is printed, and over which range of days?\"\n0.93 q5 demand mark.logged \"which character marks a day the habit was logged?\"\n0.93 q6 demand mark.missing \"which character marks a day the habit was not logged?\"\n0.93 q7 demand install.command \"under which command name is the tool installed?\"\n0.85 q8 demand witness.<q>.expected \"give an example log and what the tool prints for one habit\"\n0.9 a1 expect site.<self>.command from install.command\n0.85 a2 expect claim.<q>.equals from witness.<q>.expected is \"(list \\\"<value>\\\")\"\n0.7 g1 gap file-input <<<lips\nblocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.\nno contract opens a named file: read-a-line reads standard input only, and arguments returns the words but nothing can turn a word into a readable file. the clauses therefore read standard input and silently ignore a second argument. a \"read-file (1)\" contract would close this.\nlips>>>\n0.92 d1 report <<<lips\nThis language describes a small terminal habit tracker, and lips builds it as\nclauses (a real program), not as configuration.\n\nLine shapes it accepts:\n\n- `track daily habits from the terminal.` -- a heading; decoration only.\n- `the first argument names the habit to print.` -- the command line: the\n  first word after the command is the habit; with no argument the tool stops\n  loudly (\"no habit named\").\n- `read the habit log from the file named as the second argument, or from\n  standard input when no file is named.` -- where the log comes from.\n- `each log line holds an ISO date and a habit name separated by a tab.` --\n  the line format; a line without a tab is skipped.\n- `print one character per day from the log's earliest date to its latest\n  date.` -- the output: one line, one character per calendar day between the\n  earliest and latest dates seen in the log (real date arithmetic, leap years\n  included).\n- `mark a day the named habit was logged with \"#\".` and\n  `mark a day it was not logged with \".\".` -- the two marks. Both characters\n  are holes: change the quoted character and the output changes.\n- `install the tool as the command habit.` -- the command name is a hole; it\n  becomes the site's command name and the built program is added to\n  `home.packages`.\n- `given the log of \"DATE\" for \"HABIT\", ... and \"DATE\" for \"HABIT\", the habit\n  \"NAME\" prints \"OUT\".` -- the worked example. Any number of log entries is\n  read (a list hole plus a per-entry pattern), and it becomes a claim: the\n  entries are fed as tab-separated lines, NAME is the argument, and the\n  printed line must equal OUT exactly. This is what holds the minted code to\n  your sentence.\n\nMechanism choices: behaviour lives in `habit-*` clauses, installed through\nthe site (`site.<self>.command`) and put on PATH with `home.packages`. No\nsystemd unit, no artifact source file: nothing here runs on a schedule.\n\nWhat I could not honour: there is no contract that opens a named file, so the\n\"file named as the second argument\" half of the input sentence is not\nrealized -- the tool reads standard input. That is filed as the gap\n`file-input`, and the rule carries the matching low confidence.\n\nWhat I had to decide, since the program is silent: a log line with no tab is\nskipped rather than fatal, and running with no argument stops with an error\ninstead of printing nothing. The tab separator and the date layout are fixed\nwords of the sentences, not holes, because a different separator would need a\ncharacter the grammar cannot derive from the word \"tab\".\nlips>>>"
 <- submit_draft
 world home-manager:
 · crystallize examples/habit.lips
@@ -1089,7 +1184,8 @@ world home-manager:
 lips built a setup for examples/habit.lips, but it didn't hold up:
 
 it reads words from the program and then discards them:
-  - pattern p9 binds <out>, which reaches witness.<q>.prints, and rule r8 emits it nowhere: editing that word changes no output
+  - pattern p9 binds <e> and emits it nowhere: the word it reads reaches no decision
+  - pattern p9 binds <out>, which reaches witness.<q>.expected, and rule r9 emits it nowhere: editing that word changes no output
 
 Each one wants one of three fixes: use the word (a <value>/<value.N>
 hole, or the capture aligned with the subject segment it fills); or, if
@@ -1101,193 +1197,149 @@ if the line truly carries no value, read it as a concept.
 → run generate again. If it keeps failing the same way, it's a lips bug;
   please report it with the text above.
 
--> submit_draft "0.9 p1 pattern track <what.words> from the terminal => concept tool.purpose \"<what>\"\n0.9 p2 pattern the first argument names the habit to print => fact input.habit \"the first argument names the habit to print\"\n0.8 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source \"the second argument names a log file, otherwise standard input\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format \"an ISO date and a habit name separated by a tab\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.days \"one character per day from the earliest to the latest date\"\n0.95 p6 pattern mark a day the named habit was logged with \"<mark>\" => fact mark.present \"<mark>\"\n0.95 p7 pattern mark a day it was not logged with \"<mark>\" => fact mark.absent \"<mark>\"\n0.95 p8 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.85 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<q>\" prints \"<out>\" => fact witness.<q>.prints \"<d1> <h1> <d2> <h2> <d3> <h3> <q> <out>\"\n0.9 r1 match fact input.habit => clause.habit-name \"(define (habit-name) (car (arguments)))\"\n0.75 r2 match fact input.source => clause.read-log \"(define (read-log) (let ((line (read-a-line))) (if (end-of-input? line) (quote ()) (let ((entry (parse-entry line))) (cons entry (read-log))))))\"\n0.75 r2 because \"no contract opens a file, so the clauses can only read standard input; the file named by the second argument is not honoured\"\n0.85 r3 match fact log.format => clause.parse-entry \"(define (parse-entry line) (let ((cut (string-cut line #\\\\tab))) (if (not cut) (die \\\"log line is not a date and a habit separated by a tab:\\\" line) (cons (parse-date (car cut)) (cdr cut)))))\" ; clause.parse-date \"(define (parse-date text) (let ((a (string-cut text #\\\\-))) (if (not a) (die \\\"not an ISO date:\\\" text) (let ((b (string-cut (cdr a) #\\\\-))) (if (not b) (die \\\"not an ISO date:\\\" text) (list (string->number (car a)) (string->number (car b)) (string->number (cdr b))))))))\"\n0.85 r4 match fact render.days => clause.main \"(define (main) (let* ((habit (habit-name)) (entries (read-log))) (if (null? entries) (emit \\\"\\\") (emit (render habit entries)))))\" ; clause.render \"(define (render habit entries) (let* ((dates (dates-of entries)) (days (logged-days habit entries))) (marks (earliest dates) (latest dates) days)))\" ; clause.marks \"(define (marks day last days) (if (date<? last day) \\\"\\\" (string-append (if (logged? day days) (present-mark) (absent-mark)) (marks (next-day day) last days))))\" ; clause.dates-of \"(define (dates-of entries) (if (null? entries) (quote ()) (cons (car (car entries)) (dates-of (cdr entries)))))\" ; clause.logged-days \"(define (logged-days habit entries) (cond ((null? entries) (quote ())) ((string=? (cdr (car entries)) habit) (cons (car (car entries)) (logged-days habit (cdr entries)))) (else (logged-days habit (cdr entries)))))\" ; clause.logged? \"(define (logged? day days) (cond ((null? days) #f) ((date=? day (car days)) #t) (else (logged? day (cdr days)))))\" ; clause.earliest \"(define (earliest dates) (if (null? (cdr dates)) (car dates) (let ((rest (earliest (cdr dates)))) (if (date<? (car dates) rest) (car dates) rest))))\" ; clause.latest \"(define (latest dates) (if (null? (cdr dates)) (car dates) (let ((rest (latest (cdr dates)))) (if (date<? rest (car dates)) (car dates) rest))))\" ; clause.date=? \"(define (date=? a b) (and (= (car a) (car b)) (= (car (cdr a)) (car (cdr b))) (= (car (cdr (cdr a))) (car (cdr (cdr b))))))\" ; clause.date<? \"(define (date<? a b) (cond ((not (= (car a) (car b))) (< (car a) (car b))) ((not (= (car (cdr a)) (car (cdr b)))) (< (car (cdr a)) (car (cdr b)))) (else (< (car (cdr (cdr a))) (car (cdr (cdr b)))))))\" ; clause.next-day \"(define (next-day day) (let ((y (car day)) (m (car (cdr day))) (d (car (cdr (cdr day))))) (cond ((< d (days-in-month y m)) (list y m (+ d 1))) ((< m 12) (list y (+ m 1) 1)) (else (list (+ y 1) 1 1)))))\" ; clause.days-in-month \"(define (days-in-month y m) (cond ((= m 2) (if (leap-year? y) 29 28)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))\" ; clause.leap-year? \"(define (leap-year? y) (cond ((= (remainder y 400) 0) #t) ((= (remainder y 100) 0) #f) (else (= (remainder y 4) 0))))\"\n0.95 r5 match fact mark.present => clause.present-mark \"(define (present-mark) \\\"#<value>\\\")\"\n0.95 r6 match fact mark.absent => clause.absent-mark \"(define (absent-mark) \\\"#<value>\\\")\"\n0.9 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.85 r8 match fact witness.<q>.prints => claim.<q>.args \"[ \\\"<value.7>\\\" ]\" ; claim.<q>.feed \"[ \\\"<value.1>\\t<value.2>\\\" \\\"<value.3>\\t<value.4>\\\" \\\"<value.5>\\t<value.6>\\\" ]\" ; claim.<q>.call \"(begin (main) (emitted))\" ; claim.<q>.equals \"(list \\\"#<value.8>\\\")\"\n0.9 q1 demand input.habit \"which argument names the habit to print?\"\n0.9 q2 demand input.source \"where is the habit log read from?\"\n0.9 q3 demand log.format \"what does one log line hold?\"\n0.9 q4 demand render.days \"what is printed, one character per day, and over which range?\"\n0.9 q5 demand mark.present \"which character marks a day the habit was logged?\"\n0.9 q6 demand mark.absent \"which character marks a day the habit was not logged?\"\n0.9 q7 demand tool.command \"under which command name is the tool installed?\"\n0.9 q8 demand witness.<q>.prints \"give an example log and what a habit prints for it\"\n0.9 a1 expect site.<self>.command from tool.command\n0.85 a2 expect claim.<q>.equals from witness.<q>.prints is \"(list \\\"<value.8>\\\")\"\n0.8 g1 gap no-file-contract <<<lips\nblocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.\nno contract opens a named file: the clause layer offers read-a-line (standard\ninput) and nothing else, so only the standard-input half of that sentence is\nrealized. A file-reading contract (open a path, read its lines) would close this.\nlips>>>\n0.8 g2 gap one-line-item-list <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nthe example log is a list of items written inside ONE sentence, and a template\ncannot repeat a hole, so the witness pattern fixes three entries. A four-entry\nexample needs a fresh mint, or the author must be able to write the entries as\nlines of a block. A repeating hole (or a list hole binding a comma-separated\nrun of items) would close this.\nlips>>>\n0.95 d1 report <<<lips\nThis language describes a small terminal habit tracker, and it is realized as\nbehaviour clauses (a real little program), not as configuration.\n\nLine shapes it accepts, one per sentence of the program:\n\n- `track <what> from the terminal.` -- a decorative title. The words are read\n  but nothing is realized from them.\n- `the first argument names the habit to print.` -- fixes where the habit name\n  comes from: the first command-line argument.\n- `read the habit log from the file named as the second argument, or from\n  standard input when no file is named.` -- fixes the input. See the caveat\n  below.\n- `each log line holds an ISO date and a habit name separated by a tab.` --\n  fixes the line format: this is what the parser is written from.\n- `print one character per day from the log's earliest date to its latest\n  date.` -- fixes the rendering: the whole day-by-day walk, including the\n  calendar arithmetic (month lengths, leap years), comes from this sentence.\n- `mark a day the named habit was logged with \"#\".` and\n  `mark a day it was not logged with \".\".` -- the two marks. Both characters\n  are holes: change them in the program and the built tool changes.\n- `install the tool as the command habit.` -- the command name is a hole; it\n  becomes the name of the installed program (`site.<self>.command`) and the\n  program is added to `home.packages`.\n- `given the log of \"<date>\" for \"<habit>\", ... , the habit \"<name>\" prints\n  \"<out>\".` -- the worked example. It becomes a claim: the three log lines are\n  fed to the program, the habit name is its argument, and what it prints is\n  compared byte for byte. This is the only thing that holds the minted code to\n  the program's words, so every program must state one.\n\nMechanism: the behaviour is clauses (habit-name, read-log, parse-entry,\nparse-date, render, marks, earliest, latest, logged-days, logged?, next-day,\ndays-in-month, leap-year?, date=?, date<?, present-mark, absent-mark, main).\nDates are parsed with the string-cut contract, compared as (year month day)\nlists, and the range is walked one day at a time. Because home-manager is\nunprivileged and there is nothing to boot, the tool is simply installed into\nthe user's profile: `home.packages` gets the built site, named by the command\nsentence.\n\nTwo things I could not derive and one I had to choose:\n\n- No contract opens a named file, so the clauses read standard input only; the\n  \"file named as the second argument\" half of that sentence is not honoured.\n  Filed as a gap (no-file-contract), and the rule that reads the log carries\n  lowered confidence for it.\n- The worked-example sentence lists its log entries inside one line, so the\n  pattern fixes three entries. Filed as a gap (one-line-item-list); an example\n  with a different number of entries needs a regeneration.\n- The program says nothing about an empty log; the tool prints an empty line in\n  that case.\n\nThe contract pinned on every future compile: the command name reaches\n`site.<self>.command`, and the example's expected output reaches the claim that\nruns the program end to end.\nlips>>>"
+-> submit_draft "0.85 r9 match fact witness.<q>.expected => claim.<q>.args \"[ \\\"<q>\\\" ]\" ; claim.<q>.call \"(begin (habit-main) (emitted))\" ; claim.<q>.equals \"(list \\\"#<value>\\\")\""
 <- submit_draft
-examples/habit.lips: 9 of 9 lines crystallize.
-  line 1  ok        p1  tool.purpose
-  line 2  ok        p2  input.habit
-  line 3  ok        p3  input.source
-  line 4  ok        p4  log.format
-  line 5  ok        p5  render.days
-  line 6  ok        p6  mark.present
-  line 7  ok        p7  mark.absent
-  line 8  ok        p8  tool.command
-  line 9  ok        p9  witness.run.prints
-
-decorative, realizing nothing (1) -- editing these changes no output:
-  line 1  "track daily habits from the terminal."
-
-read as decoration (1) -- these words reach a concept only:
-  line 1  "track daily habits from the terminal."  <what>
-
-does not fit (1) -- these values are not what the option takes:
-  line 5  "print one character per day from the log's earliest date to its latest date."  engine rule r4: emit path unterminated <capture> in: date<?
-
 world home-manager:
 · crystallize examples/habit.lips
-✓ crystallize examples/habit.lips  (0.0s)
-lips could not fit what examples/habit.lips states into the setup it was built with:
+✗ crystallize examples/habit.lips  (0.0s)
+lips built a setup for examples/habit.lips, but it didn't hold up:
 
-  engine rule r4: emit path unterminated <capture> in: date<?
+it reads words from the program and then discards them:
+  - pattern p9 binds <e> and emits it nowhere: the word it reads reaches no decision
 
-→ state a value that fits in examples/habit.lips, or rebuild the setup: lips generate examples/habit.lips
+Each one wants one of three fixes: use the word (a <value>/<value.N>
+hole, or the capture aligned with the subject segment it fills); or, if
+it SELECTS a mechanism no value can carry (a builder, a service), spell
+it as a literal token of the template, so editing it stops the line
+matching and asks for a fresh language instead of governing nothing; or,
+if the line truly carries no value, read it as a concept.
 
--> submit_draft "0.9 p1 pattern track <what.words> from the terminal => concept tool.purpose \"<what>\"\n0.9 p2 pattern the first argument names the habit to print => fact input.habit \"the first argument names the habit to print\"\n0.8 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source \"the second argument names a log file, otherwise standard input\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format \"an ISO date and a habit name separated by a tab\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.days \"one character per day from the earliest to the latest date\"\n0.95 p6 pattern mark a day the named habit was logged with \"<mark>\" => fact mark.present \"<mark>\"\n0.95 p7 pattern mark a day it was not logged with \"<mark>\" => fact mark.absent \"<mark>\"\n0.95 p8 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.85 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<q>\" prints \"<out>\" => fact witness.<q>.prints \"<d1> <h1> <d2> <h2> <d3> <h3> <q> <out>\"\n0.9 r1 match fact input.habit => clause.habit-name \"(define (habit-name) (car (arguments)))\"\n0.75 r2 match fact input.source => clause.read-log \"(define (read-log) (let ((line (read-a-line))) (if (end-of-input? line) (quote ()) (let ((entry (parse-entry line))) (cons entry (read-log))))))\"\n0.75 r2 because \"no contract opens a file, so the clauses can only read standard input; the file named by the second argument is not honoured\"\n0.85 r3 match fact log.format => clause.parse-entry \"(define (parse-entry line) (let ((cut (string-cut line #\\\\tab))) (if (not cut) (die \\\"log line is not a date and a habit separated by a tab:\\\" line) (cons (parse-date (car cut)) (cdr cut)))))\" ; clause.parse-date \"(define (parse-date text) (let ((a (string-cut text #\\\\-))) (if (not a) (die \\\"not an ISO date:\\\" text) (let ((b (string-cut (cdr a) #\\\\-))) (if (not b) (die \\\"not an ISO date:\\\" text) (list (string->number (car a)) (string->number (car b)) (string->number (cdr b))))))))\"\n0.85 r4 match fact render.days => clause.main \"(define (main) (let* ((habit (habit-name)) (entries (read-log))) (if (null? entries) (emit \\\"\\\") (emit (render habit entries)))))\" ; clause.render \"(define (render habit entries) (let* ((dates (dates-of entries)) (days (logged-days habit entries))) (marks (earliest dates) (latest dates) days)))\" ; clause.marks \"(define (marks day last days) (if (date-before? last day) \\\"\\\" (string-append (if (logged? day days) (present-mark) (absent-mark)) (marks (next-day day) last days))))\" ; clause.dates-of \"(define (dates-of entries) (if (null? entries) (quote ()) (cons (car (car entries)) (dates-of (cdr entries)))))\" ; clause.logged-days \"(define (logged-days habit entries) (cond ((null? entries) (quote ())) ((string=? (cdr (car entries)) habit) (cons (car (car entries)) (logged-days habit (cdr entries)))) (else (logged-days habit (cdr entries)))))\" ; clause.logged? \"(define (logged? day days) (cond ((null? days) #f) ((date-same? day (car days)) #t) (else (logged? day (cdr days)))))\" ; clause.earliest \"(define (earliest dates) (if (null? (cdr dates)) (car dates) (let ((rest (earliest (cdr dates)))) (if (date-before? (car dates) rest) (car dates) rest))))\" ; clause.latest \"(define (latest dates) (if (null? (cdr dates)) (car dates) (let ((rest (latest (cdr dates)))) (if (date-before? rest (car dates)) (car dates) rest))))\" ; clause.date-same? \"(define (date-same? a b) (and (= (car a) (car b)) (= (car (cdr a)) (car (cdr b))) (= (car (cdr (cdr a))) (car (cdr (cdr b))))))\" ; clause.date-before? \"(define (date-before? a b) (cond ((not (= (car a) (car b))) (< (car a) (car b))) ((not (= (car (cdr a)) (car (cdr b)))) (< (car (cdr a)) (car (cdr b)))) (else (< (car (cdr (cdr a))) (car (cdr (cdr b)))))))\" ; clause.next-day \"(define (next-day day) (let ((y (car day)) (m (car (cdr day))) (d (car (cdr (cdr day))))) (cond ((< d (days-in-month y m)) (list y m (+ d 1))) ((< m 12) (list y (+ m 1) 1)) (else (list (+ y 1) 1 1)))))\" ; clause.days-in-month \"(define (days-in-month y m) (cond ((= m 2) (if (leap-year? y) 29 28)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))\" ; clause.leap-year? \"(define (leap-year? y) (cond ((= (remainder y 400) 0) #t) ((= (remainder y 100) 0) #f) (else (= (remainder y 4) 0))))\"\n0.95 r5 match fact mark.present => clause.present-mark \"(define (present-mark) \\\"#<value>\\\")\"\n0.95 r6 match fact mark.absent => clause.absent-mark \"(define (absent-mark) \\\"#<value>\\\")\"\n0.9 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.85 r8 match fact witness.<q>.prints => claim.<q>.args \"[ \\\"<value.7>\\\" ]\" ; claim.<q>.feed \"[ \\\"<value.1>\\t<value.2>\\\" \\\"<value.3>\\t<value.4>\\\" \\\"<value.5>\\t<value.6>\\\" ]\" ; claim.<q>.call \"(begin (main) (emitted))\" ; claim.<q>.equals \"(list \\\"#<value.8>\\\")\"\n0.9 q1 demand input.habit \"which argument names the habit to print?\"\n0.9 q2 demand input.source \"where is the habit log read from?\"\n0.9 q3 demand log.format \"what does one log line hold?\"\n0.9 q4 demand render.days \"what is printed, one character per day, and over which range?\"\n0.9 q5 demand mark.present \"which character marks a day the habit was logged?\"\n0.9 q6 demand mark.absent \"which character marks a day the habit was not logged?\"\n0.9 q7 demand tool.command \"under which command name is the tool installed?\"\n0.9 q8 demand witness.<q>.prints \"give an example log and what a habit prints for it\"\n0.9 a1 expect site.<self>.command from tool.command\n0.85 a2 expect claim.<q>.equals from witness.<q>.prints is \"(list \\\"<value.8>\\\")\"\n0.8 g1 gap no-file-contract <<<lips\nblocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.\nno contract opens a named file: the clause layer offers read-a-line (standard\ninput) and nothing else, so only the standard-input half of that sentence is\nrealized. A file-reading contract (open a path, read its lines) would close this.\nlips>>>\n0.8 g2 gap one-line-item-list <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nthe example log is a list of items written inside ONE sentence, and a template\ncannot repeat a hole, so the witness pattern fixes three entries. A four-entry\nexample needs a fresh mint, or the author must be able to write the entries as\nlines of a block. A repeating hole (or a list hole binding a comma-separated\nrun of items) would close this.\nlips>>>\n0.95 d1 report <<<lips\nThis language describes a small terminal habit tracker, and it is realized as\nbehaviour clauses (a real little program), not as configuration.\n\nLine shapes it accepts, one per sentence of the program:\n\n- `track <what> from the terminal.` -- a decorative title. The words are read\n  but nothing is realized from them.\n- `the first argument names the habit to print.` -- fixes where the habit name\n  comes from: the first command-line argument.\n- `read the habit log from the file named as the second argument, or from\n  standard input when no file is named.` -- fixes the input. See the caveat\n  below.\n- `each log line holds an ISO date and a habit name separated by a tab.` --\n  fixes the line format: this is what the parser is written from.\n- `print one character per day from the log's earliest date to its latest\n  date.` -- fixes the rendering: the whole day-by-day walk, including the\n  calendar arithmetic (month lengths, leap years), comes from this sentence.\n- `mark a day the named habit was logged with \"#\".` and\n  `mark a day it was not logged with \".\".` -- the two marks. Both characters\n  are holes: change them in the program and the built tool changes.\n- `install the tool as the command habit.` -- the command name is a hole; it\n  becomes the name of the installed program (`site.<self>.command`) and the\n  program is added to `home.packages`.\n- `given the log of \"<date>\" for \"<habit>\", ... , the habit \"<name>\" prints\n  \"<out>\".` -- the worked example. It becomes a claim: the three log lines are\n  fed to the program, the habit name is its argument, and what it prints is\n  compared byte for byte. This is the only thing that holds the minted code to\n  the program's words, so every program must state one.\n\nMechanism: the behaviour is clauses (habit-name, read-log, parse-entry,\nparse-date, render, marks, earliest, latest, logged-days, logged?, next-day,\ndays-in-month, leap-year?, date-same?, date-before?, present-mark,\nabsent-mark, main). Dates are parsed with the string-cut contract, compared as\n(year month day) lists, and the range is walked one day at a time. Because\nhome-manager is unprivileged and there is nothing to boot, the tool is simply\ninstalled into the user's profile: `home.packages` gets the built site, named\nby the command sentence.\n\nTwo things I could not derive and one I had to choose:\n\n- No contract opens a named file, so the clauses read standard input only; the\n  \"file named as the second argument\" half of that sentence is not honoured.\n  Filed as a gap (no-file-contract), and the rule that reads the log carries\n  lowered confidence for it.\n- The worked-example sentence lists its log entries inside one line, so the\n  pattern fixes three entries. Filed as a gap (one-line-item-list); an example\n  with a different number of entries needs a regeneration.\n- The program says nothing about an empty log; the tool prints an empty line in\n  that case.\n\nThe contract pinned on every future compile: the command name reaches\n`site.<self>.command`, and the example's expected output reaches the claim that\nruns the program end to end.\nlips>>>"
+→ run generate again. If it keeps failing the same way, it's a lips bug;
+  please report it with the text above.
+
+-> submit_draft "0.85 p9 pattern given the log of <e.list:,|and> the habit \"<q>\" prints \"<out>\" => fact witness.<q>.expected \"<out>\" ; concept witness.<q>.item.<e:index> \"<e>\""
 <- submit_draft
 examples/habit.lips: 9 of 9 lines crystallize.
-  line 1  ok        p1  tool.purpose
-  line 2  ok        p2  input.habit
+  line 1  ok        p1  habit.purpose
+  line 2  ok        p2  cli.habit
   line 3  ok        p3  input.source
   line 4  ok        p4  log.format
-  line 5  ok        p5  render.days
-  line 6  ok        p6  mark.present
-  line 7  ok        p7  mark.absent
-  line 8  ok        p8  tool.command
-  line 9  ok        p9  witness.run.prints
+  line 5  ok        p5  render.span
+  line 6  ok        p6  mark.logged
+  line 7  ok        p7  mark.missing
+  line 8  ok        p8  install.command
+  line 9  ok        p9  witness.run.expected, witness.run.item.1, witness.run.item.2, witness.run.item.3, witness.run.entry.1, witness.run.entry.2, witness.run.entry.3
 
 decorative, realizing nothing (1) -- editing these changes no output:
   line 1  "track daily habits from the terminal."
 
 read as decoration (1) -- these words reach a concept only:
-  line 1  "track daily habits from the terminal."  <what>
-
-world home-manager:
-· crystallize examples/habit.lips
-✓ crystallize examples/habit.lips  (0.0s)
-the setup lips built for examples/habit.lips can't be turned into a module:
-
-  clause leap-year? names remainder, which no form, procedure or contract grounds. Behaviour reaches the world only through a declared contract.
-
-→ rebuild the setup: lips generate examples/habit.lips
-
--> submit_draft "0.9 p1 pattern track <what.words> from the terminal => concept tool.purpose \"<what>\"\n0.9 p2 pattern the first argument names the habit to print => fact input.habit \"the first argument names the habit to print\"\n0.8 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source \"the second argument names a log file, otherwise standard input\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format \"an ISO date and a habit name separated by a tab\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.days \"one character per day from the earliest to the latest date\"\n0.95 p6 pattern mark a day the named habit was logged with \"<mark>\" => fact mark.present \"<mark>\"\n0.95 p7 pattern mark a day it was not logged with \"<mark>\" => fact mark.absent \"<mark>\"\n0.95 p8 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.85 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<q>\" prints \"<out>\" => fact witness.<q>.prints \"<d1> <h1> <d2> <h2> <d3> <h3> <q> <out>\"\n0.9 r1 match fact input.habit => clause.habit-name \"(define (habit-name) (car (arguments)))\"\n0.75 r2 match fact input.source => clause.read-log \"(define (read-log) (let ((line (read-a-line))) (if (end-of-input? line) (quote ()) (let ((entry (parse-entry line))) (cons entry (read-log))))))\"\n0.75 r2 because \"no contract opens a file, so the clauses can only read standard input; the file named by the second argument is not honoured\"\n0.85 r3 match fact log.format => clause.parse-entry \"(define (parse-entry line) (let ((cut (string-cut line #\\\\tab))) (if (not cut) (die \\\"log line is not a date and a habit separated by a tab:\\\" line) (cons (parse-date (car cut)) (cdr cut)))))\" ; clause.parse-date \"(define (parse-date text) (let ((a (string-cut text #\\\\-))) (if (not a) (die \\\"not an ISO date:\\\" text) (let ((b (string-cut (cdr a) #\\\\-))) (if (not b) (die \\\"not an ISO date:\\\" text) (list (string->number (car a)) (string->number (car b)) (string->number (cdr b))))))))\"\n0.85 r4 match fact render.days => clause.main \"(define (main) (let* ((habit (habit-name)) (entries (read-log))) (if (null? entries) (emit \\\"\\\") (emit (render habit entries)))))\" ; clause.render \"(define (render habit entries) (let* ((dates (dates-of entries)) (days (logged-days habit entries))) (marks (earliest dates) (latest dates) days)))\" ; clause.marks \"(define (marks day last days) (if (date-before? last day) \\\"\\\" (string-append (if (logged? day days) (present-mark) (absent-mark)) (marks (next-day day) last days))))\" ; clause.dates-of \"(define (dates-of entries) (if (null? entries) (quote ()) (cons (car (car entries)) (dates-of (cdr entries)))))\" ; clause.logged-days \"(define (logged-days habit entries) (cond ((null? entries) (quote ())) ((string=? (cdr (car entries)) habit) (cons (car (car entries)) (logged-days habit (cdr entries)))) (else (logged-days habit (cdr entries)))))\" ; clause.logged? \"(define (logged? day days) (cond ((null? days) #f) ((date-same? day (car days)) #t) (else (logged? day (cdr days)))))\" ; clause.earliest \"(define (earliest dates) (if (null? (cdr dates)) (car dates) (let ((rest (earliest (cdr dates)))) (if (date-before? (car dates) rest) (car dates) rest))))\" ; clause.latest \"(define (latest dates) (if (null? (cdr dates)) (car dates) (let ((rest (latest (cdr dates)))) (if (date-before? rest (car dates)) (car dates) rest))))\" ; clause.date-same? \"(define (date-same? a b) (and (= (car a) (car b)) (= (car (cdr a)) (car (cdr b))) (= (car (cdr (cdr a))) (car (cdr (cdr b))))))\" ; clause.date-before? \"(define (date-before? a b) (cond ((not (= (car a) (car b))) (< (car a) (car b))) ((not (= (car (cdr a)) (car (cdr b)))) (< (car (cdr a)) (car (cdr b)))) (else (< (car (cdr (cdr a))) (car (cdr (cdr b)))))))\" ; clause.next-day \"(define (next-day day) (let ((y (car day)) (m (car (cdr day))) (d (car (cdr (cdr day))))) (cond ((< d (days-in-month y m)) (list y m (+ d 1))) ((< m 12) (list y (+ m 1) 1)) (else (list (+ y 1) 1 1)))))\" ; clause.days-in-month \"(define (days-in-month y m) (cond ((= m 2) (if (leap-year? y) 29 28)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))\" ; clause.leap-year? \"(define (leap-year? y) (cond ((multiple-of? y 400) #t) ((multiple-of? y 100) #f) (else (multiple-of? y 4))))\" ; clause.multiple-of? \"(define (multiple-of? n k) (cond ((= n 0) #t) ((< n k) #f) (else (multiple-of? (- n k) k))))\"\n0.95 r5 match fact mark.present => clause.present-mark \"(define (present-mark) \\\"#<value>\\\")\"\n0.95 r6 match fact mark.absent => clause.absent-mark \"(define (absent-mark) \\\"#<value>\\\")\"\n0.9 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.85 r8 match fact witness.<q>.prints => claim.<q>.args \"[ \\\"<value.7>\\\" ]\" ; claim.<q>.feed \"[ \\\"<value.1>\\t<value.2>\\\" \\\"<value.3>\\t<value.4>\\\" \\\"<value.5>\\t<value.6>\\\" ]\" ; claim.<q>.call \"(begin (main) (emitted))\" ; claim.<q>.equals \"(list \\\"#<value.8>\\\")\"\n0.9 q1 demand input.habit \"which argument names the habit to print?\"\n0.9 q2 demand input.source \"where is the habit log read from?\"\n0.9 q3 demand log.format \"what does one log line hold?\"\n0.9 q4 demand render.days \"what is printed, one character per day, and over which range?\"\n0.9 q5 demand mark.present \"which character marks a day the habit was logged?\"\n0.9 q6 demand mark.absent \"which character marks a day the habit was not logged?\"\n0.9 q7 demand tool.command \"under which command name is the tool installed?\"\n0.9 q8 demand witness.<q>.prints \"give an example log and what a habit prints for it\"\n0.9 a1 expect site.<self>.command from tool.command\n0.85 a2 expect claim.<q>.equals from witness.<q>.prints is \"(list \\\"<value.8>\\\")\"\n0.8 g1 gap no-file-contract <<<lips\nblocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.\nno contract opens a named file: the clause layer offers read-a-line (standard\ninput) and nothing else, so only the standard-input half of that sentence is\nrealized. A file-reading contract (open a path, read its lines) would close this.\nlips>>>\n0.8 g2 gap one-line-item-list <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nthe example log is a list of items written inside ONE sentence, and a template\ncannot repeat a hole, so the witness pattern fixes three entries. A four-entry\nexample needs a fresh mint, or the author must be able to write the entries as\nlines of a block. A repeating hole (or a list hole binding a comma-separated\nrun of items) would close this.\nlips>>>\n0.95 d1 report <<<lips\nThis language describes a small terminal habit tracker, and it is realized as\nbehaviour clauses (a real little program), not as configuration.\n\nLine shapes it accepts, one per sentence of the program:\n\n- `track <what> from the terminal.` -- a decorative title. The words are read\n  but nothing is realized from them.\n- `the first argument names the habit to print.` -- fixes where the habit name\n  comes from: the first command-line argument.\n- `read the habit log from the file named as the second argument, or from\n  standard input when no file is named.` -- fixes the input. See the caveat\n  below.\n- `each log line holds an ISO date and a habit name separated by a tab.` --\n  fixes the line format: this is what the parser is written from.\n- `print one character per day from the log's earliest date to its latest\n  date.` -- fixes the rendering: the whole day-by-day walk, including the\n  calendar arithmetic (month lengths, leap years), comes from this sentence.\n- `mark a day the named habit was logged with \"#\".` and\n  `mark a day it was not logged with \".\".` -- the two marks. Both characters\n  are holes: change them in the program and the built tool changes.\n- `install the tool as the command habit.` -- the command name is a hole; it\n  becomes the name of the installed program (`site.<self>.command`) and the\n  program is added to `home.packages`.\n- `given the log of \"<date>\" for \"<habit>\", ... , the habit \"<name>\" prints\n  \"<out>\".` -- the worked example. It becomes a claim: the three log lines are\n  fed to the program, the habit name is its argument, and what it prints is\n  compared byte for byte. This is the only thing that holds the minted code to\n  the program's words, so every program must state one.\n\nMechanism: the behaviour is clauses (habit-name, read-log, parse-entry,\nparse-date, render, marks, earliest, latest, logged-days, logged?, next-day,\ndays-in-month, leap-year?, multiple-of?, date-same?, date-before?,\npresent-mark, absent-mark, main). Dates are parsed with the string-cut\ncontract, compared as (year month day) lists, and the range is walked one day\nat a time. Because home-manager is unprivileged and there is nothing to boot,\nthe tool is simply installed into the user's profile: `home.packages` gets the\nbuilt site, named by the command sentence.\n\nTwo things I could not derive and one I had to choose:\n\n- No contract opens a named file, so the clauses read standard input only; the\n  \"file named as the second argument\" half of that sentence is not honoured.\n  Filed as a gap (no-file-contract), and the rule that reads the log carries\n  lowered confidence for it.\n- The worked-example sentence lists its log entries inside one line, so the\n  pattern fixes three entries. Filed as a gap (one-line-item-list); an example\n  with a different number of entries needs a regeneration.\n- The program says nothing about an empty log; the tool prints an empty line in\n  that case.\n\nThe contract pinned on every future compile: the command name reaches\n`site.<self>.command`, and the example's expected output reaches the claim that\nruns the program end to end.\nlips>>>"
-<- submit_draft
-examples/habit.lips: 9 of 9 lines crystallize.
-  line 1  ok        p1  tool.purpose
-  line 2  ok        p2  input.habit
-  line 3  ok        p3  input.source
-  line 4  ok        p4  log.format
-  line 5  ok        p5  render.days
-  line 6  ok        p6  mark.present
-  line 7  ok        p7  mark.absent
-  line 8  ok        p8  tool.command
-  line 9  ok        p9  witness.run.prints
-
-decorative, realizing nothing (1) -- editing these changes no output:
-  line 1  "track daily habits from the terminal."
-
-read as decoration (1) -- these words reach a concept only:
-  line 1  "track daily habits from the terminal."  <what>
+  line 9  "given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#"."  <e>
 
 world home-manager:
 · crystallize examples/habit.lips
 ✓ crystallize examples/habit.lips  (0.0s)
 · contract: 2 checks
-✗ contract: 2 checks  (0.0s)
-examples/habit.lips no longer produces what it promised:
+✓ contract: 2 checks  (0.0s)
+  grounding: 1 option assignment (schema), 24 clauses (contracts), 1 claim (stated), 0 unvouched assertions (nothing), 0 words, 0 mint-written words inside option strings
+· clause claims: 1 claim
+✓ clause claims: 1 claim  (4.5s)
+examples/habit.lips: this draft's own contract cannot hold, in home-manager:
 
-  site.habit.command: should contain habit, but is null
+  site.<self>.command: nothing realizes this slot, so the program value habit lands nowhere
 
-→ if you changed the program on purpose, rebuild: lips generate examples/habit.lips
+→ assert the slot the value actually reaches, or drop the check.
 
--> submit_draft "0.9 p1 pattern track <what.words> from the terminal => concept tool.purpose \"<what>\"\n0.9 p2 pattern the first argument names the habit to print => fact input.habit \"the first argument names the habit to print\"\n0.8 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source \"the second argument names a log file, otherwise standard input\"\n0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format \"an ISO date and a habit name separated by a tab\"\n0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.days \"one character per day from the earliest to the latest date\"\n0.95 p6 pattern mark a day the named habit was logged with \"<mark>\" => fact mark.present \"<mark>\"\n0.95 p7 pattern mark a day it was not logged with \"<mark>\" => fact mark.absent \"<mark>\"\n0.95 p8 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.85 p9 pattern given the log of \"<d1>\" for \"<h1>\", \"<d2>\" for \"<h2>\" and \"<d3>\" for \"<h3>\", the habit \"<q>\" prints \"<out>\" => fact witness.<q>.prints \"<d1> <h1> <d2> <h2> <d3> <h3> <q> <out>\"\n0.9 r1 match fact input.habit => clause.habit-name \"(define (habit-name) (car (arguments)))\"\n0.75 r2 match fact input.source => clause.read-log \"(define (read-log) (let ((line (read-a-line))) (if (end-of-input? line) (quote ()) (let ((entry (parse-entry line))) (cons entry (read-log))))))\"\n0.75 r2 because \"no contract opens a file, so the clauses can only read standard input; the file named by the second argument is not honoured\"\n0.85 r3 match fact log.format => clause.parse-entry \"(define (parse-entry line) (let ((cut (string-cut line #\\\\tab))) (if (not cut) (die \\\"log line is not a date and a habit separated by a tab:\\\" line) (cons (parse-date (car cut)) (cdr cut)))))\" ; clause.parse-date \"(define (parse-date text) (let ((a (string-cut text #\\\\-))) (if (not a) (die \\\"not an ISO date:\\\" text) (let ((b (string-cut (cdr a) #\\\\-))) (if (not b) (die \\\"not an ISO date:\\\" text) (list (string->number (car a)) (string->number (car b)) (string->number (cdr b))))))))\"\n0.85 r4 match fact render.days => clause.main \"(define (main) (let* ((habit (habit-name)) (entries (read-log))) (if (null? entries) (emit \\\"\\\") (emit (render habit entries)))))\" ; clause.render \"(define (render habit entries) (let* ((dates (dates-of entries)) (days (logged-days habit entries))) (marks (earliest dates) (latest dates) days)))\" ; clause.marks \"(define (marks day last days) (if (date-before? last day) \\\"\\\" (string-append (if (logged? day days) (present-mark) (absent-mark)) (marks (next-day day) last days))))\" ; clause.dates-of \"(define (dates-of entries) (if (null? entries) (quote ()) (cons (car (car entries)) (dates-of (cdr entries)))))\" ; clause.logged-days \"(define (logged-days habit entries) (cond ((null? entries) (quote ())) ((string=? (cdr (car entries)) habit) (cons (car (car entries)) (logged-days habit (cdr entries)))) (else (logged-days habit (cdr entries)))))\" ; clause.logged? \"(define (logged? day days) (cond ((null? days) #f) ((date-same? day (car days)) #t) (else (logged? day (cdr days)))))\" ; clause.earliest \"(define (earliest dates) (if (null? (cdr dates)) (car dates) (let ((rest (earliest (cdr dates)))) (if (date-before? (car dates) rest) (car dates) rest))))\" ; clause.latest \"(define (latest dates) (if (null? (cdr dates)) (car dates) (let ((rest (latest (cdr dates)))) (if (date-before? rest (car dates)) (car dates) rest))))\" ; clause.date-same? \"(define (date-same? a b) (and (= (car a) (car b)) (= (car (cdr a)) (car (cdr b))) (= (car (cdr (cdr a))) (car (cdr (cdr b))))))\" ; clause.date-before? \"(define (date-before? a b) (cond ((not (= (car a) (car b))) (< (car a) (car b))) ((not (= (car (cdr a)) (car (cdr b)))) (< (car (cdr a)) (car (cdr b)))) (else (< (car (cdr (cdr a))) (car (cdr (cdr b)))))))\" ; clause.next-day \"(define (next-day day) (let ((y (car day)) (m (car (cdr day))) (d (car (cdr (cdr day))))) (cond ((< d (days-in-month y m)) (list y m (+ d 1))) ((< m 12) (list y (+ m 1) 1)) (else (list (+ y 1) 1 1)))))\" ; clause.days-in-month \"(define (days-in-month y m) (cond ((= m 2) (if (leap-year? y) 29 28)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))\" ; clause.leap-year? \"(define (leap-year? y) (cond ((multiple-of? y 400) #t) ((multiple-of? y 100) #f) (else (multiple-of? y 4))))\" ; clause.multiple-of? \"(define (multiple-of? n k) (cond ((= n 0) #t) ((< n k) #f) (else (multiple-of? (- n k) k))))\"\n0.95 r5 match fact mark.present => clause.present-mark \"(define (present-mark) \\\"#<value>\\\")\"\n0.95 r6 match fact mark.absent => clause.absent-mark \"(define (absent-mark) \\\"#<value>\\\")\"\n0.9 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.85 r8 match fact witness.<q>.prints => claim.<q>.args \"[ \\\"<value.7>\\\" ]\" ; claim.<q>.feed \"[ \\\"<value.1>\\t<value.2>\\\" \\\"<value.3>\\t<value.4>\\\" \\\"<value.5>\\t<value.6>\\\" ]\" ; claim.<q>.call \"(begin (main) (emitted))\" ; claim.<q>.equals \"(list \\\"#<value.8>\\\")\"\n0.9 q1 demand input.habit \"which argument names the habit to print?\"\n0.9 q2 demand input.source \"where is the habit log read from?\"\n0.9 q3 demand log.format \"what does one log line hold?\"\n0.9 q4 demand render.days \"what is printed, one character per day, and over which range?\"\n0.9 q5 demand mark.present \"which character marks a day the habit was logged?\"\n0.9 q6 demand mark.absent \"which character marks a day the habit was not logged?\"\n0.9 q7 demand tool.command \"under which command name is the tool installed?\"\n0.9 q8 demand witness.<q>.prints \"give an example log and what a habit prints for it\"\n0.85 a2 expect claim.<q>.equals from witness.<q>.prints is \"(list \\\"<value.8>\\\")\"\n0.8 g1 gap no-file-contract <<<lips\nblocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.\nno contract opens a named file: the clause layer offers read-a-line (standard\ninput) and nothing else, so only the standard-input half of that sentence is\nrealized. A file-reading contract (open a path, read its lines) would close this.\nlips>>>\n0.8 g2 gap one-line-item-list <<<lips\nblocked line: given the log of \"2026-01-01\" for \"run\", \"2026-01-02\" for \"read\" and \"2026-01-04\" for \"run\", the habit \"run\" prints \"#..#\".\nthe example log is a list of items written inside ONE sentence, and a template\ncannot repeat a hole, so the witness pattern fixes three entries. A four-entry\nexample needs a fresh mint, or the author must be able to write the entries as\nlines of a block. A repeating hole (or a list hole binding a comma-separated\nrun of items) would close this.\nlips>>>\n0.95 d1 report <<<lips\nThis language describes a small terminal habit tracker, and it is realized as\nbehaviour clauses (a real little program), not as configuration.\n\nLine shapes it accepts, one per sentence of the program:\n\n- `track <what> from the terminal.` -- a decorative title. The words are read\n  but nothing is realized from them.\n- `the first argument names the habit to print.` -- fixes where the habit name\n  comes from: the first command-line argument.\n- `read the habit log from the file named as the second argument, or from\n  standard input when no file is named.` -- fixes the input. See the caveat\n  below.\n- `each log line holds an ISO date and a habit name separated by a tab.` --\n  fixes the line format: this is what the parser is written from.\n- `print one character per day from the log's earliest date to its latest\n  date.` -- fixes the rendering: the whole day-by-day walk, including the\n  calendar arithmetic (month lengths, leap years), comes from this sentence.\n- `mark a day the named habit was logged with \"#\".` and\n  `mark a day it was not logged with \".\".` -- the two marks. Both characters\n  are holes: change them in the program and the built tool changes.\n- `install the tool as the command habit.` -- the command name is a hole; it\n  becomes the name of the installed program (`site.<self>.command`) and the\n  program is added to `home.packages`.\n- `given the log of \"<date>\" for \"<habit>\", ... , the habit \"<name>\" prints\n  \"<out>\".` -- the worked example. It becomes a claim: the three log lines are\n  fed to the program, the habit name is its argument, and what it prints is\n  compared byte for byte. This is the only thing that holds the minted code to\n  the program's words, so every program must state one.\n\nMechanism: the behaviour is clauses (habit-name, read-log, parse-entry,\nparse-date, render, marks, earliest, latest, logged-days, logged?, next-day,\ndays-in-month, leap-year?, multiple-of?, date-same?, date-before?,\npresent-mark, absent-mark, main). Dates are parsed with the string-cut\ncontract, compared as (year month day) lists, and the range is walked one day\nat a time. Because home-manager is unprivileged and there is nothing to boot,\nthe tool is simply installed into the user's profile: `home.packages` gets the\nbuilt site, named by the command sentence.\n\nTwo things I could not derive and one I had to choose:\n\n- No contract opens a named file, so the clauses read standard input only; the\n  \"file named as the second argument\" half of that sentence is not honoured.\n  Filed as a gap (no-file-contract), and the rule that reads the log carries\n  lowered confidence for it.\n- The worked-example sentence lists its log entries inside one line, so the\n  pattern fixes three entries. Filed as a gap (one-line-item-list); an example\n  with a different number of entries needs a regeneration.\n- The program says nothing about an empty log; the tool prints an empty line in\n  that case.\n\nThe behavioural contract pinned on every future compile is the example itself:\nthe claim feeds the stated log to the program, passes the stated habit as its\nargument, and requires exactly the stated output.\nlips>>>"
+-> submit_draft "0.8 a1 gap site-command-unassertable <<<lips\nblocked line: install the tool as the command habit.\nthe command name reaches site.<self>.command, but no expect can assert that slot\n(\"nothing realizes this slot\"), so the only pin left for the installed name is\nthe rule itself. an assertable site.<self>.command (as artifact args are\nassertable) would close this.\nlips>>>"
 <- submit_draft
-the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to replace it; whatever you write outside this tool is read by nothing.
+the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to patch it -- only the lines you change -- and whatever you write outside this tool is read by nothing.
 
 --- raw reply ---
-0.9 p1 pattern track <what.words> from the terminal => concept tool.purpose "<what>"
-0.9 p2 pattern the first argument names the habit to print => fact input.habit "the first argument names the habit to print"
-0.8 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source "the second argument names a log file, otherwise standard input"
-0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format "an ISO date and a habit name separated by a tab"
-0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.days "one character per day from the earliest to the latest date"
-0.95 p6 pattern mark a day the named habit was logged with "<mark>" => fact mark.present "<mark>"
-0.95 p7 pattern mark a day it was not logged with "<mark>" => fact mark.absent "<mark>"
-0.95 p8 pattern install the tool as the command <name> => fact tool.command "<name>"
-0.85 p9 pattern given the log of "<d1>" for "<h1>", "<d2>" for "<h2>" and "<d3>" for "<h3>", the habit "<q>" prints "<out>" => fact witness.<q>.prints "<d1> <h1> <d2> <h2> <d3> <h3> <q> <out>"
-0.9 r1 match fact input.habit => clause.habit-name "(define (habit-name) (car (arguments)))"
-0.75 r2 match fact input.source => clause.read-log "(define (read-log) (let ((line (read-a-line))) (if (end-of-input? line) (quote ()) (let ((entry (parse-entry line))) (cons entry (read-log))))))"
-0.75 r2 because "no contract opens a file, so the clauses can only read standard input; the file named by the second argument is not honoured"
-0.85 r3 match fact log.format => clause.parse-entry "(define (parse-entry line) (let ((cut (string-cut line #\\tab))) (if (not cut) (die \"log line is not a date and a habit separated by a tab:\" line) (cons (parse-date (car cut)) (cdr cut)))))" ; clause.parse-date "(define (parse-date text) (let ((a (string-cut text #\\-))) (if (not a) (die \"not an ISO date:\" text) (let ((b (string-cut (cdr a) #\\-))) (if (not b) (die \"not an ISO date:\" text) (list (string->number (car a)) (string->number (car b)) (string->number (cdr b))))))))"
-0.85 r4 match fact render.days => clause.main "(define (main) (let* ((habit (habit-name)) (entries (read-log))) (if (null? entries) (emit \"\") (emit (render habit entries)))))" ; clause.render "(define (render habit entries) (let* ((dates (dates-of entries)) (days (logged-days habit entries))) (marks (earliest dates) (latest dates) days)))" ; clause.marks "(define (marks day last days) (if (date-before? last day) \"\" (string-append (if (logged? day days) (present-mark) (absent-mark)) (marks (next-day day) last days))))" ; clause.dates-of "(define (dates-of entries) (if (null? entries) (quote ()) (cons (car (car entries)) (dates-of (cdr entries)))))" ; clause.logged-days "(define (logged-days habit entries) (cond ((null? entries) (quote ())) ((string=? (cdr (car entries)) habit) (cons (car (car entries)) (logged-days habit (cdr entries)))) (else (logged-days habit (cdr entries)))))" ; clause.logged? "(define (logged? day days) (cond ((null? days) #f) ((date-same? day (car days)) #t) (else (logged? day (cdr days)))))" ; clause.earliest "(define (earliest dates) (if (null? (cdr dates)) (car dates) (let ((rest (earliest (cdr dates)))) (if (date-before? (car dates) rest) (car dates) rest))))" ; clause.latest "(define (latest dates) (if (null? (cdr dates)) (car dates) (let ((rest (latest (cdr dates)))) (if (date-before? rest (car dates)) (car dates) rest))))" ; clause.date-same? "(define (date-same? a b) (and (= (car a) (car b)) (= (car (cdr a)) (car (cdr b))) (= (car (cdr (cdr a))) (car (cdr (cdr b))))))" ; clause.date-before? "(define (date-before? a b) (cond ((not (= (car a) (car b))) (< (car a) (car b))) ((not (= (car (cdr a)) (car (cdr b)))) (< (car (cdr a)) (car (cdr b)))) (else (< (car (cdr (cdr a))) (car (cdr (cdr b)))))))" ; clause.next-day "(define (next-day day) (let ((y (car day)) (m (car (cdr day))) (d (car (cdr (cdr day))))) (cond ((< d (days-in-month y m)) (list y m (+ d 1))) ((< m 12) (list y (+ m 1) 1)) (else (list (+ y 1) 1 1)))))" ; clause.days-in-month "(define (days-in-month y m) (cond ((= m 2) (if (leap-year? y) 29 28)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))" ; clause.leap-year? "(define (leap-year? y) (cond ((multiple-of? y 400) #t) ((multiple-of? y 100) #f) (else (multiple-of? y 4))))" ; clause.multiple-of? "(define (multiple-of? n k) (cond ((= n 0) #t) ((< n k) #f) (else (multiple-of? (- n k) k))))"
-0.95 r5 match fact mark.present => clause.present-mark "(define (present-mark) \"#<value>\")"
-0.95 r6 match fact mark.absent => clause.absent-mark "(define (absent-mark) \"#<value>\")"
-0.9 r7 match fact tool.command => site.<self>.command "\"<value>\"" ; home.packages "[ ${site} ]"
-0.85 r8 match fact witness.<q>.prints => claim.<q>.args "[ \"<value.7>\" ]" ; claim.<q>.feed "[ \"<value.1>\t<value.2>\" \"<value.3>\t<value.4>\" \"<value.5>\t<value.6>\" ]" ; claim.<q>.call "(begin (main) (emitted))" ; claim.<q>.equals "(list \"#<value.8>\")"
-0.9 q1 demand input.habit "which argument names the habit to print?"
-0.9 q2 demand input.source "where is the habit log read from?"
-0.9 q3 demand log.format "what does one log line hold?"
-0.9 q4 demand render.days "what is printed, one character per day, and over which range?"
-0.9 q5 demand mark.present "which character marks a day the habit was logged?"
-0.9 q6 demand mark.absent "which character marks a day the habit was not logged?"
-0.9 q7 demand tool.command "under which command name is the tool installed?"
-0.9 q8 demand witness.<q>.prints "give an example log and what a habit prints for it"
-0.85 a2 expect claim.<q>.equals from witness.<q>.prints is "(list \"<value.8>\")"
-0.8 g1 gap no-file-contract <<<lips
+0.95 p1 pattern track daily habits from the terminal => concept habit.purpose "tracking daily habits from the terminal"
+0.92 p2 pattern the first argument names the habit to print => fact cli.habit "the first argument names the habit"
+0.85 p3 pattern read the habit log from the file named as the second argument, or from standard input when no file is named => fact input.source "file argument or standard input"
+0.9 p4 pattern each log line holds an ISO date and a habit name separated by a tab => fact log.format "date tab habit"
+0.9 p5 pattern print one character per day from the log's earliest date to its latest date => fact render.span "earliest to latest, one character per day"
+0.93 p6 pattern mark a day the named habit was logged with "<mark>" => fact mark.logged "<mark>"
+0.93 p7 pattern mark a day it was not logged with "<mark>" => fact mark.missing "<mark>"
+0.93 p8 pattern install the tool as the command <cmd> => fact install.command "<cmd>"
+0.85 p10.each.p9.e pattern "<d>" for "<h>" => fact witness.<q>.entry.<n:index> "<d> <h>"
+0.9 r2 match fact cli.habit => clause.habit-habit-name "(define (habit-habit-name args) (cond ((null? args) (die \"no habit named\" \"arguments\")) (else (car args))))"
+0.7 r3 match fact input.source => clause.habit-read-log "(define (habit-read-log) (habit-collect (read-a-line)))" ; clause.habit-collect "(define (habit-collect l) (cond ((end-of-input? l) (quote ())) ((eq? (habit-parse-line l) #f) (habit-read-log)) (else (cons (habit-parse-line l) (habit-read-log)))))"
+0.7 r3 because "no contract can open a file, so only the standard-input half of this sentence is realized; the file named as the second argument is ignored"
+0.9 r4 match fact log.format => clause.habit-parse-line "(define (habit-parse-line s) (habit-cut s (habit-find-tab s 0)))" ; clause.habit-cut "(define (habit-cut s i) (cond ((eq? i #f) #f) (else (cons (substring s 0 i) (substring s (+ i 1) (string-length s))))))" ; clause.habit-find-tab "(define (habit-find-tab s i) (cond ((>= i (string-length s)) #f) ((string=? (substring s i (+ i 1)) \"\t\") i) (else (habit-find-tab s (+ i 1)))))"
+0.88 r5 match fact render.span => clause.habit-main "(define (habit-main) (emit (habit-render (habit-read-log) (habit-habit-name (arguments)))))" ; clause.habit-render "(define (habit-render entries name) (cond ((null? entries) \"\") (else (habit-marks entries name (habit-earliest entries) (habit-latest entries)))))" ; clause.habit-earliest "(define (habit-earliest entries) (cond ((null? (cdr entries)) (car (car entries))) (else (habit-smaller (car (car entries)) (habit-earliest (cdr entries))))))" ; clause.habit-latest "(define (habit-latest entries) (cond ((null? (cdr entries)) (car (car entries))) (else (habit-larger (car (car entries)) (habit-latest (cdr entries))))))" ; clause.habit-smaller "(define (habit-smaller a b) (cond ((string<? a b) a) (else b)))" ; clause.habit-larger "(define (habit-larger a b) (cond ((string<? a b) b) (else a)))" ; clause.habit-logged? "(define (habit-logged? entries date name) (cond ((null? entries) #f) ((and (string=? (car (car entries)) date) (string=? (cdr (car entries)) name)) #t) (else (habit-logged? (cdr entries) date name))))" ; clause.habit-marks "(define (habit-marks entries name date last) (cond ((string<? last date) \"\") (else (string-append (habit-mark entries date name) (habit-marks entries name (habit-next-date date) last)))))" ; clause.habit-mark "(define (habit-mark entries date name) (cond ((habit-logged? entries date name) (habit-mark-logged)) (else (habit-mark-missing))))" ; clause.habit-next-date "(define (habit-next-date s) (habit-roll (string->number (substring s 0 4)) (string->number (substring s 5 7)) (string->number (substring s 8 10))))" ; clause.habit-roll "(define (habit-roll y m d) (cond ((< d (habit-days-in-month y m)) (habit-iso y m (+ d 1))) ((< m 12) (habit-iso y (+ m 1) 1)) (else (habit-iso (+ y 1) 1 1))))" ; clause.habit-days-in-month "(define (habit-days-in-month y m) (cond ((= m 2) (habit-feb y)) ((= m 4) 30) ((= m 6) 30) ((= m 9) 30) ((= m 11) 30) (else 31)))" ; clause.habit-feb "(define (habit-feb y) (cond ((habit-leap? y) 29) (else 28)))" ; clause.habit-leap? "(define (habit-leap? y) (and (= 0 (remainder y 4)) (or (not (= 0 (remainder y 100))) (= 0 (remainder y 400)))))" ; clause.habit-iso "(define (habit-iso y m d) (string-append (number->string y) \"-\" (habit-pad2 m) \"-\" (habit-pad2 d)))" ; clause.habit-pad2 "(define (habit-pad2 n) (cond ((< n 10) (string-append \"0\" (number->string n))) (else (number->string n))))"
+0.93 r6 match fact mark.logged => clause.habit-mark-logged "(define (habit-mark-logged) \"#<value>\")"
+0.93 r7 match fact mark.missing => clause.habit-mark-missing "(define (habit-mark-missing) \"#<value>\")"
+0.9 r8 match fact install.command => site.<self>.command "\"<value>\"" ; home.packages "[ ${site} ]"
+0.85 r10 match fact witness.<q>.entry.<n> => claim.<q>.feed "[ \"<value.1>\t<value.2>\" ]"
+0.8 m1 merge claim.<q>.feed list
+0.9 q1 demand cli.habit "which argument names the habit to print?"
+0.85 q2 demand input.source "where is the habit log read from?"
+0.9 q3 demand log.format "how is one log line laid out?"
+0.9 q4 demand render.span "what is printed, and over which range of days?"
+0.93 q5 demand mark.logged "which character marks a day the habit was logged?"
+0.93 q6 demand mark.missing "which character marks a day the habit was not logged?"
+0.93 q7 demand install.command "under which command name is the tool installed?"
+0.85 q8 demand witness.<q>.expected "give an example log and what the tool prints for one habit"
+0.85 a2 expect claim.<q>.equals from witness.<q>.expected is "(list \"<value>\")"
+0.7 g1 gap file-input <<<lips
 blocked line: read the habit log from the file named as the second argument, or from standard input when no file is named.
-no contract opens a named file: the clause layer offers read-a-line (standard
-input) and nothing else, so only the standard-input half of that sentence is
-realized. A file-reading contract (open a path, read its lines) would close this.
+no contract opens a named file: read-a-line reads standard input only, and arguments returns the words but nothing can turn a word into a readable file. the clauses therefore read standard input and silently ignore a second argument. a "read-file (1)" contract would close this.
 lips>>>
-0.8 g2 gap one-line-item-list <<<lips
-blocked line: given the log of "2026-01-01" for "run", "2026-01-02" for "read" and "2026-01-04" for "run", the habit "run" prints "#..#".
-the example log is a list of items written inside ONE sentence, and a template
-cannot repeat a hole, so the witness pattern fixes three entries. A four-entry
-example needs a fresh mint, or the author must be able to write the entries as
-lines of a block. A repeating hole (or a list hole binding a comma-separated
-run of items) would close this.
-lips>>>
-0.95 d1 report <<<lips
-This language describes a small terminal habit tracker, and it is realized as
-behaviour clauses (a real little program), not as configuration.
+0.92 d1 report <<<lips
+This language describes a small terminal habit tracker, and lips builds it as
+clauses (a real program), not as configuration.
 
-Line shapes it accepts, one per sentence of the program:
+Line shapes it accepts:
 
-- `track <what> from the terminal.` -- a decorative title. The words are read
-  but nothing is realized from them.
-- `the first argument names the habit to print.` -- fixes where the habit name
-  comes from: the first command-line argument.
+- `track daily habits from the terminal.` -- a heading; decoration only.
+- `the first argument names the habit to print.` -- the command line: the
+  first word after the command is the habit; with no argument the tool stops
+  loudly ("no habit named").
 - `read the habit log from the file named as the second argument, or from
-  standard input when no file is named.` -- fixes the input. See the caveat
-  below.
+  standard input when no file is named.` -- where the log comes from.
 - `each log line holds an ISO date and a habit name separated by a tab.` --
-  fixes the line format: this is what the parser is written from.
+  the line format; a line without a tab is skipped.
 - `print one character per day from the log's earliest date to its latest
-  date.` -- fixes the rendering: the whole day-by-day walk, including the
-  calendar arithmetic (month lengths, leap years), comes from this sentence.
+  date.` -- the output: one line, one character per calendar day between the
+  earliest and latest dates seen in the log (real date arithmetic, leap years
+  included).
 - `mark a day the named habit was logged with "#".` and
   `mark a day it was not logged with ".".` -- the two marks. Both characters
-  are holes: change them in the program and the built tool changes.
+  are holes: change the quoted character and the output changes.
 - `install the tool as the command habit.` -- the command name is a hole; it
-  becomes the name of the installed program (`site.<self>.command`) and the
-  program is added to `home.packages`.
-- `given the log of "<date>" for "<habit>", ... , the habit "<name>" prints
-  "<out>".` -- the worked example. It becomes a claim: the three log lines are
-  fed to the program, the habit name is its argument, and what it prints is
-  compared byte for byte. This is the only thing that holds the minted code to
-  the program's words, so every program must state one.
+  becomes the site's command name and the built program is added to
+  `home.packages`.
+- `given the log of "DATE" for "HABIT", ... and "DATE" for "HABIT", the habit
+  "NAME" prints "OUT".` -- the worked example. Any number of log entries is
+  read (a list hole plus a per-entry pattern), and it becomes a claim: the
+  entries are fed as tab-separated lines, NAME is the argument, and the
+  printed line must equal OUT exactly. This is what holds the minted code to
+  your sentence.
 
-Mechanism: the behaviour is clauses (habit-name, read-log, parse-entry,
-parse-date, render, marks, earliest, latest, logged-days, logged?, next-day,
-days-in-month, leap-year?, multiple-of?, date-same?, date-before?,
-present-mark, absent-mark, main). Dates are parsed with the string-cut
-contract, compared as (year month day) lists, and the range is walked one day
-at a time. Because home-manager is unprivileged and there is nothing to boot,
-the tool is simply installed into the user's profile: `home.packages` gets the
-built site, named by the command sentence.
+Mechanism choices: behaviour lives in `habit-*` clauses, installed through
+the site (`site.<self>.command`) and put on PATH with `home.packages`. No
+systemd unit, no artifact source file: nothing here runs on a schedule.
 
-Two things I could not derive and one I had to choose:
+What I could not honour: there is no contract that opens a named file, so the
+"file named as the second argument" half of the input sentence is not
+realized -- the tool reads standard input. That is filed as the gap
+`file-input`, and the rule carries the matching low confidence.
 
-- No contract opens a named file, so the clauses read standard input only; the
-  "file named as the second argument" half of that sentence is not honoured.
-  Filed as a gap (no-file-contract), and the rule that reads the log carries
-  lowered confidence for it.
-- The worked-example sentence lists its log entries inside one line, so the
-  pattern fixes three entries. Filed as a gap (one-line-item-list); an example
-  with a different number of entries needs a regeneration.
-- The program says nothing about an empty log; the tool prints an empty line in
-  that case.
-
-The behavioural contract pinned on every future compile is the example itself:
-the claim feeds the stated log to the program, passes the stated habit as its
-argument, and requires exactly the stated output.
+What I had to decide, since the program is silent: a log line with no tab is
+skipped rather than fatal, and running with no argument stops with an error
+instead of printing nothing. The tab separator and the date layout are fixed
+words of the sentences, not holes, because a different separator would need a
+character the grammar cannot derive from the word "tab".
 lips>>>
+0.85 r9 match fact witness.<q>.expected => claim.<q>.args "[ \"<q>\" ]" ; claim.<q>.call "(begin (habit-main) (emitted))" ; claim.<q>.equals "(list \"#<value>\")"
+0.85 p9 pattern given the log of <e.list:,|and> the habit "<q>" prints "<out>" => fact witness.<q>.expected "<out>" ; concept witness.<q>.item.<e:index> "<e>"
+0.8 a1 gap site-command-unassertable <<<lips
+blocked line: install the tool as the command habit.
+the command name reaches site.<self>.command, but no expect can assert that slot
+("nothing realizes this slot"), so the only pin left for the installed name is
+the rule itself. an assertable site.<self>.command (as artifact args are
+assertable) would close this.
+lips>>>
+
