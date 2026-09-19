@@ -240,7 +240,29 @@ token, fused to punctuation, which is how a call or a flag is read:
 'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
 reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
 cannot be a multi-token hole; a value with spaces must be quoted (a quoted
-span is one token wherever it starts). A BULLETED list item begins
+span is one token wherever it starts).
+To read a LIST of items stated in ONE sentence, use a list hole
+<name.list:SEP|SEP>: it binds a run of tokens like <name.words> and then cuts
+that run into items on the separators you declare, separated by | in the hole
+itself. Every emit mentioning the hole is then produced once per item, with
+<name> the item's text and <name:index> its position from 1. One pattern reads
+the sentence at ANY item count, so never write one pattern per count
+(`... <p1> and <p2>` beside `... <p1>, <p2> and <p3>`): that stops at the
+count you guessed. A comma written against the word before it is cut as a
+separator; a separator that is a WORD must stand alone (`or`, `and then`). A
+separator carrying |, <, > or a space is quoted: <c.list:"|">, <c.list:","|"and
+then">. Use a list hole when each item becomes its own decision; use
+<name.words> when the whole run is ONE value.
+
+```lips-engine
+0.95 p3 pattern it may never read <p.list:,|or> => fact fs.deny.<p:index> "<p>"
+0.95 p4 pattern it may run <c.list:,|and> => fact cmd.<c>.policy "allow"
+```
+
+reads 'it may never read ~/.ssh, ~/.aws or ~/.config/gh' as three facts and
+'it may run git, rg, ls, cat and jq' as five, with no pattern per count.
+
+A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes

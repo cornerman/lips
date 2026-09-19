@@ -4205,6 +4205,19 @@ main = hspec $ do
   -- (DESIGN 13), and output tokens are the mint's wall clock. The saving exists
   -- only if the model knows a resubmission may be a patch, so the prompt must
   -- say it where it describes the tool.
+  -- A construct the prompt does not teach is a construct no engine uses: the
+  -- arity clones the list hole replaces were written by models reading THIS
+  -- text, so the remedy has to land here as well as in the kernel.
+  describe "the mint prompt states the list hole" $ do
+    it "teaches the spelling, the repetition and the ban on a pattern per count" $ do
+      let p = systemPromptFor [shippedWorld "nixos"]
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "<name.list:SEP|SEP>", "<name:index> its position", "never write one pattern per count" ]
+    it "teaches a pattern line the real parser accepts" $
+      parsePatternBody "p3"
+        "it may never read <p.list:,|or> => fact fs.deny.<p:index> \"<p>\""
+        `shouldSatisfy` isRight
+
   describe "the mint prompt states that a resubmission is a patch" $
     it "names the rule and the way back from a line a patch cannot delete" $ do
       let p = systemPromptFor [shippedWorld "nixos"]
