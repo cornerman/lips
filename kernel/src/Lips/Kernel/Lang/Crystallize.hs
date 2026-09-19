@@ -94,12 +94,12 @@ classifyLines file patterns src =
     indentOf l = T.length (T.takeWhile isSpace l)
     classify (frames, acc) (n, indent, t) =
       let toks = tokenizeLine t
-       in case [(p, binds) | p <- patterns, Just binds <- [matchTemplate (pTemplate p) toks]] of
+       in case [(p, m) | p <- patterns, Just m <- [matchTemplate (pTemplate p) toks]] of
             []           -> (frames, Unmatched n t : acc)
-            [(p, binds)] -> case scopeLine frames p indent binds of
+            [(p, m)] -> case scopeLine frames p indent (mBinds m) of
               Left qs -> (frames, Orphan n t qs : acc)
               Right (par, env) ->
-                let decs = decisionsAt file n p env
+                let decs = decisionsAt file n p (Match env (mItems m))
                     -- A line's block key is the subject of its first emit: what
                     -- a child's <k:key> resolves to, so keys compose downward.
                     key = case decs of
@@ -180,9 +180,9 @@ rereads d = case readDecision (render d) of
 -- keyed by id, so each needs a distinct id or a fact would silently vanish. A
 -- sole emit keeps the bare per-line id @d\<n\>@ (the common case); several get a
 -- @d\<n\>.\<k\>@ suffix, 1-based, stable and line-anchored.
-decisionsAt :: FilePath -> Int -> Pattern -> Bindings -> [Decision]
-decisionsAt file n p binds =
-  let emits = applyPattern p binds
+decisionsAt :: FilePath -> Int -> Pattern -> Match -> [Decision]
+decisionsAt file n p m =
+  let emits = applyMatch p m
    in zipWith build (idsAt n (length emits)) emits
   where
     build did (subj, kind, assn, str) =

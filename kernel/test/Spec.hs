@@ -84,6 +84,16 @@ import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
 import Lips.Language               (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
 
+-- | The scalar half of a template match: what every test that predates list
+-- holes asks about (one surface text per hole).
+matchBinds :: [TplTok] -> [Tok] -> Maybe (Map.Map Text Text)
+matchBinds tpl toks = mBinds <$> matchTemplate tpl toks
+
+-- | A tokenized line as (surface, normalized) pairs, the shape the token tests
+-- state their expectation in.
+tokPairs :: Text -> [(Text, Text)]
+tokPairs = map (\t -> (tokSurface t, tokNorm t)) . tokenizeLine
+
 -- | A decision about subject @s@ asserting @a@, at strength @str@, id @i@.
 mk :: Text -> Text -> Text -> Strength -> Decision
 mk i s a str =
@@ -1883,17 +1893,17 @@ main = hspec $ do
 
     it "matches a template, binding a hole to the surface token" $ do
       let tpl = [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
-      matchTemplate tpl (tokenizeLine "the bank drops files into inbox/.")
+      matchBinds tpl (tokenizeLine "the bank drops files into inbox/.")
         `shouldBe` Just (Map.fromList [("loc", "inbox/")])
 
     it "fails to match on length or literal mismatch" $ do
-      matchTemplate [TLit "a", THole "x"] (tokenizeLine "a b c") `shouldBe` Nothing
-      matchTemplate [TLit "a", THole "x"] (tokenizeLine "z b") `shouldBe` Nothing
+      matchBinds [TLit "a", THole "x"] (tokenizeLine "a b c") `shouldBe` Nothing
+      matchBinds [TLit "a", THole "x"] (tokenizeLine "z b") `shouldBe` Nothing
 
     it "a repeated hole must bind consistently" $ do
       let tpl = [THole "x", TLit "is", THole "x"]
-      matchTemplate tpl (tokenizeLine "foo is foo") `shouldBe` Just (Map.fromList [("x", "foo")])
-      matchTemplate tpl (tokenizeLine "foo is bar") `shouldBe` Nothing
+      matchBinds tpl (tokenizeLine "foo is foo") `shouldBe` Just (Map.fromList [("x", "foo")])
+      matchBinds tpl (tokenizeLine "foo is bar") `shouldBe` Nothing
 
     it "applies bindings to build subject and assertion" $ do
       let p = patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
@@ -1902,15 +1912,16 @@ main = hspec $ do
         `shouldBe` [(Subject ["feed", "source"], Fact, Assertion "inbox/", Stated)]
 
     it "lexes a quoted value as one token, dropping the quotes (gap 2)" $
-      tokenizeLine "returns text \"hello world\"" `shouldBe`
+      tokPairs "returns text \"hello world\""
+        `shouldBe`
         [("returns", "returns"), ("text", "text"), ("hello world", "hello world")]
 
     it "a hole captures a quoted value, spaces preserved" $
-      matchTemplate [TLit "text", THole "body"] (tokenizeLine "text \"hello world\"")
+      matchBinds [TLit "text", THole "body"] (tokenizeLine "text \"hello world\"")
         `shouldBe` Just (Map.fromList [("body", "hello world")])
 
     it "a bullet is a literal token; the item value binds a hole" $
-      matchTemplate [TLit "-", THole "path"] (tokenizeLine "- /hello")
+      matchBinds [TLit "-", THole "path"] (tokenizeLine "- /hello")
         `shouldBe` Just (Map.fromList [("path", "/hello")])
 
   describe "punctuation is a symbol the engine claims, not kernel noise" $ do
@@ -1918,27 +1929,29 @@ main = hspec $ do
           Right ok -> ok
           Left e   -> error (T.unpack e)
     it "a mid-line symbol stays on its token" $
-      tokenizeLine "content: shows a painting" `shouldBe`
+      tokPairs "content: shows a painting"
+        `shouldBe`
         [("content:", "content:"), ("shows", "shows"), ("a", "a"), ("painting", "painting")]
     it "only the LAST token sheds its terminator" $
-      tokenizeLine "host shop.example.com:" `shouldBe`
+      tokPairs "host shop.example.com:"
+        `shouldBe`
         [("host", "host"), ("shop.example.com", "shop.example.com")]
     it "a template that writes a symbol requires it" $ do
       let p = patP "content: <what.words> => fact c \"<what>\""
-      matchTemplate (pTemplate p) (tokenizeLine "content: shows a painting")
+      matchBinds (pTemplate p) (tokenizeLine "content: shows a painting")
         `shouldBe` Just (Map.fromList [("what", "shows a painting")])
-      matchTemplate (pTemplate p) (tokenizeLine "content shows a painting")
+      matchBinds (pTemplate p) (tokenizeLine "content shows a painting")
         `shouldBe` Nothing
     it "a template that omits the symbol does not match a line that writes it" $
       -- Two patterns differing only by a colon read disjoint lines, which is
       -- what makes a block heading sayable.
-      matchTemplate (pTemplate (patP "content <what.words> => fact c \"<what>\""))
+      matchBinds (pTemplate (patP "content <what.words> => fact c \"<what>\""))
                     (tokenizeLine "content: shows a painting")
         `shouldBe` Nothing
     it "a hole binds its token verbatim, symbol included" $
       -- The value carries what the author wrote; a rule building a list splits
       -- and strips it ('Engine.Value' fillV), so nothing is dropped unseen.
-      matchTemplate [TLit "install", THole "p", TLit "and", THole "q"]
+      matchBinds [TLit "install", THole "p", TLit "and", THole "q"]
                     (tokenizeLine "install htop, and ripgrep")
         `shouldBe` Just (Map.fromList [("p", "htop,"), ("q", "ripgrep")])
 
@@ -1953,10 +1966,10 @@ main = hspec $ do
           toks = tokenizeLine "install htop, ripgrep, tmux."
       -- The separators the author wrote stay in the captured value (the final
       -- terminator does not); the list-building rule strips them per token.
-      matchTemplate (pTemplate p) toks `shouldBe` Just (Map.fromList [("pkgs", "htop, ripgrep, tmux")])
+      matchBinds (pTemplate p) toks `shouldBe` Just (Map.fromList [("pkgs", "htop, ripgrep, tmux")])
     it "a multi-token hole matching zero tokens fails (deduce-or-fail, never guess)" $ do
       let p = patOne "p" [TLit "install", TMulti "pkgs"] Fact [SHole "pkgs"] [SHole "value"]
-      matchTemplate (pTemplate p) (tokenizeLine "install") `shouldBe` Nothing
+      matchBinds (pTemplate p) (tokenizeLine "install") `shouldBe` Nothing
     it "a multi-token hole is still a binding a target hole may use" $ do
       -- holesOf must include the name, or a target <pkgs> bound only by a
       -- multi-token hole would be rejected as loose on read (applyPattern
@@ -1972,7 +1985,7 @@ main = hspec $ do
       -- capture the template grammar was missing (a human had to quote it).
       let p = patOne "p" [TLit "back", TLit "up", TMulti "src", TLit "to", THole "dst"]
                 Fact [SLit "backup.source"] [SHole "src"]
-      matchTemplate (pTemplate p) (tokenizeLine "back up my home folder to nas")
+      matchBinds (pTemplate p) (tokenizeLine "back up my home folder to nas")
         `shouldBe` Just (Map.fromList [("src", "my home folder"), ("dst", "nas")])
     it "a bounded multi-token hole stretches past a literal the tail still needs" $ do
       -- Shortest-first with backtracking: binding <src> to "a" leaves "to c"
@@ -1981,7 +1994,7 @@ main = hspec $ do
       -- language, a grammar bug rather than a program defect.
       let p = patOne "p" [TLit "back", TLit "up", TMulti "src", TLit "to", THole "dst"]
                 Fact [SLit "backup.source"] [SHole "src"]
-      matchTemplate (pTemplate p) (tokenizeLine "back up a to b to c")
+      matchBinds (pTemplate p) (tokenizeLine "back up a to b to c")
         `shouldBe` Just (Map.fromList [("src", "a to b"), ("dst", "c")])
     it "a multi-token hole may sit anywhere in a template" $
       -- The old grammar rejected this on read (the hole had to be last), which
@@ -2008,33 +2021,33 @@ main = hspec $ do
       -- Once a quoted span may start mid-token, the sentence period lands on
       -- the SAME token as the value; stripping it before unquoting is what
       -- keeps `respond with "hi".` a value rather than a quoted-looking word.
-      tokenizeLine "respond with \"hello from lips\"."
+      tokPairs "respond with \"hello from lips\"."
         `shouldBe` [("respond", "respond"), ("with", "with"), ("hello from lips", "hello from lips")]
-      matchTemplate (pTemplate (pat "respond with \"<msg>\". => fact m \"<msg>\""))
+      matchBinds (pTemplate (pat "respond with \"<msg>\". => fact m \"<msg>\""))
                     (tokenizeLine "respond with \"hello from lips\".")
         `shouldBe` Just (Map.fromList [("msg", "hello from lips")])
 
     it "a hole inside a token binds the text between its literal pieces" $ do
       let p = pat "println_to_stdout(\"<text>\") => fact print.text \"<text>\""
-      matchTemplate (pTemplate p) (tokenizeLine "println_to_stdout(\"hallo\")")
+      matchBinds (pTemplate p) (tokenizeLine "println_to_stdout(\"hallo\")")
         `shouldBe` Just (Map.fromList [("text", "hallo")])
-      matchTemplate (pTemplate p) (tokenizeLine "println_to_stdout(\"hallo du\")")
+      matchBinds (pTemplate p) (tokenizeLine "println_to_stdout(\"hallo du\")")
         `shouldBe` Just (Map.fromList [("text", "hallo du")])
     it "a fused hole is a binding the target may use" $
       holesOf (pat "println_to_stdout(\"<text>\") => fact print.text \"<text>\"")
         `shouldBe` ["text"]
     it "the literal pieces around a fused hole must match" $ do
       let p = pat "println_to_stdout(\"<text>\") => fact print.text \"<text>\""
-      matchTemplate (pTemplate p) (tokenizeLine "eprintln_to_stdout(\"hallo\")")
+      matchBinds (pTemplate p) (tokenizeLine "eprintln_to_stdout(\"hallo\")")
         `shouldBe` Nothing
-      matchTemplate (pTemplate p) (tokenizeLine "println_to_stdout(hallo)")
+      matchBinds (pTemplate p) (tokenizeLine "println_to_stdout(hallo)")
         `shouldBe` Nothing
     it "a fused hole binds at least one character (deduce-or-fail)" $
-      matchTemplate (pTemplate (pat "println(<x>) => fact a \"<x>\""))
+      matchBinds (pTemplate (pat "println(<x>) => fact a \"<x>\""))
                     (tokenizeLine "println()")
         `shouldBe` Nothing
     it "reads a key=value shape, hole and literal in one token" $
-      matchTemplate (pTemplate (pat "--port=<n> => fact port \"<n>\""))
+      matchBinds (pTemplate (pat "--port=<n> => fact port \"<n>\""))
                     (tokenizeLine "--port=8080")
         `shouldBe` Just (Map.fromList [("n", "8080")])
     it "reads two holes glued by literal text inside one token" $ do
@@ -2045,11 +2058,11 @@ main = hspec $ do
       -- refusal for a template that is plainly inside the grammar.
       let p = pat "function <fname>(<param>: <ptype>) => fact function.<fname>.signature \"<fname> <param> <ptype>\""
       holesOf p `shouldBe` ["fname", "param", "ptype"]
-      matchTemplate (pTemplate p) (tokenizeLine "function println_to_stdout(x: String)")
+      matchBinds (pTemplate p) (tokenizeLine "function println_to_stdout(x: String)")
         `shouldBe` Just (Map.fromList
           [("fname", "println_to_stdout"), ("param", "x"), ("ptype", "String")])
     it "captures the surface verbatim while literals compare case-insensitively" $
-      matchTemplate (pTemplate (pat "Print(<x>) => fact a \"<x>\""))
+      matchBinds (pTemplate (pat "Print(<x>) => fact a \"<x>\""))
                     (tokenizeLine "print(Hallo)")
         `shouldBe` Just (Map.fromList [("x", "Hallo")])
     it "a fused template token round-trips through the .lang store" $ do
@@ -2080,6 +2093,101 @@ main = hspec $ do
       checkNesting [p1, p2] `shouldBe` []
       fmap (map (\d -> case dAssertion d of Assertion a -> a) . toList) (crystallize "function" [p1, p2] src)
         `shouldBe` Right ["one line per call", "hallo", "du", "!"]
+
+  describe "template list hole (a list within one sentence)" $ do
+    -- The gap this closes: a list-shaped sentence had to be spelled once per
+    -- item count, so examples/policy carried 24 arity clones (pr1..pr4,
+    -- px1..px4, ...) and refused a five-item line outright. An enumerated arity
+    -- is an open list with an arbitrary stop, i.e. a missing grammar case.
+    -- Which words join a list stays per-language: the ENGINE declares the
+    -- separators, the kernel learns no conjunction.
+    let pat i body = case parsePatternBody i body of
+          Right ok -> ok
+          Left e   -> error (T.unpack e)
+        denyP = pat "px" "it may never read <p.list:,|or> => fact fs.deny.<p:index> \"<p>\""
+        emitsOf p line = case matchTemplate (pTemplate p) (tokenizeLine line) of
+          Just m  -> applyMatch p m
+          Nothing -> []
+        itemsOf p line = case matchTemplate (pTemplate p) (tokenizeLine line) of
+          Just m  -> map (map tokSurface) (concat (Map.elems (mItems m)))
+          Nothing -> []
+
+    it "reads a list hole and its separators, and round-trips through the store" $ do
+      pTemplate denyP `shouldBe`
+        [TLit "it", TLit "may", TLit "never", TLit "read", TList "p" [",", "or"]]
+      (decisionToPattern . patternToDecision) denyP `shouldBe` Right denyP
+    it "cuts a run on a glued comma and on a standalone word" $
+      itemsOf denyP "it may never read $HOME/.ssh, $HOME/.aws or $HOME/.config/gh."
+        `shouldBe` [["$HOME/.ssh"], ["$HOME/.aws"], ["$HOME/.config/gh"]]
+    it "a sentence with one item is the same pattern, not a second one" $
+      itemsOf denyP "it may never read $HOME/.ssh." `shouldBe` [["$HOME/.ssh"]]
+    it "emits one decision per item, numbered by <p:index>" $
+      emitsOf denyP "it may never read a, b or c." `shouldBe`
+        [ (Subject ["fs", "deny", "1"], Fact, Assertion "a", Stated)
+        , (Subject ["fs", "deny", "2"], Fact, Assertion "b", Stated)
+        , (Subject ["fs", "deny", "3"], Fact, Assertion "c", Stated)
+        ]
+    it "an item may key the subject it emits" $
+      emitsOf (pat "pc" "it may run <c.list:,|and> => fact cmd.<c>.policy \"allow\"")
+              "it may run git, rg, ls, cat and jq."
+        `shouldBe`
+        [ (Subject ["cmd", w, "policy"], Fact, Assertion "allow", Stated)
+        | w <- ["git", "rg", "ls", "cat", "jq"] ]
+    it "an emit that names no list hole is stated once" $ do
+      -- A dense line states its list AND a scalar fact; only the list emit
+      -- repeats, or the scalar fact would be restated per item.
+      let p = pat "pd" "it may run <c.list:,|and> => fact cmd.<c>.policy \"allow\" ; fact cmd.checked \"true\""
+      -- Emit order is the engine's; the items of one emit stay together.
+      emitsOf p "it may run git and rg." `shouldBe`
+        [ (Subject ["cmd", "git", "policy"], Fact, Assertion "allow", Stated)
+        , (Subject ["cmd", "rg", "policy"], Fact, Assertion "allow", Stated)
+        , (Subject ["cmd", "checked"], Fact, Assertion "true", Stated)
+        ]
+    it "the run ends where the rest of the template matches again" $ do
+      -- The sentence continues after the list, and its own comma closes the
+      -- last item: backtracking finds the run, the trailing empty item is the
+      -- punctuation, not an item.
+      let p = pat "pn" "on the network it may reach <d.list:,|and> and nothing else => fact net.allow.<d:index> \"<d>\""
+      itemsOf p "on the network it may reach github.com and crates.io, and nothing else."
+        `shouldBe` [["github.com"], ["crates.io"]]
+    it "a quoted item is atomic: a separator inside it is content" $
+      itemsOf denyP "it may never read \"a, b\" or c." `shouldBe` [["a, b"], ["c"]]
+    it "a word separator never cuts inside a word" $
+      -- "curator" ends in "or": a word separator has no glued form, or a
+      -- sentence inside the language would be miscut silently.
+      itemsOf denyP "it may never read /etc/curator or /etc/shadow."
+        `shouldBe` [["/etc/curator"], ["/etc/shadow"]]
+    it "a separator may be a pipe, an angle bracket or two words" $ do
+      let pipeP = pat "pp" "run <c.list:\"|\"> => fact cmd.<c>.policy \"allow\""
+          angP  = pat "pa" "run <c.list:\">\"> => fact cmd.<c>.policy \"allow\""
+          twoP  = pat "pt" "run <c.list:\",\"|\"and then\"> => fact cmd.<c>.policy \"allow\""
+      pTemplate pipeP `shouldBe` [TLit "run", TList "c" ["|"]]
+      itemsOf pipeP "run a | b | c" `shouldBe` [["a"], ["b"], ["c"]]
+      itemsOf angP "run a > b" `shouldBe` [["a"], ["b"]]
+      itemsOf twoP "run a, b and then c" `shouldBe` [["a"], ["b"], ["c"]]
+      -- Every spelling survives the store, which is what lets a mint write it.
+      map (decisionToPattern . patternToDecision) [pipeP, angP, twoP]
+        `shouldBe` map Right [pipeP, angP, twoP]
+    it "refuses a list hole that declares no separator" $
+      parsePatternBody "px" "it may never read <p.list:> => fact fs.deny.1 \"<p>\""
+        `shouldSatisfy` isLeft
+    it "refuses an emit that would repeat over two lists at once" $
+      -- Which item pairs with which is stated nowhere, so a cross product would
+      -- be a guess; a second list gets its own emit.
+      parsePatternBody "pb"
+        "given <i.list:,|and> print <o.list:,|and> => fact io.<i:index> \"<i> <o>\""
+        `shouldSatisfy` isLeft
+    it "an empty item is a malformed list, not an invented value" $
+      itemsOf denyP "it may never read a, , b." `shouldBe` []
+    it "crystallizes a five-item line no pattern was written for" $ do
+      -- The completeness test: the arity nobody foresaw needs no new pattern.
+      let src = "it may run git, rg, ls, cat and jq.\n"
+          p   = pat "pc" "it may run <c.list:,|and> => fact cmd.<c>.policy \"allow\""
+      case crystallize "p.lips" [p] src of
+        Right base -> sort [ (dSubject d, dAssertion d) | d <- toList base ]
+          `shouldBe` [ (Subject ["cmd", w, "policy"], Assertion "allow")
+                     | w <- ["cat", "git", "jq", "ls", "rg"] ]
+        Left errs  -> expectationFailure (show errs)
 
   describe "source fills (a program word inside baked source)" $ do
     it "reads the markers a source text names, once each, in order" $
@@ -5861,7 +5969,7 @@ main = hspec $ do
           , DemandSpec "q2" ["feed", "cadence"] "how often does the feed deliver?"
           ]
         -- reconstruct a surface line from a template, filling its single hole
-        surface toks fill = T.unwords [ case t of TLit l -> l; TFused _ -> fill; THole _ -> fill; TMulti _ -> fill | t <- toks ]
+        surface toks fill = T.unwords [ case t of TLit l -> l; TFused _ -> fill; THole _ -> fill; TMulti _ -> fill; TList _ _ -> fill | t <- toks ]
         runProg prog = do
           base <- either (Left . show) Right (crystallize "feed" pats prog)
           either (Left . show) Right

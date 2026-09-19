@@ -187,6 +187,7 @@ patternOverlaps pats =
                      in length hs /= length (Set.toList (Set.fromList hs))
     holeName (THole h)   = [h]
     holeName (TMulti h)  = [h]
+    holeName (TList h _) = [h]
     holeName (TFused seg) = fusedHoles seg
     holeName (TLit _)    = []
 
@@ -210,6 +211,11 @@ templatesOverlap l r = go Set.empty (l, r)
       where st' = (length as, length bs)
     -- One word, consumed by both sides at once, plus how each side may continue:
     -- 'Stay' is a multi-token hole taking another word, 'Next' moves on.
+    -- A list hole reads a run of words exactly as a multi-token hole does; the
+    -- cut into items only narrows what it accepts, so the walk asks its
+    -- question over the wider form and never misses an overlap.
+    step (TList h _) b = step (TMulti h) b
+    step a (TList h _) = step a (TMulti h)
     step (TLit x) (TLit y) | x /= y = Nothing
                            | otherwise = Just (x, [(Next, Next)])
     step (TLit x) (THole _)  = Just (x, [(Next, Next)])

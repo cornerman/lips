@@ -32,9 +32,9 @@ import Lips.Kernel.Engine.Typing   (wordTypes)
 import Lips.Kernel.Engine.Value    (parseValue, renderRealized, renderWordType)
 import Lips.Kernel.Lang.Crystallize (LineOutcome (..))
 import Lips.Kernel.Lang.Diagnose    (Diagnosis (..))
-import Lips.Kernel.Lang.Pattern     (FusedSeg (..), Pattern (..), TplTok (..),
+import Lips.Kernel.Lang.Pattern     (FusedSeg (..), Pattern (..), Tok (..), TplTok (..),
                                      matchFused, normalizeToken, tokenizeLine)
-import Lips.Kernel.Lang.Store       (EngineData (..))
+import Lips.Kernel.Lang.Store       (EngineData (..), renderTplTok)
 import Lips.Kernel.Refine           (Rule (..))
 
 -- | One completion candidate: the human-readable sentence form of a pattern, a
@@ -89,7 +89,7 @@ completionItemsAt eng line col =
 -- kept raw and normalized only when matched, so a captured hole value keeps
 -- its case and a literal-prefix comparison uses the same normalization as the
 -- template side.
-splitPrefix :: Text -> ([(Text, Text)], Maybe Text)
+splitPrefix :: Text -> ([Tok], Maybe Text)
 splitPrefix prefix
   | T.null prefix || isSpace (T.last prefix) = (tokenizeLine prefix, Nothing)
   | otherwise =
@@ -104,7 +104,7 @@ splitPrefix prefix
 -- next template token. @Nothing@ means the typed prefix is not a valid prefix
 -- of this pattern (a literal mismatched, or the line has tokens the template
 -- cannot account for).
-matchPrefix :: [TplTok] -> [(Text, Text)] -> Maybe Text
+matchPrefix :: [TplTok] -> [Tok] -> Maybe Text
             -> Maybe (Map Text Text, [TplTok])
 matchPrefix tpl toks mfrag = do
   (binds, remaining) <- matchComplete tpl toks Map.empty
@@ -118,35 +118,38 @@ matchPrefix tpl toks mfrag = do
 -- fragment or further typing will supply). The template running out while
 -- tokens remain means the line has outgrown the pattern (a tail would have
 -- consumed them), so it is not a valid prefix.
-matchComplete :: [TplTok] -> [(Text, Text)] -> Map Text Text
+matchComplete :: [TplTok] -> [Tok] -> Map Text Text
               -> Maybe (Map Text Text, [TplTok])
 matchComplete tpl []           binds = Just (binds, tpl)   -- tokens ran out
 matchComplete []  _            _     = Nothing             -- template outgrown
-matchComplete (TLit lit : ts) ((_, norm) : rs) binds
-  | lit == norm = matchComplete ts rs binds
-  | otherwise   = Nothing
-matchComplete (THole h : ts) ((surface, _) : rs) binds =
-  matchComplete ts rs (Map.insert h surface binds)
+matchComplete (TLit lit : ts) (t : rs) binds
+  | lit == tokNorm t = matchComplete ts rs binds
+  | otherwise        = Nothing
+matchComplete (THole h : ts) (t : rs) binds =
+  matchComplete ts rs (Map.insert h (tokSurface t) binds)
 -- A fused token is one token: it either matches whole, or the line is not a
 -- prefix of this pattern.
-matchComplete (TFused segs : ts) ((surface, _) : rs) binds =
-  case matchFused segs surface of
+matchComplete (TFused segs : ts) (t : rs) binds =
+  case matchFused segs (tokSurface t) of
     Just caps -> matchComplete ts rs (foldr (uncurry Map.insert) binds caps)
     Nothing   -> Nothing
+-- A list hole reads a run of words like a multi-token hole; a half-typed line
+-- has no items to cut yet, so completion offers what the run offers.
+matchComplete (TList h _ : ts) rest binds = matchComplete (TMulti h : ts) rest binds
 matchComplete (TMulti h : ts) rest binds
   | null rest  = Just (binds, TMulti h : ts)   -- tokens ran out: hole unfilled
   | otherwise  = case ts of
       -- Last token: it takes everything that is left.
-      [] -> Just (Map.insert h (T.unwords (map fst rest)) binds, [])
+      [] -> Just (Map.insert h (T.unwords (map tokSurface rest)) binds, [])
       -- Bounded: take the words up to the first token the next literal
       -- matches. Completion is best-effort by nature (the line is half
       -- written), so it scans once instead of backtracking like
       -- 'matchTemplate'; the worst case is a candidate not offered.
-      (TLit lit : ts') -> case break ((== lit) . snd) rest of
+      (TLit lit : ts') -> case break ((== lit) . tokNorm) rest of
         (taken, _ : rs) | not (null taken) ->
-          matchComplete ts' rs (Map.insert h (T.unwords (map fst taken)) binds)
-        _ -> Just (Map.insert h (T.unwords (map fst rest)) binds, ts)
-      _ -> Just (Map.insert h (T.unwords (map fst rest)) binds, ts)
+          matchComplete ts' rs (Map.insert h (T.unwords (map tokSurface taken)) binds)
+        _ -> Just (Map.insert h (T.unwords (map tokSurface rest)) binds, ts)
+      _ -> Just (Map.insert h (T.unwords (map tokSurface rest)) binds, ts)
 
 -- | Phase 2: match the trailing fragment (the partial word at the cursor)
 -- against the next template token, positionally. A literal admits the fragment
@@ -167,6 +170,10 @@ applyPartial binds remaining (Just frag) = case remaining of
     | not (T.null frag) -> Just (Map.insert h frag binds, ts)
     | otherwise         -> Nothing
   (TMulti h : ts)
+    | not (T.null frag) -> Just (Map.insert h frag binds, ts)
+    | otherwise         -> Nothing
+  -- A list hole is a run being typed: the fragment is its first word.
+  (TList h _ : ts)
     | not (T.null frag) -> Just (Map.insert h frag binds, ts)
     | otherwise         -> Nothing
   -- A half-typed fused token cannot bind yet (its closing literal is missing),
@@ -204,8 +211,11 @@ renderPattern eng binds p =
       parts -> Just (T.intercalate ", " parts)
     step :: ([Text], [Text], Map Text Int) -> TplTok -> ([Text], [Text], Map Text Int)
     step (ls, ss, nums) (TLit t)   = (t : ls, t : ss, nums)
-    step (ls, ss, nums) (THole h)  = holeStep ls ss nums h False
-    step (ls, ss, nums) (TMulti h) = holeStep ls ss nums h True
+    step (ls, ss, nums) (THole h)  = holeStep ls ss nums h ("<" <> typed h h <> ">")
+    step (ls, ss, nums) (TMulti h) = holeStep ls ss nums h ("<" <> typed h (h <> ".words") <> ">")
+    -- A list hole shows the separators it lists on, since those are the words
+    -- the author must type between the items.
+    step (ls, ss, nums) tok@(TList h _) = holeStep ls ss nums h (renderTplTok tok)
     -- A fused token is one word: its literal pieces are typed as they stand and
     -- each hole inside it becomes its own tab-stop.
     step (ls, ss, nums) (TFused segs) =
@@ -217,12 +227,11 @@ renderPattern eng binds p =
       Nothing -> let (n, nums') = assign h nums
                   in ( l <> "<" <> typed h h <> ">"
                      , s <> "${" <> T.pack (show n) <> ":" <> h <> "}", nums')
-    holeStep ls ss nums h isMulti =
+    holeStep ls ss nums h label =
       case Map.lookup h binds of
         Just v  -> (v : ls, v : ss, nums)                -- filled: literal
         Nothing ->
           let (n, nums') = assign h nums
-              label = "<" <> typed h (if isMulti then h <> ".words" else h) <> ">"
               tab   = "${" <> T.pack (show n) <> ":" <> h <> "}"
            in (label : ls, tab : ss, nums')
     -- Assign a stable number per hole name so repeated holes share a tab-stop.

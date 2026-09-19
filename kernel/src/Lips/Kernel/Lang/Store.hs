@@ -31,9 +31,12 @@ module Lips.Kernel.Lang.Store
   , decisionToPattern
   , parsePatternBody
   , parseTplTok
+  , renderTplTok
   ) where
 
+import           Data.Char  (isSpace)
 import           Data.List  (sortOn)
+import           Data.Maybe (isJust)
 import qualified Data.Map.Strict as Map
 import           Data.Text  (Text)
 import qualified Data.Text  as T
@@ -42,7 +45,8 @@ import Lips.Kernel.Engine.Data     (DemandSpec (..), IgnoreSpec (..), MapRule (.
                              parseDemandBody, parseIgnoreBody, parseMergeBody, parseRuleBody,
                              renderDemandBody, renderIgnoreBody, renderMergeBody, renderRuleBody)
 import Lips.Kernel.Engine.Value    (parseHoleType)
-import Lips.Kernel.Surface  (breakLastOutsideQuotes, naturalKey, quoteText, splitOutsideQuotes)
+import Lips.Kernel.Surface  (breakFirstOutsideQuotes, breakLastOutsideQuotes, naturalKey,
+                             quoteText, splitOutsideQuotes)
 import qualified Lips.Kernel.Surface as Q
 import Lips.Kernel.Base     (fromList)
 import Lips.Kernel.Decision
@@ -219,6 +223,16 @@ renderTplTok :: TplTok -> Text
 renderTplTok (TLit t)   = t
 renderTplTok (THole h)  = "<" <> h <> ">"
 renderTplTok (TMulti h) = "<" <> h <> ".words>"
+renderTplTok (TList h seps) =
+  "<" <> h <> ".list:" <> T.intercalate "|" (map renderSep seps) <> ">"
+  where
+    -- A separator is written bare when it can be, and as a quoted span when it
+    -- carries a character the spelling itself uses (@|@, an angle bracket, a
+    -- space, a quote). One quoting convention, the one every stored lips line
+    -- already uses, so everything is expressible without a second escape.
+    renderSep s
+      | T.null s || T.any (`elem` ("|<>\"" :: String)) s || T.any isSpace s = quoteText s
+      | otherwise = s
 renderTplTok (TFused segs) = T.concat (map seg segs)
   where
     seg (FLit t)  = t
@@ -251,6 +265,12 @@ parseBody idTok body = do
     (h : _) -> Left ("pattern " <> pid <> ": <" <> h
                        <> "> is fused inside a token, but a multi-token hole spans whitespace")
     []      -> Right ()
+  -- A list with no separator cannot be cut, and a run that is not cut is what
+  -- <x.words> already is: say which form is meant rather than match nothing.
+  case [h | TList h seps <- template, all T.null seps] of
+    (h : _) -> Left ("pattern " <> pid <> ": <" <> h
+                       <> ".list:> declares no separator; an uncut run is <" <> h <> ".words>")
+    []      -> Right ()
   emits <- mapM (parseEmit pid . T.strip) (splitOutsideQuotes " ; " rest0)
   let p = Pattern { pId = pid, pParents = parents, pTemplate = template, pEmits = emits }
   -- Every hole in the target must be bound, so 'applyPattern' is total. A
@@ -267,6 +287,16 @@ parseBody idTok body = do
       -- program word: one name cannot mean both, and the collision would
       -- silently pick one.
       clash   = filter (`elem` holesOf p) structs
+  -- Two lists in one emit would have to be read as a cross product, and which
+  -- item pairs with which is not stated anywhere: one list per emit, and a
+  -- second list in the same sentence gets its own emit.
+  case [ e | e <- emits
+           , let hs = [h | (h, _) <- listHoles p
+                         , h `elem` map refName [r | SHole r <- peSubject e ++ peAssertion e]]
+           , length hs > 1 ] of
+    (e : _) -> Left ("pattern " <> pid <> ": emit " <> renderParts (peSubject e)
+                       <> " mentions two list holes, but an emit repeats over one list")
+    []      -> Right ()
   if not (null clash)
     then Left ("pattern " <> pid <> ": <" <> T.intercalate ">, <" clash
                  <> "> is bound by the template, so it cannot also be a structure hole")
@@ -307,10 +337,13 @@ parseTplTok w
   -- final terminator, which is why a minted "<when>." ending a template is the
   -- hole <when> (live mints glue the line's final period onto the hole).
   | Just h0 <- holeName w =
-      let h = dropHoleType h0
-       in case T.stripSuffix ".words" h of
-            Just name -> TMulti name
-            Nothing   -> THole h
+      case listSpelling h0 of
+        Just (name, seps) -> TList name seps
+        Nothing ->
+          let h = dropHoleType h0
+           in case T.stripSuffix ".words" h of
+                Just name -> TMulti name
+                Nothing   -> THole h
   -- A hole FUSED to literal text inside one token: a call argument, a flag
   -- value, a key=value. Recognized last, so the whole-token forms above keep
   -- their meaning.
@@ -339,6 +372,21 @@ fusedSegs t
                          ++ fusedSegs (T.drop 1 afterClose)
   where
     lit b = [FLit (T.toLower b) | not (T.null b)]
+
+-- | Read a hole body as a LIST hole: @p.list:,|or@ is the hole @p@, cut into
+-- items on @,@ and on @or@. The separators are a @|@-separated list, each item
+-- a bare word or a @"..."@ span with the standard escapes of
+-- 'Lips.Kernel.Surface', so a language may list on a pipe (@\<x.list:"|">@) or
+-- on an angle bracket without a second escaping scheme.
+listSpelling :: Text -> Maybe (Text, [Text])
+listSpelling body = case breakFirstOutsideQuotes ".list:" body of
+  Just (name, rest) | not (T.null name) -> Just (name, map sep (splitOutsideQuotes "|" rest))
+  _ -> Nothing
+  where
+    -- A quoted separator hands over its inner text; anything else is itself.
+    sep s = case Q.parseQuoted (T.strip s) of
+      Right (inner, "") -> inner
+      _                 -> s
 
 -- | Drop a redundant @:type@ from a TEMPLATE hole name. A template hole binds a
 -- token of program TEXT, so a type annotation carries no information there, and
@@ -379,7 +427,10 @@ holeName :: Text -> Maybe Text
 holeName w = do
   b <- T.stripPrefix "<" w
   n <- T.stripSuffix ">" b
-  if T.any (`elem` ("<>" :: String)) n then Nothing else Just n
+  -- Outside quotes, because a list hole may declare an angle bracket as its
+  -- separator (@\<z.list:">">@): a quoted span is content, here as everywhere
+  -- else a lips line is read.
+  if any (\c -> isJust (breakFirstOutsideQuotes c n)) ["<", ">"] then Nothing else Just n
 
 firstToken :: Text -> Text -> Either Text (Text, Text)
 firstToken t err =

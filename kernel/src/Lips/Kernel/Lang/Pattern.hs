@@ -31,6 +31,14 @@ module Lips.Kernel.Lang.Pattern
   ( TplTok (..)
   , FusedSeg (..)
   , matchFused
+  , Tok (..)
+  , mkTok
+  , tokQuoted
+  , Match (..)
+  , noMatch
+  , listHoles
+  , splitItems
+  , itemText
   , StrPart (..)
   , PatEmit (..)
   , StructType (..)
@@ -51,12 +59,13 @@ module Lips.Kernel.Lang.Pattern
   , matchTemplate
   , fusedHoles
   , applyPattern
+  , applyMatch
   , holesOf
   ) where
 
 import           Control.Monad   (foldM)
-import           Data.Char       (isSpace)
-import           Data.Maybe      (listToMaybe)
+import           Data.Char       (isAlphaNum, isSpace)
+import           Data.Maybe      (isJust, listToMaybe)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import           Data.Text       (Text)
@@ -82,8 +91,108 @@ import Lips.Kernel.Surface  (quoteText, stripTrailingPunct)
 -- grammar case, not a program defect. A fused hole binds within its token only:
 -- it stops where the next literal piece matches, and a value that must span
 -- whitespace is either quoted (the quote makes it one token) or a @TMulti@.
-data TplTok = TLit Text | THole Text | TMulti Text | TFused [FusedSeg]
+-- A LIST hole binds a run exactly as @TMulti@ does and then cuts it into items
+-- on the separators the ENGINE declares (@\<p.list:,|or>@ lists on a comma and
+-- on the word @or@). Every emit that mentions the hole is produced once per
+-- item, so one pattern reads a sentence of any item count. The kernel learns no
+-- separator and no conjunction: which words join a list is per-language
+-- knowledge, exactly like the words that open a block.
+--
+-- Without it a language had to spell one pattern per item count, which is an
+-- open list the engine enumerates and an arity it arbitrarily stops at
+-- (@examples\/policy@ carried 24 such clones and refused a five-item line) --
+-- a missing grammar case, not a program defect.
+data TplTok = TLit Text | THole Text | TMulti Text | TList Text [Text] | TFused [FusedSeg]
   deriving (Eq, Show)
+
+-- | One token of a loose line: the lexeme as written, the value it carries (a
+-- quoted span hands over its inner text) and the normalized form a literal is
+-- compared against.
+--
+-- The raw lexeme is kept because a list's separators are cut from the token
+-- TEXT: a quoted item is atomic (the quote is the mark that says "these
+-- characters are a value", so a separator inside it never splits), and a
+-- separator glued to an item's last token is shed from the raw form and the
+-- item re-read. Dropping the quotes at tokenize time made both impossible.
+data Tok = Tok
+  { tokRaw     :: Text
+  , tokSurface :: Text
+  , tokNorm    :: Text
+  }
+  deriving (Eq, Show)
+
+-- | Read one lexeme as a token: a @"..."@ span hands over its inner text
+-- verbatim (case and spaces kept), anything else keeps every symbol it carries.
+mkTok :: Text -> Tok
+mkTok raw = case unquote raw of
+  Just inner -> Tok raw inner (T.toLower inner)
+  Nothing    -> Tok raw raw (normalizeToken raw)
+
+-- | Whether a token is a whole quoted span, i.e. a value the author marked as
+-- atomic. Such a token is never read as a list separator.
+tokQuoted :: Tok -> Bool
+tokQuoted = isJust . unquote . tokRaw
+
+-- | What a template match yields: one surface text per ordinary hole, and the
+-- items per LIST hole (each item the tokens it was cut from, so a structured
+-- item can be parsed further).
+data Match = Match
+  { mBinds :: Map Text Text
+  , mItems :: Map Text [[Tok]]
+  }
+  deriving (Eq, Show)
+
+-- | The empty match: no hole bound, no list cut.
+noMatch :: Match
+noMatch = Match Map.empty Map.empty
+
+-- | The LIST holes a template binds, in template order, with their separators.
+listHoles :: Pattern -> [(Text, [Text])]
+listHoles p = [(h, seps) | TList h seps <- pTemplate p]
+
+-- | One item as the text it states: its tokens' surface forms, space-joined
+-- (the same reading a @\<x.words>@ capture gets).
+itemText :: [Tok] -> Text
+itemText = T.unwords . map tokSurface
+
+-- | Cut a bound run into items on the separators an engine declared.
+--
+-- A separator matches as a standalone token sequence (@or@, @and then@) and,
+-- when it carries no alphanumeric character, also GLUED to the end of an item's
+-- last token, which is where a comma sits in English prose (@a, b or c@). A
+-- word has no glued form: it would cut inside a word (@curator@ ends in @or@),
+-- and a silent miscut is worse than a sentence the language refuses.
+--
+-- The sentence's own punctuation may close the last item (@\<d.list:,|and> and
+-- nothing else@ over @a and b, and nothing else@), so ONE empty item at the end
+-- is not an item. An empty item anywhere else is a malformed list and fails,
+-- rather than inventing a value for it.
+splitItems :: [Text] -> [Tok] -> Either Text [[Tok]]
+splitItems seps run
+  | null stand = Left "a list hole declares no separator"
+  | otherwise  = finish (walk [] run)
+  where
+    stand = [map normalizeToken (lexTokens s) | s <- seps, not (null (lexTokens s))]
+    glues = [one | s <- seps, [one] <- [lexTokens s], not (T.any isAlphaNum one)]
+    walk cur [] = [reverse cur]
+    walk cur (t : rest)
+      | not (tokQuoted t), Just rest' <- standalone (t : rest) = reverse cur : walk [] rest'
+      | not (tokQuoted t), Just t' <- glued t = reverse (t' : cur) : walk [] rest
+      | otherwise = walk (t : cur) rest
+    standalone ts = listToMaybe
+      [ drop (length s) ts
+      | s <- stand
+      , length ts >= length s
+      , and (zipWith same s (take (length s) ts)) ]
+    same w u = not (tokQuoted u) && w == tokNorm u
+    glued t = listToMaybe
+      [ mkTok r
+      | s <- glues, Just r <- [T.stripSuffix s (tokRaw t)], not (T.null r) ]
+    finish its =
+      let trimmed = if null (last its) then init its else its
+       in if null trimmed then Left "a list with no items"
+            else if any null trimmed then Left "a list item is empty"
+              else Right trimmed
 
 -- | A piece of a fused template token: literal text (stored lowercased, matched
 -- case-insensitively like 'TLit') or a hole binding one non-empty run of
@@ -136,6 +245,11 @@ refName :: Text -> Text
 refName h = maybe h fst (structHole h)
 
 -- | The structure-bound holes a pattern declares, in emit order, deduplicated.
+--
+-- A reference to a LIST hole's index (@\<p:index>@ where @p@ is @\<p.list:...>@)
+-- is not one: that index counts ITEMS of that line's list, which 'applyMatch'
+-- fills, not lines of a block, which 'Lips.Kernel.Lang.Nest' fills. Reading it
+-- as a block index would bind it twice under one name.
 structHoles :: Pattern -> [(Text, StructType)]
 structHoles p = nubFst
   [ s
@@ -143,6 +257,7 @@ structHoles p = nubFst
   , part <- peSubject e ++ peAssertion e
   , SHole h <- [part]
   , Just s <- [structHole h]
+  , fst s `notElem` map fst (listHoles p)
   ]
   where
     nubFst = foldr keep []
@@ -223,6 +338,7 @@ holesOf p = [h | tok <- pTemplate p, h <- tokHoles tok]
   where
     tokHoles (THole h) = [h]
     tokHoles (TMulti h) = [h]
+    tokHoles (TList h _) = [h]
     tokHoles (TFused segs) = fusedHoles segs
     tokHoles _         = []
 
@@ -289,12 +405,9 @@ stripTerminator ws  = init ws ++ [stripTrailingPunct (last ws)]
 -- captured value keeps its case and spaces); a bare word keeps every symbol it
 -- carries (only the line's terminator is shed), and its normalized form is what
 -- a literal template token is compared against.
-tokenizeLine :: Text -> [(Text, Text)]
-tokenizeLine = filter (not . T.null . snd) . map tok . stripTerminator . lexTokens
+tokenizeLine :: Text -> [Tok]
+tokenizeLine = filter (not . T.null . tokNorm) . map mkTok . stripTerminator . lexTokens
   where
-    tok w = case unquote w of
-      Just inner -> (inner, T.toLower inner)
-      Nothing    -> (w, normalizeToken w)
     -- A token that normalizes to empty is a lone terminator (a "." written
     -- apart from the word before it). It carries no meaning and is dropped,
     -- symmetric with the template side.
@@ -311,42 +424,56 @@ tokenizeLine = filter (not . T.null . snd) . map tok . stripTerminator . lexToke
 -- reported as outside it, which is a grammar bug, not a program defect. The
 -- search is over the line's tokens (a handful), and laziness stops it at the
 -- first success.
-matchTemplate :: [TplTok] -> [(Text, Text)] -> Maybe (Map Text Text)
-matchTemplate toks line = listToMaybe (go toks line Map.empty)
+matchTemplate :: [TplTok] -> [Tok] -> Maybe Match
+matchTemplate toks line = listToMaybe (go toks line noMatch)
   where
-    go :: [TplTok] -> [(Text, Text)] -> Map Text Text -> [Map Text Text]
-    go [] [] binds = [binds]
-    go [] _  _     = []
-    go (TLit lit : ts) ((_, norm) : rs) binds
-      | lit == norm = go ts rs binds
-      | otherwise   = []
+    go :: [TplTok] -> [Tok] -> Match -> [Match]
+    go [] [] m = [m]
+    go [] _  _ = []
+    go (TLit lit : ts) (t : rs) m
+      | lit == tokNorm t = go ts rs m
+      | otherwise        = []
     go (TLit _ : _) [] _ = []
-    go (THole h : ts) ((surface, _) : rs) binds =
-      [ b' | b <- bind h surface binds, b' <- go ts rs b ]
+    go (THole h : ts) (t : rs) m =
+      [ m' | b <- bind h (tokSurface t) m, m' <- go ts rs b ]
     go (THole _ : _) [] _ = []
     -- A fused token matches within one token: its literal pieces must appear,
     -- and each of its holes binds the characters between them.
-    go (TFused segs : ts) ((surface, _) : rs) binds =
-      [ b'
-      | caps <- maybe [] (: []) (matchFused segs surface)
-      , b <- foldM (\acc (h, v) -> bind h v acc) binds caps
-      , b' <- go ts rs b
+    go (TFused segs : ts) (t : rs) m =
+      [ m''
+      | caps <- maybe [] (: []) (matchFused segs (tokSurface t))
+      , m' <- foldM (\acc (h, v) -> bind h v acc) m caps
+      , m'' <- go ts rs m'
       ]
     go (TFused _ : _) [] _ = []
     -- Never guess: a multi-token hole binds at least one token, so `splits`
     -- starts at one and an empty rest yields no match at all.
-    go (TMulti h : ts) rest binds =
-      [ b'
+    go (TMulti h : ts) rest m =
+      [ m''
       | (taken, rs) <- splits rest
-      , b  <- bind h (T.unwords (map fst taken)) binds
-      , b' <- go ts rs b
+      , m'  <- bind h (itemText taken) m
+      , m'' <- go ts rs m'
+      ]
+    -- A list hole binds a run like TMulti and cuts it into items; a run whose
+    -- cut fails (an empty item) is simply not this hole's run, so the search
+    -- carries on and the line is reported unmatched rather than half-read.
+    go (TList h seps : ts) rest m =
+      [ m''
+      | (taken, rs) <- splits rest
+      , Right its <- [splitItems seps taken]
+      , m' <- bindItems h its m
+      , m'' <- go ts rs m'
       ]
     splits xs = [ splitAt n xs | n <- [1 .. length xs] ]
     -- A repeated hole must bind the same surface text at every occurrence.
-    bind h v binds = case Map.lookup h binds of
-      Nothing                    -> [Map.insert h v binds]
-      Just prev | prev == v      -> [binds]
-                | otherwise      -> []
+    bind h v m = case Map.lookup h (mBinds m) of
+      Nothing                -> [m { mBinds = Map.insert h v (mBinds m) }]
+      Just prev | prev == v  -> [m]
+                | otherwise  -> []
+    bindItems h its m = case Map.lookup h (mItems m) of
+      Nothing                 -> [m { mItems = Map.insert h its (mItems m) }]
+      Just prev | prev == its -> [m]
+                | otherwise   -> []
 
 -- | Match a fused token's segments against one token's surface text, yielding
 -- what each hole binds, in order. Literals compare case-insensitively (as
@@ -371,16 +498,41 @@ matchFused segs surface = listToMaybe (go segs surface)
 -- every target hole also appears in the template (validated when a pattern is
 -- read), so substitution is total.
 applyPattern :: Pattern -> Map Text Text -> [(Subject, Kind, Assertion, Strength)]
-applyPattern p binds = map one (pEmits p)
+applyPattern p binds = applyMatch p (Match binds Map.empty)
+
+-- | Apply a pattern to a whole match: 'applyPattern', except that an emit
+-- mentioning a LIST hole is produced once per item, with @\<p>@ the item and
+-- @\<p:index>@ its 1-based position. An emit that mentions no list hole is
+-- produced once, so a dense line states its list and its scalar facts together.
+--
+-- With no items in hand (the static gates, which read a pattern under marker
+-- bindings) a list emit is produced once, from the bindings as they are: one
+-- representative subject, which is what a gate over subject SHAPES needs.
+applyMatch :: Pattern -> Match -> [(Subject, Kind, Assertion, Strength)]
+applyMatch p m = concatMap forEmit (pEmits p)
   -- A key hole carries a whole subject PATH, so its segments are segments; every
   -- other hole stays one atomic segment (an HTTP route @/file.json@ is one key).
   -- Decided from the pattern's own declarations, so the reference spelling
   -- (@\<k:key\>@ or the plain @\<k\>@) does not change the reading.
   where
-    one e =
-      ( Subject (segsOf (peSubject e))
+    binds = mBinds m
+    forEmit e = case [ (h, its)
+                     | (h, _) <- listHoles p
+                     , h `elem` map refName (emitHoles e)
+                     , Just its <- [Map.lookup h (mItems m)] ] of
+      []          -> [one binds e]
+      ((h, its) : _) ->
+        [ one (itemBinds h i it) e | (i, it) <- zip [(1 :: Int) ..] its ]
+    emitHoles e = [h | SHole h <- peSubject e ++ peAssertion e]
+    -- The item's own bindings win over the line's: <p> is this item's text and
+    -- <p:index> its position, bound under the reference's own spelling so the
+    -- two cannot collide (both resolve to the name "p" otherwise).
+    itemBinds h i it =
+      Map.insert h (itemText it) (Map.insert (h <> ":index") (T.pack (show i)) binds)
+    one bs e =
+      ( Subject (segsOf bs (peSubject e))
       , peKind e
-      , Assertion (assertionOf e)
+      , Assertion (assertionOf bs e)
       , Stated  -- a pattern reads a program line: its emit is always a stated fact
       )
     -- A value built from SEVERAL holes is several program words at once, and a
@@ -390,15 +542,20 @@ applyPattern p binds = map one (pEmits p)
     -- quoted, which is exactly what 'Lips.Kernel.Surface.valueTokens' takes
     -- apart again. A one-part value is untouched: its own words stay its words,
     -- which is what a rule building a list out of it reads.
-    assertionOf e
+    assertionOf bs e
       | length [() | SHole _ <- peAssertion e] > 1 =
-          T.concat (map quoted (peAssertion e))
-      | otherwise = subst (peAssertion e)
-    quoted (SLit t)  = t
-    quoted (SHole h) = quoteText (fill (SHole h))
-    subst parts = T.concat (map fill parts)
-    fill (SLit t)  = t
-    fill (SHole h) = Map.findWithDefault (missing h) (refName h) binds
+          T.concat (map (quoted bs) (peAssertion e))
+      | otherwise = subst bs (peAssertion e)
+    quoted _  (SLit t)  = t
+    quoted bs (SHole h) = quoteText (fill bs (SHole h))
+    subst bs parts = T.concat (map (fill bs) parts)
+    fill _  (SLit t)  = t
+    -- The reference's own spelling is looked up first, so an item's
+    -- @\<p:index>@ is its position while @\<p>@ is its text; every other
+    -- reference resolves through 'refName', as a structure hole always has.
+    fill bs (SHole h) = case Map.lookup h bs of
+      Just v  -> v
+      Nothing -> Map.findWithDefault (missing h) (refName h) bs
     -- A missing hole is a pattern the reader should have rejected; make it loud.
     missing h = error ("applyPattern: unbound hole <" <> T.unpack h <> "> in pattern " <> T.unpack (pId p))
     -- Build the subject segments from the template structure, NOT by filling to
@@ -406,13 +563,13 @@ applyPattern p binds = map one (pEmits p)
     -- while a captured value is atomic and keeps any dots it carries (an HTTP
     -- route @\/file.json@ stays one key segment, not two). A literal's dots
     -- still split, so a plain subject like @backup.source@ is unchanged.
-    segsOf = foldr step [""] . map fill'
+    segsOf bs = foldr step [""] . map fill'
       where
         fill' (SLit t)  = PLit t                     -- separator-bearing literal
         fill' (SHole h)
           | refName h `elem` keyHoles = PPath (splitSubject (valOf h))
           | otherwise                 = PAtom (valOf h)
-        valOf h  = Map.findWithDefault (missing h) (refName h) binds
+        valOf h  = fill bs (SHole h)
         keyHoles = [n | (n, SKey) <- structHoles p]
         step (PAtom v) (seg : rest)  = (v <> seg) : rest
         step (PAtom _) []            = []            -- unreachable: acc always non-empty
