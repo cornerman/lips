@@ -1,0 +1,18 @@
+format: 1
+verdict: accepted
+model: claude-opus-5
+thinking: medium
+wall: 122.9
+phase 1.0 home-manager option schema
+phase 120.7 mint .board from 1 program for home-manager
+phase 0.9 clause claims: 1 claim
+phase 0.0 write examples/board
+turns: 3
+tool query_language: 1
+tool query_options: 1
+tool submit_draft: 1
+tokens input: 6
+tokens output: 7462
+tokens cache-read: 60221
+tokens cache-write: 34595
+cost-usd: 0.43290925

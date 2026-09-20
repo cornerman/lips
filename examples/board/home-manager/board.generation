@@ -1,5 +1,6 @@
 format: 1
 model: claude-opus-5
+basis: inherited 7f5452f6fc714d53
 world: home-manager ea8e044c7d9df134
 schema: github:nix-community/home-manager/041a999e8c1c5b731913855909e68d30ca69b8e0?narHash=sha256-J5%2BC9wsO0lhDyUalQzfplDbRjyHDYeEH5%2B9sdyXtwa8%3D
 thinking: medium
@@ -102,8 +103,9 @@ yourself: crystallizing programs you were never shown, realizing a module,
 evaluating your own expects. Verify beforehand everything you can, since
 nothing you get wrong here is caught before it costs the human a fresh mint.
 
-YOU HAVE TWO TOOLS. One grounds the names you use; the other is the door your
-engine walks through, and there is no second door.
+YOU HAVE THREE TOOLS. Two ground the names you use -- the option paths of a
+world, and the clauses another language already defines; the third is the door
+your engine walks through, and there is no second door.
 
 query_options(query) searches the pinned option schema of the target world
 named above. A dotted
@@ -115,13 +117,33 @@ are not certain of, look it up instead of recalling it: a rule naming an
 option that does not exist, or filling one with the wrong type, is rejected
 outright and the whole mint fails.
 
-submit_draft(draft) is how your engine reaches lips, and the only way it can:
-it runs lips' own gates over the lines you pass and reports the first gate that
-rejects them, in the exact words the refusal would use. A refused submission
-stages nothing, so fix what it names and submit again. A clean one is staged as
-your answer, and the last clean submission is the engine lips takes. Text you
-write outside this tool is read as engine lines by nothing, so a mint that
-never submits produces nothing at all.
+query_language(world, language) lists what another language gives you: one
+`name arity` line per clause it defines, in that world. A program line naming
+another language is a QUESTION, not a definition -- ask it here. Call the names
+it prints, exactly as printed; never define one of them yourself, and never call
+a name it did not print. A language that answers with an error is not minted
+yet, which makes the line unreadable: refuse, and say so. Defining a name
+locally that another language already exports is the silent failure this tool
+exists to remove -- both engines then work, the program says one thing, and the
+system does two.
+
+submit_draft(draft, restart) is how your engine reaches lips, and the only way
+it can: it runs lips' own gates over the lines you pass and reports the first
+gate that rejects them, in the exact words the refusal would use. A refused
+submission stages nothing as your answer, so fix what it names and submit again.
+A clean one is staged, and the last clean submission is the engine lips takes.
+Text you write outside this tool is read as engine lines by nothing, so a mint
+that never submits produces nothing at all.
+Submit ONCE in full, then only in patches. Your first submission is the whole
+engine; every later one is read as a patch of what you already submitted -- a
+new id adds that line, a known id replaces it entirely, an id you do not mention
+stays exactly as it is (the same rule a patch of a committed engine follows).
+So when a gate names one line, send that one line. Restating the rest re-emits
+an engine the human pays for twice and risks changing what already held. A
+refused submission is kept as your draft precisely so this works: everything
+else you wrote is still there. `restart: true` voids what you submitted before
+and reads this submission as the whole engine again -- the only way to drop a
+line you should never have added, since a patch cannot delete one.
 The tool does not run the claim gate or the artifact build, and it says so: a
 clean submission is not a guarantee of acceptance, while a refused one is a
 guarantee of refusal. Nothing here judges FOR you and nothing runs your program:
@@ -242,7 +264,29 @@ token, fused to punctuation, which is how a call or a flag is read:
 'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
 reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
 cannot be a multi-token hole; a value with spaces must be quoted (a quoted
-span is one token wherever it starts). A BULLETED list item begins
+span is one token wherever it starts).
+To read a LIST of items stated in ONE sentence, use a list hole
+<name.list:SEP|SEP>: it binds a run of tokens like <name.words> and then cuts
+that run into items on the separators you declare, separated by | in the hole
+itself. Every emit mentioning the hole is then produced once per item, with
+<name> the item's text and <name:index> its position from 1. One pattern reads
+the sentence at ANY item count, so never write one pattern per count
+(`... <p1> and <p2>` beside `... <p1>, <p2> and <p3>`): that stops at the
+count you guessed. A comma written against the word before it is cut as a
+separator; a separator that is a WORD must stand alone (`or`, `and then`). A
+separator carrying |, <, > or a space is quoted: <c.list:"|">, <c.list:","|"and
+then">. Use a list hole when each item becomes its own decision; use
+<name.words> when the whole run is ONE value.
+
+```lips-engine
+0.95 p3 pattern it may never read <p.list:,|or> => fact fs.deny.<p:index> "<p>"
+0.95 p4 pattern it may run <c.list:,|and> => fact cmd.<c>.policy "allow"
+```
+
+reads 'it may never read ~/.ssh, ~/.aws or ~/.config/gh' as three facts and
+'it may run git, rg, ls, cat and jq' as five, with no pattern per count.
+
+A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -349,11 +393,28 @@ every block it can sit in; `<k:key>` in a pattern that nests under nothing.
 ### Kinds
 
 kind: one of
-concept fact oblige forbid allow invariant view assume steer glue meta --
-all but one are ordinary decision kinds a rule must map to an option;
-'concept' is the one EXCEPTION, reserved for a decorative heading that
+concept fact oblige forbid allow invariant view assume steer glue meta uses --
+all but two are ordinary decision kinds a rule must map to an option.
+'concept' is one EXCEPTION, reserved for a decorative heading that
 carries no value of its own (the PATTERNS subsection above shows the form),
-so it alone needs no rule.
+so it needs no rule.
+
+'uses' is the other, and it is how a program names ANOTHER LANGUAGE whose
+clauses it calls. No rule maps it: composing with a language is not an option a
+world sets, so a `uses` emit is complete on its own. The SUBJECT is the language
+as a program names it (the .lips extension), and the ASSERTION is which instance
+of it -- the instance is the file basename before that extension, and naming the
+language itself means the single `<language>.lips` beside this program:
+
+```lips-engine
+0.95 p1 pattern the players come from <lang>. => uses <lang> "<lang>"
+0.95 p2 pattern the players come from the <inst> <lang>. => uses <lang> "<inst>"
+```
+
+A line like this is a QUESTION about a vocabulary that already exists: ask
+`query_language` what that language defines, and have your clauses CALL those
+names. Defining them again locally is the failure composition removes -- the
+program would say one thing and the system would do two.
 
 ### Subjects and Orthogonality
 
@@ -903,6 +964,7 @@ Before you submit, run this list against your own engine:
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
+4b. Does every line naming another language call a clause `query_language` printed, rather than a definition of your own?
 5. Does every expect name a value option, never a package or artifact-build option?
 6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
 7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
@@ -911,9 +973,16 @@ Before you submit, run this list against your own engine:
 
 When the program states BEHAVIOUR -- what it decides, keeps, rejects, computes
 -- emit CLAUSES, not a source file. A clause is one named definition under the
-subject root clause.<name>, and its rhs is an s-expression:
+subject root clause.<language>-<name>, and its rhs is an s-expression:
 
-  clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) (else #f)))"
+  clause.logscan-keep? "(define (logscan-keep? record spec) (cond ((null? spec) #t) (else #f)))"
+
+EVERY CLAUSE IS NAMED AFTER ITS OWN LANGUAGE, prefix included, in the subject
+and in the definition alike -- `logscan-keep?` for a language written in
+.logscan. lips refuses an engine whose clause is named otherwise, because two
+languages composed into one program would otherwise collide on a name neither
+author chose to share. It is also what makes another language's clauses safe to
+call: what `query_language` prints already carries its prefix.
 
 One definition per thing the program says, and nothing else. Every clause is a
 decision, so it carries the program line that caused it for free; a clause no
@@ -924,12 +993,12 @@ SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE, which is how a program whose lines
 are STATEMENTS gets an entry point. Write the rhs as a one-element LIST holding
 the whole definition, exactly as a list-typed option takes one element per line:
 
-  clause.main "[ (define (main) (println \"#<value>\")) ]"
+  clause.logscan-main "[ (define (logscan-main) (println \"#<value>\")) ]"
 
 Every line that rule matches contributes its own definition, and lips folds them
 into one whose body is theirs in the program's own order:
 
-  (define (main) (println "hallo") (println "du") (println "!"))
+  (define (logscan-main) (println "hallo") (println "du") (println "!"))
 
 Every contributor must define the same name with the same parameters, or lips
 refuses the engine. A repeat is kept -- two lines saying the same thing are two
@@ -943,6 +1012,19 @@ let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
 #\=), recursion (a clause may call itself and any other clause), and a call to
 a base procedure or a CONTRACT. You may NOT write: a macro, set! or any
 mutation, eval, an internal define, or a name nothing grounds.
+
+THE BASE PROCEDURES ARE THESE, and there are no others. Reading them is
+cheaper than rediscovering them: a mint that forgot `number->string` filed a
+gap for report formatting, and one that forgot `quotient` wrote integer
+division as repeated subtraction. Nothing outside this list and the contracts
+below grounds a name.
+
+  cons car cdr caar cadr cdar cddr null? pair? list
+  list? length append reverse eq? eqv? equal? + - *
+  / = < > <= >= min max abs quotient
+  remainder modulo number? string? boolean? symbol? char? procedure? string=? string<?
+  string-length string-append substring string->number number->string char=? apply
+
 
 THE HOLE MARKER INSIDE A CLAUSE IS #<name>, NOT <name>. Both < and > are
 ordinary Scheme identifier characters, so a clause must be able to write
@@ -967,6 +1049,7 @@ available are:
   die (2) -- message subject -> stops the program, naming the subject
   emitted (0) -- -> the lines the program printed, in order
   random-step (1) -- seed -> (value . next-seed), value 0..999
+  elements-of (1) -- array -> its elements as a list, or #f when it is not an array
 
 
 If the program needs a capability no contract offers, that is a GAP: report it
@@ -979,7 +1062,7 @@ CLAIM WHAT THE BEHAVIOUR DOES. A claim over clauses is judged offline, with no
 binary built and no machine booted, so an observable here is cheap enough that
 every behaviour sentence should have one:
 
-  claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
+  claim.<id>.call "(logscan-keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (logscan-parse-spec (list \"a=1\")))" ;
   claim.<id>.equals "#t"
 
 EVERY CLAUSE MUST BE REACHED BY A CLAIM, following calls from the claim's own
@@ -989,10 +1072,10 @@ clause no claim reaches is behaviour the next mint may rewrite with every gate
 still green. So claim the ENTRY, not only the helpers: one claim of the shape
 
   claim.whole.feed "[ \"first line\" \"second line\" ]" ;
-  claim.whole.call "(begin (main) (emitted))" ;
+  claim.whole.call "(begin (logscan-main) (emitted))" ;
   claim.whole.equals "(list \"what it prints\")"
 
-reaches main and everything main calls, which is usually the whole program.
+reaches the entry and everything it calls, which is usually the whole program.
 Claims over single definitions are good beside it, never instead of it.
 
 Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
@@ -1007,27 +1090,39 @@ the real effects: (emitted) is the lines the program printed, in order, and
 feed-lines / feed-args are what claim.<id>.feed and claim.<id>.args compile to.
 So a program whose whole job is to print is claimed end to end:
   claim.<id>.feed "[ \"2\" \"3\" ]" ;
-  claim.<id>.call "(begin (main) (emitted))" ;
+  claim.<id>.call "(begin (logscan-main) (emitted))" ;
   claim.<id>.equals "(list \"5\")"
 A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
 
 NEVER FIX A COUNT IN A TEMPLATE. A sentence carrying a list of items --
 "given the lines A, B and C" -- must NOT become a template with one hole per
 item (<l1>, <l2>, <l3>): that pattern reads a three-item program and refuses a
-four-item one, so adding an example costs the author a fresh mint. Every such
-sentence is a BLOCK: a header pattern, a child pattern nested under it, and one
-decision per item keyed by its position.
+four-item one, so adding an example costs the author a fresh mint. Two forms
+read a list, and each yields one decision per item, keyed by its position.
+
+ITEMS IN ONE SENTENCE: a list hole, and -- when an item carries more than one
+value -- an ITEM PATTERN <id>.each.<parent>.<hole> that reads ONE item:
+
+  p3 pattern given the log of <e.list:,|and> the habit <q> prints <out> => fact witness.<q>.expected "<out>"
+  p4.each.p3.e pattern <d> for <h> => fact witness.<q>.entry.<n:index> "<d> <h>"
+  r3 match fact witness.<q>.entry.<n> => claim.<q>.feed "[ \"<value.1>\t<value.2>\" ]"
+
+An item pattern sees its parent's captures (<q> above), numbers its items with
+<n:index>, and must read EVERY item of that hole or the line is refused. A hole
+with no item pattern binds the item as one value, which is all a list of plain
+words needs.
+
+ITEMS ON THEIR OWN LINES: a BLOCK -- a header pattern and a child pattern nested
+under it -- which is the form when the author writes one item per line:
 
   p3 pattern given these lines => concept witness.given "the example input follows"
   p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
   r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
 
-The author then writes the items on their own lines under the header, however
-many there are, and Append assembles the one-element lists into one list in
-source order. The same shape carries any list a sentence states: paths to back
-up, packages to install, ports to open. The kernel dictates no collection
-syntax, so the words that open a block are yours to choose in the header
-pattern.
+Either way Append assembles the one-element lists into one list in source order,
+and the same shape carries any list a program states: paths to back up, packages
+to install, ports to open. The kernel dictates no collection syntax, so the
+separators and the words that open a block are yours to choose.
 
 A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
 claim around it: the stop becomes an ordinary value, so state what it must be.
@@ -1060,6 +1155,49 @@ express. Prefer clauses every time you can: a source file is traceable to no
 program line, is rewritten wholesale on the next mint, and is the one thing lips
 cannot check.
 
+THE ENGINE YOU INHERIT (this language is already minted; you are EXTENDING it).
+
+Below is the committed engine, written in the same line format you answer in. It
+already passes every gate and already serves every program of the corpus.
+
+Answer with a PATCH, not with a whole engine:
+  - a line whose id is NEW adds that line,
+  - a line whose id ALREADY EXISTS below replaces that line entirely,
+  - an id you do not mention stays exactly as it is.
+
+Do not restate a line you are not changing. Restating costs the human money and
+risks changing what already holds. There is no way to delete a line: if the
+language can only be read by dropping something, say so in the report and leave
+it, so the human decides.
+
+Change an existing line only where a program cannot be read otherwise, and say in
+the report which ids you changed and why. Everything else in this prompt applies
+unchanged: the same value grammar, the same confidence rule, the same demands and
+expects, the same report.
+
+1.0 p1 pattern show a kanban board in the terminal => concept board.purpose "a kanban board printed in the terminal"
+1.0 p2 pattern read the board from the file named on the command line, or from standard input when no file is named => fact input.source "command line file or standard input"
+1.0 p3 pattern the board is markdown: a <col> line opens a column and a <card> line under it is one of its cards => fact board.syntax "<col> <card>"
+1.0 p4 pattern the board has the columns <names> => fact board.columns "<names>"
+1.0 p5 pattern print one line per column: its name, a colon, a space, then its cards joined with <sep> => fact output.separator "<sep>"
+1.0 p6 pattern a column with no cards prints its name and the colon only => fact output.empty "name and colon only"
+1.0 p7 pattern install the tool as the command <name> => fact tool.command "<name>"
+1.0 p8 pattern given the lines "<l1>", "<l2>", "<l3>", <l4> and "<l5>", print the lines "<o1>", <o2> and <o3> => fact witness.feed "<l1> <l2> <l3> <l4> <l5>" ; fact witness.out "<o1> <o2> <o3>"
+1.0 q1 demand board.syntax "which line shapes open a column and which state a card?"
+1.0 q2 demand board.columns "which columns does the board have, in order?"
+1.0 q3 demand output.separator "with what text are a column's cards joined?"
+1.0 q4 demand tool.command "what command name is the tool installed as?"
+1.0 q5 demand witness.feed "give an example board: which input lines?"
+1.0 q6 demand witness.out "for that example board, which lines must be printed?"
+1.0 r2 match fact input.source => clause.board-read-lines "(define (board-read-lines) (let ((l (read-a-line))) (if (end-of-input? l) (list) (cons l (board-read-lines)))))"
+1.0 r3 match fact board.syntax => clause.board-first-word "(define (board-first-word text) (let ((c (string-cut text #\\space))) (if c (car c) text)))" ; clause.board-rest-after "(define (board-rest-after text) (let ((c (string-cut text #\\space))) (if c (cdr c) \"\")))" ; clause.board-column-marker "(define (board-column-marker) (board-first-word \"#<value.1>\"))" ; clause.board-card-marker "(define (board-card-marker) (board-first-word \"#<value.2>\"))" ; clause.board-is-column "(define (board-is-column line) (equal? (board-first-word line) (board-column-marker)))" ; clause.board-is-card "(define (board-is-card line) (equal? (board-first-word line) (board-card-marker)))" ; clause.board-column-name "(define (board-column-name line) (board-rest-after line))" ; clause.board-card-text "(define (board-card-text line) (board-rest-after line))" ; clause.board-cards-of "(define (board-cards-of name lines) (cond ((null? lines) (list)) ((and (board-is-column (car lines)) (equal? (board-column-name (car lines)) name)) (board-cards-until (cdr lines))) (else (board-cards-of name (cdr lines)))))" ; clause.board-cards-until "(define (board-cards-until lines) (cond ((null? lines) (list)) ((board-is-column (car lines)) (list)) ((board-is-card (car lines)) (cons (board-card-text (car lines)) (board-cards-until (cdr lines)))) (else (board-cards-until (cdr lines)))))"
+1.0 r4 match fact board.columns => clause.board-trim "(define (board-trim text) (let ((c (string-cut text #\\space))) (if (and c (equal? (car c) \"\")) (board-trim (cdr c)) text)))" ; clause.board-split-columns "(define (board-split-columns text) (let ((c (string-cut text #\\,))) (if c (cons (board-trim (car c)) (board-split-columns (board-trim (cdr c)))) (list (board-trim text)))))" ; clause.board-columns "(define (board-columns) (board-split-columns \"#<value>\"))"
+1.0 r5 match fact output.separator => clause.board-join "(define (board-join items sep) (cond ((null? items) \"\") ((null? (cdr items)) (car items)) (else (string-append (car items) (string-append sep (board-join (cdr items) sep))))))" ; clause.board-render-column "(define (board-render-column name cards) (if (null? cards) (board-render-empty name) (string-append name (string-append \": \" (board-join cards \"#<value>\")))))" ; clause.board-print-columns "(define (board-print-columns names lines) (if (null? names) #t (let ((x (emit (board-render-column (car names) (board-cards-of (car names) lines))))) (board-print-columns (cdr names) lines))))" ; clause.board-main "(define (board-main) (board-print-columns (board-columns) (board-read-lines)))"
+1.0 r6 match fact output.empty => clause.board-render-empty "(define (board-render-empty name) (string-append name \":\"))"
+1.0 r7 match fact tool.command => site.<self>.command "\"<value>\"" ; home.packages "[ ${site} ]"
+1.0 r8 match fact witness.feed => claim.board.feed "[ \"<value.1>\" \"<value.2>\" \"<value.3>\" \"<value.4>\" \"<value.5>\" ]" ; claim.board.call "(begin (board-main) (emitted))"
+1.0 r9 match fact witness.out => claim.board.equals "(list \"#<value.1>\" \"#<value.2>\" \"#<value.3>\")"
+
 --- program (input) ---
 === program board.lips ===
 show a kanban board in the terminal.
@@ -1073,139 +1211,128 @@ given the lines "## todo", "- milk", "- eggs", "## doing" and "- taxes", print t
 
 --- tool transcript ---
 -> query_options "home.packages" "home-manager"
--> query_options "home.sessionVariables" "home-manager"
+-> query_language "board" "home-manager"
 <- query_options
 home.packages : list of package
 
-<- query_options
-home.sessionVariables : integer
+<- query_language
+board-card-marker 0
+board-card-text 1
+board-cards-of 2
+board-cards-until 1
+board-column-marker 0
+board-column-name 1
+board-columns 0
+board-first-word 1
+board-is-card 1
+board-is-column 1
+board-join 2
+board-main 0
+board-print-columns 2
+board-read-lines 0
+board-render-column 2
+board-render-empty 1
+board-rest-after 1
+board-split-columns 1
+board-trim 1
 
--> submit_draft "0.95 p1 pattern show a kanban board in the terminal. => concept board.purpose \"a kanban board printed in the terminal\"\n0.7 p2 pattern read the board from the file named on the command line, or from standard input when no file is named. => fact input.source \"command line file or standard input\"\n0.9 p3 pattern the board is markdown: a \"<col>\" line opens a column and a \"<card>\" line under it is one of its cards. => fact board.syntax \"<col> <card>\"\n0.92 p4 pattern the board has the columns \"<names>\". => fact board.columns \"<names>\"\n0.9 p5 pattern print one line per column: its name, a colon, a space, then its cards joined with \"<sep>\". => fact output.separator \"<sep>\"\n0.85 p6 pattern a column with no cards prints its name and the colon only. => fact output.empty \"name and colon only\"\n0.95 p7 pattern install the tool as the command <name>. => fact tool.command \"<name>\"\n0.8 p8 pattern given the lines \"<l1>\", \"<l2>\", \"<l3>\", \"<l4>\" and \"<l5>\", print the lines \"<o1>\", \"<o2>\" and \"<o3>\". => fact witness.feed \"<l1> <l2> <l3> <l4> <l5>\" ; fact witness.out \"<o1> <o2> <o3>\"\n0.7 r2 match fact input.source => clause.read-lines \"(define (read-lines) (let ((l (read-a-line))) (if (end-of-input? l) (list) (cons l (read-lines)))))\"\n0.7 r2 because \"no contract can open a file, so only the standard-input half of that sentence is honoured; see gap no-file-contract\"\n0.9 r3 match fact board.syntax => clause.first-word \"(define (first-word text) (let ((c (string-cut text #\\\\space))) (if c (car c) text)))\" ; clause.rest-after \"(define (rest-after text) (let ((c (string-cut text #\\\\space))) (if c (cdr c) \\\"\\\")))\" ; clause.column-marker \"(define (column-marker) (first-word \\\"#<value.1>\\\"))\" ; clause.card-marker \"(define (card-marker) (first-word \\\"#<value.2>\\\"))\" ; clause.is-column \"(define (is-column line) (equal? (first-word line) (column-marker)))\" ; clause.is-card \"(define (is-card line) (equal? (first-word line) (card-marker)))\" ; clause.column-name \"(define (column-name line) (rest-after line))\" ; clause.card-text \"(define (card-text line) (rest-after line))\" ; clause.cards-of \"(define (cards-of name lines) (cond ((null? lines) (list)) ((and (is-column (car lines)) (equal? (column-name (car lines)) name)) (cards-until (cdr lines))) (else (cards-of name (cdr lines)))))\" ; clause.cards-until \"(define (cards-until lines) (cond ((null? lines) (list)) ((is-column (car lines)) (list)) ((is-card (car lines)) (cons (card-text (car lines)) (cards-until (cdr lines)))) (else (cards-until (cdr lines)))))\"\n0.92 r4 match fact board.columns => clause.trim \"(define (trim text) (let ((c (string-cut text #\\\\space))) (if (and c (equal? (car c) \\\"\\\")) (trim (cdr c)) text)))\" ; clause.split-columns \"(define (split-columns text) (let ((c (string-cut text #\\\\,))) (if c (cons (trim (car c)) (split-columns (trim (cdr c)))) (list (trim text)))))\" ; clause.columns \"(define (columns) (split-columns \\\"#<value>\\\"))\"\n0.9 r5 match fact output.separator => clause.join \"(define (join items sep) (cond ((null? items) \\\"\\\") ((null? (cdr items)) (car items)) (else (string-append (car items) (string-append sep (join (cdr items) sep))))))\" ; clause.render-column \"(define (render-column name cards) (if (null? cards) (render-empty name) (string-append name (string-append \\\": \\\" (join cards \\\"#<value>\\\")))))\" ; clause.print-columns \"(define (print-columns names lines) (if (null? names) #t (let ((x (emit (render-column (car names) (cards-of (car names) lines))))) (print-columns (cdr names) lines))))\" ; clause.main \"(define (main) (print-columns (columns) (read-lines)))\"\n0.85 r6 match fact output.empty => clause.render-empty \"(define (render-empty name) (string-append name \\\":\\\"))\"\n0.95 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.8 r8 match fact witness.feed => claim.board.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\" \\\"<value.4>\\\" \\\"<value.5>\\\" ]\" ; claim.board.call \"(begin (main) (emitted))\"\n0.8 r9 match fact witness.out => claim.board.equals \"(list \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\")\"\n0.9 q1 demand board.syntax \"which line shapes open a column and which state a card?\"\n0.9 q2 demand board.columns \"which columns does the board have, in order?\"\n0.9 q3 demand output.separator \"with what text are a column's cards joined?\"\n0.95 q4 demand tool.command \"what command name is the tool installed as?\"\n0.8 q5 demand witness.feed \"give an example board: which input lines?\"\n0.8 q6 demand witness.out \"for that example board, which lines must be printed?\"\n0.8 a1 expect claim.board.feed from witness.feed is \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\" \\\"<value.4>\\\" \\\"<value.5>\\\" ]\"\n0.8 a2 expect claim.board.equals from witness.out is \"(list \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\")\"\n0.9 g1 gap no-file-contract <<<lips\nblocked line: read the board from the file named on the command line, or from standard input when no file is named.\nno contract opens a file: read-a-line reads standard input only, and arguments\nmerely hands back the words. minimal repro: a program stating \"read from the\nfile named on the command line\" can only be realized as a standard-input\nreader, so the file half of the sentence governs nothing.\nlips>>>\n0.9 g2 gap fixed-witness-count <<<lips\nblocked line: given the lines \"## todo\", \"- milk\", \"- eggs\", \"## doing\" and \"- taxes\", print the lines \"todo: milk, eggs\", \"doing: taxes\" and \"done:\".\nthe example states its input and output lines inside ONE sentence, so the\npattern needs one hole per item and thereby fixes the counts at five input and\nthree output lines. a block would free the input side (one one-element list per\nline, aggregated into claim.feed), but claim.equals is a single expression and\nhas no aggregating form, so the output side cannot be freed at all. repro: add\na sixth input line to the sentence and no pattern matches it.\nlips>>>\n0.95 d1 report <<<lips\n## What this language says\n\nA board program is a handful of plain sentences describing a terminal kanban\nprinter. Eight line shapes are accepted:\n\n1. `show a kanban board in the terminal.` -- a decorative heading; it realizes\n   nothing.\n2. `read the board from the file named on the command line, or from standard\n   input when no file is named.` -- declares where the board text comes from.\n3. `the board is markdown: a \"## name\" line opens a column and a \"- text\" line\n   under it is one of its cards.` -- both quoted markers are holes. The first\n   word of each marker (`##`, `-`) is what the built program tests each input\n   line against, and the rest of the line is the column name or card text. Write\n   different markers and the parser changes with them.\n4. `the board has the columns \"todo, doing, done\".` -- a hole: the comma-separated\n   column names, in print order. Columns are printed in exactly this order,\n   whether or not the input mentions them.\n5. `print one line per column: its name, a colon, a space, then its cards joined\n   with \", \".` -- the join text is a hole; the `name: ` prefix is fixed wording.\n6. `a column with no cards prints its name and the colon only.` -- fixes the\n   empty-column form; it has no editable value.\n7. `install the tool as the command board.` -- a hole: the command name that\n   lands on the user's PATH.\n8. `given the lines \"...\", ... and \"...\", print the lines \"...\", \"...\" and \"...\".`\n   -- the worked example, turned into a claim that runs the whole program\n   offline: the input lines are fed to it and its printed lines are compared\n   exactly.\n\n## Mechanism\n\nThe behaviour is minted as CLAUSES, not as a source file: `main` reads every\ninput line, splits the declared column list, collects each column's cards from\nthe parsed lines, and emits one rendered line per column. Nothing else is\ninvented -- each clause traces back to the sentence that asked for it.\n\nThe whole thing is installed by naming a site: `site.<self>.command` takes the\ncommand name from sentence 7, and `home.packages` gets `${site}` itself, so the\ntool appears on the user's PATH with that name. No systemd unit is created:\nthis is a command a person runs, not a service.\n\n## What I could not do (two gaps filed)\n\n* There is no contract that opens a FILE, so sentence 2 is honoured only for\n  standard input (`board < file.md` works; `board file.md` ignores the name).\n  That rule carries reduced confidence for exactly this reason.\n* The worked example states five input and three output lines inside one\n  sentence, so its pattern fixes those counts. Editing the example to a\n  different number of lines will need a fresh mint. Freeing it would need an\n  aggregating form for a claim's expected value, which the grammar has not.\n\n## Contract\n\nThe expects pin the example: the input lines reach the claim's feed and the\nexpected lines reach the claim's comparison, both verbatim, so a later mint that\nquietly narrows or drops the author's example is refused.\nlips>>>\n"
+-> submit_draft "1.0 d1 report <<<lips\nThis language describes a small terminal kanban board printer, and every\nsentence of `board.lips` is read by the engine you already have; this mint\nchanges no pattern and no rule. It adds the report (which the committed\nengine was missing) and files one capability gap that the corpus makes\nvisible.\n\n**The line shapes it accepts**, in the order the program states them:\n\n- `show a kanban board in the terminal.` — a heading, decorative only: it\n  names what the program is and realizes nothing.\n- `read the board from the file named on the command line, or from standard\n  input when no file is named.` — fixes the input mechanism; it realizes the\n  line-reading clause (`board-read-lines`, built on the `read-a-line` and\n  `end-of-input?` contracts).\n- `the board is markdown: a \"## name\" line opens a column and a \"- text\"\n  line under it is one of its cards.` — the two markers are holes, so\n  changing `##` to `###` or `-` to `*` changes the parser. They become the\n  clauses that classify a line and cut a card's or a column's text off its\n  marker.\n- `the board has the columns \"todo, doing, done\".` — the column list, and\n  its ORDER, is one value; a clause splits it on commas and trims spaces, so\n  reordering or adding a column is a one-word edit.\n- `print one line per column: its name, a colon, a space, then its cards\n  joined with \", \".` — the joiner is a hole; the rest of the format (name,\n  colon, space) is fixed wording of this language.\n- `a column with no cards prints its name and the colon only.` — selects the\n  empty-column rendering.\n- `install the tool as the command board.` — the command name is a hole; it\n  becomes `site.<self>.command` and the built program is put on the user's\n  PATH through `home.packages`.\n- `given the lines ..., print the lines ...` — the worked example. It is the\n  only observable: it becomes a claim that feeds those input lines to the\n  program and compares, byte for byte, what it prints.\n\n**Mechanism.** The behaviour is expressed as clauses (a small Scheme\nsubset), not as a source file, so every definition is traceable to the\nsentence that asked for it, and the whole program is checked offline by the\nclaim. Nothing is written to disk, no service and no timer is created: the\nresult of a program in this language is one executable, named by the\n`install the tool as the command ...` line, installed into the user's\nprofile. There is no NixOS-level option anywhere; `home.packages` and the\nsite are the whole footprint.\n\n**What it cannot yet do** (see the gap below): the example sentence has a\nfixed shape of five input lines and three printed lines. Editing the example\nto a board of a different size needs a fresh mint. Everything else in the\nprogram — markers, columns, joiner, command name — is a hole and flows\nthrough the engine you already have.\nlips>>>\n1.0 g1 gap fixed-example-arity <<<lips\nblocked line:\n  given the lines \"## todo\", \"- milk\", \"- eggs\", \"## doing\" and \"- taxes\",\n  print the lines \"todo: milk, eggs\", \"doing: taxes\" and \"done:\".\n\nThe input side of this example could be read with a list hole plus an item\npattern, so that claim.board.feed aggregates one element per line at any\ncount. The OUTPUT side cannot: claim.<id>.equals takes a single expression,\nnot a list-typed option, so a per-item rule cannot contribute one expected\nline each and there is no way to assemble (list \"a\" \"b\" ... ) from a variable\nnumber of decisions. Making only the feed general and leaving the expected\noutput pinned at three would be worse than the present symmetry, so pattern\np8 still fixes 5 input lines and 3 output lines and an author who wants a\nbigger example must regenerate.\n\nminimal repro: a program identical to board.lips but whose example feeds six\nlines fails to crystallize under p8.\n\nwhat would fix it: a list-accepting claim section for the expected output\n(e.g. claim.<id>.equals-lines, aggregating one element per contributing\ndecision exactly as claim.<id>.feed already does).\nlips>>>"
 <- submit_draft
-world home-manager:
-· crystallize examples/board.lips
-✗ crystallize examples/board.lips  (0.0s)
-lips built a setup for examples/board.lips, but it didn't hold up:
-
-it reads words from the program and then discards them:
-  - pattern p8 binds <o1>, which reaches witness.out, and rule r9 emits it nowhere: editing that word changes no output
-  - pattern p8 binds <o2>, which reaches witness.out, and rule r9 emits it nowhere: editing that word changes no output
-  - pattern p8 binds <o3>, which reaches witness.out, and rule r9 emits it nowhere: editing that word changes no output
-
-Each one wants one of three fixes: use the word (a <value>/<value.N>
-hole, or the capture aligned with the subject segment it fills); or, if
-it SELECTS a mechanism no value can carry (a builder, a service), spell
-it as a literal token of the template, so editing it stops the line
-matching and asks for a fresh language instead of governing nothing; or,
-if the line truly carries no value, read it as a concept.
-
-→ run generate again. If it keeps failing the same way, it's a lips bug;
-  please report it with the text above.
-
--> submit_draft "0.95 p1 pattern show a kanban board in the terminal. => concept board.purpose \"a kanban board printed in the terminal\"\n0.7 p2 pattern read the board from the file named on the command line, or from standard input when no file is named. => fact input.source \"command line file or standard input\"\n0.9 p3 pattern the board is markdown: a \"<col>\" line opens a column and a \"<card>\" line under it is one of its cards. => fact board.syntax \"<col> <card>\"\n0.92 p4 pattern the board has the columns \"<names>\". => fact board.columns \"<names>\"\n0.9 p5 pattern print one line per column: its name, a colon, a space, then its cards joined with \"<sep>\". => fact output.separator \"<sep>\"\n0.85 p6 pattern a column with no cards prints its name and the colon only. => fact output.empty \"name and colon only\"\n0.95 p7 pattern install the tool as the command <name>. => fact tool.command \"<name>\"\n0.8 p8 pattern given the lines \"<l1>\", \"<l2>\", \"<l3>\", \"<l4>\" and \"<l5>\", print the lines \"<o1>\", \"<o2>\" and \"<o3>\". => fact witness.feed \"<l1> <l2> <l3> <l4> <l5>\" ; fact witness.out \"<o1> <o2> <o3>\"\n0.7 r2 match fact input.source => clause.read-lines \"(define (read-lines) (let ((l (read-a-line))) (if (end-of-input? l) (list) (cons l (read-lines)))))\"\n0.7 r2 because \"no contract can open a file, so only the standard-input half of that sentence is honoured; see gap no-file-contract\"\n0.9 r3 match fact board.syntax => clause.first-word \"(define (first-word text) (let ((c (string-cut text #\\\\space))) (if c (car c) text)))\" ; clause.rest-after \"(define (rest-after text) (let ((c (string-cut text #\\\\space))) (if c (cdr c) \\\"\\\")))\" ; clause.column-marker \"(define (column-marker) (first-word \\\"#<value.1>\\\"))\" ; clause.card-marker \"(define (card-marker) (first-word \\\"#<value.2>\\\"))\" ; clause.is-column \"(define (is-column line) (equal? (first-word line) (column-marker)))\" ; clause.is-card \"(define (is-card line) (equal? (first-word line) (card-marker)))\" ; clause.column-name \"(define (column-name line) (rest-after line))\" ; clause.card-text \"(define (card-text line) (rest-after line))\" ; clause.cards-of \"(define (cards-of name lines) (cond ((null? lines) (list)) ((and (is-column (car lines)) (equal? (column-name (car lines)) name)) (cards-until (cdr lines))) (else (cards-of name (cdr lines)))))\" ; clause.cards-until \"(define (cards-until lines) (cond ((null? lines) (list)) ((is-column (car lines)) (list)) ((is-card (car lines)) (cons (card-text (car lines)) (cards-until (cdr lines)))) (else (cards-until (cdr lines)))))\"\n0.92 r4 match fact board.columns => clause.trim \"(define (trim text) (let ((c (string-cut text #\\\\space))) (if (and c (equal? (car c) \\\"\\\")) (trim (cdr c)) text)))\" ; clause.split-columns \"(define (split-columns text) (let ((c (string-cut text #\\\\,))) (if c (cons (trim (car c)) (split-columns (trim (cdr c)))) (list (trim text)))))\" ; clause.columns \"(define (columns) (split-columns \\\"#<value>\\\"))\"\n0.9 r5 match fact output.separator => clause.join \"(define (join items sep) (cond ((null? items) \\\"\\\") ((null? (cdr items)) (car items)) (else (string-append (car items) (string-append sep (join (cdr items) sep))))))\" ; clause.render-column \"(define (render-column name cards) (if (null? cards) (render-empty name) (string-append name (string-append \\\": \\\" (join cards \\\"#<value>\\\")))))\" ; clause.print-columns \"(define (print-columns names lines) (if (null? names) #t (let ((x (emit (render-column (car names) (cards-of (car names) lines))))) (print-columns (cdr names) lines))))\" ; clause.main \"(define (main) (print-columns (columns) (read-lines)))\"\n0.85 r6 match fact output.empty => clause.render-empty \"(define (render-empty name) (string-append name \\\":\\\"))\"\n0.95 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.8 r8 match fact witness.feed => claim.board.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\" \\\"<value.4>\\\" \\\"<value.5>\\\" ]\" ; claim.board.call \"(begin (main) (emitted))\"\n0.8 r9 match fact witness.out => claim.board.equals \"(list \\\"#<value.1>\\\" \\\"#<value.2>\\\" \\\"#<value.3>\\\")\"\n0.9 q1 demand board.syntax \"which line shapes open a column and which state a card?\"\n0.9 q2 demand board.columns \"which columns does the board have, in order?\"\n0.9 q3 demand output.separator \"with what text are a column's cards joined?\"\n0.95 q4 demand tool.command \"what command name is the tool installed as?\"\n0.8 q5 demand witness.feed \"give an example board: which input lines?\"\n0.8 q6 demand witness.out \"for that example board, which lines must be printed?\"\n0.8 a1 expect claim.board.feed from witness.feed is \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\" \\\"<value.4>\\\" \\\"<value.5>\\\" ]\"\n0.9 g1 gap no-file-contract <<<lips\nblocked line: read the board from the file named on the command line, or from standard input when no file is named.\nno contract opens a file: read-a-line reads standard input only, and arguments\nmerely hands back the words. minimal repro: a program stating \"read from the\nfile named on the command line\" can only be realized as a standard-input\nreader, so the file half of the sentence governs nothing.\nlips>>>\n0.9 g2 gap fixed-witness-count <<<lips\nblocked line: given the lines \"## todo\", \"- milk\", \"- eggs\", \"## doing\" and \"- taxes\", print the lines \"todo: milk, eggs\", \"doing: taxes\" and \"done:\".\nthe example states its input and output lines inside ONE sentence, so the\npattern needs one hole per item and thereby fixes the counts at five input and\nthree output lines. a block would free the input side (one one-element list per\nline, aggregated into claim.feed), but claim.equals is a single expression and\nhas no aggregating form, so the output side cannot be freed at all. repro: add\na sixth input line to the sentence and no pattern matches it.\nlips>>>\n0.95 d1 report <<<lips\n## What this language says\n\nA board program is a handful of plain sentences describing a terminal kanban\nprinter. Eight line shapes are accepted:\n\n1. `show a kanban board in the terminal.` -- a decorative heading; it realizes\n   nothing.\n2. `read the board from the file named on the command line, or from standard\n   input when no file is named.` -- declares where the board text comes from.\n3. `the board is markdown: a \"## name\" line opens a column and a \"- text\" line\n   under it is one of its cards.` -- both quoted markers are holes. The first\n   word of each marker (`##`, `-`) is what the built program tests each input\n   line against, and the rest of the line is the column name or card text. Write\n   different markers and the parser changes with them.\n4. `the board has the columns \"todo, doing, done\".` -- a hole: the comma-separated\n   column names, in print order. Columns are printed in exactly this order,\n   whether or not the input mentions them.\n5. `print one line per column: its name, a colon, a space, then its cards joined\n   with \", \".` -- the join text is a hole; the `name: ` prefix is fixed wording.\n6. `a column with no cards prints its name and the colon only.` -- fixes the\n   empty-column form; it has no editable value.\n7. `install the tool as the command board.` -- a hole: the command name that\n   lands on the user's PATH.\n8. `given the lines \"...\", ... and \"...\", print the lines \"...\", \"...\" and \"...\".`\n   -- the worked example, turned into a claim that runs the whole program\n   offline: the input lines are fed to it and its printed lines are compared\n   exactly.\n\n## Mechanism\n\nThe behaviour is minted as CLAUSES, not as a source file: `main` reads every\ninput line, splits the declared column list, collects each column's cards from\nthe parsed lines, and emits one rendered line per column. Nothing else is\ninvented -- each clause traces back to the sentence that asked for it.\n\nThe whole thing is installed by naming a site: `site.<self>.command` takes the\ncommand name from sentence 7, and `home.packages` gets `${site}` itself, so the\ntool appears on the user's PATH with that name. No systemd unit is created:\nthis is a command a person runs, not a service.\n\n## What I could not do (two gaps filed)\n\n* There is no contract that opens a FILE, so sentence 2 is honoured only for\n  standard input (`board < file.md` works; `board file.md` ignores the name).\n  That rule carries reduced confidence for exactly this reason.\n* The worked example states five input and three output lines inside one\n  sentence, so its pattern fixes those counts. Editing the example to a\n  different number of lines will need a fresh mint. Freeing it would need an\n  aggregating form for a claim's expected value, which the grammar has not.\n\n## Contract\n\nThe expects pin the example: the input lines reach the claim's feed and the\nexpected lines reach the claim's comparison, both verbatim, so a later mint that\nquietly narrows or drops the author's example is refused.\nlips>>>\n"
-<- submit_draft
-the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to replace it; whatever you write outside this tool is read by nothing.
--> submit_draft "0.95 p1 pattern show a kanban board in the terminal. => concept board.purpose \"a kanban board printed in the terminal\"\n0.7 p2 pattern read the board from the file named on the command line, or from standard input when no file is named. => fact input.source \"command line file or standard input\"\n0.9 p3 pattern the board is markdown: a \"<col>\" line opens a column and a \"<card>\" line under it is one of its cards. => fact board.syntax \"<col> <card>\"\n0.92 p4 pattern the board has the columns \"<names>\". => fact board.columns \"<names>\"\n0.9 p5 pattern print one line per column: its name, a colon, a space, then its cards joined with \"<sep>\". => fact output.separator \"<sep>\"\n0.85 p6 pattern a column with no cards prints its name and the colon only. => fact output.empty \"name and colon only\"\n0.95 p7 pattern install the tool as the command <name>. => fact tool.command \"<name>\"\n0.8 p8 pattern given the lines \"<l1>\", \"<l2>\", \"<l3>\", \"<l4>\" and \"<l5>\", print the lines \"<o1>\", \"<o2>\" and \"<o3>\". => fact witness.feed \"<l1> <l2> <l3> <l4> <l5>\" ; fact witness.out \"<o1> <o2> <o3>\"\n0.7 r2 match fact input.source => clause.read-lines \"(define (read-lines) (let ((l (read-a-line))) (if (end-of-input? l) (list) (cons l (read-lines)))))\"\n0.7 r2 because \"no contract can open a file, so only the standard-input half of that sentence is honoured; see gap no-file-contract\"\n0.9 r3 match fact board.syntax => clause.first-word \"(define (first-word text) (let ((c (string-cut text #\\\\space))) (if c (car c) text)))\" ; clause.rest-after \"(define (rest-after text) (let ((c (string-cut text #\\\\space))) (if c (cdr c) \\\"\\\")))\" ; clause.column-marker \"(define (column-marker) (first-word \\\"#<value.1>\\\"))\" ; clause.card-marker \"(define (card-marker) (first-word \\\"#<value.2>\\\"))\" ; clause.is-column \"(define (is-column line) (equal? (first-word line) (column-marker)))\" ; clause.is-card \"(define (is-card line) (equal? (first-word line) (card-marker)))\" ; clause.column-name \"(define (column-name line) (rest-after line))\" ; clause.card-text \"(define (card-text line) (rest-after line))\" ; clause.cards-of \"(define (cards-of name lines) (cond ((null? lines) (list)) ((and (is-column (car lines)) (equal? (column-name (car lines)) name)) (cards-until (cdr lines))) (else (cards-of name (cdr lines)))))\" ; clause.cards-until \"(define (cards-until lines) (cond ((null? lines) (list)) ((is-column (car lines)) (list)) ((is-card (car lines)) (cons (card-text (car lines)) (cards-until (cdr lines)))) (else (cards-until (cdr lines)))))\"\n0.92 r4 match fact board.columns => clause.trim \"(define (trim text) (let ((c (string-cut text #\\\\space))) (if (and c (equal? (car c) \\\"\\\")) (trim (cdr c)) text)))\" ; clause.split-columns \"(define (split-columns text) (let ((c (string-cut text #\\\\,))) (if c (cons (trim (car c)) (split-columns (trim (cdr c)))) (list (trim text)))))\" ; clause.columns \"(define (columns) (split-columns \\\"#<value>\\\"))\"\n0.9 r5 match fact output.separator => clause.join \"(define (join items sep) (cond ((null? items) \\\"\\\") ((null? (cdr items)) (car items)) (else (string-append (car items) (string-append sep (join (cdr items) sep))))))\" ; clause.render-column \"(define (render-column name cards) (if (null? cards) (render-empty name) (string-append name (string-append \\\": \\\" (join cards \\\"#<value>\\\")))))\" ; clause.print-columns \"(define (print-columns names lines) (if (null? names) #t (let ((x (emit (render-column (car names) (cards-of (car names) lines))))) (print-columns (cdr names) lines))))\" ; clause.main \"(define (main) (print-columns (columns) (read-lines)))\"\n0.85 r6 match fact output.empty => clause.render-empty \"(define (render-empty name) (string-append name \\\":\\\"))\"\n0.95 r7 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; home.packages \"[ ${site} ]\"\n0.8 r8 match fact witness.feed => claim.board.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\" \\\"<value.4>\\\" \\\"<value.5>\\\" ]\" ; claim.board.call \"(begin (main) (emitted))\"\n0.8 r9 match fact witness.out => claim.board.equals \"(list \\\"#<value.1>\\\" \\\"#<value.2>\\\" \\\"#<value.3>\\\")\"\n0.9 q1 demand board.syntax \"which line shapes open a column and which state a card?\"\n0.9 q2 demand board.columns \"which columns does the board have, in order?\"\n0.9 q3 demand output.separator \"with what text are a column's cards joined?\"\n0.95 q4 demand tool.command \"what command name is the tool installed as?\"\n0.8 q5 demand witness.feed \"give an example board: which input lines?\"\n0.8 q6 demand witness.out \"for that example board, which lines must be printed?\"\n0.8 a1 expect claim.board.feed from witness.feed is \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\" \\\"<value.4>\\\" \\\"<value.5>\\\" ]\"\n0.8 a2 expect claim.board.equals from witness.out is \"(list \\\"<value.1>\\\" \\\"<value.2>\\\" \\\"<value.3>\\\")\"\n0.9 g1 gap no-file-contract <<<lips\nblocked line: read the board from the file named on the command line, or from standard input when no file is named.\nno contract opens a file: read-a-line reads standard input only, and arguments\nmerely hands back the words. minimal repro: a program stating \"read from the\nfile named on the command line\" can only be realized as a standard-input\nreader, so the file half of the sentence governs nothing.\nlips>>>\n0.9 g2 gap fixed-witness-count <<<lips\nblocked line: given the lines \"## todo\", \"- milk\", \"- eggs\", \"## doing\" and \"- taxes\", print the lines \"todo: milk, eggs\", \"doing: taxes\" and \"done:\".\nthe example states its input and output lines inside ONE sentence, so the\npattern needs one hole per item and thereby fixes the counts at five input and\nthree output lines. a block would free the input side (one one-element list per\nline, aggregated into claim.feed), but claim.equals is a single expression and\nhas no aggregating form, so the output side cannot be freed at all. repro: add\na sixth input line to the sentence and no pattern matches it.\nlips>>>\n0.95 d1 report <<<lips\n## What this language says\n\nA board program is a handful of plain sentences describing a terminal kanban\nprinter. Eight line shapes are accepted:\n\n1. `show a kanban board in the terminal.` -- a decorative heading; it realizes\n   nothing.\n2. `read the board from the file named on the command line, or from standard\n   input when no file is named.` -- declares where the board text comes from.\n3. `the board is markdown: a \"## name\" line opens a column and a \"- text\" line\n   under it is one of its cards.` -- both quoted markers are holes. The first\n   word of each marker (`##`, `-`) is what the built program tests each input\n   line against, and the rest of the line is the column name or card text. Write\n   different markers and the parser changes with them.\n4. `the board has the columns \"todo, doing, done\".` -- a hole: the comma-separated\n   column names, in print order. Columns are printed in exactly this order,\n   whether or not the input mentions them.\n5. `print one line per column: its name, a colon, a space, then its cards joined\n   with \", \".` -- the join text is a hole; the `name: ` prefix is fixed wording.\n6. `a column with no cards prints its name and the colon only.` -- fixes the\n   empty-column form; it has no editable value.\n7. `install the tool as the command board.` -- a hole: the command name that\n   lands on the user's PATH.\n8. `given the lines \"...\", ... and \"...\", print the lines \"...\", \"...\" and \"...\".`\n   -- the worked example, turned into a claim that runs the whole program\n   offline: the input lines are fed to it and its printed lines are compared\n   exactly.\n\n## Mechanism\n\nThe behaviour is minted as CLAUSES, not as a source file: `main` reads every\ninput line, splits the declared column list, collects each column's cards from\nthe parsed lines, and emits one rendered line per column. Nothing else is\ninvented -- each clause traces back to the sentence that asked for it.\n\nThe whole thing is installed by naming a site: `site.<self>.command` takes the\ncommand name from sentence 7, and `home.packages` gets `${site}` itself, so the\ntool appears on the user's PATH with that name. No systemd unit is created:\nthis is a command a person runs, not a service.\n\n## What I could not do (two gaps filed)\n\n* There is no contract that opens a FILE, so sentence 2 is honoured only for\n  standard input (`board < file.md` works; `board file.md` ignores the name).\n  That rule carries reduced confidence for exactly this reason.\n* The worked example states five input and three output lines inside one\n  sentence, so its pattern fixes those counts. Editing the example to a\n  different number of lines will need a fresh mint. Freeing it would need an\n  aggregating form for a claim's expected value, which the grammar has not.\n\n## Contract\n\nThe expects pin the example: the input lines reach the claim's feed and the\nexpected lines reach the claim's comparison, both verbatim, so a later mint that\nquietly narrows or drops the author's example is refused.\nlips>>>\n"
-<- submit_draft
-the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to replace it; whatever you write outside this tool is read by nothing.
+the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to patch it -- only the lines you change -- and whatever you write outside this tool is read by nothing.
 
 --- raw reply ---
-0.95 p1 pattern show a kanban board in the terminal. => concept board.purpose "a kanban board printed in the terminal"
-0.7 p2 pattern read the board from the file named on the command line, or from standard input when no file is named. => fact input.source "command line file or standard input"
-0.9 p3 pattern the board is markdown: a "<col>" line opens a column and a "<card>" line under it is one of its cards. => fact board.syntax "<col> <card>"
-0.92 p4 pattern the board has the columns "<names>". => fact board.columns "<names>"
-0.9 p5 pattern print one line per column: its name, a colon, a space, then its cards joined with "<sep>". => fact output.separator "<sep>"
-0.85 p6 pattern a column with no cards prints its name and the colon only. => fact output.empty "name and colon only"
-0.95 p7 pattern install the tool as the command <name>. => fact tool.command "<name>"
-0.8 p8 pattern given the lines "<l1>", "<l2>", "<l3>", "<l4>" and "<l5>", print the lines "<o1>", "<o2>" and "<o3>". => fact witness.feed "<l1> <l2> <l3> <l4> <l5>" ; fact witness.out "<o1> <o2> <o3>"
-0.7 r2 match fact input.source => clause.read-lines "(define (read-lines) (let ((l (read-a-line))) (if (end-of-input? l) (list) (cons l (read-lines)))))"
-0.7 r2 because "no contract can open a file, so only the standard-input half of that sentence is honoured; see gap no-file-contract"
-0.9 r3 match fact board.syntax => clause.first-word "(define (first-word text) (let ((c (string-cut text #\\space))) (if c (car c) text)))" ; clause.rest-after "(define (rest-after text) (let ((c (string-cut text #\\space))) (if c (cdr c) \"\")))" ; clause.column-marker "(define (column-marker) (first-word \"#<value.1>\"))" ; clause.card-marker "(define (card-marker) (first-word \"#<value.2>\"))" ; clause.is-column "(define (is-column line) (equal? (first-word line) (column-marker)))" ; clause.is-card "(define (is-card line) (equal? (first-word line) (card-marker)))" ; clause.column-name "(define (column-name line) (rest-after line))" ; clause.card-text "(define (card-text line) (rest-after line))" ; clause.cards-of "(define (cards-of name lines) (cond ((null? lines) (list)) ((and (is-column (car lines)) (equal? (column-name (car lines)) name)) (cards-until (cdr lines))) (else (cards-of name (cdr lines)))))" ; clause.cards-until "(define (cards-until lines) (cond ((null? lines) (list)) ((is-column (car lines)) (list)) ((is-card (car lines)) (cons (card-text (car lines)) (cards-until (cdr lines)))) (else (cards-until (cdr lines)))))"
-0.92 r4 match fact board.columns => clause.trim "(define (trim text) (let ((c (string-cut text #\\space))) (if (and c (equal? (car c) \"\")) (trim (cdr c)) text)))" ; clause.split-columns "(define (split-columns text) (let ((c (string-cut text #\\,))) (if c (cons (trim (car c)) (split-columns (trim (cdr c)))) (list (trim text)))))" ; clause.columns "(define (columns) (split-columns \"#<value>\"))"
-0.9 r5 match fact output.separator => clause.join "(define (join items sep) (cond ((null? items) \"\") ((null? (cdr items)) (car items)) (else (string-append (car items) (string-append sep (join (cdr items) sep))))))" ; clause.render-column "(define (render-column name cards) (if (null? cards) (render-empty name) (string-append name (string-append \": \" (join cards \"#<value>\")))))" ; clause.print-columns "(define (print-columns names lines) (if (null? names) #t (let ((x (emit (render-column (car names) (cards-of (car names) lines))))) (print-columns (cdr names) lines))))" ; clause.main "(define (main) (print-columns (columns) (read-lines)))"
-0.85 r6 match fact output.empty => clause.render-empty "(define (render-empty name) (string-append name \":\"))"
-0.95 r7 match fact tool.command => site.<self>.command "\"<value>\"" ; home.packages "[ ${site} ]"
-0.8 r8 match fact witness.feed => claim.board.feed "[ \"<value.1>\" \"<value.2>\" \"<value.3>\" \"<value.4>\" \"<value.5>\" ]" ; claim.board.call "(begin (main) (emitted))"
-0.8 r9 match fact witness.out => claim.board.equals "(list \"#<value.1>\" \"#<value.2>\" \"#<value.3>\")"
-0.9 q1 demand board.syntax "which line shapes open a column and which state a card?"
-0.9 q2 demand board.columns "which columns does the board have, in order?"
-0.9 q3 demand output.separator "with what text are a column's cards joined?"
-0.95 q4 demand tool.command "what command name is the tool installed as?"
-0.8 q5 demand witness.feed "give an example board: which input lines?"
-0.8 q6 demand witness.out "for that example board, which lines must be printed?"
-0.8 a1 expect claim.board.feed from witness.feed is "[ \"<value.1>\" \"<value.2>\" \"<value.3>\" \"<value.4>\" \"<value.5>\" ]"
-0.8 a2 expect claim.board.equals from witness.out is "(list \"<value.1>\" \"<value.2>\" \"<value.3>\")"
-0.9 g1 gap no-file-contract <<<lips
-blocked line: read the board from the file named on the command line, or from standard input when no file is named.
-no contract opens a file: read-a-line reads standard input only, and arguments
-merely hands back the words. minimal repro: a program stating "read from the
-file named on the command line" can only be realized as a standard-input
-reader, so the file half of the sentence governs nothing.
+1.0 p1 pattern show a kanban board in the terminal => concept board.purpose "a kanban board printed in the terminal"
+1.0 p2 pattern read the board from the file named on the command line, or from standard input when no file is named => fact input.source "command line file or standard input"
+1.0 p3 pattern the board is markdown: a <col> line opens a column and a <card> line under it is one of its cards => fact board.syntax "<col> <card>"
+1.0 p4 pattern the board has the columns <names> => fact board.columns "<names>"
+1.0 p5 pattern print one line per column: its name, a colon, a space, then its cards joined with <sep> => fact output.separator "<sep>"
+1.0 p6 pattern a column with no cards prints its name and the colon only => fact output.empty "name and colon only"
+1.0 p7 pattern install the tool as the command <name> => fact tool.command "<name>"
+1.0 p8 pattern given the lines "<l1>", "<l2>", "<l3>", <l4> and "<l5>", print the lines "<o1>", <o2> and <o3> => fact witness.feed "<l1> <l2> <l3> <l4> <l5>" ; fact witness.out "<o1> <o2> <o3>"
+1.0 q1 demand board.syntax "which line shapes open a column and which state a card?"
+1.0 q2 demand board.columns "which columns does the board have, in order?"
+1.0 q3 demand output.separator "with what text are a column's cards joined?"
+1.0 q4 demand tool.command "what command name is the tool installed as?"
+1.0 q5 demand witness.feed "give an example board: which input lines?"
+1.0 q6 demand witness.out "for that example board, which lines must be printed?"
+1.0 r2 match fact input.source => clause.board-read-lines "(define (board-read-lines) (let ((l (read-a-line))) (if (end-of-input? l) (list) (cons l (board-read-lines)))))"
+1.0 r3 match fact board.syntax => clause.board-first-word "(define (board-first-word text) (let ((c (string-cut text #\\space))) (if c (car c) text)))" ; clause.board-rest-after "(define (board-rest-after text) (let ((c (string-cut text #\\space))) (if c (cdr c) \"\")))" ; clause.board-column-marker "(define (board-column-marker) (board-first-word \"#<value.1>\"))" ; clause.board-card-marker "(define (board-card-marker) (board-first-word \"#<value.2>\"))" ; clause.board-is-column "(define (board-is-column line) (equal? (board-first-word line) (board-column-marker)))" ; clause.board-is-card "(define (board-is-card line) (equal? (board-first-word line) (board-card-marker)))" ; clause.board-column-name "(define (board-column-name line) (board-rest-after line))" ; clause.board-card-text "(define (board-card-text line) (board-rest-after line))" ; clause.board-cards-of "(define (board-cards-of name lines) (cond ((null? lines) (list)) ((and (board-is-column (car lines)) (equal? (board-column-name (car lines)) name)) (board-cards-until (cdr lines))) (else (board-cards-of name (cdr lines)))))" ; clause.board-cards-until "(define (board-cards-until lines) (cond ((null? lines) (list)) ((board-is-column (car lines)) (list)) ((board-is-card (car lines)) (cons (board-card-text (car lines)) (board-cards-until (cdr lines)))) (else (board-cards-until (cdr lines)))))"
+1.0 r4 match fact board.columns => clause.board-trim "(define (board-trim text) (let ((c (string-cut text #\\space))) (if (and c (equal? (car c) \"\")) (board-trim (cdr c)) text)))" ; clause.board-split-columns "(define (board-split-columns text) (let ((c (string-cut text #\\,))) (if c (cons (board-trim (car c)) (board-split-columns (board-trim (cdr c)))) (list (board-trim text)))))" ; clause.board-columns "(define (board-columns) (board-split-columns \"#<value>\"))"
+1.0 r5 match fact output.separator => clause.board-join "(define (board-join items sep) (cond ((null? items) \"\") ((null? (cdr items)) (car items)) (else (string-append (car items) (string-append sep (board-join (cdr items) sep))))))" ; clause.board-render-column "(define (board-render-column name cards) (if (null? cards) (board-render-empty name) (string-append name (string-append \": \" (board-join cards \"#<value>\")))))" ; clause.board-print-columns "(define (board-print-columns names lines) (if (null? names) #t (let ((x (emit (board-render-column (car names) (board-cards-of (car names) lines))))) (board-print-columns (cdr names) lines))))" ; clause.board-main "(define (board-main) (board-print-columns (board-columns) (board-read-lines)))"
+1.0 r6 match fact output.empty => clause.board-render-empty "(define (board-render-empty name) (string-append name \":\"))"
+1.0 r7 match fact tool.command => site.<self>.command "\"<value>\"" ; home.packages "[ ${site} ]"
+1.0 r8 match fact witness.feed => claim.board.feed "[ \"<value.1>\" \"<value.2>\" \"<value.3>\" \"<value.4>\" \"<value.5>\" ]" ; claim.board.call "(begin (board-main) (emitted))"
+1.0 r9 match fact witness.out => claim.board.equals "(list \"#<value.1>\" \"#<value.2>\" \"#<value.3>\")"
+1.0 d1 report <<<lips
+This language describes a small terminal kanban board printer, and every
+sentence of `board.lips` is read by the engine you already have; this mint
+changes no pattern and no rule. It adds the report (which the committed
+engine was missing) and files one capability gap that the corpus makes
+visible.
+
+**The line shapes it accepts**, in the order the program states them:
+
+- `show a kanban board in the terminal.` — a heading, decorative only: it
+  names what the program is and realizes nothing.
+- `read the board from the file named on the command line, or from standard
+  input when no file is named.` — fixes the input mechanism; it realizes the
+  line-reading clause (`board-read-lines`, built on the `read-a-line` and
+  `end-of-input?` contracts).
+- `the board is markdown: a "## name" line opens a column and a "- text"
+  line under it is one of its cards.` — the two markers are holes, so
+  changing `##` to `###` or `-` to `*` changes the parser. They become the
+  clauses that classify a line and cut a card's or a column's text off its
+  marker.
+- `the board has the columns "todo, doing, done".` — the column list, and
+  its ORDER, is one value; a clause splits it on commas and trims spaces, so
+  reordering or adding a column is a one-word edit.
+- `print one line per column: its name, a colon, a space, then its cards
+  joined with ", ".` — the joiner is a hole; the rest of the format (name,
+  colon, space) is fixed wording of this language.
+- `a column with no cards prints its name and the colon only.` — selects the
+  empty-column rendering.
+- `install the tool as the command board.` — the command name is a hole; it
+  becomes `site.<self>.command` and the built program is put on the user's
+  PATH through `home.packages`.
+- `given the lines ..., print the lines ...` — the worked example. It is the
+  only observable: it becomes a claim that feeds those input lines to the
+  program and compares, byte for byte, what it prints.
+
+**Mechanism.** The behaviour is expressed as clauses (a small Scheme
+subset), not as a source file, so every definition is traceable to the
+sentence that asked for it, and the whole program is checked offline by the
+claim. Nothing is written to disk, no service and no timer is created: the
+result of a program in this language is one executable, named by the
+`install the tool as the command ...` line, installed into the user's
+profile. There is no NixOS-level option anywhere; `home.packages` and the
+site are the whole footprint.
+
+**What it cannot yet do** (see the gap below): the example sentence has a
+fixed shape of five input lines and three printed lines. Editing the example
+to a board of a different size needs a fresh mint. Everything else in the
+program — markers, columns, joiner, command name — is a hole and flows
+through the engine you already have.
 lips>>>
-0.9 g2 gap fixed-witness-count <<<lips
-blocked line: given the lines "## todo", "- milk", "- eggs", "## doing" and "- taxes", print the lines "todo: milk, eggs", "doing: taxes" and "done:".
-the example states its input and output lines inside ONE sentence, so the
-pattern needs one hole per item and thereby fixes the counts at five input and
-three output lines. a block would free the input side (one one-element list per
-line, aggregated into claim.feed), but claim.equals is a single expression and
-has no aggregating form, so the output side cannot be freed at all. repro: add
-a sixth input line to the sentence and no pattern matches it.
-lips>>>
-0.95 d1 report <<<lips
-## What this language says
+1.0 g1 gap fixed-example-arity <<<lips
+blocked line:
+  given the lines "## todo", "- milk", "- eggs", "## doing" and "- taxes",
+  print the lines "todo: milk, eggs", "doing: taxes" and "done:".
 
-A board program is a handful of plain sentences describing a terminal kanban
-printer. Eight line shapes are accepted:
+The input side of this example could be read with a list hole plus an item
+pattern, so that claim.board.feed aggregates one element per line at any
+count. The OUTPUT side cannot: claim.<id>.equals takes a single expression,
+not a list-typed option, so a per-item rule cannot contribute one expected
+line each and there is no way to assemble (list "a" "b" ... ) from a variable
+number of decisions. Making only the feed general and leaving the expected
+output pinned at three would be worse than the present symmetry, so pattern
+p8 still fixes 5 input lines and 3 output lines and an author who wants a
+bigger example must regenerate.
 
-1. `show a kanban board in the terminal.` -- a decorative heading; it realizes
-   nothing.
-2. `read the board from the file named on the command line, or from standard
-   input when no file is named.` -- declares where the board text comes from.
-3. `the board is markdown: a "## name" line opens a column and a "- text" line
-   under it is one of its cards.` -- both quoted markers are holes. The first
-   word of each marker (`##`, `-`) is what the built program tests each input
-   line against, and the rest of the line is the column name or card text. Write
-   different markers and the parser changes with them.
-4. `the board has the columns "todo, doing, done".` -- a hole: the comma-separated
-   column names, in print order. Columns are printed in exactly this order,
-   whether or not the input mentions them.
-5. `print one line per column: its name, a colon, a space, then its cards joined
-   with ", ".` -- the join text is a hole; the `name: ` prefix is fixed wording.
-6. `a column with no cards prints its name and the colon only.` -- fixes the
-   empty-column form; it has no editable value.
-7. `install the tool as the command board.` -- a hole: the command name that
-   lands on the user's PATH.
-8. `given the lines "...", ... and "...", print the lines "...", "..." and "...".`
-   -- the worked example, turned into a claim that runs the whole program
-   offline: the input lines are fed to it and its printed lines are compared
-   exactly.
+minimal repro: a program identical to board.lips but whose example feeds six
+lines fails to crystallize under p8.
 
-## Mechanism
-
-The behaviour is minted as CLAUSES, not as a source file: `main` reads every
-input line, splits the declared column list, collects each column's cards from
-the parsed lines, and emits one rendered line per column. Nothing else is
-invented -- each clause traces back to the sentence that asked for it.
-
-The whole thing is installed by naming a site: `site.<self>.command` takes the
-command name from sentence 7, and `home.packages` gets `${site}` itself, so the
-tool appears on the user's PATH with that name. No systemd unit is created:
-this is a command a person runs, not a service.
-
-## What I could not do (two gaps filed)
-
-* There is no contract that opens a FILE, so sentence 2 is honoured only for
-  standard input (`board < file.md` works; `board file.md` ignores the name).
-  That rule carries reduced confidence for exactly this reason.
-* The worked example states five input and three output lines inside one
-  sentence, so its pattern fixes those counts. Editing the example to a
-  different number of lines will need a fresh mint. Freeing it would need an
-  aggregating form for a claim's expected value, which the grammar has not.
-
-## Contract
-
-The expects pin the example: the input lines reach the claim's feed and the
-expected lines reach the claim's comparison, both verbatim, so a later mint that
-quietly narrows or drops the author's example is refused.
+what would fix it: a list-accepting claim section for the expected output
+(e.g. claim.<id>.equals-lines, aggregating one element per contributing
+decision exactly as claim.<id>.feed already does).
 lips>>>
 
