@@ -6,58 +6,6 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
--2. **What is left of the website defect: one vestigial option, and no round
-   loop** (the defect itself is CLOSED, 2026-08-20 -- DESIGN §13, "Where the
-   rules make something RUN, one claim must boot"; `nix flake check` is green for
-   the first time since 2026-08-12).
-
-   a. The accepted engine still assigns `services.darkhttpd.port` (with darkhttpd
-      disabled) because the committed `.expect` pins it from the mechanism that
-      is gone. The mint filed it (`inherited-contract-pins-darkhttpd`) and named
-      the remedy instead of dropping a contract line itself: re-mint with
-      `--compat none`, which rewrites the contract from the accepted engine. One
-      opus mint (~$4, ~20 min); cosmetic, so it waits for a reason to spend that.
-   b. A refused mint still costs a whole round with nothing learned: run 2 below
-      paid $3.23 to discover a boot failure, and only a human could carry that
-      finding into the next call (as the direction file that made run 3 work).
-      That is the deferred "mint round loop" in the backlog, now with a price on
-      it.
-
-   c. UNVERIFIED, and the honest gap left by the review correction: the systemd
-      trap moved out of `website.direction` into `nixos.world`, where it belongs,
-      but no mint has been run against the world file since. So it is not known
-      whether a fresh `website` mint converges on the world's statement alone,
-      with only the mechanism preference left in the direction. One opus mint
-      (~$4, ~25 min) would settle it, and would settle 2a at the same time if run
-      with `--compat none`. Worth spending the next time this example is touched
-      for any other reason.
-
-   Superseded description of the defect itself, kept because the reproduction is
-   worth having: the engine emitted
-   `serviceConfig.StandardOutput = "file:/var/lib/website/index.html"` together
-   with `StateDirectory = "website"`, and systemd sets stdout up BEFORE it
-   creates the state directory, so the unit fails `209/STDOUT` on a fresh
-   machine. Reproduced outside lips, in a NixOS test carrying nothing but that
-   pair plus `ExecStart = echo hello`:
-   `probe.service: Failed to set up standard output: No such file or directory`.
-
-   Why nothing caught it: `checks.artifact-vm` copied `examples/website/artifacts`,
-   a path that stopped existing when the 2026-08-12 re-mint shed the Go tree, so
-   `nix flake check` failed at EVALUATION and the boot never ran (fixed
-   2026-08-20 -- the check no longer copies a source tree, since no committed
-   program carries one). `check-expect` stays green because it compares option
-   values, and the engine's own claim runs the clause in the sandbox rather than
-   in the booted unit -- which is item 1b's narrowing, now with a corpus
-   instance.
-
-   Not fixable by hand (invariant 4) and not teachable to the kernel (an option's
-   meaning is an open list). The remedy that landed is world DATA:
-   `assets/worlds/nixos.world` now tells a mint that where its rules wire a unit,
-   a timer or a served port, one claim's command must reach the system, so the
-   claim gate boots a VM and refuses an engine whose wiring cannot start. Cost
-   accepted: minutes and a KVM requirement on any mint of a service-shaped
-   nixos program.
-
 -1. **The growth mint: an author's feedback cycle** (design settled 2026-08-20,
    `docs/superpowers/specs/2026-08-20-mint-feedback-cycle-design.md`; nothing
    built). Adding one sentence shape to a working language costs a full re-mint
@@ -120,9 +68,20 @@ tracks only what is still open.
       holes. `examples/policy` re-minted from 30 patterns to 8; `examples/habit`
       re-minted onto both, and its witness now reads at any entry count (a
       two-entry and a five-entry program each pass their clause claim, which
-      runs the built tool). `board` and `logscan` are not re-minted yet and
-      still carry their frozen witness templates: nothing blocks them, they just
-      cost a mint each.
+      runs the built tool). `board` and `logscan` were re-minted 2026-09-20
+      (DESIGN §13, "A patch mint may answer by changing nothing") and BOTH
+      REFUSED to move, filing the output half as the blocker instead: `board`'s
+      gap `fixed-example-arity` argues that freeing the input side while the
+      expected output stays pinned is worse than the present symmetry, and
+      `logscan` tried `<in.list:,|and>` in its first submission and went back to
+      the fixed form in the one it submitted. So the witness arity is one errand
+      now, not two, and it is KERNEL work: until the expected output aggregates,
+      no mint takes the list hole for a witness.
+      THE THIRD PROGRAM HAS ASKED, which was this item's own trigger, and it
+      specified the shape: a list-accepting expected output, the dual of
+      `claim.<id>.feed`, spelled `claim.<id>.equals-lines` in board's gap --
+      one element per contributing decision, aggregated exactly as `feed`
+      already is by an `engine.merge.* list` declaration.
       The expected-output half below is a separate defect and is untouched --
       `claim.<id>.feed` is a Nix list, so the INPUT side aggregates per item,
       while `stdout` stays one string with embedded newlines.
@@ -140,7 +99,23 @@ tracks only what is still open.
       -- honest and exact, but a detour that reads as if the program consumed its
       argv. The candidate remedy is now named: an aggregating expected-output
       section, the dual of `feed`, so an author's example stops freezing its item
-      count. Deferred until a third program wants it.
+      count. No longer deferred: `board` is the third program, it asked in
+      writing, and two mints now refuse to touch a witness without it.
+
+   d. TWO HOLES IN THE EXPECT GATE, filed by the `logscan` re-mint 2026-09-20
+      (`examples/logscan/nixos/README.md`). Neither is about claims, but both
+      decide what a contract can hold, so they sit with the witness work that
+      trips over them.
+      `unassertable-site-command`: `expect site.<self>.command from tool.command`
+      is refused with "site.<self>.command: nothing realizes this slot", so the
+      program word naming the installed command is pinned by no check at all and
+      a later mint could key the site off the filename with every gate green.
+      `expect-quoting-mismatch`: a rule emits `claim.filter.equals "(list
+      \"#<value.4>\")"` and the realized value escapes the substituted value's
+      own quotes for the surrounding Nix string, while an expect's `is`-text
+      substitutes the raw value. The two can never be equal for any value
+      containing a quote, so no JSON example's expected output is assertable.
+      Minimal repro for each is in that README.
 
 2. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
@@ -245,28 +220,36 @@ tracks only what is still open.
    Landing it is still a separate errand (the `Glue` kind marking above), but
    nothing blocks it any more.
 
-   The `website` re-mint (claude-opus-5, `--compat none`, two attempts -- the
-   first mint's `darkhttpd` wiring failed the booted-machine claim with a
-   malformed `--addr` argument, and generate correctly refused to write
-   anything; the second attempt fixed it) replaced the Go template server with
-   a `darkhttpd` static server fed by a oneshot unit whose ONE clause `main`
-   prints the whole page (HTML plus the click-handling JavaScript) to a file
-   via shell redirection. It filed three gaps rather than fake a fix:
-   `angle-brackets-in-values` (a Nix value cannot hold literal `<...>`, since
-   that reads as an unknown hole, forcing markup through clause strings, whose
-   hole marker is `#<...>`, even where a plain file would otherwise do);
-   `browser-behaviour` (no contract reaches a document, an element or a click,
-   so the clauses can only PRINT the JavaScript that paints/erases/downloads a
-   canvas -- nothing checks what that script actually does in a browser); and
-   `no-stated-observable` (the program states no example of the rendered page,
-   so the one claim is a smoke test that `main` runs, not a witness of its
-   output). `browser-behaviour` is the sharper of the three: it is the same
+   The `website` engine is now nginx plus a oneshot unit that lays out its
+   document root (re-minted 2026-09-20, claude-opus-5, `--fresh --compat none`,
+   accepted on the first attempt; DESIGN §13, "The website defect closes"). Its
+   ONE clause prints a fixed HTML+JS shell that FETCHES the program's words from
+   `/data/<kind>/<i>/<field>` at page load, where the rules put them as
+   `environment.etc.*` files under the served root. So the 70 mint-written words
+   inside option strings are pinned by a claim asserting HTTP 200 on `/` and
+   nothing more, which is this item's MINT-glue rule unmet: marked and counted,
+   but not pinned by an observation. The standing `website-vm` flake check
+   (renamed from `artifact-vm`, which has named no artifact since 2026-08-12)
+   carries what the claim does not -- it asks `/data/button/2/label` for the word
+   `leeren` -- but a flake check is this repo's own CI, not a gate a user's
+   engine brings with it.
+   It filed `browser-behaviour` again (no contract reaches a document, an element
+   or a click, so the clauses can only PRINT the JavaScript that
+   paints/erases/downloads a canvas -- nothing checks what that script actually
+   does in a browser). `browser-behaviour` is the sharper gap: it is the same
    shape as `no-file-contract` (a capability class -- here, the DOM -- that no
    contract in `assets/runtime/scheme/contracts` names), but unlike a file it
    is not obviously closeable by adding one contract, since a browser event
    loop is a different execution model than the sandbox clauses run in. Left
    as a gap, not a design item, until a program's own words make the cost of
    leaving client-side behaviour unchecked concrete.
+   Superseded, kept for the two gaps the 2026-08-12 engine filed and this one no
+   longer can: `angle-brackets-in-values` (a Nix value cannot hold literal
+   `<...>`, since that reads as an unknown hole, forcing markup through clause
+   strings, whose hole marker is `#<...>`, even where a plain file would
+   otherwise do) and `no-stated-observable` (the program states no example of the
+   rendered page, so its one claim can only be a smoke test). The second is still
+   true of `website.lips`, which is why its claim is an HTTP 200.
 
    The `board` and `habit` re-mints (both claude-opus-5, `--compat none`)
    each filed the same two gaps instead of faking a fix: `no-file-contract`
@@ -631,7 +614,12 @@ tracks only what is still open.
   changes every request defeats prompt caching (pays a cache-write penalty
   every round, never a cache-read discount). So if the loop returns it
   belongs *around* an agent that asks (the schema lookup tool), never instead
-  of one. Permanently rejected, do not revive: `lips dry-run` as a
+  of one. WHAT A REFUSED ROUND COSTS, so the trade is priced: the `website` mint
+  of 2026-08-20 paid $3.23 to discover a boot failure and learn nothing a
+  machine could carry forward -- a human turned that finding into the direction
+  file that made the next call work. The 2026-09-20 re-mint was accepted on its
+  first attempt ($3.00), so the refusal rate is not yet high enough to price the
+  loop against. Permanently rejected, do not revive: `lips dry-run` as a
   model-callable tool (a rehearsal verb is a second call site for the gate
   and can drift from the gate that commits).
 

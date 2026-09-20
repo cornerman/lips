@@ -130,7 +130,7 @@ let
   # `outPath`/`drvPath`/build-system bookkeeping attrs surface as bogus
   # options, e.g. "the option `...__ignoreNulls` does not exist"), and only
   # falls through to `import (toString m)` for a value that is neither. This
-  # is exactly the workaround this repo's OWN `vm-smoke`/`artifact-vm` checks
+  # is exactly the workaround this repo's OWN `vm-smoke`/`website-vm` checks
   # already carry (`imports = [ "${realized}" ]`, commented there for the same
   # reason) -- it was never propagated to this public helper, so any external
   # consumer following the README literally hit the bug first, on a real

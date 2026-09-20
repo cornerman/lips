@@ -1091,6 +1091,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   contract true. The mint named the remedy in its own report -- re-mint with
   `--compat none`, the human decision the compat door exists for -- rather than
   dropping a contract line on its own authority.
+  CLOSED 2026-09-20 by exactly that remedy ("The website defect closes", below):
+  `--fresh --compat none` rewrote the contract from the accepted engine, and no
+  `darkhttpd` name survives in the grammar, the rules or the `.expect`.
 
 - **`compile --watch`: the edit loop, and one key to grow the language.** Compile
   is deterministic, offline and takes milliseconds, so re-running it on every save
@@ -4063,6 +4066,63 @@ but the loop around it is incomplete; "missing" means specced, not built.
   smaller than the variance between two identical mints. Tools stay, now for a
   measured reason rather than a guessed one. The schema tool also scales where a
   prompt cannot, since NixOS ships tens of thousands of options.
+
+- **A patch mint may answer by changing nothing, and that answer is worth its
+  price** (2026-09-20, `board` and `logscan`, claude-opus-5, patched not
+  `--fresh`). Both were re-minted to free their witness sentence from the entry
+  count its author happened to write, the follow-through the list hole and the
+  item pattern were built for. Both diffs are `@gen:` stamps only: not one
+  pattern and not one rule moved, and `lips check` stays green on each.
+  WHY, in the mint's own words (`examples/board/home-manager/README.md`, gap
+  `fixed-example-arity`): `board`'s input side would take a list hole, its output
+  side cannot, because `claim.<id>.equals` is one expression rather than a
+  list-typed option, so no per-item rule can contribute one expected line. It
+  judged half-generality worse than the present symmetry and refused. `logscan`
+  reached the same place from the other side: its first submission tried
+  `<in.list:,|and>` and its accepted draft went back to the fixed `<in1> and
+  <in2>`, since its expected output is a single line. So the remedy TODO 1c had
+  only named is now specified by a mint that wanted it: a list-accepting expected
+  output, the dual of `claim.<id>.feed`.
+  TWO GAPS NOBODY HAD SEEN, both from `logscan`. `unassertable-site-command`: an
+  expect over `site.<self>.command` is refused ("nothing realizes this slot"), so
+  the word naming the installed command is pinned by no check, and a later mint
+  could key the site off the filename with every gate green.
+  `expect-quoting-mismatch`: a rule emits `claim.filter.equals "(list
+  \"#<value.4>\")"` and the realized value escapes the substituted value's own
+  quotes for the surrounding Nix string, while an expect's `is`-text substitutes
+  the raw value, so no example containing a quote (every JSON one) can be
+  asserted.
+  THE PATCH PATH, measured a second and third time: board 122.9s / $0.43 / 7,462
+  output tokens, logscan 195.1s / $0.71 / 15,165, against habit's comparable
+  fresh mint at 418.0s / $1.29 / 32,506. Cheap enough that asking a mint a
+  question is now a reasonable way to answer one.
+
+- **The website defect closes, and the words move behind a fetch** (2026-09-20,
+  claude-opus-5, `--fresh --compat none`, 944.8s / $3.00 / 78,245 output tokens,
+  12 turns, 7 submissions, accepted on the first attempt). `darkhttpd` is gone
+  from grammar, rules and contract, so the vestigial `services.darkhttpd.port`
+  the old `.expect` pinned is gone with it (TODO -2a).
+  THE WORLD CARRIES THE TRAP ON ITS OWN (TODO -2c, the open question this
+  settles). With the systemd stdout trap stated only in `assets/worlds/nixos.world`
+  and `website.direction` holding nothing but the nginx preference, the mint
+  wrote `${site}/bin/website > /var/lib/website-www/index.html` inside a oneshot
+  `script` that `install -d`s its own directory, and never `StandardOutput=file:`.
+  It also followed the direction: `services.nginx.defaultHTTPListenPort`,
+  `virtualHosts.<self>.root`, `.default`.
+  WHAT GOT WEAKER, recorded because every gate is green over it. The engine's
+  page is a fixed HTML+JS shell that fetches `/data/<kind>/<i>/<field>` in the
+  browser, so the program's words reach `environment.etc.*` files served under
+  the document root instead of the html itself. `curl /` therefore carries no
+  program word, which is why the standing `artifact-vm` check (renamed
+  `website-vm`, since no artifact is involved since 2026-08-12) failed on the
+  unit name `website.service` and then on the word `leeren`. It now waits on the
+  port the PROGRAM states rather than a unit name the engine chose, and asks
+  `/data/button/2/label` for the word. The mint's own claim `serve` asserts only
+  HTTP 200, so 70 mint-written words inside option strings are pinned by a smoke
+  test -- the `browser-behaviour` gap it filed, one level worse than before.
+  A SIDE EFFECT worth naming: the shell loops to 64 canvases and 64 buttons, so
+  adding a button to `website.lips` needs no re-mint. The same arity question
+  `board` refused to answer, answered here by data rather than by pattern.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
