@@ -38,6 +38,16 @@ can see that. Only the boot can.
 Where the world cannot boot, this does not apply: state what you can observe
 in the sandbox and file a gap for the rest.
 
+ONE UNIT TRAP, STATED ONCE BECAUSE EVERY PROGRAM MEETS IT. Where a unit's job
+is to WRITE a file, let the command it runs write that file itself (a
+redirection in the script), rather than routing the unit's standard output
+into a path with StandardOutput=file:. systemd opens that path BEFORE it
+creates the directory the path lives in, so a unit whose StandardOutput= sits
+inside its own StateDirectory= fails 209/STDOUT on a fresh machine, with every
+option correctly typed. This is world knowledge, not taste: it holds for every
+program minted here, which is why it is stated in the world rather than left
+for each mint to rediscover by boot.
+
 --- schema ---
 let np = builtins.getFlake "<flakeref>";
     pkgs = import np { system = <system>; };

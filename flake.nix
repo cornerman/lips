@@ -471,16 +471,17 @@
         # whose realization BUILDS the program it needs and runs it. The
         # committed website example realizes to a module that let-binds a derivation
         # over the clause SITE compile writes (its guile program), wires it into a
-        # oneshot systemd unit, and serves what that unit prints. This pins the
-        # whole chain -- rules -> built program -> service -> booted and answering
-        # -- as a permanent check. No AI in this derivation.
+        # oneshot unit that prints the page into an nginx document root, and
+        # serves it. This pins the whole chain -- rules -> built program ->
+        # service -> booted and answering -- as a permanent check. No AI in this
+        # derivation.
         #
         # No source tree is copied in, and that is the current state of the
         # corpus rather than an omission: no committed program carries a
         # mint-written source tree any more (the no-blob doctrine; `website` shed
         # its Go http server on 2026-08-12), so the program under test is the one
         # `compile` derives from the rules.
-        artifact-vm =
+        website-vm =
           let
             lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
             # Realize into a DIRECTORY: the module plus its source tree, so the
@@ -504,20 +505,27 @@
             '';
           in
           pkgs.testers.runNixOSTest {
-            name = "lips-artifact-service-answers";
+            name = "lips-website-answers";
             nodes.machine = { pkgs, ... }: {
               imports = [ "${realized}/nixos/default.nix" ];
               environment.systemPackages = [ pkgs.curl ];
             };
             testScript = ''
               machine.wait_for_unit("multi-user.target")
-              # The service built from generated Go source is up and listening.
-              machine.wait_for_unit("website.service")
+              # The port the program states, not a unit name: which units the
+              # rules wire is the engine's choice and a re-mint may rename them,
+              # while the port is a word of website.lips and cannot move without
+              # the program moving.
               machine.wait_for_open_port(8081)
-              # It answers with a word the program states (the built artifact
-              # runs, and the button labels reach it through the unit's
-              # environment).
-              machine.succeed("curl -s http://localhost:8081/ | grep -F 'leeren'")
+              # The page itself: the built program ran and its output became the
+              # document root's index.
+              machine.succeed("curl -fsS http://localhost:8081/ | grep -F '<!doctype html>'")
+              # A word the program states, served over the wire. The engine's
+              # page fetches its labels from this path rather than baking them
+              # into the html, so this is where a program word reaches a client
+              # (gap `browser-behaviour`: what the page's script then DOES with
+              # it is observed by nothing).
+              machine.succeed("curl -fsS http://localhost:8081/data/button/2/label | grep -F 'leeren'")
             '';
           };
 

@@ -1,1 +1,5 @@
-a1 expect services.darkhttpd.port from site.port
+a1 expect services.nginx.defaultHTTPListenPort from site.port
+a2 expect environment.etc.website-canvas-<i>-name.text from canvas.<i>
+a3 expect environment.etc.website-canvas-<i>-content.text from canvas.<i>.content
+a4 expect environment.etc.website-button-<i>-label.text from button.<i>
+a5 expect environment.etc.website-button-<i>-action.text from button.<i>.action
