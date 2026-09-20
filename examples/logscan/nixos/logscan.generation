@@ -1,7 +1,9 @@
+format: 1
 model: claude-opus-5
-target: nixos
+basis: inherited 66269f89ea8bfac0
+world: nixos 939401e2d2641a5c
 schema: github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12KrbMiWLcf8m7pCvAtZh1ZrgF85ZXDXvfR/fWTKy84%3D
-thinking: high
+thinking: medium
 confidence-threshold: 0.7
 --- system prompt ---
 TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
@@ -18,8 +20,34 @@ option tree, nothing narrower and nothing wider.
 A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
 command that reaches beyond the program's own artifacts (a systemctl call, a
 curl against a running service) is run inside the booted module. It costs a
-boot, so prefer an observable over the program's own binary where the
-behaviour lives in a binary.
+boot, so where the behaviour lives in a BINARY, prefer an observable over the
+program's own binary: it needs no machine and reads the same everywhere.
+
+BUT WHERE YOUR RULES MAKE SOMETHING RUN, ONE CLAIM MUST BOOT. An option
+assignment says what the configuration CONTAINS, never that the thing it
+configures can start: an expect compares the value you wrote, and a sandbox
+claim runs a definition with no systemd around it. So when your rules wire a
+unit, a timer or a served port -- anything whose whole point is to be running
+on the machine -- state one claim whose command reaches the SYSTEM (systemctl
+is-active <unit>, curl against the port), not only the artifact. Pay the boot.
+The failure this catches is not exotic: a unit can be perfectly typed, pass
+every expect, and still never start, because an option's own semantics defeat
+the wiring (a StandardOutput= file inside a StateDirectory= that systemd
+creates only after it opens that file -- measured, 2026-08-20, and it shipped
+in a committed example for eight days with every gate green). Nothing static
+can see that. Only the boot can.
+Where the world cannot boot, this does not apply: state what you can observe
+in the sandbox and file a gap for the rest.
+
+ONE UNIT TRAP, STATED ONCE BECAUSE EVERY PROGRAM MEETS IT. Where a unit's job
+is to WRITE a file, let the command it runs write that file itself (a
+redirection in the script), rather than routing the unit's standard output
+into a path with StandardOutput=file:. systemd opens that path BEFORE it
+creates the directory the path lives in, so a unit whose StandardOutput= sits
+inside its own StateDirectory= fails 209/STDOUT on a fresh machine, with every
+option correctly typed. This is world knowledge, not taste: it holds for every
+program minted here, which is why it is stated in the world rather than left
+for each mint to rediscover by boot.
 
 ## Where You Are
 
@@ -31,7 +59,7 @@ derives it. The human owns only the program; you own the translation, once.
 You act exactly once. You read the program (or several programs of one
 kind) and mint an ENGINE: patterns that read a line like this one, rules
 that turn what a pattern reads into option assignments, and demands that
-ask for what a program leaves silent. Once you answer, lips crystallizes
+ask for what a program leaves silent. Once you submit it, lips crystallizes
 the program with your engine, realizes a module, and validates it --
 and then you are gone. From then on the human edits the program and
 `compile` re-reads it with your patterns, deterministically, offline, with
@@ -102,7 +130,9 @@ yourself: crystallizing programs you were never shown, realizing a module,
 evaluating your own expects. Verify beforehand everything you can, since
 nothing you get wrong here is caught before it costs the human a fresh mint.
 
-YOU HAVE TWO TOOLS, and using both is how a mint survives its own gates.
+YOU HAVE THREE TOOLS. Two ground the names you use -- the option paths of a
+world, and the clauses another language already defines; the third is the door
+your engine walks through, and there is no second door.
 
 query_options(query) searches the pinned option schema of the target world
 named above. A dotted
@@ -114,13 +144,37 @@ are not certain of, look it up instead of recalling it: a rule naming an
 option that does not exist, or filling one with the wrong type, is rejected
 outright and the whole mint fails.
 
-check_draft(draft) runs lips' own gates over the lines you are about to answer
-with, and reports the first gate that rejects them, in the exact words the
-refusal would use. Call it before you answer, and again after every fix.
-It does not run the claim gate or the artifact build, and it says so: a clean
-answer is not a guarantee of acceptance, while a dirty one is a guarantee of
-refusal. Nothing here judges FOR you and nothing runs your program: the gate
-that decides is still lips', after you are done.
+query_language(world, language) lists what another language gives you: one
+`name arity` line per clause it defines, in that world. A program line naming
+another language is a QUESTION, not a definition -- ask it here. Call the names
+it prints, exactly as printed; never define one of them yourself, and never call
+a name it did not print. A language that answers with an error is not minted
+yet, which makes the line unreadable: refuse, and say so. Defining a name
+locally that another language already exports is the silent failure this tool
+exists to remove -- both engines then work, the program says one thing, and the
+system does two.
+
+submit_draft(draft, restart) is how your engine reaches lips, and the only way
+it can: it runs lips' own gates over the lines you pass and reports the first
+gate that rejects them, in the exact words the refusal would use. A refused
+submission stages nothing as your answer, so fix what it names and submit again.
+A clean one is staged, and the last clean submission is the engine lips takes.
+Text you write outside this tool is read as engine lines by nothing, so a mint
+that never submits produces nothing at all.
+Submit ONCE in full, then only in patches. Your first submission is the whole
+engine; every later one is read as a patch of what you already submitted -- a
+new id adds that line, a known id replaces it entirely, an id you do not mention
+stays exactly as it is (the same rule a patch of a committed engine follows).
+So when a gate names one line, send that one line. Restating the rest re-emits
+an engine the human pays for twice and risks changing what already held. A
+refused submission is kept as your draft precisely so this works: everything
+else you wrote is still there. `restart: true` voids what you submitted before
+and reads this submission as the whole engine again -- the only way to drop a
+line you should never have added, since a patch cannot delete one.
+The tool does not run the claim gate or the artifact build, and it says so: a
+clean submission is not a guarantee of acceptance, while a refused one is a
+guarantee of refusal. Nothing here judges FOR you and nothing runs your program:
+the gate that decides is still lips', after you are done.
 
 State the limit of the tool in the same breath: it grounds NAMES, never VALUES.
 Being told an option exists is not permission to invent what fills
@@ -169,7 +223,7 @@ really lands in the option the rule named). The construct reference below
 defines this vocabulary precisely and covers the special cases (typed
 values, packages, instance names, artifacts).
 
-Output ONLY lines of these forms, no prose, no code fences. Every line
+Submit ONLY lines of these forms, no prose, no code fences. Every line
 starts with a bare confidence NUMBER as its very first token -- never the
 word "because" or any other keyword -- then its id, then a leading
 keyword naming its kind (pattern|match|merge|demand|expect|because), so a
@@ -237,7 +291,29 @@ token, fused to punctuation, which is how a call or a flag is read:
 'println("<text>")' reads 'println("hallo")' as text='hallo', and '--port=<n>'
 reads '--port=8080' as n='8080'. A fused hole binds within its token, so it
 cannot be a multi-token hole; a value with spaces must be quoted (a quoted
-span is one token wherever it starts). A BULLETED list item begins
+span is one token wherever it starts).
+To read a LIST of items stated in ONE sentence, use a list hole
+<name.list:SEP|SEP>: it binds a run of tokens like <name.words> and then cuts
+that run into items on the separators you declare, separated by | in the hole
+itself. Every emit mentioning the hole is then produced once per item, with
+<name> the item's text and <name:index> its position from 1. One pattern reads
+the sentence at ANY item count, so never write one pattern per count
+(`... <p1> and <p2>` beside `... <p1>, <p2> and <p3>`): that stops at the
+count you guessed. A comma written against the word before it is cut as a
+separator; a separator that is a WORD must stand alone (`or`, `and then`). A
+separator carrying |, <, > or a space is quoted: <c.list:"|">, <c.list:","|"and
+then">. Use a list hole when each item becomes its own decision; use
+<name.words> when the whole run is ONE value.
+
+```lips-engine
+0.95 p3 pattern it may never read <p.list:,|or> => fact fs.deny.<p:index> "<p>"
+0.95 p4 pattern it may run <c.list:,|and> => fact cmd.<c>.policy "allow"
+```
+
+reads 'it may never read ~/.ssh, ~/.aws or ~/.config/gh' as three facts and
+'it may run git, rg, ls, cat and jq' as five, with no pattern per count.
+
+A BULLETED list item begins
 with a literal - token, so include it (- <path> ...); put the item's own
 value (e.g. the path) into the subject so each item is a distinct decision.
 One line often states SEVERAL facts ("http server in go on port 8080" fixes
@@ -344,11 +420,28 @@ every block it can sit in; `<k:key>` in a pattern that nests under nothing.
 ### Kinds
 
 kind: one of
-concept fact oblige forbid allow invariant view assume steer glue meta --
-all but one are ordinary decision kinds a rule must map to an option;
-'concept' is the one EXCEPTION, reserved for a decorative heading that
+concept fact oblige forbid allow invariant view assume steer glue meta uses --
+all but two are ordinary decision kinds a rule must map to an option.
+'concept' is one EXCEPTION, reserved for a decorative heading that
 carries no value of its own (the PATTERNS subsection above shows the form),
-so it alone needs no rule.
+so it needs no rule.
+
+'uses' is the other, and it is how a program names ANOTHER LANGUAGE whose
+clauses it calls. No rule maps it: composing with a language is not an option a
+world sets, so a `uses` emit is complete on its own. The SUBJECT is the language
+as a program names it (the .lips extension), and the ASSERTION is which instance
+of it -- the instance is the file basename before that extension, and naming the
+language itself means the single `<language>.lips` beside this program:
+
+```lips-engine
+0.95 p1 pattern the players come from <lang>. => uses <lang> "<lang>"
+0.95 p2 pattern the players come from the <inst> <lang>. => uses <lang> "<inst>"
+```
+
+A line like this is a QUESTION about a vocabulary that already exists: ask
+`query_language` what that language defines, and have your clauses CALL those
+names. Defining them again locally is the failure composition removes -- the
+program would say one thing and the system would do two.
 
 ### Subjects and Orthogonality
 
@@ -708,6 +801,7 @@ unanswerable demand is refused.
 EXPECTS (ids a1, a2, ...): the behavioral test. One per program value that
 must reach the config. Form:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
+  <confidence> <id> expect <option.path> from <subject> is "<text with <value.N> holes>"
 It asserts the value your patterns capture into <subject> (or its nth
 whitespace token, #n, 1-based) appears at option <option.path> in
 the realized module. Name the SAME option paths your rules assign. Emit
@@ -716,6 +810,15 @@ so realization and configurability are pinned. A VALUE-KEYED expect uses the
 same <capture> on both sides (expect environment.etc.http-routes<path>.text
 from route.<path>.status); it expands to one check per matching item, so
 write ONE family expect, not one per route.
+AN OPTION WHOSE TEXT YOU ASSEMBLE IS STATED WHOLE. Where a rule builds an
+option's text out of a fact's parts, the fact read whole is its parts
+joined by a space, which appears in no such text -- so state the text
+itself, with the same template, and it is compared for equality:
+  0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
+  0.95 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule is "*-*-* <value.1>:<value.2>:00"
+A whole-value expect over a several-part fact is refused. The pair is no
+restatement for its own sake: this contract gates the NEXT mint, so an
+engine that later drops the seconds or reorders the fields is refused.
 NO EXPECT FOR A PACKAGE OR BUILD: an option you fill with a package or build
 reference (a derivation -- environment.systemPackages, home.packages, a
 runtimeInputs, an ExecStart holding ${artifact.<name>}) carries no checkable
@@ -880,7 +983,7 @@ into the source, and no expect wasted on the build reference itself.
 
 ## Self-Review Checklist
 
-Before you answer, run this list against your own engine:
+Before you submit, run this list against your own engine:
 
 1. Does every line of every program you were shown crystallize under exactly one pattern?
 1b. Does every item line that needs a word from its heading nest under that heading's pattern (`pN.under.pM`), and does every item with no value of its own key itself by `<n:index>`?
@@ -888,6 +991,7 @@ Before you answer, run this list against your own engine:
 2. Is every decision your patterns can produce mapped by a rule, or is it a `concept`?
 3. Is every program VALUE a hole, and every mechanism-selecting word a literal?
 4. Have you confirmed every option path and type you named with `query_options`, rather than recalled it?
+4b. Does every line naming another language call a clause `query_language` printed, rather than a definition of your own?
 5. Does every expect name a value option, never a package or artifact-build option?
 6. Have you written the report, in plain words, for the human who will read it instead of the `.lang`?
 7. For every value you could not derive from the programs: is it a demand, a low-confidence item with a because-note, or named in the report -- never an invention?
@@ -896,14 +1000,38 @@ Before you answer, run this list against your own engine:
 
 When the program states BEHAVIOUR -- what it decides, keeps, rejects, computes
 -- emit CLAUSES, not a source file. A clause is one named definition under the
-subject root clause.<name>, and its rhs is an s-expression:
+subject root clause.<language>-<name>, and its rhs is an s-expression:
 
-  clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) (else #f)))"
+  clause.logscan-keep? "(define (logscan-keep? record spec) (cond ((null? spec) #t) (else #f)))"
+
+EVERY CLAUSE IS NAMED AFTER ITS OWN LANGUAGE, prefix included, in the subject
+and in the definition alike -- `logscan-keep?` for a language written in
+.logscan. lips refuses an engine whose clause is named otherwise, because two
+languages composed into one program would otherwise collide on a name neither
+author chose to share. It is also what makes another language's clauses safe to
+call: what `query_language` prints already carries its prefix.
 
 One definition per thing the program says, and nothing else. Every clause is a
 decision, so it carries the program line that caused it for free; a clause no
 line asks for is exactly the invented policy this whole format exists to
 prevent.
+
+SEVERAL LINES MAY CONTRIBUTE TO ONE CLAUSE, which is how a program whose lines
+are STATEMENTS gets an entry point. Write the rhs as a one-element LIST holding
+the whole definition, exactly as a list-typed option takes one element per line:
+
+  clause.logscan-main "[ (define (logscan-main) (println \"#<value>\")) ]"
+
+Every line that rule matches contributes its own definition, and lips folds them
+into one whose body is theirs in the program's own order:
+
+  (define (logscan-main) (println "hallo") (println "du") (println "!"))
+
+Every contributor must define the same name with the same parameters, or lips
+refuses the engine. A repeat is kept -- two lines saying the same thing are two
+statements, and printing twice is not printing once -- so no merge declaration is
+needed here or read. Write the bare s-expression, with no list around it, for the
+ordinary clause one rule states whole.
 
 THE NOTATION IS A SMALL SUBSET, and lips refuses anything outside it. You may
 write: a definition, a cond/case/if/and/or/not/when/unless, a lambda, a
@@ -911,6 +1039,19 @@ let/let*/letrec, a quote, a literal (string, number, #t/#f, a character like
 #\=), recursion (a clause may call itself and any other clause), and a call to
 a base procedure or a CONTRACT. You may NOT write: a macro, set! or any
 mutation, eval, an internal define, or a name nothing grounds.
+
+THE BASE PROCEDURES ARE THESE, and there are no others. Reading them is
+cheaper than rediscovering them: a mint that forgot `number->string` filed a
+gap for report formatting, and one that forgot `quotient` wrote integer
+division as repeated subtraction. Nothing outside this list and the contracts
+below grounds a name.
+
+  cons car cdr caar cadr cdar cddr null? pair? list
+  list? length append reverse eq? eqv? equal? + - *
+  / = < > <= >= min max abs quotient
+  remainder modulo number? string? boolean? symbol? char? procedure? string=? string<?
+  string-length string-append substring string->number number->string char=? apply
+
 
 THE HOLE MARKER INSIDE A CLAUSE IS #<name>, NOT <name>. Both < and > are
 ordinary Scheme identifier characters, so a clause must be able to write
@@ -933,6 +1074,9 @@ available are:
   end-of-input? (1) -- x -> whether x is the end-of-input value
   emit (1) -- line -> writes it to the output, followed by a newline
   die (2) -- message subject -> stops the program, naming the subject
+  emitted (0) -- -> the lines the program printed, in order
+  random-step (1) -- seed -> (value . next-seed), value 0..999
+  elements-of (1) -- array -> its elements as a list, or #f when it is not an array
 
 
 If the program needs a capability no contract offers, that is a GAP: report it
@@ -945,8 +1089,21 @@ CLAIM WHAT THE BEHAVIOUR DOES. A claim over clauses is judged offline, with no
 binary built and no machine booted, so an observable here is cheap enough that
 every behaviour sentence should have one:
 
-  claim.<id>.call "(keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (parse-spec (list \"a=1\")))" ;
+  claim.<id>.call "(logscan-keep? (json-parse \"{\\\"a\\\":\\\"1\\\"}\") (logscan-parse-spec (list \"a=1\")))" ;
   claim.<id>.equals "#t"
+
+EVERY CLAUSE MUST BE REACHED BY A CLAIM, following calls from the claim's own
+expression through the clauses it calls. lips computes that set and REFUSES an
+engine leaving any definition outside it, naming the ones nothing runs -- a
+clause no claim reaches is behaviour the next mint may rewrite with every gate
+still green. So claim the ENTRY, not only the helpers: one claim of the shape
+
+  claim.whole.feed "[ \"first line\" \"second line\" ]" ;
+  claim.whole.call "(begin (logscan-main) (emitted))" ;
+  claim.whole.equals "(list \"what it prints\")"
+
+reaches the entry and everything it calls, which is usually the whole program.
+Claims over single definitions are good beside it, never instead of it.
 
 Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
 serve those lines to read-a-line first, and claim.<id>.args the same way to set
@@ -960,9 +1117,39 @@ the real effects: (emitted) is the lines the program printed, in order, and
 feed-lines / feed-args are what claim.<id>.feed and claim.<id>.args compile to.
 So a program whose whole job is to print is claimed end to end:
   claim.<id>.feed "[ \"2\" \"3\" ]" ;
-  claim.<id>.call "(begin (main) (emitted))" ;
+  claim.<id>.call "(begin (logscan-main) (emitted))" ;
   claim.<id>.equals "(list \"5\")"
 A clause may NOT call (emitted): it is not a contract, and the gate refuses it.
+
+NEVER FIX A COUNT IN A TEMPLATE. A sentence carrying a list of items --
+"given the lines A, B and C" -- must NOT become a template with one hole per
+item (<l1>, <l2>, <l3>): that pattern reads a three-item program and refuses a
+four-item one, so adding an example costs the author a fresh mint. Two forms
+read a list, and each yields one decision per item, keyed by its position.
+
+ITEMS IN ONE SENTENCE: a list hole, and -- when an item carries more than one
+value -- an ITEM PATTERN <id>.each.<parent>.<hole> that reads ONE item:
+
+  p3 pattern given the log of <e.list:,|and> the habit <q> prints <out> => fact witness.<q>.expected "<out>"
+  p4.each.p3.e pattern <d> for <h> => fact witness.<q>.entry.<n:index> "<d> <h>"
+  r3 match fact witness.<q>.entry.<n> => claim.<q>.feed "[ \"<value.1>\t<value.2>\" ]"
+
+An item pattern sees its parent's captures (<q> above), numbers its items with
+<n:index>, and must read EVERY item of that hole or the line is refused. A hole
+with no item pattern binds the item as one value, which is all a list of plain
+words needs.
+
+ITEMS ON THEIR OWN LINES: a BLOCK -- a header pattern and a child pattern nested
+under it -- which is the form when the author writes one item per line:
+
+  p3 pattern given these lines => concept witness.given "the example input follows"
+  p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
+  r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
+
+Either way Append assembles the one-element lists into one list in source order,
+and the same shape carries any list a program states: paths to back up, packages
+to install, ports to open. The kernel dictates no collection syntax, so the
+separators and the words that open a block are yours to choose.
 
 A PROGRAM THAT STOPS IS OBSERVABLE TOO. A clause calling die does not defeat the
 claim around it: the stop becomes an ordinary value, so state what it must be.
@@ -995,6 +1182,42 @@ express. Prefer clauses every time you can: a source file is traceable to no
 program line, is rewritten wholesale on the next mint, and is the one thing lips
 cannot check.
 
+THE ENGINE YOU INHERIT (this language is already minted; you are EXTENDING it).
+
+Below is the committed engine, written in the same line format you answer in. It
+already passes every gate and already serves every program of the corpus.
+
+Answer with a PATCH, not with a whole engine:
+  - a line whose id is NEW adds that line,
+  - a line whose id ALREADY EXISTS below replaces that line entirely,
+  - an id you do not mention stays exactly as it is.
+
+Do not restate a line you are not changing. Restating costs the human money and
+risks changing what already holds. There is no way to delete a line: if the
+language can only be read by dropping something, say so in the report and leave
+it, so the human decides.
+
+Change an existing line only where a program cannot be read otherwise, and say in
+the report which ids you changed and why. Everything else in this prompt applies
+unchanged: the same value grammar, the same confidence rule, the same demands and
+expects, the same report.
+
+1.0 p1 pattern filter json lines read from standard input => fact filter.input "standard input"
+1.0 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match "every named field equals its value"
+1.0 p3 pattern print each kept line unchanged => fact filter.output "each kept line unchanged"
+1.0 p4 pattern install the tool as the command <name> => fact tool.command "<name>"
+1.0 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter "<in1> <in2> <args> <out>"
+1.0 q1 demand filter.input "what kind of lines are filtered, and where do they come from?"
+1.0 q2 demand filter.match "when should a line be kept?"
+1.0 q3 demand filter.output "what should happen to a kept line?"
+1.0 q4 demand tool.command "what should the installed command be called?"
+1.0 q5 demand witness.filter "give an example: which lines, which arguments, and what must be printed?"
+1.0 r1 match fact filter.input => clause.logscan-main "(define (logscan-main) (logscan-run (arguments)))" ; clause.logscan-run "(define (logscan-run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (logscan-consider line spec))) (logscan-run spec))))))"
+1.0 r2 match fact filter.match => clause.logscan-keep? "(define (logscan-keep? record spec) (cond ((null? spec) #t) ((logscan-matches? record (car spec)) (logscan-keep? record (cdr spec))) (else #f)))" ; clause.logscan-matches? "(define (logscan-matches? record arg) (let ((cut (string-cut arg #\\=))) (cond ((not cut) (die \"argument is not field=value:\" arg)) (else (equal? (field-of record (field-name cut)) (field-value cut))))))"
+1.0 r3 match fact filter.output => clause.logscan-consider "(define (logscan-consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((logscan-keep? record spec) (emit line)) (else #f))))"
+1.0 r4 match fact tool.command => site.<self>.command "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
+1.0 r5 match fact witness.filter => claim.filter.feed "[ \"<value.1>\" \"<value.2>\" ]" ; claim.filter.args "[ \"<value.3>\" ]" ; claim.filter.call "(begin (logscan-main) (emitted))" ; claim.filter.equals "(list \"#<value.4>\")"
+
 --- program (input) ---
 === program logscan.lips ===
 filter JSON lines read from standard input.
@@ -1004,57 +1227,40 @@ install the tool as the command logscan.
 given the lines {"a":"1"} and {"a":"2"} with a=1, print only {"a":"1"}.
 
 --- tool transcript ---
--> query_options "environment.systemPackages"
--> query_options "environment."
+-> query_options "environment.systemPackages" "nixos"
+-> query_language "logscan" "nixos"
 <- query_options
 environment.systemPackages : list of package
 
-<- query_options
-environment.etc.* (9 options)
-services.n8n.environment (8 options)
-services.strichliste.environment (5 options)
-services.gokapi.environment (4 options)
-services.shelfmark.environment (4 options)
-services.koito.environment (3 options)
-services.slurm.rest (3 options)
-services.coder.environment (2 options)
-services.n8n.taskRunners (2 options)
-services.postgres-websockets.environment (2 options)
-environment.budgie.excludePackages (1 option)
-environment.checkConfigurationOptions (1 option)
-environment.cinnamon.excludePackages (1 option)
-environment.corePackages (1 option)
-environment.cosmic.excludePackages (1 option)
-environment.debuginfodServers (1 option)
-environment.defaultPackages (1 option)
-environment.enableAllTerminfo (1 option)
-environment.enableDebugInfo (1 option)
-environment.enlightenment.excludePackages (1 option)
-environment.etc (1 option)
-environment.extraInit (1 option)
-environment.extraOutputsToInstall (1 option)
-environment.extraSetup (1 option)
-environment.freetds (1 option)
-environment.gnome.excludePackages (1 option)
-environment.homeBinInPath (1 option)
-environment.interactiveShellInit (1 option)
-environment.ldso (1 option)
-environment.ldso32 (1 option)
-environment.localBinInPath (1 option)
-environment.loginShellInit (1 option)
-environment.lxqt.excludePackages (1 option)
-environment.mate.excludePackages (1 option)
-environment.memoryAllocator.provider (1 option)
-environment.pantheon.excludePackages (1 option)
-environment.pathsToLink (1 option)
-environment.plasma6.excludePackages (1 option)
-environment.profileRelativeEnvVars (1 option)
-environment.profileRelativeSessionVariables (1 option)
-… and 15 more namespaces.
-Ask again with one of these paths to see its options.
+<- query_language
+logscan-consider 2
+logscan-keep? 2
+logscan-main 0
+logscan-matches? 2
+logscan-run 1
 
--> check_draft "0.95 p1 pattern filter json lines read from standard input => fact filter.input \"standard input\"\n0.95 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match \"every named field equals its value\"\n0.95 p3 pattern print each kept line unchanged => fact filter.output \"each kept line unchanged\"\n0.95 p4 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.9 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter \"<in1> <in2> <args> <out>\"\n0.95 r1 match fact filter.input => clause.main \"(define (main) (run (parse-spec (arguments))))\" ; clause.run \"(define (run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (consider line spec))) (run spec))))))\"\n0.95 r2 match fact filter.match => clause.parse-spec \"(define (parse-spec args) (cond ((null? args) (quote ())) (else (cons (parse-pair (car args)) (parse-spec (cdr args))))))\" ; clause.parse-pair \"(define (parse-pair arg) (let ((cut (string-cut arg #\\\\=))) (cond ((not cut) (die \\\"argument is not field=value:\\\" arg)) (else cut))))\" ; clause.keep? \"(define (keep? record spec) (cond ((null? spec) #t) ((equal? (field-of record (car (car spec))) (cdr (car spec))) (keep? record (cdr spec))) (else #f)))\"\n0.95 r3 match fact filter.output => clause.consider \"(define (consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((keep? record spec) (emit line)) (else #f))))\"\n0.95 r4 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.filter => claim.filter.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.filter.args \"[ \\\"<value.3>\\\" ]\" ; claim.filter.call \"(begin (main) (emitted))\" ; claim.filter.equals \"(list \\\"<value.4>\\\")\"\n0.9 q1 demand filter.input \"where do the lines to filter come from?\"\n0.9 q2 demand filter.match \"when should a line be kept?\"\n0.9 q3 demand filter.output \"what should happen to a kept line?\"\n0.9 q4 demand tool.command \"what should the installed command be called?\"\n0.9 q5 demand witness.filter \"give an example: which lines, which arguments, and what must be printed?\"\n0.95 a1 expect site.<self>.command from tool.command\n0.9 a2 expect claim.filter.feed from witness.filter#1\n0.9 a3 expect claim.filter.args from witness.filter#3\n0.9 a4 expect claim.filter.equals from witness.filter#4\n0.95 d1 report <<<lips\ntest\nlips>>>"
-<- check_draft
+-> submit_draft "1.0 p5 pattern given the lines <in.list:,|and> with <args>, print only <out> => fact witness.filter.line.<in:index> \"<in>\" ; fact witness.filter.args \"<args>\" ; fact witness.filter.expected \"<out>\"\n1.0 r5 match fact witness.filter.args => claim.filter.args \"[ \\\"<value>\\\" ]\" ; claim.filter.call \"(begin (logscan-main) (emitted))\"\n1.0 r6 match fact witness.filter.expected => claim.filter.equals \"(list \\\"#<value>\\\")\"\n1.0 r7 match fact witness.filter.line.<n> => claim.filter.feed \"[ \\\"<value>\\\" ]\"\n1.0 m1 merge claim.filter.feed list\n1.0 q5 demand witness.filter.expected \"in the example, what must the tool print?\"\n1.0 q6 demand witness.filter.args \"in the example, which arguments is the tool given?\"\n1.0 q7 demand witness.filter.line.<n> \"in the example, which lines are fed to the tool?\"\n0.95 a1 expect site.<self>.command from tool.command\n0.9 a2 expect claim.filter.args from witness.filter.args\n0.9 a3 expect claim.filter.equals from witness.filter.expected is \"(list \\\"<value>\\\")\"\n1.0 d1 report <<<lips\nThis is the `logscan` language: a handful of plain sentences describing a\nline filter, realized as behaviour clauses (not a source file) plus one\ninstalled command.\n\nLines it reads:\n\n- `filter JSON lines read from standard input.` -- fixes where input comes\n  from; it mints the entry point (`logscan-main`) and the read loop\n  (`logscan-run`).\n- `keep a line only when every field named on the command line equals the\n  value given with it.` -- the keep policy (`logscan-keep?`,\n  `logscan-matches?`); an argument that is not `field=value` stops the\n  program loudly.\n- `print each kept line unchanged.` -- what happens to a kept line\n  (`logscan-consider`): parse, test, emit the original text.\n- `install the tool as the command <name>.` -- the name of the installed\n  command; the built site is put on the system PATH.\n- `given the lines A and B with ARGS, print only OUT.` -- a worked example,\n  turned into an offline claim that feeds the lines, sets the arguments,\n  runs `logscan-main` and compares everything printed.\n\nWhat changed in this mint, and why:\n\n- `p5` no longer fixes the example at exactly two input lines. It used to\n  read `the lines <in1> and <in2>`, which refused a three-line example and\n  would have cost a fresh mint to add one. It now uses a list hole\n  (`<in.list:,|and>`), so an example of any length reads, each line\n  becoming its own decision keyed by its position.\n- Consequently the single four-part `witness.filter` fact is split into\n  three subjects -- `witness.filter.line.<n>`, `witness.filter.args`,\n  `witness.filter.expected` -- so each program word lands in its own claim\n  section. `r5` was rewritten for the arguments and the call, and `r6`/`r7`\n  are new (expected output, fed lines). `q5` was retargeted and `q6`/`q7`\n  added, so a program missing any part of the example is asked for exactly\n  that part.\n- `m1` declares the fed lines a LIST, not a set: an example may legitimately\n  repeat the same input line twice, and collapsing it would change what the\n  program is observed to do.\n- Expects were added (`a1`-`a3`): the installed command name must reach\n  `site.<self>.command`, and the example's arguments and expected output\n  must reach the claim that runs the program. Nothing else in the engine\n  was touched.\n\nNothing here was invented: every clause traces to one sentence, and the\nexample is the author's, never a witness of mine.\nlips>>>"
+<- submit_draft
+examples/logscan.lips: 5 of 5 lines crystallize.
+  line 1  ok        p1  filter.input
+  line 2  ok        p2  filter.match
+  line 3  ok        p3  filter.output
+  line 4  ok        p4  tool.command
+  line 5  ok        p5  witness.filter.line.1, witness.filter.line.2, witness.filter.args, witness.filter.expected
+
+world nixos:
+· crystallize examples/logscan.lips
+✓ crystallize examples/logscan.lips  (0.0s)
+· contract: 1 check
+✗ contract: 1 check  (0.0s)
+examples/logscan.lips no longer produces what it promised:
+
+  lips can't match a check to the program: expect a1: no decision with subject witness.filter#3
+
+→ if you changed the program on purpose, rebuild: lips generate examples/logscan.lips
+
+-> submit_draft "1.0 p1 pattern filter json lines read from standard input => fact filter.input \"standard input\"\n1.0 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match \"every named field equals its value\"\n1.0 p3 pattern print each kept line unchanged => fact filter.output \"each kept line unchanged\"\n1.0 p4 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n1.0 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter \"<in1> <in2> <args> <out>\"\n1.0 q1 demand filter.input \"what kind of lines are filtered, and where do they come from?\"\n1.0 q2 demand filter.match \"when should a line be kept?\"\n1.0 q3 demand filter.output \"what should happen to a kept line?\"\n1.0 q4 demand tool.command \"what should the installed command be called?\"\n1.0 q5 demand witness.filter \"give an example: which lines, which arguments, and what must be printed?\"\n1.0 r1 match fact filter.input => clause.logscan-main \"(define (logscan-main) (logscan-run (arguments)))\" ; clause.logscan-run \"(define (logscan-run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (logscan-consider line spec))) (logscan-run spec))))))\"\n1.0 r2 match fact filter.match => clause.logscan-keep? \"(define (logscan-keep? record spec) (cond ((null? spec) #t) ((logscan-matches? record (car spec)) (logscan-keep? record (cdr spec))) (else #f)))\" ; clause.logscan-matches? \"(define (logscan-matches? record arg) (let ((cut (string-cut arg #\\\\=))) (cond ((not cut) (die \\\"argument is not field=value:\\\" arg)) (else (equal? (field-of record (field-name cut)) (field-value cut))))))\"\n1.0 r3 match fact filter.output => clause.logscan-consider \"(define (logscan-consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((logscan-keep? record spec) (emit line)) (else #f))))\"\n1.0 r4 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n1.0 r5 match fact witness.filter => claim.filter.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.filter.args \"[ \\\"<value.3>\\\" ]\" ; claim.filter.call \"(begin (logscan-main) (emitted))\" ; claim.filter.equals \"(list \\\"#<value.4>\\\")\"\n0.95 a1 expect site.<self>.command from tool.command\n0.9 a2 expect claim.filter.args from witness.filter#3\n0.9 a3 expect claim.filter.equals from witness.filter is \"(list \\\"<value.4>\\\")\"\n1.0 d1 report <<<lips\nThis is the `logscan` language: a handful of plain sentences describing a\nJSON line filter, realized as behaviour clauses (no source file) plus one\ninstalled command.\n\nThe line shapes it accepts, and what each means:\n\n- `filter JSON lines read from standard input.` -- fixes where input comes\n  from. It mints the entry point `logscan-main` and the read loop\n  `logscan-run`, which reads a line at a time until end of input.\n- `keep a line only when every field named on the command line equals the\n  value given with it.` -- the keep policy, `logscan-keep?` together with\n  `logscan-matches?`. Each command-line argument is cut at `=` into a field\n  name and a value; a line is kept only when every one of them matches the\n  parsed record. An argument that is not `field=value` stops the program\n  loudly, naming the offending argument.\n- `print each kept line unchanged.` -- `logscan-consider`: parse the line,\n  test it, and on a match emit the ORIGINAL text, not a re-serialization.\n  A line that is not JSON is silently skipped.\n- `install the tool as the command <name>.` -- the command name. The built\n  site is named after that word and put on the system PATH via\n  `environment.systemPackages`; no wrapper script is built around it.\n- `given the lines A and B with ARGS, print only OUT.` -- the author's\n  worked example. It becomes an offline claim: the two lines are fed to the\n  program, ARGS becomes its command line, `logscan-main` runs, and\n  everything it printed is compared with OUT exactly.\n\nMechanism choices: behaviour lives in clauses rather than in a baked source\nfile, so every definition traces back to one sentence and the example is\nchecked without building a binary or booting a machine. Nothing runs as a\nservice, so no unit and no boot-observed claim are involved -- the whole\nbehaviour is the command, and the claim observes it end to end.\n\nWhat this re-mint changed: only the behavioral contract and this report.\nThree expects now pin the program's own words -- the installed command name\nreaches `site.<self>.command`, and the example's arguments and expected\noutput reach the claim's `args` and `equals` sections -- so a later mint\nthat quietly drops the author's example, or stops honouring the command\nname, is refused instead of passing silently. No pattern, rule or demand was\ntouched.\n\nOne known limitation, left in place deliberately: the example pattern `p5`\nreads exactly TWO input lines (`the lines A and B`). An example with one or\nthree lines does not crystallize. The grammar can express the general form\n(a list hole, one fed line per item, keyed by position), but doing so\nrenames the `witness.filter` subject that the committed contract is written\nagainst, and a mint may not break a contract on its own authority. If you\nwant examples of any length, change the example line in the program and run\n`lips generate examples/logscan.lips`; the re-mint can then move the\nsubject and rewrite the contract with your consent.\nlips>>>" true
+<- submit_draft
 examples/logscan.lips: 5 of 5 lines crystallize.
   line 1  ok        p1  filter.input
   line 2  ok        p2  filter.match
@@ -1062,124 +1268,123 @@ examples/logscan.lips: 5 of 5 lines crystallize.
   line 4  ok        p4  tool.command
   line 5  ok        p5  witness.filter
 
+world nixos:
 · crystallize examples/logscan.lips
 ✓ crystallize examples/logscan.lips  (0.0s)
-· contract: 4 checks
-✗ contract: 4 checks  (0.0s)
-examples/logscan.lips no longer produces what it promised:
+· contract: 1 check
+✓ contract: 1 check  (0.0s)
+  grounding: 1 option assignment (schema), 5 clauses (contracts), 1 claim (stated), 0 unvouched assertions (nothing), 0 words, 0 mint-written words inside option strings
+· clause claims: 1 claim
+✓ clause claims: 1 claim  (0.9s)
+examples/logscan.lips: this draft's own contract cannot hold, in nixos:
 
-  claim.filter.feed: should contain {"a":"1"}, but is [ "{\"a\":\"1\"}" "{\"a\":\"2\"}" ]
-  claim.filter.equals: should contain {"a":"1"}, but is (list "<value.4>")
-  site.logscan.command: should contain logscan, but is null
+  site.<self>.command: nothing realizes this slot, so the program value logscan lands nowhere
+  claim.filter.equals: should be (list "{"a":"1"}"), but is (list "{\"a\":\"1\"}")
 
-→ if you changed the program on purpose, rebuild: lips generate examples/logscan.lips
+→ assert the slot the value actually reaches, or drop the check.
 
--> check_draft "0.95 p1 pattern filter json lines read from standard input => fact filter.input \"standard input\"\n0.95 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match \"every named field equals its value\"\n0.95 p3 pattern print each kept line unchanged => fact filter.output \"each kept line unchanged\"\n0.95 p4 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.9 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter \"<in1> <in2> <args> <out>\"\n0.95 r1 match fact filter.input => clause.main \"(define (main) (run (parse-spec (arguments))))\" ; clause.run \"(define (run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (consider line spec))) (run spec))))))\"\n0.95 r2 match fact filter.match => clause.parse-spec \"(define (parse-spec args) (cond ((null? args) (quote ())) (else (cons (parse-pair (car args)) (parse-spec (cdr args))))))\" ; clause.parse-pair \"(define (parse-pair arg) (let ((cut (string-cut arg #\\\\=))) (cond ((not cut) (die \\\"argument is not field=value:\\\" arg)) (else cut))))\" ; clause.keep? \"(define (keep? record spec) (cond ((null? spec) #t) ((equal? (field-of record (car (car spec))) (cdr (car spec))) (keep? record (cdr spec))) (else #f)))\"\n0.95 r3 match fact filter.output => clause.consider \"(define (consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((keep? record spec) (emit line)) (else #f))))\"\n0.95 r4 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.filter => claim.filter.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.filter.args \"[ \\\"<value.3>\\\" ]\" ; claim.filter.call \"(begin (main) (emitted))\" ; claim.filter.equals \"(list \\\"#<value.4>\\\")\"\n0.9 q4 demand tool.command \"what should the installed command be called?\"\n0.9 a3 expect claim.filter.args from witness.filter#3\n0.95 d1 report <<<lips\ntest\nlips>>>"
-<- check_draft
-the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
--> check_draft "0.95 p1 pattern filter json lines read from standard input => fact filter.input \"standard input\"\n0.95 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match \"every named field equals its value\"\n0.95 p3 pattern print each kept line unchanged => fact filter.output \"each kept line unchanged\"\n0.95 p4 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.9 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter \"<in1> <in2> <args> <out>\"\n0.95 r1 match fact filter.input => clause.main \"(define (main) (run (parse-spec (arguments))))\" ; clause.run \"(define (run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (consider line spec))) (run spec))))))\"\n0.95 r2 match fact filter.match => clause.parse-spec \"(define (parse-spec args) (cond ((null? args) (quote ())) (else (cons (parse-pair (car args)) (parse-spec (cdr args))))))\" ; clause.parse-pair \"(define (parse-pair arg) (let ((cut (string-cut arg #\\\\=))) (cond ((not cut) (die \\\"argument is not field=value:\\\" arg)) (else cut))))\" ; clause.keep? \"(define (keep? record spec) (cond ((null? spec) #t) ((equal? (field-of record (car (car spec))) (cdr (car spec))) (keep? record (cdr spec))) (else #f)))\"\n0.95 r3 match fact filter.output => clause.consider \"(define (consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((keep? record spec) (emit line)) (else #f))))\"\n0.95 r4 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.filter => claim.filter.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.filter.args \"[ \\\"<value.3>\\\" ]\" ; claim.filter.call \"(begin (main) (emitted))\" ; claim.filter.equals \"(list \\\"#<value.4>\\\")\"\n0.9 q4 demand tool.command \"what should the installed command be called?\"\n0.9 a3 expect claim.filter.args from witness.filter#3\n0.9 a4 expect claim.filter.equals from witness.filter#4\n0.95 d1 report <<<lips\ntest\nlips>>>"
-<- check_draft
-examples/logscan.lips: 5 of 5 lines crystallize.
-  line 1  ok        p1  filter.input
-  line 2  ok        p2  filter.match
-  line 3  ok        p3  filter.output
-  line 4  ok        p4  tool.command
-  line 5  ok        p5  witness.filter
-
-· crystallize examples/logscan.lips
-✓ crystallize examples/logscan.lips  (0.0s)
-· contract: 2 checks
-✗ contract: 2 checks  (0.0s)
-examples/logscan.lips no longer produces what it promised:
-
-  claim.filter.equals: should contain {"a":"1"}, but is (list "{\"a\":\"1\"}")
-
-→ if you changed the program on purpose, rebuild: lips generate examples/logscan.lips
-
--> check_draft "0.95 p1 pattern filter json lines read from standard input => fact filter.input \"standard input\"\n0.95 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match \"every named field equals its value\"\n0.95 p3 pattern print each kept line unchanged => fact filter.output \"each kept line unchanged\"\n0.95 p4 pattern install the tool as the command <name> => fact tool.command \"<name>\"\n0.9 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter \"<in1> <in2> <args> <out>\"\n0.95 r1 match fact filter.input => clause.main \"(define (main) (run (arguments)))\" ; clause.run \"(define (run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (consider line spec))) (run spec))))))\"\n0.9 r2 match fact filter.match => clause.keep? \"(define (keep? record spec) (cond ((null? spec) #t) ((matches? record (car spec)) (keep? record (cdr spec))) (else #f)))\" ; clause.matches? \"(define (matches? record arg) (let ((cut (string-cut arg #\\\\=))) (cond ((not cut) (die \\\"argument is not field=value:\\\" arg)) (else (equal? (field-of record (field-name cut)) (field-value cut))))))\"\n0.9 r3 match fact filter.output => clause.consider \"(define (consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((keep? record spec) (emit line)) (else #f))))\"\n0.95 r4 match fact tool.command => site.<self>.command \"\\\"<value>\\\"\" ; environment.systemPackages \"[ ${site} ]\"\n0.9 r5 match fact witness.filter => claim.filter.feed \"[ \\\"<value.1>\\\" \\\"<value.2>\\\" ]\" ; claim.filter.args \"[ \\\"<value.3>\\\" ]\" ; claim.filter.call \"(begin (main) (emitted))\" ; claim.filter.equals \"(list \\\"#<value.4>\\\")\"\n0.9 q1 demand filter.input \"what kind of lines are filtered, and where do they come from?\"\n0.9 q2 demand filter.match \"when should a line be kept?\"\n0.9 q3 demand filter.output \"what should happen to a kept line?\"\n0.9 q4 demand tool.command \"what should the installed command be called?\"\n0.9 q5 demand witness.filter \"give an example: which lines, which arguments, and what must be printed?\"\n0.9 a1 expect claim.filter.args from witness.filter#3\n0.95 d1 report <<<lips\ntest\nlips>>>"
-<- check_draft
-the draft passes every gate lips can run before you answer. Answer with those lines ALONE -- no sentence about this check, which lips would read as a malformed item and refuse.
+-> submit_draft "0.9 a1 gap unassertable-site-command <<<lips\nblocked line: install the tool as the command logscan.\nThe command name is the one program value in this language that reaches a\nmodule-side slot (site.<self>.command), but an expect over it is refused:\n\"site.<self>.command: nothing realizes this slot\". So the word that names\nthe installed command is pinned by no check at all, and a later mint could\nkey the site off the filename with every gate still green.\nminimal repro:\n  0.95 a1 expect site.<self>.command from tool.command\nlips>>>\n0.9 a3 gap expect-quoting-mismatch <<<lips\nblocked line: given the lines {\"a\":\"1\"} and {\"a\":\"2\"} with a=1, print only {\"a\":\"1\"}.\nThe rule emits claim.filter.equals \"(list \\\"#<value.4>\\\")\", and the realized\nvalue is (list \"{\\\"a\\\":\\\"1\\\"}\") -- the substituted value's own quotes are\nescaped for the surrounding Nix string. An expect's is-text substitutes the\nraw value instead, so the two can never be equal for any value containing a\nquote, and the expected output of a JSON example cannot be asserted.\nminimal repro:\n  0.9 a3 expect claim.filter.equals from witness.filter is \"(list \\\"<value.4>\\\")\"\n  -> should be (list \"{\"a\":\"1\"}\"), but is (list \"{\\\"a\\\":\\\"1\\\"}\")\nlips>>>\n1.0 d1 report <<<lips\nThis is the `logscan` language: a handful of plain sentences describing a\nJSON line filter, realized as behaviour clauses (no source file) plus one\ninstalled command.\n\nThe line shapes it accepts, and what each means:\n\n- `filter JSON lines read from standard input.` -- fixes where input comes\n  from. It mints the entry point `logscan-main` and the read loop\n  `logscan-run`, which reads a line at a time until end of input.\n- `keep a line only when every field named on the command line equals the\n  value given with it.` -- the keep policy, `logscan-keep?` together with\n  `logscan-matches?`. Each command-line argument is cut at `=` into a field\n  name and a value; a line is kept only when every one of them matches the\n  parsed record. An argument that is not `field=value` stops the program\n  loudly, naming the offending argument.\n- `print each kept line unchanged.` -- `logscan-consider`: parse the line,\n  test it, and on a match emit the ORIGINAL text, not a re-serialization.\n  A line that is not JSON is silently skipped.\n- `install the tool as the command <name>.` -- the command name. The built\n  site is named after that word and put on the system PATH via\n  `environment.systemPackages`; no wrapper is built around it.\n- `given the lines A and B with ARGS, print only OUT.` -- the author's\n  worked example. It becomes an offline claim: the two lines are fed to the\n  program, ARGS becomes its command line, `logscan-main` runs, and\n  everything it printed is compared with OUT exactly.\n\nMechanism: behaviour lives in clauses rather than in a baked source file, so\nevery definition traces back to one sentence and the example is checked\nwithout building a binary or booting a machine. Nothing runs as a service,\nso no unit and no boot-observed claim are involved -- the whole behaviour is\nthe command, and the claim observes it end to end.\n\nWhat this re-mint changed: nothing in the engine itself. No pattern, rule or\ndemand was touched, so every program that compiled before compiles the same\nway. What is new is this report, one expect (`a2`, pinning the example's\ncommand-line arguments into the claim that runs the program), and two filed\ngaps.\n\nThe two gaps are the checks I wanted and could not write:\n\n- the installed command name reaches `site.<self>.command`, and an expect\n  over that slot is refused (\"nothing realizes this slot\"), so that word is\n  pinned by no contract;\n- the example's expected OUTPUT cannot be asserted either, because the\n  value's own quotes are escaped in the realized claim text but not in an\n  expect's is-text, so a JSON example can never compare equal.\n\nThe claim itself still runs the example on every compile, which is the real\nguard here; the gaps are about the contract that would survive a future\nre-mint.\n\nOne known limitation, left in place deliberately: the example pattern `p5`\nreads exactly TWO input lines (`the lines A and B`). An example with one or\nthree lines does not crystallize. The grammar can express the general form\n(a list hole, one fed line per item, keyed by position), but doing so\nrenames the `witness.filter` subject the committed contract is written\nagainst, and a mint may not break a standing contract on its own authority.\nIf you want examples of any length, edit the example line and run\n`lips generate examples/logscan.lips`; that re-mint can move the subject and\nrewrite the contract with your consent.\nlips>>>"
+<- submit_draft
+the draft passes every gate lips can run before you are done, and is staged as your answer. The claim gate and the artifact build still run after, so this is not acceptance. Submit again to patch it -- only the lines you change -- and whatever you write outside this tool is read by nothing.
 
 --- raw reply ---
-0.95 p1 pattern filter json lines read from standard input => fact filter.input "standard input"
-0.95 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match "every named field equals its value"
-0.95 p3 pattern print each kept line unchanged => fact filter.output "each kept line unchanged"
-0.95 p4 pattern install the tool as the command <name> => fact tool.command "<name>"
-0.9 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter "<in1> <in2> <args> <out>"
-0.95 r1 match fact filter.input => clause.main "(define (main) (run (arguments)))" ; clause.run "(define (run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (consider line spec))) (run spec))))))"
-0.9 r2 match fact filter.match => clause.keep? "(define (keep? record spec) (cond ((null? spec) #t) ((matches? record (car spec)) (keep? record (cdr spec))) (else #f)))" ; clause.matches? "(define (matches? record arg) (let ((cut (string-cut arg #\\=))) (cond ((not cut) (die \"argument is not field=value:\" arg)) (else (equal? (field-of record (field-name cut)) (field-value cut))))))"
-0.9 r3 match fact filter.output => clause.consider "(define (consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((keep? record spec) (emit line)) (else #f))))"
-0.95 r4 match fact tool.command => site.<self>.command "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
-0.9 r5 match fact witness.filter => claim.filter.feed "[ \"<value.1>\" \"<value.2>\" ]" ; claim.filter.args "[ \"<value.3>\" ]" ; claim.filter.call "(begin (main) (emitted))" ; claim.filter.equals "(list \"#<value.4>\")"
-0.9 q1 demand filter.input "what kind of lines are filtered, and where do they come from?"
-0.9 q2 demand filter.match "when should a line be kept?"
-0.9 q3 demand filter.output "what should happen to a kept line?"
-0.9 q4 demand tool.command "what should the installed command be called?"
-0.9 q5 demand witness.filter "give an example: which lines, which arguments, and what must be printed?"
-0.9 a1 expect claim.filter.args from witness.filter#3
-0.95 d1 report <<<lips
-This language describes one small filtering tool: it reads lines on standard
-input, keeps the ones matching `field=value` pairs given on its command line,
-prints the survivors, and installs itself as a named command on the machine.
-
-## The five line shapes
-
-1. `filter JSON lines read from standard input.` — the input side. It has no
-   holes: reading a line at a time and parsing it as JSON is exactly what the
-   available contracts (`read-a-line`, `end-of-input?`, `json-parse`) do, so
-   the sentence selects a mechanism rather than carrying a value. It realizes
-   the two driver clauses, `main` and `run` (the read loop).
-2. `keep a line only when every field named on the command line equals the
-   value given with it.` — the decision. It realizes `keep?` (all pairs must
-   match) and `matches?` (split one argument at the first `=`, look the field
-   up in the parsed record, compare the values).
-3. `print each kept line unchanged.` — the output side. It realizes
-   `consider`, which parses a line, asks `keep?`, and on a yes emits the
-   ORIGINAL text, never a re-serialized record — that is what "unchanged"
-   buys you.
-4. `install the tool as the command <name>.` — the only configuration value in
-   the language. The name is a hole: it becomes the site's command name and the
-   built program goes onto `environment.systemPackages`, so the machine has
-   `logscan` on PATH. Rename it in the sentence and the installed command
-   renames with it.
-5. `given the lines <a> and <b> with <args>, print only <c>.` — the author's
-   worked example. All four words are holes: the two input lines are fed to the
-   program, `<args>` becomes its command line, and `<c>` is the single line it
-   must print. This compiles to a claim that runs the whole program offline and
-   compares what it printed, so the sentences above are held to the behaviour
-   they describe rather than merely to some text in a module.
-
-## What I chose, and what I had to invent
-
-Behaviour is minted as clauses, not as a source file, so every definition is
-traceable to the line that asked for it: five clauses, five short definitions,
-no policy beyond them. The program is installed through a `site` (no wrapper
-script), which is what puts one executable named by line 4 into the system
-profile.
-
-Two things the program is silent about, decided rather than demanded:
-
-- a line that is not JSON is simply not kept (it has no fields to match), and
-  filtering continues with the next line;
-- an argument with no `=` in it stops the program with `die`, naming the bad
-  argument, instead of being silently ignored.
-
-## Contract
-
-The claim is the real contract here: it feeds the two example lines, passes the
-example arguments, and requires the emitted output to be exactly the one line
-the program names. Beside it, one expect pins the example's argument list into
-`claim.filter.args`. The JSON-bearing parts (the fed lines, the expected output)
-carry no expect of their own: they are re-quoted as Scheme string literals when
-realized, so a literal-containment expect on them can never hold — the claim
-already observes them byte for byte, which is stronger.
-
-The `site.<self>.command` value cannot be asserted by an expect either (it is
-not a module option that evaluation can read back); rule `r4` is its whole
-contract.
-
-Every line shape is demanded, so a program missing any of the five fails with a
-plain question instead of a dangling clause name. One example line per program:
-a second `given ...` line would set the same claim twice and lips refuses it
-loudly.
+1.0 p1 pattern filter json lines read from standard input => fact filter.input "standard input"
+1.0 p2 pattern keep a line only when every field named on the command line equals the value given with it => fact filter.match "every named field equals its value"
+1.0 p3 pattern print each kept line unchanged => fact filter.output "each kept line unchanged"
+1.0 p4 pattern install the tool as the command <name> => fact tool.command "<name>"
+1.0 p5 pattern given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter "<in1> <in2> <args> <out>"
+1.0 q1 demand filter.input "what kind of lines are filtered, and where do they come from?"
+1.0 q2 demand filter.match "when should a line be kept?"
+1.0 q3 demand filter.output "what should happen to a kept line?"
+1.0 q4 demand tool.command "what should the installed command be called?"
+1.0 q5 demand witness.filter "give an example: which lines, which arguments, and what must be printed?"
+1.0 r1 match fact filter.input => clause.logscan-main "(define (logscan-main) (logscan-run (arguments)))" ; clause.logscan-run "(define (logscan-run spec) (let ((line (read-a-line))) (cond ((end-of-input? line) #t) (else (let ((shown (logscan-consider line spec))) (logscan-run spec))))))"
+1.0 r2 match fact filter.match => clause.logscan-keep? "(define (logscan-keep? record spec) (cond ((null? spec) #t) ((logscan-matches? record (car spec)) (logscan-keep? record (cdr spec))) (else #f)))" ; clause.logscan-matches? "(define (logscan-matches? record arg) (let ((cut (string-cut arg #\\=))) (cond ((not cut) (die \"argument is not field=value:\" arg)) (else (equal? (field-of record (field-name cut)) (field-value cut))))))"
+1.0 r3 match fact filter.output => clause.logscan-consider "(define (logscan-consider line spec) (let ((record (json-parse line))) (cond ((not record) #f) ((logscan-keep? record spec) (emit line)) (else #f))))"
+1.0 r4 match fact tool.command => site.<self>.command "\"<value>\"" ; environment.systemPackages "[ ${site} ]"
+1.0 r5 match fact witness.filter => claim.filter.feed "[ \"<value.1>\" \"<value.2>\" ]" ; claim.filter.args "[ \"<value.3>\" ]" ; claim.filter.call "(begin (logscan-main) (emitted))" ; claim.filter.equals "(list \"#<value.4>\")"
+0.9 a2 expect claim.filter.args from witness.filter#3
+0.9 a1 gap unassertable-site-command <<<lips
+blocked line: install the tool as the command logscan.
+The command name is the one program value in this language that reaches a
+module-side slot (site.<self>.command), but an expect over it is refused:
+"site.<self>.command: nothing realizes this slot". So the word that names
+the installed command is pinned by no check at all, and a later mint could
+key the site off the filename with every gate still green.
+minimal repro:
+  0.95 a1 expect site.<self>.command from tool.command
 lips>>>
+0.9 a3 gap expect-quoting-mismatch <<<lips
+blocked line: given the lines {"a":"1"} and {"a":"2"} with a=1, print only {"a":"1"}.
+The rule emits claim.filter.equals "(list \"#<value.4>\")", and the realized
+value is (list "{\"a\":\"1\"}") -- the substituted value's own quotes are
+escaped for the surrounding Nix string. An expect's is-text substitutes the
+raw value instead, so the two can never be equal for any value containing a
+quote, and the expected output of a JSON example cannot be asserted.
+minimal repro:
+  0.9 a3 expect claim.filter.equals from witness.filter is "(list \"<value.4>\")"
+  -> should be (list "{"a":"1"}"), but is (list "{\"a\":\"1\"}")
+lips>>>
+1.0 d1 report <<<lips
+This is the `logscan` language: a handful of plain sentences describing a
+JSON line filter, realized as behaviour clauses (no source file) plus one
+installed command.
+
+The line shapes it accepts, and what each means:
+
+- `filter JSON lines read from standard input.` -- fixes where input comes
+  from. It mints the entry point `logscan-main` and the read loop
+  `logscan-run`, which reads a line at a time until end of input.
+- `keep a line only when every field named on the command line equals the
+  value given with it.` -- the keep policy, `logscan-keep?` together with
+  `logscan-matches?`. Each command-line argument is cut at `=` into a field
+  name and a value; a line is kept only when every one of them matches the
+  parsed record. An argument that is not `field=value` stops the program
+  loudly, naming the offending argument.
+- `print each kept line unchanged.` -- `logscan-consider`: parse the line,
+  test it, and on a match emit the ORIGINAL text, not a re-serialization.
+  A line that is not JSON is silently skipped.
+- `install the tool as the command <name>.` -- the command name. The built
+  site is named after that word and put on the system PATH via
+  `environment.systemPackages`; no wrapper is built around it.
+- `given the lines A and B with ARGS, print only OUT.` -- the author's
+  worked example. It becomes an offline claim: the two lines are fed to the
+  program, ARGS becomes its command line, `logscan-main` runs, and
+  everything it printed is compared with OUT exactly.
+
+Mechanism: behaviour lives in clauses rather than in a baked source file, so
+every definition traces back to one sentence and the example is checked
+without building a binary or booting a machine. Nothing runs as a service,
+so no unit and no boot-observed claim are involved -- the whole behaviour is
+the command, and the claim observes it end to end.
+
+What this re-mint changed: nothing in the engine itself. No pattern, rule or
+demand was touched, so every program that compiled before compiles the same
+way. What is new is this report, one expect (`a2`, pinning the example's
+command-line arguments into the claim that runs the program), and two filed
+gaps.
+
+The two gaps are the checks I wanted and could not write:
+
+- the installed command name reaches `site.<self>.command`, and an expect
+  over that slot is refused ("nothing realizes this slot"), so that word is
+  pinned by no contract;
+- the example's expected OUTPUT cannot be asserted either, because the
+  value's own quotes are escaped in the realized claim text but not in an
+  expect's is-text, so a JSON example can never compare equal.
+
+The claim itself still runs the example on every compile, which is the real
+guard here; the gaps are about the contract that would survive a future
+re-mint.
+
+One known limitation, left in place deliberately: the example pattern `p5`
+reads exactly TWO input lines (`the lines A and B`). An example with one or
+three lines does not crystallize. The grammar can express the general form
+(a list hole, one fed line per item, keyed by position), but doing so
+renames the `witness.filter` subject the committed contract is written
+against, and a mint may not break a standing contract on its own authority.
+If you want examples of any length, edit the example line and run
+`lips generate examples/logscan.lips`; that re-mint can move the subject and
+rewrite the contract with your consent.
+lips>>>
+

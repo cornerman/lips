@@ -1,5 +1,5 @@
-p1 meta lang.pattern.p1 stated "filter json lines read from standard input => fact filter.input \"standard input\"" @gen:66269f89ea8bfac0
-p2 meta lang.pattern.p2 stated "keep a line only when every field named on the command line equals the value given with it => fact filter.match \"every named field equals its value\"" @gen:66269f89ea8bfac0
-p3 meta lang.pattern.p3 stated "print each kept line unchanged => fact filter.output \"each kept line unchanged\"" @gen:66269f89ea8bfac0
-p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact tool.command \"<name>\"" @gen:66269f89ea8bfac0
-p5 meta lang.pattern.p5 stated "given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter \"<in1> <in2> <args> <out>\"" @gen:66269f89ea8bfac0
+p1 meta lang.pattern.p1 stated "filter json lines read from standard input => fact filter.input \"standard input\"" @gen:1e7bd70bd88cb78d
+p2 meta lang.pattern.p2 stated "keep a line only when every field named on the command line equals the value given with it => fact filter.match \"every named field equals its value\"" @gen:1e7bd70bd88cb78d
+p3 meta lang.pattern.p3 stated "print each kept line unchanged => fact filter.output \"each kept line unchanged\"" @gen:1e7bd70bd88cb78d
+p4 meta lang.pattern.p4 stated "install the tool as the command <name> => fact tool.command \"<name>\"" @gen:1e7bd70bd88cb78d
+p5 meta lang.pattern.p5 stated "given the lines <in1> and <in2> with <args>, print only <out> => fact witness.filter \"<in1> <in2> <args> <out>\"" @gen:1e7bd70bd88cb78d
