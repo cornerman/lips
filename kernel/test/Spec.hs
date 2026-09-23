@@ -1666,18 +1666,26 @@ main = hspec $ do
                            , (dec "route./bye.status"   "404") { dId = DecisionId "d2" } ]
           fam   = Expect "a" ["environment", "etc", "http-routes<path>", "text"]
                             (Subject ["route", "<path>", "status"]) Nothing Nothing
-      case expandExpects rbase [fam] of
+      case expandExpects "web" rbase [fam] of
         Left e   -> expectationFailure ("expand failed: " ++ show e)
         Right xs -> map (\x -> (exFrom x, exPath x)) xs `shouldMatchList`
           [ (Subject ["route", "/hello", "status"], ["environment", "etc", "http-routes/hello", "text"])
           , (Subject ["route", "/bye",   "status"], ["environment", "etc", "http-routes/bye",   "text"]) ]
 
     it "a plain (captureless) expect passes through expansion unchanged" $
-      expandExpects base [Expect "a" ["o"] opt Nothing Nothing] `shouldBe` Right [Expect "a" ["o"] opt Nothing Nothing]
+      expandExpects "ledger" base [Expect "a" ["o"] opt Nothing Nothing] `shouldBe` Right [Expect "a" ["o"] opt Nothing Nothing]
 
     it "fails loud on a family expect no decision matches" $
-      expandExpects base [Expect "a" ["o"] (Subject ["route", "<path>", "status"]) Nothing Nothing]
+      expandExpects "ledger" base [Expect "a" ["o"] (Subject ["route", "<path>", "status"]) Nothing Nothing]
         `shouldSatisfy` isLeft
+
+    -- Expansion is where a contract meets ONE program, so it is where <self>
+    -- binds: every gate expands, so none can judge an unbound path. The draft
+    -- door judged one, and refused site.<self>.command as "nothing realizes this
+    -- slot" while `lips check` passed the same line (logscan re-mint, 2026-09-20).
+    it "binds <self> while expanding, so no gate sees an unbound path" $
+      expandExpects "logscan" base [Expect "a" ["site", "<self>", "command"] opt Nothing Nothing]
+        `shouldBe` Right [Expect "a" ["site", "logscan", "command"] opt Nothing Nothing]
 
     it "containment: the program value must appear in the evaluated option" $ do
       let e = Expect "a1" ["p"] opt (Just 2) Nothing

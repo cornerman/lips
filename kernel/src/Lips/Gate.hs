@@ -169,12 +169,15 @@ data ExpectFail = ToolMissing Text | EvalFailed Text | Violations [Text] [Expect
 violations :: [(Expect, Text)] -> ExpectFail
 violations fs = Violations (map snd fs) (map fst fs)
 
-runExpects :: (FilePath -> IO ()) -> [Expect] -> Realization -> IO (Either ExpectFail ())
-runExpects _     []       _  = pure (Right ())
-runExpects stage expects0 rl =
+-- | The 'Text' is the program's instance name. It is a parameter rather than a
+-- binding each caller applies, because a caller that forgot it judged
+-- @site.\<self\>.command@ against a base holding @site.logscan.command@.
+runExpects :: (FilePath -> IO ()) -> Text -> [Expect] -> Realization -> IO (Either ExpectFail ())
+runExpects _     _    []       _  = pure (Right ())
+runExpects stage inst expects0 rl =
   -- Expand any value-keyed family expect against this program's routes first,
   -- so a shared contract (route.<path>.status) checks every concrete route.
-  case expandExpects base expects0 >>= \expects ->
+  case expandExpects inst base expects0 >>= \expects ->
          (,) expects <$> traverse (expectedValue base) expects of
     Left e            -> pure (Left (Violations ["lips can't match a check to the program: " <> e] []))
     Right (expects, pvs) -> do
@@ -204,10 +207,10 @@ runExpects stage expects0 rl =
 -- or the wrong slot of its own claim, is self-CONTRADICTORY rather than
 -- self-fulfilling, and no amount of writing makes it pass. Three mints in a row
 -- died on exactly that, a quarter of an hour after the door had let them past.
-groundExpectFaults :: [Expect] -> Realization -> [Text]
-groundExpectFaults []       _  = []
-groundExpectFaults expects0 rl =
-  case expandExpects base expects0 >>= \es -> (,) es <$> traverse (expectedValue base) es of
+groundExpectFaults :: Text -> [Expect] -> Realization -> [Text]
+groundExpectFaults _    []       _  = []
+groundExpectFaults inst expects0 rl =
+  case expandExpects inst base expects0 >>= \es -> (,) es <$> traverse (expectedValue base) es of
     Left e  -> ["lips can't match a check to the program: " <> e]
     Right (es, pvs) ->
       map snd (checkArtifactValues (rlGround rl)

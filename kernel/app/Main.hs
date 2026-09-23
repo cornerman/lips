@@ -83,7 +83,7 @@ import           Lips.Generate.Stats    (MintStats (..), renderStats, verdictOf)
 import           Lips.Generate.Record   (corpusText, genId, record,
                                          recordedSchemaFor, recordedWorld, recordedWorldPin, renderStampFault, stampFaults, worldHash)
 import           Lips.Kernel.Decision
-import           Lips.Kernel.Expect     (Compat (..), Expect (..), bindSelfExpect, compatSlug, readExpect, rebless, renderExpect, smallestCompat)
+import           Lips.Kernel.Expect     (Compat (..), Expect (..), compatSlug, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Run
 import           Lips.Kernel.Grounding  (groundingReport)
@@ -809,7 +809,7 @@ checkDraft running restart file = do
         -- evaluable at all. The ground half of those costs no nix, so the door
         -- judges it here rather than leaving the mint to find out from the final
         -- gate a quarter of an hour later.
-        case groundExpectFaults (concat [ es | (w', es) <- dtOwnExpects t, w' == wName w ]) rl of
+        case groundExpectFaults (instanceName file) (concat [ es | (w', es) <- dtOwnExpects t, w' == wName w ]) rl of
           []   -> pure ()
           bad  -> die (report
             (T.pack file <> ": this draft's own contract cannot hold, in " <> wName w <> ":")
@@ -878,7 +878,7 @@ expectGate contract claims dir w file eng program rl = do
         | otherwise -> step ("contract: " <> plural (length expects) "check") $ do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
-          res <- runExpects (stageBeside dir file rl) (map (bindSelfExpect (instanceName file)) expects) rl
+          res <- runExpects (stageBeside dir file rl) (instanceName file) expects rl
           case res of
             Right () -> pure ()
             Left (ToolMissing e) -> die (nixMissing file "check the program" "check" e)
@@ -1446,7 +1446,7 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   -- held when it did not.
   lift (note (wn <> " contract: " <> plural (length expects) "check"))
   forM_ validated $ \(f, rl) -> do
-    gate <- lift (runExpects (stage rl) (map (bindSelfExpect (instanceName f)) expects) rl)
+    gate <- lift (runExpects (stage rl) (instanceName f) expects rl)
     case gate of
       Left (ToolMissing e) -> lift (die =<< pure (nixMissing f "verify the output" "generate" e))
       Left (EvalFailed e)  -> throwE (nixEvalFailed f "generate" e)

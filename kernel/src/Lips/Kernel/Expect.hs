@@ -262,7 +262,12 @@ bindSelfExpect name e = e { exPath = map (fillName resolve) (exPath e) }
   where
     resolve nm = if nm == selfName then Just name else Nothing
 
--- | Expand a value-keyed contract against a program's base. An expect whose
+-- | Expand a contract against ONE program: its instance name and its base.
+-- Every @\<self\>@ in an option path binds to the instance first
+-- ('bindSelfExpect'), because this is the one step every gate runs before it
+-- judges anything, so no gate can judge a path that still says @\<self\>@.
+--
+-- An expect whose
 -- @from@ subject carries a capture (@route.<path>.status@) is a FAMILY: it
 -- expands to one concrete expect per matching decision, its @from@ set to that
 -- decision's subject and every @<name>@ in its option path filled with the
@@ -270,8 +275,8 @@ bindSelfExpect name e = e { exPath = map (fillName resolve) (exPath e) }
 -- passes through unchanged (its subject is checked later by 'expectedValue'),
 -- so older single-route contracts behave identically. A family that matches no
 -- decision is a defect, named loud.
-expandExpects :: Base -> [Expect] -> Either Text [Expect]
-expandExpects base = fmap concat . traverse (expandOne base)
+expandExpects :: Text -> Base -> [Expect] -> Either Text [Expect]
+expandExpects inst base = fmap concat . traverse (expandOne base . bindSelfExpect inst)
 
 expandOne :: Base -> Expect -> Either Text [Expect]
 expandOne base e
