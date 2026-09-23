@@ -765,6 +765,13 @@ joined by a space, which appears in no such text -- so state the text
 itself, with the same template, and it is compared for equality:
   0.95 r2 match fact job.schedule => systemd.timers.<self>.timerConfig.OnCalendar "\"*-*-* <value.1>:<value.2>:00\""
   0.95 a2 expect systemd.timers.<self>.timerConfig.OnCalendar from job.schedule is "*-*-* <value.1>:<value.2>:00"
+A CLAIM OR CLAUSE SLOT IS STATED IN THE RULE'S OWN SPELLING. Such a slot
+holds Scheme, and its holes are #<value.N>, so a template over it copies
+the rule's rhs exactly, holes and all:
+  0.9 r5 match fact witness.filter => claim.filter.equals "(list \"#<value.2>\")"
+  0.9 a3 expect claim.filter.equals from witness.filter is "(list \"#<value.2>\")"
+It is filled the way the rule fills the clause, so a stated value carrying
+a quote (a JSON line) compares equal; <value.N> there is literal text.
 A whole-value expect over a several-part fact is refused. The pair is no
 restatement for its own sake: this contract gates the NEXT mint, so an
 engine that later drops the seconds or reorders the fields is refused.
