@@ -28,6 +28,7 @@ module Lips.Kernel.Surface
   , valueTokens
   , valueText
   , fillValueHoles
+  , valueHole
   , NaturalKey
   , naturalKey
   ) where
@@ -115,7 +116,6 @@ valueText t
 fillValueHoles :: Text -> Text -> Either Text Text
 fillValueHoles template val = go template
   where
-    parts = valueTokens val
     go t = case T.breakOn "<value" t of
       (before, rest)
         | T.null rest -> Right before
@@ -127,12 +127,20 @@ fillValueHoles template val = go template
               ((before <> filled) <>) <$> go (T.drop 1 closed)
     -- What sits between "<value" and ">": nothing for the whole value, ".N" for
     -- its Nth part.
-    fill inner
-      | T.null inner = Right (valueText val)
-      | Just d <- T.stripPrefix "." inner
-      , Right (n, "") <- TR.decimal d
-      , n >= 1, n <= length parts = Right (parts !! (n - 1))
-      | otherwise = Left ("<value" <> inner <> "> is not a part of " <> val)
+    fill inner = valueHole val ("value" <> inner)
+
+-- | What one hole NAME reads from a stated value: @value@ is the whole value,
+-- @value.N@ its Nth part. The one lookup every contract template shares, so the
+-- text spelling (@\<value.N\>@) and the clause spelling (@#\<value.N\>@, filled
+-- by 'Lips.Kernel.Sexp.fillSexp') cannot read different parts of one value.
+valueHole :: Text -> Text -> Either Text Text
+valueHole val h
+  | h == "value" = Right (valueText val)
+  | Just d <- T.stripPrefix "value." h
+  , Right (n, "") <- TR.decimal d
+  , n >= 1, n <= length parts = Right (parts !! (n - 1))
+  | otherwise = Left ("<" <> h <> "> is not a part of " <> val)
+  where parts = valueTokens val
 
 -- | Wrap text as a transport-quoted lips string, escaping @"@ and @\\@.
 -- Inverse of 'parseQuoted'.

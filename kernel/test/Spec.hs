@@ -1763,6 +1763,31 @@ main = hspec $ do
         checkArtifactValues ground [(gtpl, "x-1-y")] `shouldBe` []
         length (checkArtifactValues ground [(gtpl, "x-1")]) `shouldBe` 1
 
+      -- A claim or clause slot holds Scheme, and a rule fills its #<value.N>
+      -- holes with fillSexp, which escapes a quote for the Scheme string. A
+      -- template filled any other way can never equal it for a value carrying a
+      -- quote, so a JSON example's expected output was unassertable (logscan
+      -- re-mint, 2026-09-20). A template in the clause spelling is filled by the
+      -- same function.
+      it "fills a clause template the way the rule fills the clause" $ do
+        let wbase  = fromList [ dec "witness.filter" "\"{\\\"a\\\":\\\"1\\\"}\" \"a=1\"" ]
+            onEq   = Expect "a3" ["claim","filter","equals"] (Subject ["witness","filter"]) Nothing
+                       (Just "(list \"#<value.1>\")")
+            ground = fromList [ (dec "claim.filter.equals" "(list \"{\\\"a\\\":\\\"1\\\"}\")") ]
+        pv <- either (fail . T.unpack) pure (expectedValue wbase onEq)
+        pv `shouldBe` "(list \"{\\\"a\\\":\\\"1\\\"}\")"
+        checkArtifactValues ground [(onEq, pv)] `shouldBe` []
+
+      -- The text spelling <value.N> inside a Scheme string is literal text to
+      -- the clause parser, so such a template can never hold against a clause
+      -- slot. Name the spelling that would.
+      it "names the clause spelling when a text template meets a clause slot" $ do
+        let onEq   = Expect "a3" ["claim","filter","equals"] (Subject ["witness","filter"]) Nothing
+                       (Just "(list \"<value.1>\")")
+            ground = fromList [ (dec "claim.filter.equals" "(list \"x\")") ]
+        map snd (checkArtifactValues ground [(onEq, "(list \"y\")")])
+          `shouldSatisfy` any (T.isInfixOf "#<value.1>")
+
     it "rejects a check on a package/artifact-referencing option (would crash eval)" $ do
       -- Regression (kernel review): an expect naming an option a rule fills
       -- with ${pkgs...}/${artifact...} is uncheckable (the check evals with an

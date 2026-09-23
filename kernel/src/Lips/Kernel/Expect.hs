@@ -52,10 +52,11 @@ import Lips.Kernel.Base     (Base, toList)
 import Lips.Kernel.Capture  (captureName, fillCaptures, fillName, matchSubject, selfName)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Data (Emit (..), MapRule (..), renderAttrPath, splitAttrPath)
-import Lips.Kernel.Engine.Value (parseValue, sourceText)
+import Lips.Kernel.Engine.Value (Value (..), parseValue, sourceText)
 import Lips.Kernel.Reader   (ParseError (..))
+import Lips.Kernel.Sexp     (fillSexp, parseSexp, renderSexp)
 import qualified Lips.Kernel.Surface as Q
-import Lips.Kernel.Surface  (fillValueHoles, naturalKey, quoteText, valueText, valueTokens)
+import Lips.Kernel.Surface  (fillValueHoles, naturalKey, quoteText, valueHole, valueText, valueTokens)
 
 -- | One behavioral assertion: option 'exPath' carries the value drawn from
 -- decision 'exFrom' (optionally its 'exToken'th token).
@@ -306,7 +307,7 @@ expectedValue base e =
     -- the whole text the option must carry.
     (a : _) | Just tpl <- exTemplate e ->
                 either (\why -> Left ("expect " <> exId e <> ": " <> why)) Right
-                       (fillValueHoles tpl a)
+                       (fillTemplate tpl a)
     (a : _) -> case exToken e of
       Nothing -> Right (valueText a)
       -- The value's PARTS (a several-part value quotes them), so a contract on
@@ -315,6 +316,24 @@ expectedValue base e =
         (t : _) -> Right t
         []      -> Left ("expect " <> exId e <> ": token #" <> tshow n
                           <> " out of range in " <> tshow a)
+
+-- | Fill a template in the spelling it is written in. A template carrying the
+-- clause hole marker @#\<@ states a CLAUSE (a claim's expected value, a clause
+-- body), so it is parsed and filled by 'fillSexp', the function the rule side
+-- fills that clause with. Then a stated value carrying a quote is escaped for
+-- the Scheme string exactly as the realized clause escapes it, and the two can
+-- be equal. Any other template is text and keeps 'fillValueHoles'.
+fillTemplate :: Text -> Text -> Either Text Text
+fillTemplate tpl a
+  | clauseMarker `T.isInfixOf` tpl = do
+      x <- parseSexp tpl
+      renderSexp <$> fillSexp (valueHole a) x
+  | otherwise = fillValueHoles tpl a
+
+-- | The hole marker a clause writes (@#\<@), spelled apart so the source does
+-- not read as a hole itself.
+clauseMarker :: Text
+clauseMarker = T.pack ['#', '<']
 
 -- | Build the @nix eval --raw@ expression that reads every asserted option out
 -- of the realized module. Stubs for @config@/@lib@/@pkgs@ suffice because a
@@ -385,7 +404,8 @@ checkArtifactValues ground pairs = concatMap judge pairs
                     <> "program value " <> pv <> " lands nowhere" ]
       (a : _) | holds e pv (slotText a) -> []
               | isJust (exTemplate e) ->
-                  [ dotted (exPath e) <> ": should be " <> pv <> ", but is " <> slotText a ]
+                  [ dotted (exPath e) <> ": should be " <> pv <> ", but is " <> slotText a
+                      <> clauseHint (exTemplate e) a ]
               | otherwise -> [ dotted (exPath e) <> ": should contain " <> pv
                                 <> ", but is " <> slotText a <> jointHint pv (slotText a) ]
     -- A slot holds a VALUE and the program states a value, so they are compared
@@ -402,6 +422,18 @@ checkArtifactValues ground pairs = concatMap judge pairs
     slotText a = case parseValue a of
       Right v | Just t <- sourceText v -> t
       _                                -> a
+    -- A text-spelled template over a clause slot can never hold: inside a Scheme
+    -- string <value.N> is literal text to the clause parser, and the rule filled
+    -- the slot through #<value.N>. The two read alike and differ by one
+    -- character, so name the spelling that would hold.
+    clauseHint (Just tpl) a
+      | Right (VSexp _) <- parseValue a
+      , not (clauseMarker `T.isInfixOf` tpl)
+      , "<value" `T.isInfixOf` tpl =
+          " (this slot holds a clause, so the template writes its holes as the\
+          \ rule does, #<value.N> rather than <value.N>: "
+            <> T.replace "<value" (clauseMarker <> "value") tpl <> ")"
+    clauseHint _ _ = ""
     -- A SEVERAL-PART value pinned as a whole can be unsatisfiable by
     -- construction: the parts reach the slot, but the rule joins them its own way
     -- (a newline between two stdin lines), while the program side renders them
