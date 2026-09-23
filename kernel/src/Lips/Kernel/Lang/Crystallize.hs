@@ -246,6 +246,3 @@ decisionsAt file n emits =
 idsAt :: Int -> Int -> [Text]
 idsAt n 1 = ["d" <> T.pack (show n)]
 idsAt n k = ["d" <> T.pack (show n) <> "." <> T.pack (show i) | i <- [1 .. k]]
-
--- | Hole bindings from a template match (surface tokens keyed by hole name).
-type Bindings = Map Text Text
