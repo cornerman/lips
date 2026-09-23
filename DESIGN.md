@@ -4124,6 +4124,29 @@ but the loop around it is incomplete; "missing" means specced, not built.
   adding a button to `website.lips` needs no re-mint. The same arity question
   `board` refused to answer, answered here by data rather than by pattern.
 
+- **The two expect-gate holes `logscan` filed close** (2026-09-20, TODO 1d;
+  kernel only, no re-mint). Both had one cause: the two sides of a comparison
+  ran different code.
+  `unassertable-site-command` was an unbound `<self>`. `lips check` and the
+  final gate bound it at their call sites (`bindSelfExpect` in `app/Main.hs`),
+  and the draft door's `groundExpectFaults` call did not. So the draft door
+  judged `site.<self>.command` against a ground base holding
+  `site.logscan.command`, and it answered "nothing realizes this slot" for a line
+  `check` passes. `expandExpects` now takes the instance name and binds `<self>`
+  itself, and every gate expands before it judges, so no caller can skip the
+  binding.
+  `expect-quoting-mismatch` was two fill functions. A rule fills a clause's
+  `#<value.N>` with `fillSexp`, which escapes a quote for the Scheme string. An
+  expect template filled `<value.N>` raw with `fillValueHoles`. A template that
+  carries the clause marker `#<` is now a clause template: `parseSexp`, then the
+  same `fillSexp`, then `renderSexp`. It is written in the rule's own spelling
+  (`is "(list \"#<value.4>\")"`), and a text-spelled template over a clause slot
+  fails with that spelling named. Both repro lines from
+  `examples/logscan/nixos/README.md` hold in `lips check` against the committed
+  engine, and the mint prompt (`assets/mint/body.md`, Expects) teaches the clause
+  spelling. The committed `logscan.expect` does not pin either value yet, since
+  a contract is minted output: its next re-mint can add them.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and

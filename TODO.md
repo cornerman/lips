@@ -102,20 +102,11 @@ tracks only what is still open.
       count. No longer deferred: `board` is the third program, it asked in
       writing, and two mints now refuse to touch a witness without it.
 
-   d. TWO HOLES IN THE EXPECT GATE, filed by the `logscan` re-mint 2026-09-20
-      (`examples/logscan/nixos/README.md`). Neither is about claims, but both
-      decide what a contract can hold, so they sit with the witness work that
-      trips over them.
-      `unassertable-site-command`: `expect site.<self>.command from tool.command`
-      is refused with "site.<self>.command: nothing realizes this slot", so the
-      program word naming the installed command is pinned by no check at all and
-      a later mint could key the site off the filename with every gate green.
-      `expect-quoting-mismatch`: a rule emits `claim.filter.equals "(list
-      \"#<value.4>\")"` and the realized value escapes the substituted value's
-      own quotes for the surrounding Nix string, while an expect's `is`-text
-      substitutes the raw value. The two can never be equal for any value
-      containing a quote, so no JSON example's expected output is assertable.
-      Minimal repro for each is in that README.
+   d. CLOSED 2026-09-20 (DESIGN §13, "The two expect-gate holes `logscan`
+      filed close"): `<self>` now binds inside `expandExpects`, and a template
+      carrying `#<` fills through `fillSexp`, as the rule does. Still open:
+      `logscan.expect` pins neither value yet. Let its next re-mint add them,
+      because hand-editing a minted contract breaks invariant 4.
 
 2. **The schema pin is recorded, but nothing relates it to the nixpkgs the
    module is evaluated with** (open half of the schema-pin work, DESIGN §13
