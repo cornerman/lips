@@ -1047,7 +1047,16 @@ Add claim.<id>.feed "[ \"line one\" \"line two\" ]" (a NIX list of strings) to
 serve those lines to read-a-line first, and claim.<id>.args the same way to set
 the command line the program sees. That is how a whole program is observed end
 to end rather than one definition at a time. A claim states either a command
-(run/stdin/stdout/exit) or an expression (call/equals/feed/args), never both.
+(run/stdin/stdout/exit) or an expression (call/equals/equals-lines/feed/args),
+never both.
+
+claim.<id>.equals-lines "[ \"line one\" \"line two\" ]" is the dual of feed: a
+NIX list of strings the call must equal, in order, so the call returns a list
+of strings -- usually (emitted). Use it for what a program prints wherever the
+printed lines come from the program's words; equals holds ONE expression that
+one decision writes whole, so it cannot grow with the example. A claim states
+never both equals and equals-lines. A claim's lists keep every repeat without
+a merge declaration: two fed lines "- milk" are two lines.
 
 WHAT THE PROGRAM PRINTED IS OBSERVABLE. Inside a claim (never inside a clause)
 three more names exist, provided by the same list-backed adapters that replace
@@ -1083,6 +1092,15 @@ under it -- which is the form when the author writes one item per line:
   p3 pattern given these lines => concept witness.given "the example input follows"
   p4.under.p3 pattern <line> => fact witness.line.<n:index> "<line>"
   r3 match fact witness.line.<n> => claim.<id>.feed "[ \"<value>\" ]"
+
+THE PRINTED SIDE IS A LIST TOO. When the example also states the lines it
+prints, read them with a second list hole and contribute them one each to
+equals-lines, never into one (list ...) expression, which would freeze the
+printed count while the fed count stays free:
+
+  p5 pattern given the lines <l.list:,|and>, print the lines <o.list:,|and> => fact witness.w.in.<l:index> "<l>" ; fact witness.w.out.<o:index> "<o>"
+  r5 match fact witness.w.in.<n> => claim.w.feed "[ \"<value>\" ]"
+  r6 match fact witness.w.out.<n> => claim.w.equals-lines "[ \"<value>\" ]"
 
 Either way Append assembles the one-element lists into one list in source order,
 and the same shape carries any list a program states: paths to back up, packages

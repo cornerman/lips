@@ -4362,6 +4362,23 @@ main = hspec $ do
         "<d> for <h> => fact witness.<q>.entry.<n:index> \"<d> <h>\""
         `shouldSatisfy` isRight
 
+  -- The expected output that aggregates exists so a witness's printed lines
+  -- follow its item count; two mints refused the list hole for a witness until
+  -- it did, so the prompt must teach it beside the feed it mirrors.
+  describe "the mint prompt states the expected lines" $ do
+    it "teaches equals-lines as the dual of feed" $ do
+      let p = systemPromptFor [shippedWorld "nixos"]
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
+        [ "claim.<id>.equals-lines", "never both equals and equals-lines" ]
+    -- The taught lines must be ones lips reads, not ones it merely reads about.
+    it "teaches a pattern and a rule the real parsers accept" $ do
+      let pat  = "given the lines <l.list:,|and>, print the lines <o.list:,|and> => fact witness.w.in.<l:index> \"<l>\" ; fact witness.w.out.<o:index> \"<o>\""
+          rule = "match fact witness.w.out.<n> => claim.w.equals-lines \"[ \\\"<value>\\\" ]\""
+          p    = systemPromptFor [shippedWorld "nixos"]
+      mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c) [pat, rule]
+      parsePatternBody "p5" pat `shouldSatisfy` isRight
+      parseRuleBody "r6" rule `shouldSatisfy` isRight
+
   describe "the mint prompt states that a resubmission is a patch" $
     it "names the rule and the way back from a line a patch cannot delete" $ do
       let p = systemPromptFor [shippedWorld "nixos"]
