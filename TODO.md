@@ -77,31 +77,13 @@ tracks only what is still open.
       the fixed form in the one it submitted. So the witness arity is one errand
       now, not two, and it is KERNEL work: until the expected output aggregates,
       no mint takes the list hole for a witness.
-      THE THIRD PROGRAM HAS ASKED, which was this item's own trigger, and it
-      specified the shape: a list-accepting expected output, the dual of
-      `claim.<id>.feed`, spelled `claim.<id>.equals-lines` in board's gap --
-      one element per contributing decision, aggregated exactly as `feed`
-      already is by an `engine.merge.* list` declaration.
-      The expected-output half below is a separate defect and is untouched --
-      `claim.<id>.feed` is a Nix list, so the INPUT side aggregates per item,
-      while `stdout` stays one string with embedded newlines.
-      The bulleted block is NOT the answer, measured 2026-08-06: it aggregates
-      into a Nix list, and only `claim.<id>.feed` and `.args` are Nix lists.
-      `ccEquals` and `ccCall` are `parseSexp` of ONE assertion, and a command
-      claim's `stdin`/`stdout` are single strings with embedded newlines (which
-      is how `board` freezes at five input and three output lines). So a block
-      fixes a witness's INPUT side and cannot reach its OUTPUT side.
-      The `function` re-mint filed this independently as `per-line-expected-
-      output`, adding a second reason one claim per statement is unusable: the
-      claim adapters share their output list, so the second claim's `(emitted)`
-      still holds the first claim's lines. It worked around both by carrying the
-      stated lines in `claim.args` and asserting `(equal? (emitted) (arguments))`
-      -- honest and exact, but a detour that reads as if the program consumed its
-      argv. The candidate remedy is now named: an aggregating expected-output
-      section, the dual of `feed`, so an author's example stops freezing its item
-      count. No longer deferred: `board` is the third program, it asked in
-      writing, and two mints now refuse to touch a witness without it.
-
+      THE OUTPUT HALF CLOSED 2026-09-26 (DESIGN §13, "An expected output that
+      aggregates"): `claim.<id>.equals-lines` is the dual of `feed`, and `board`
+      re-minted onto it, its witness now free of both item counts. Still open
+      in 1c: `habit`, `function` and `logscan` each keep a one-expression
+      `equals` witness. Let each one's next re-mint move it if its example has
+      printed lines that grow; do not re-mint them for this alone. A command
+      claim's `stdout` is still ONE string (YAGNI: no program has asked).
    d. CLOSED 2026-09-20 (DESIGN §13, "The two expect-gate holes `logscan`
       filed close"): `<self>` now binds inside `expandExpects`, and a template
       carrying `#<` fills through `fillSexp`, as the rule does. Still open:

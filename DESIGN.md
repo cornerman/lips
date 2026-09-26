@@ -4147,6 +4147,47 @@ but the loop around it is incomplete; "missing" means specced, not built.
   spelling. The committed `logscan.expect` does not pin either value yet, since
   a contract is minted output: its next re-mint can add them.
 
+- **An expected output that aggregates: `claim.<id>.equals-lines`** (2026-09-26,
+  TODO 1c's kernel half; `board` re-minted as a patch, claude-opus-5, thinking
+  medium, `--compat none`, 309.8s / $0.99 / 23,745 output tokens, 4
+  submissions, accepted). The section is the dual of `feed`: a Nix list of
+  strings the call must equal, in order, so rules contribute one expected line
+  each and Append assembles them. `Lips.Kernel.Claim.Expected` is a sum
+  (`Equals SExp | EqualsLines [Text]`), so a claim that states both, or neither,
+  cannot be built. It is rendered through the runtime's own list word
+  (`hList`), the way a feed is.
+  TWO AGGREGATION DEFECTS SURFACED ON THE WAY, both fixed first. (i) ORDER:
+  `Aggregate.sourceKey` broke ties by the id's TEXT, so on one line `d9.10`
+  sorted before `d9.2`. A five-entry `habit` example (11 decisions on one line)
+  had its feed scrambled to a4 a5 a1 a2 a3. That was invisible, because habit's
+  logic ignores order, and it would have been fatal for printed lines. The
+  tie-break is now `DecisionId`'s own numeric `Ord`, which `Decision.hs` already
+  calls the one place order is decided. (ii) REPEATS: a claim's list sections
+  were sets unless the engine declared `merge ... list`, so two fed lines
+  `- milk` would have collapsed into one without anyone noticing. `assembleWith`
+  now keeps a claim's repeats itself, as it already did for clauses.
+  WHAT THE RE-MINT DID. `p8` reads `given the lines <l.list:,|and> print the
+  lines <o.list:,|and>`. `r8` feeds one line per input item, `r9` contributes
+  one `equals-lines` element per printed item, and a new `r10` states the call
+  once. An 11-line example with a repeated card passes its claim with no
+  re-mint. The same example with one expected line wrong is refused by
+  `compile` (`FAIL board got=(... "done: a, b, c, d") want=(... "done: a,
+  b, c")`).
+  WHAT GOT WEAKER: `board.expect` went from 2 checks to 0. The mint argued that
+  an expect over a claim slot only restates the rule, because the claim gate
+  runs the program. That is sound here, but its report says "As before there
+  are no expect lines", which is false (the old contract had a1 and a2).
+  TWO KERNEL GAPS IT FILED (`item-pattern-orthogonality`), both closed after
+  the mint. (a) `patternOverlaps` compared every pair of patterns, so two
+  one-hole item patterns reading DIFFERENT list holes were refused as
+  overlapping. It now compares only within one arena: line patterns with line
+  patterns, and item patterns of one hole of a shared parent. (b) A list hole
+  glued to text (`<l.list:,|and>,`) silently became a fused hole and stopped
+  being a list. The mint prompt's own new example taught exactly that form,
+  and a test checked only that it parsed. It is now refused by name, the way a
+  fused `.words` hole is, and the example is unglued. `board`'s README still
+  describes both gaps. It is minted output, so its next re-mint rewrites it.
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
