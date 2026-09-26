@@ -4870,6 +4870,23 @@ main = hspec $ do
       ids (patternOverlaps [fused "p1" "println", fused "p2" "println"])
         `shouldBe` [("p1", "p2")]
       patternOverlaps [fused "p1" "println", fused "p2" "eprintln"] `shouldBe` []
+    -- Crystallize matches an item pattern only against the items of its own
+    -- list hole of its own parent, and a line pattern only against lines, so a
+    -- pair from two different arenas never reads one input. Reporting it
+    -- refused board's two one-hole item patterns (one per list) as overlapping.
+    it "compares item patterns only within the list hole they read" $ do
+      let parsed i body = case parsePatternBody i body of
+            Right ok -> ok
+            Left e   -> error (T.unpack e)
+          feedItem = parsed "p9.each.p8.l" "\"<line>\" => fact witness.feed.<n:index> \"<line>\""
+          outItem  = parsed "p10.each.p8.o" "\"<line>\" => fact witness.out.<n:index> \"<line>\""
+          outItem2 = parsed "p11.each.p8.o" "\"<x>\" => fact witness.o2.<n:index> \"<x>\""
+          otherParent = parsed "p12.each.p7.l" "\"<x>\" => fact other.<n:index> \"<x>\""
+          line = pat "p1" [THole "a"]
+      patternOverlaps [feedItem, outItem] `shouldBe` []
+      patternOverlaps [feedItem, otherParent] `shouldBe` []
+      patternOverlaps [line, feedItem] `shouldBe` []
+      ids (patternOverlaps [outItem, outItem2]) `shouldBe` [("p10", "p11")]
     it "a whole-token hole overlaps a fused template" $ do
       let fused = case parsePatternBody "p2" "println(<x>) => fact s \"<x>\"" of
             Right ok -> ok

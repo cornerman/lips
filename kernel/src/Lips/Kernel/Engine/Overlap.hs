@@ -177,10 +177,20 @@ patternOverlaps pats =
   [ PatternOverlap (pId l) (pId r) w
   | (l : rest) <- tails' pats
   , r <- rest
+  , sameArena l r
   , not (repeatsHole l), not (repeatsHole r)
   , Just w <- [templatesOverlap (pTemplate l) (pTemplate r)]
   ]
   where
+    -- Two patterns compete only for the same input, which is what crystallize
+    -- matches them against: every LINE pattern against every line, and an ITEM
+    -- pattern only against the items of its own list hole under a parent it
+    -- names. So a line pattern never meets an item pattern, and two item
+    -- patterns meet only when they read one hole of one shared parent.
+    sameArena a b = case (pItemHole a, pItemHole b) of
+      (Nothing, Nothing) -> True
+      (Just ha, Just hb) -> ha == hb && any (`elem` pParents b) (pParents a)
+      _                  -> False
     tails' []       = []
     tails' t@(_:xs) = t : tails' xs
     repeatsHole p = let hs = [ h | tok <- pTemplate p, h <- holeName tok ]
