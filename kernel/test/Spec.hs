@@ -4354,6 +4354,13 @@ main = hspec $ do
       parsePatternBody "p3"
         "it may never read <p.list:,|or> => fact fs.deny.<p:index> \"<p>\""
         `shouldSatisfy` isRight
+    -- A list hole binds a run of tokens, so text glued to it cannot be part of
+    -- one token with it. Read as a fused hole, it silently stopped being a list,
+    -- and the item patterns reading it were then refused as reading no list.
+    it "refuses a list hole fused to text, naming the fix" $
+      parsePatternBody "p5"
+        "given the lines <l.list:,|and>, print the lines <o.list:,|and> => fact w.<l:index> \"<l>\" ; fact x.<o:index> \"<o>\""
+        `shouldSatisfy` either (T.isInfixOf "write <l.list:,|and> as a token of its own") (const False)
     it "teaches the item pattern for an entry that is not one value" $ do
       let p = systemPromptFor [shippedWorld "nixos"]
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c)
@@ -4372,11 +4379,11 @@ main = hspec $ do
         [ "claim.<id>.equals-lines", "never both equals and equals-lines" ]
     -- The taught lines must be ones lips reads, not ones it merely reads about.
     it "teaches a pattern and a rule the real parsers accept" $ do
-      let pat  = "given the lines <l.list:,|and>, print the lines <o.list:,|and> => fact witness.w.in.<l:index> \"<l>\" ; fact witness.w.out.<o:index> \"<o>\""
+      let pat  = "given the lines <l.list:,|and> print the lines <o.list:,|and> => fact witness.w.in.<l:index> \"<l>\" ; fact witness.w.out.<o:index> \"<o>\""
           rule = "match fact witness.w.out.<n> => claim.w.equals-lines \"[ \\\"<value>\\\" ]\""
           p    = systemPromptFor [shippedWorld "nixos"]
       mapM_ (\c -> p `shouldSatisfy` T.isInfixOf c) [pat, rule]
-      parsePatternBody "p5" pat `shouldSatisfy` isRight
+      fmap (map fst . listHoles) (parsePatternBody "p5" pat) `shouldBe` Right ["l", "o"]
       parseRuleBody "r6" rule `shouldSatisfy` isRight
 
   describe "the mint prompt states that a resubmission is a patch" $

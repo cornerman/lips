@@ -1098,9 +1098,13 @@ prints, read them with a second list hole and contribute them one each to
 equals-lines, never into one (list ...) expression, which would freeze the
 printed count while the fed count stays free:
 
-  p5 pattern given the lines <l.list:,|and>, print the lines <o.list:,|and> => fact witness.w.in.<l:index> "<l>" ; fact witness.w.out.<o:index> "<o>"
+  p5 pattern given the lines <l.list:,|and> print the lines <o.list:,|and> => fact witness.w.in.<l:index> "<l>" ; fact witness.w.out.<o:index> "<o>"
   r5 match fact witness.w.in.<n> => claim.w.feed "[ \"<value>\" ]"
   r6 match fact witness.w.out.<n> => claim.w.equals-lines "[ \"<value>\" ]"
+
+The template writes no comma after <l.list:,|and>: a list hole is a token of
+its own, and the comma the line writes after its last item is cut as one of
+the hole's separators already.
 
 Either way Append assembles the one-element lists into one list in source order,
 and the same shape carries any list a program states: paths to back up, packages

@@ -269,6 +269,17 @@ parseBody idTok body = do
     (h : _) -> Left ("pattern " <> pid <> ": <" <> h
                        <> "> is fused inside a token, but a multi-token hole spans whitespace")
     []      -> Right ()
+  -- A list hole binds a run of tokens, so it cannot share one token with text:
+  -- read as a fused hole it would silently stop being a list. The line's own
+  -- text needs no template token either way, since a separator the line writes
+  -- against its last item ("x", print) is cut there like any other.
+  case [ (h, lit) | TFused segs <- template, FHole h <- segs, Just _ <- [listSpelling h]
+                  , let lit = T.concat [t | FLit t <- segs] ] of
+    ((h, lit) : _) -> Left ("pattern " <> pid <> ": <" <> h <> "> is fused to \"" <> lit
+                             <> "\" inside one token, but a list hole binds a run of tokens:"
+                             <> " write <" <> h <> "> as a token of its own; a separator the"
+                             <> " line writes against its last item is cut as one already")
+    []             -> Right ()
   -- A list with no separator cannot be cut, and a run that is not cut is what
   -- <x.words> already is: say which form is meant rather than match nothing.
   case [h | TList h seps <- template, all T.null seps] of
