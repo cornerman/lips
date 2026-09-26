@@ -1,2 +1,0 @@
-a1 expect claim.board.feed from witness.feed is "[ \"<value.1>\" \"<value.2>\" \"<value.3>\" \"<value.4>\" \"<value.5>\" ]"
-a2 expect claim.board.equals from witness.out is "(list \"<value.1>\" \"<value.2>\" \"<value.3>\")"

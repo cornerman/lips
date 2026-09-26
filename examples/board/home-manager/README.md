@@ -2,77 +2,91 @@
 
 # The `board` language
 
-This language describes a small terminal kanban board printer, and every
-sentence of `board.lips` is read by the engine you already have; this mint
-changes no pattern and no rule. It adds the report (which the committed
-engine was missing) and files one capability gap that the corpus makes
-visible.
+This mint changes only how the EXAMPLE sentence of a board program is read --
+the last line, which states an input board and the lines it must print.
+Everything else about the language is exactly as it was: the same seven line
+shapes, the same subjects, the same clauses, the same site installation.
 
-**The line shapes it accepts**, in the order the program states them:
+## What was wrong
 
-- `show a kanban board in the terminal.` — a heading, decorative only: it
-  names what the program is and realizes nothing.
-- `read the board from the file named on the command line, or from standard
-  input when no file is named.` — fixes the input mechanism; it realizes the
-  line-reading clause (`board-read-lines`, built on the `read-a-line` and
-  `end-of-input?` contracts).
-- `the board is markdown: a "## name" line opens a column and a "- text"
-  line under it is one of its cards.` — the two markers are holes, so
-  changing `##` to `###` or `-` to `*` changes the parser. They become the
-  clauses that classify a line and cut a card's or a column's text off its
-  marker.
-- `the board has the columns "todo, doing, done".` — the column list, and
-  its ORDER, is one value; a clause splits it on commas and trims spaces, so
-  reordering or adding a column is a one-word edit.
-- `print one line per column: its name, a colon, a space, then its cards
-  joined with ", ".` — the joiner is a hole; the rest of the format (name,
-  colon, space) is fixed wording of this language.
-- `a column with no cards prints its name and the colon only.` — selects the
-  empty-column rendering.
-- `install the tool as the command board.` — the command name is a hole; it
-  becomes `site.<self>.command` and the built program is put on the user's
-  PATH through `home.packages`.
-- `given the lines ..., print the lines ...` — the worked example. It is the
-  only observable: it becomes a claim that feeds those input lines to the
-  program and compares, byte for byte, what it prints.
+The example line used to be read by a pattern with one hole per item: five
+input lines and three printed lines, no more and no fewer. Adding a card or a
+column to the example matched no pattern at all, so extending an example --
+the cheapest and most useful edit an author can make -- cost a whole new
+engine. The printed side was frozen twice over, because the rule wrote all
+three expected lines into a single `equals` expression.
 
-**Mechanism.** The behaviour is expressed as clauses (a small Scheme
-subset), not as a source file, so every definition is traceable to the
-sentence that asked for it, and the whole program is checked offline by the
-claim. Nothing is written to disk, no service and no timer is created: the
-result of a program in this language is one executable, named by the
-`install the tool as the command ...` line, installed into the user's
-profile. There is no NixOS-level option anywhere; `home.packages` and the
-site are the whole footprint.
+## What it reads now
 
-**What it cannot yet do** (see the gap below): the example sentence has a
-fixed shape of five input lines and three printed lines. Editing the example
-to a board of a different size needs a fresh mint. Everything else in the
-program — markers, columns, joiner, command name — is a hole and flows
-through the engine you already have.
+The sentence is read with two LIST holes, cut on commas and on the word
+"and":
+
+    given the lines A, B and C, print the lines X and Y
+
+Any number of input lines and any number of printed lines is read by the same
+sentence. Items may be quoted, which is what lets a line contain a comma
+(`"todo: milk, eggs"` stays one item); the quotes are not part of the value.
+
+Each input item becomes its own fact `witness.feed.<position>` and each
+printed item its own `witness.out.<position>`, so the order of the sentence is
+the order of the claim. The rules contribute one element each:
+`claim.board.feed` gets one fed line per input item, and the expected output
+now uses `claim.board.equals-lines` -- one expected line per printed item --
+instead of one frozen `equals` expression. Repeats are kept: two identical
+cards in the example are two fed lines.
+
+## Ids that changed, and why
+
+- `p8`: rewritten from fixed holes to two list holes; it now also emits a
+  constant `witness.example` fact, which is simply "there is an example here".
+- `r8`: contributes one fed line per input item instead of all five at once.
+- `r9`: now `claim.board.equals-lines`, one expected line per printed item,
+  instead of `claim.board.equals` with a fixed three-element list.
+- `r10` (new): states the claim's call, `(begin (board-main) (emitted))`, once
+  for the example as a whole. It is its own rule precisely because the call
+  must be stated once, not once per line.
+- `q5`, `q6`: same questions, re-stated so their subjects match the new
+  per-item subjects.
+
+Patterns `p9`/`p10` from an intermediate attempt are gone: this engine was
+re-submitted whole rather than patched, since a patch cannot remove a line.
+
+## What I could not do
+
+I first read each quoted item with its own item pattern, one per list. lips
+refused that: the two item patterns have the same shape (a single item), and
+orthogonality is judged across all patterns rather than within the list each
+one reads. See the gap below. The working form reads the items directly from
+the list holes, which is fine here because every item of both lists is a plain
+quoted line.
+
+Nothing was invented: every fed line and every expected line still comes
+verbatim from the author's own sentence. As before there are no `expect`
+lines -- every program value lands in a clause or in a claim section, which
+the claim gate checks by running the program, and an expect over a claim slot
+would only restate the rule that fills it.
 
 ## Known Gaps
 
-### fixed-example-arity
+### item-pattern-orthogonality
 
-blocked line:
-  given the lines "## todo", "- milk", "- eggs", "## doing" and "- taxes",
-  print the lines "todo: milk, eggs", "doing: taxes" and "done:".
+blocked line: given the lines "## todo", "- milk" and "- taxes", print the lines "todo: milk", "doing:" and "done:"
 
-The input side of this example could be read with a list hole plus an item
-pattern, so that claim.board.feed aggregates one element per line at any
-count. The OUTPUT side cannot: claim.<id>.equals takes a single expression,
-not a list-typed option, so a per-item rule cannot contribute one expected
-line each and there is no way to assemble (list "a" "b" ... ) from a variable
-number of decisions. Making only the feed general and leaving the expected
-output pinned at three would be worse than the present symmetry, so pattern
-p8 still fixes 5 input lines and 3 output lines and an author who wants a
-bigger example must regenerate.
+wanted, to read each item of each list with quotes dropped:
+  p8 pattern given the lines <l.list:,|and> print the lines <o.list:,|and> => concept w "an example"
+  p9.each.p8.l pattern "<line>" => fact witness.feed.<n:index> "<line>"
+  p10.each.p8.o pattern "<printed>" => fact witness.out.<n:index> "<printed>"
 
-minimal repro: a program identical to board.lips but whose example feeds six
-lines fails to crystallize under p8.
+refused with: "patterns p9 and p10 both read the line <line>". Two item
+patterns that read items of DIFFERENT list holes of the same parent can never
+both read one item, yet they are judged against each other as if they read
+whole lines. Item patterns should be orthogonal only within the hole they are
+declared for.
 
-what would fix it: a list-accepting claim section for the expected output
-(e.g. claim.<id>.equals-lines, aggregating one element per contributing
-decision exactly as claim.<id>.feed already does).
+second, smaller issue met on the way: writing the comma the sentence actually
+contains directly after a list hole, as the documentation's own example does --
+  given the lines <l.list:,|and>, print the lines <o.list:,|and>
+-- makes the hole stop being a list hole ("pattern p9 reads an item of <l> in
+p8, which binds no list hole of that name"). The comma had to be dropped from
+the template and absorbed as a separator instead.
 
