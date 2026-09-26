@@ -4778,6 +4778,13 @@ main = hspec $ do
     it "a set keeps distinct elements, in source order" $
       fmap elemsOf (assembleSubject [ contrib "d2" 2 "[ \"b\" ]", contrib "d1" 1 "[ \"a\" ]" ])
         `shouldBe` Right ["\"a\"", "\"b\""]
+    -- A claim's lists are the bytes a program is fed and must print, so a
+    -- repeated line is two lines whatever the engine declared: collapsing it
+    -- would change what the claim observes with every gate still green.
+    it "a claim's list keeps its repeats with no engine declaration" $ do
+      let fed i line v = (contrib i line v) { dSubject = Subject ["claim", "w", "feed"] }
+      fmap elemsOf (assembleSubject [ fed "d1" 1 "[ \"- milk\" ]", fed "d2" 2 "[ \"- milk\" ]" ])
+        `shouldBe` Right ["\"- milk\"", "\"- milk\""]
     -- One line may yield ten or more decisions (a list hole's items), and their
     -- ids d9.1 .. d9.10 are numbered, so the tenth must follow the second: as
     -- text "d9.10" sorts first, which scrambled a five-entry feed.

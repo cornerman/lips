@@ -36,6 +36,7 @@ import qualified Data.Text.Read  as TR
 
 import Lips.Kernel.Base              (MergeMode (..))
 import Lips.Kernel.Capture           (matchSubject)
+import Lips.Kernel.Claim             (claimRooted)
 import Lips.Kernel.Decision
 import Lips.Kernel.Engine.Data       (Emit (..), MapRule (..))
 import Lips.Kernel.Engine.Value      (Value (..), parseValue, renderValue)
@@ -72,8 +73,9 @@ assembleSubject = assembleWith (const False)
 -- every contribution. The kernel cannot tell which an option is, so the caller
 -- passes the engine's own declaration ('Lips.Kernel.Engine.Data.keepsRepeats').
 --
--- A clause subject is the exception the kernel answers itself (see below): its
--- contributors are statements, and no engine declaration may drop one.
+-- A clause or claim subject is the exception the kernel answers itself (see
+-- below): its contributors are statements or observed bytes, and no engine
+-- declaration may drop one.
 assembleWith :: ([Text] -> Bool) -> [Decision] -> Either Text Decision
 assembleWith _ [] = Left "assembleSubject: no contributors"
 assembleWith keepsRepeated contributors = do
@@ -85,7 +87,11 @@ assembleWith keepsRepeated contributors = do
       -- to a body are two statements, so printing twice is not printing once.
       -- Collapsing them would delete behaviour with every gate still green,
       -- which is the worst failure aggregation can have.
-      keeps ss = clauseRooted ss || keepsRepeated ss
+      -- A CLAIM's lists (what it is fed, the command line, the lines it must
+      -- print) are bytes the program sees or writes, so the same holds: two
+      -- fed lines "- milk" are two lines, and a set would change what the
+      -- claim observes.
+      keeps ss = clauseRooted ss || claimRooted ss || keepsRepeated ss
       dedup = if keeps (segsOf (dSubject (head' ordered))) then id else nub
       assembled = VList (dedup (concatMap unwrap vals))
       head' (x : _) = x
