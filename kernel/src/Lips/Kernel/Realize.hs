@@ -42,10 +42,10 @@ import Lips.Kernel.Clause.Gate  (Clause (..), faultText, gate, gateClaim, mergeD
                                  paramCount, reachedContracts)
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Kernel.Capture      (nameTokens)
-import Lips.Kernel.Claim        (Claim, ClauseClaim (..), claimRooted, claimsFromDecisions,
+import Lips.Kernel.Claim        (Claim, ClauseClaim (..), Expected (..), claimRooted, claimsFromDecisions,
                                  clauseClaimsFromDecisions)
 import Lips.Kernel.Decision
-import Lips.Kernel.Sexp         (renderSexp, sexpSymbols)
+import Lips.Kernel.Sexp         (SExp, renderSexp, sexpSymbols)
 import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Surface      (naturalKey)
 import Lips.Kernel.Engine.Value  (Piece (..), Ref (..), Value (..), parseValue, renderRealized,
@@ -475,7 +475,8 @@ realizeClauseClaims modeOf assemble vocab source base =
       -- A claim is grounded by the same walk a clause is, with the observations
       -- added: it runs with the core and the adapters loaded, so an ungrounded
       -- name there reaches the world exactly as one in a clause would.
-      case concat [ gateClaim vocab clauses (ccId c) [ccCall c, ccEquals c] | c <- claims ] of
+      case concat [ gateClaim vocab clauses (ccId c) (ccCall c : expectedForms (ccExpected c))
+                  | c <- claims ] of
         (f : _) -> Left (RBadClause (faultText "claim" f))
         []      -> Right ()
       case unobservedClauses clauses claims of
@@ -484,6 +485,12 @@ realizeClauseClaims modeOf assemble vocab source base =
           ("nothing observes " <> T.intercalate ", " ns <> ": no claim reaches\
            \ those definitions, so the next mint may rewrite them and every gate\
            \ would stay green. State an example whose claim runs them."))
+
+-- | The expressions an expectation holds for the grounding walk. Expected lines
+-- are plain strings, so they name nothing to ground.
+expectedForms :: Expected -> [SExp]
+expectedForms (Equals x)      = [x]
+expectedForms (EqualsLines _) = []
 
 -- | Every RELATIVE path the realized base names, paired with the decision that
 -- named it. Nix resolves such a path against the module directory, i.e. against

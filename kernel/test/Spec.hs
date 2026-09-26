@@ -4089,7 +4089,7 @@ main = hspec $ do
     -- observing less than the author stated.
     it "refuses a section the grammar does not have" $
       claimsFromDecisions [ pair ["claim","echo","stderr"] "\"boom\"" ]
-        `shouldBe` Left "claim section stderr is not one of run, stdin, stdout, exit, call, equals, feed, args"
+        `shouldBe` Left "claim section stderr is not one of run, stdin, stdout, exit, call, equals, equals-lines, feed, args"
 
     it "refuses a claim with no command" $
       claimsFromDecisions [ pair ["claim","echo","stdout"] "\"hi\"" ]
@@ -4189,7 +4189,7 @@ main = hspec $ do
               , clauseOf "scan" "(define (scan s) (emit (car s)))"
               , clauseOf "spare" "(define (spare x) x)" ]
         claimCalling t = case Sx.parseSexp t of
-          Right x -> ClauseClaim "w" x (Sx.SBool True) [] []
+          Right x -> ClauseClaim "w" x (Equals (Sx.SBool True)) [] []
           Left e  -> error (T.unpack e)
 
     it "names the clauses no claim reaches, transitively" $
@@ -7164,7 +7164,7 @@ main = hspec $ do
       clauseClaimsFromDecisions
         [ dec "witness" "call" "(keep? r s)", dec "witness" "equals" "#t" ]
         `shouldBe` Right [ClauseClaim "witness" (Sx.SList [Sx.SSym "keep?", Sx.SSym "r", Sx.SSym "s"])
-                                      (Sx.SBool True) [] []]
+                                      (Equals (Sx.SBool True)) [] []]
 
     it "reads the lines a claim feeds the program first" $
       fmap (map ccFeed) (clauseClaimsFromDecisions
@@ -7175,6 +7175,63 @@ main = hspec $ do
     it "fails loud when there is nothing to judge against" $
       clauseClaimsFromDecisions [ dec "w" "call" "(keep? r s)" ]
         `shouldSatisfy` either (T.isInfixOf "no equals") (const False)
+
+    -- The dual of feed: what the program must print, as a list of lines that
+    -- rules contribute one element each, so an example's output side is as free
+    -- of its item count as its input side.
+    it "reads the lines a claim expects printed" $
+      fmap (map ccExpected) (clauseClaimsFromDecisions
+        [ dec "w" "call" "(begin (main) (emitted))"
+        , dec "w" "equals-lines" "[ \"todo: milk\" \"done:\" ]" ])
+        `shouldBe` Right [EqualsLines ["todo: milk", "done:"]]
+
+    it "reads a single expected line written bare" $
+      fmap (map ccExpected) (clauseClaimsFromDecisions
+        [ dec "w" "call" "(f)", dec "w" "equals-lines" "\"only\"" ])
+        `shouldBe` Right [EqualsLines ["only"]]
+
+    -- Two expectations for one observation is a mint defect with no right
+    -- reading: judging by either one would pass what the other refuses.
+    it "refuses a claim stating both equals and equals-lines" $
+      clauseClaimsFromDecisions
+        [ dec "w" "call" "(f)", dec "w" "equals" "#t", dec "w" "equals-lines" "[ \"a\" ]" ]
+        `shouldSatisfy` either (T.isInfixOf "both equals and equals-lines") (const False)
+
+    it "refuses an expected line that is not plain text" $
+      clauseClaimsFromDecisions
+        [ dec "w" "call" "(f)", dec "w" "equals-lines" "[ ${pkgs.hello} ]" ]
+        `shouldSatisfy` either (T.isInfixOf "equals-lines must be plain text") (const False)
+
+    it "judges expected lines as the runtime's own list" $
+      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (EqualsLines ["a", "b\"c"]) [] [])
+        `shouldBe` [ "(claim \"w\" (f) (list \"a\" \"b\\\"c\"))" ]
+
+    -- The whole chain: two program lines each contribute one expected line, and
+    -- Append assembles them in source order, repeats kept, with no merge
+    -- declaration -- the kernel keeps a claim's repeats itself.
+    it "assembles expected lines from several program lines end to end" $ do
+      let rhs = case parseValue "[ \"<value>\" ]" of
+            Right v -> v
+            Left e  -> error (T.unpack e)
+          body = case parseValue "[ (define (main) (emit \"x\")) ]" of
+            Right v -> v
+            Left e  -> error (T.unpack e)
+          rules = [ MapRule "r1" Fact ["out", "<n>"] [Emit ["claim", "w", "equals-lines"] rhs]
+                  , MapRule "r2" Fact ["run"] [Emit ["clause", "main"] body] ]
+          line i n subj v = (mk i "x" v Stated)
+            { dSubject = Subject subj, dProv = FromSource (SourceLoc "p.lips" n) }
+          base = fromList
+            [ line "d1" 1 ["run"] "yes"
+            , line "d2.1" 2 ["out", "a"] "milk"
+            , line "d2.2" 2 ["out", "b"] "milk"
+            , line "d2.10" 2 ["out", "c"] "done"
+            , (mk "k1" "claim" "(begin (main) (emitted))" Stated)
+                { dSubject = Subject ["claim", "w", "call"], dKind = Meta } ]
+      case runBase (mergeModeOf rules) (assembleWith (const False)) schemeVocabulary 100
+             (Engine (map toRule rules) [] []) base of
+        Left e   -> expectationFailure (show e)
+        Right rl -> map ccExpected (rlClauseClaims rl)
+          `shouldBe` [EqualsLines ["milk", "milk", "done"]]
 
     -- One claim observes one thing: half command and half expression is a mint
     -- defect, and a claim lips cannot read must never pass as a held one.
@@ -7190,18 +7247,18 @@ main = hspec $ do
         `shouldBe` Right ["expr"]
 
     it "emits the feed and the judgment, and nothing about how a verdict prints" $
-      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a", "b"] [])
+      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Equals (Sx.SBool True)) ["a", "b"] [])
         `shouldBe` [ "(feed-lines (list \"a\" \"b\"))", "(claim \"w\" (f) #t)" ]
 
     -- A claim may vary the command line the program sees, which is the only way
     -- to observe a program whose behaviour depends on its arguments.
     it "serves a stated command line before the input lines" $
-      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["l"] ["a=1"])
+      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Equals (Sx.SBool True)) ["l"] ["a=1"])
         `shouldBe` [ "(feed-args (list \"a=1\"))", "(feed-lines (list \"l\"))"
                    , "(claim \"w\" (f) #t)" ]
 
     it "escapes a fed line so it cannot end the string it lands in" $
-      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Sx.SBool True) ["a\"b"] [])
+      renderClauseClaim guileWords (ClauseClaim "w" (Sx.SList [Sx.SSym "f"]) (Equals (Sx.SBool True)) ["a\"b"] [])
         `shouldSatisfy` any (T.isInfixOf "\"a\\\"b\"")
 
     it "assembles a claims file that loads, judges, then reports" $
@@ -7247,7 +7304,7 @@ main = hspec $ do
         other -> expectationFailure ("expected a plan, got " <> show (fmap (fmap (map fst . spFiles)) other))
 
     it "adds the claim adapters and a claims file only when there are claims" $ do
-      names (plan [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Sx.SBool True) [] []])
+      names (plan [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Equals (Sx.SBool True)) [] []])
         `shouldSatisfy` \ns -> "memory.scm" `elem` ns && "claims.scm" `elem` ns
       names (plan []) `shouldSatisfy` \ns ->
         "memory.scm" `notElem` ns && "claims.scm" `notElem` ns
@@ -7280,7 +7337,7 @@ main = hspec $ do
     -- clauses a program does not state would reach nix as a missing path.
     it "refuses observables over clauses the program does not state" $
       planSite assets "lang" [rt] emptyRealization
-        { rlClauseClaims = [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Sx.SBool True) [] []] }
+        { rlClauseClaims = [ClauseClaim "w" (Sx.SList [Sx.SSym "main"]) (Equals (Sx.SBool True)) [] []] }
         `shouldSatisfy` either (T.isInfixOf "states no clauses" . fst) (const False)
 
     -- A vocabulary language is a program nothing starts: it lends its clauses to

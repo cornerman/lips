@@ -23,6 +23,7 @@ module Lips.Kernel.Claim
   ( Claim (..)
   , ClaimPlace (..)
   , ClauseClaim (..)
+  , Expected (..)
   , claimsFromDecisions
   , clauseClaimsFromDecisions
   , renderClauseClaim
@@ -72,19 +73,31 @@ data Claim = Claim
 -- its stdin and stdout, and this watches an expression. Keeping them apart makes
 -- a claim that is half command and half expression unrepresentable.
 data ClauseClaim = ClauseClaim
-  { ccId     :: Text
-  , ccCall   :: SExp     -- ^ the expression to evaluate
-  , ccEquals :: SExp     -- ^ what it must equal
-  , ccFeed   :: [Text]   -- ^ input lines served to @read-a-line@ first
-  , ccArgs   :: [Text]   -- ^ the command line the program sees, served to @arguments@
+  { ccId       :: Text
+  , ccCall     :: SExp     -- ^ the expression to evaluate
+  , ccExpected :: Expected -- ^ what it must equal
+  , ccFeed     :: [Text]   -- ^ input lines served to @read-a-line@ first
+  , ccArgs     :: [Text]   -- ^ the command line the program sees, served to @arguments@
   }
+  deriving (Eq, Show)
+
+-- | What a clause claim's expression must equal, stated one of two ways. A sum,
+-- so a claim holding both expectations (or neither) cannot be constructed.
+data Expected
+  = -- | @equals@: one expression, written whole by one decision.
+    Equals SExp
+  | -- | @equals-lines@: a list of lines, the dual of @feed@. It is a Nix list, so
+    --   several decisions contribute one element each and Append assembles them
+    --   in source order; an example's printed lines then follow its item count
+    --   the way its fed lines do, which one expression cannot.
+    EqualsLines [Text]
   deriving (Eq, Show)
 
 -- | The sections a clause claim is made of, closed for the same reason the
 -- command sections are: a mint's typo must fail loud, never be dropped in
 -- silence and pass by observing less than the author stated.
 clauseSections :: [Text]
-clauseSections = ["call", "equals", "feed", "args"]
+clauseSections = ["call", "equals", "equals-lines", "feed", "args"]
 
 -- | Gather the clause claims out of a ground base. Deterministic (ordered by
 -- id). An id carrying both a command section and a clause section is a loud
@@ -102,20 +115,27 @@ clauseClaimsFromDecisions winners = traverse one (Map.toList grouped)
           Left (pre <> "observes both a command and an expression; a claim observes one thing")
       | otherwise = do
           call <- need "call" parts
-          want <- need "equals" parts
+          want <- expected
           feed <- textList "feed" parts
           args <- textList "args" parts
           Right (ClauseClaim cid call want feed args)
       where
         pre = "claim " <> cid <> ": "
+        expected = case (lookup "equals" parts, lookup "equals-lines" parts) of
+          (Just _, Just _)  ->
+            Left (pre <> "states both equals and equals-lines; a claim judges by one expectation")
+          (Nothing, Nothing) ->
+            Left (pre <> "no equals or equals-lines, so there is nothing to judge")
+          (Just _, Nothing)  -> Equals <$> need "equals" parts
+          (Nothing, Just _)  -> EqualsLines <$> textList "equals-lines" parts
         need sec ps = case lookup sec ps of
           Nothing -> Left (pre <> "no " <> sec <> ", so there is nothing to judge")
           Just d  -> case parseSexp (assertionOf d) of
             Right x -> Right x
             Left e  -> Left (pre <> sec <> " is not an expression: " <> e)
-        -- A list of plain strings, or a single one written bare. Both feed and
-        -- args are BYTES the program will see, so only a value with a text form
-        -- can be one.
+        -- A list of plain strings, or a single one written bare. Feed, args and
+        -- equals-lines are BYTES the program sees or prints, so only a value
+        -- with a text form can be one.
         textList sec ps = case lookup sec ps of
           Nothing -> Right []
           Just d  -> case parseValue (assertionOf d) of
@@ -140,9 +160,13 @@ renderClauseClaim :: (Text, Text, Text, Text) -> ClauseClaim -> [Text]
 renderClauseClaim (feedArgs, feedLines, judge, mkList) cc =
   [ call feedArgs [list (ccArgs cc)] | not (null (ccArgs cc)) ]
     <> [ call feedLines [list (ccFeed cc)] | not (null (ccFeed cc)) ]
-    <> [ call judge [ schemeStr (ccId cc), renderSexp (ccCall cc)
-                    , renderSexp (ccEquals cc) ] ]
+    <> [ call judge [ schemeStr (ccId cc), renderSexp (ccCall cc), want ] ]
   where
+    -- Expected lines are built by the runtime's own list word, exactly as a
+    -- feed is, so the judge compares a list against the list it observed.
+    want = case ccExpected cc of
+      Equals x       -> renderSexp x
+      EqualsLines ls -> list ls
     call w as = "(" <> T.unwords (w : as) <> ")"
     list xs = "(" <> T.unwords (mkList : map schemeStr xs) <> ")"
     -- A Scheme string literal: only a quote and a backslash need escaping, since
