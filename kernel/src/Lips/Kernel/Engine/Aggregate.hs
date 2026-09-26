@@ -122,11 +122,16 @@ assembleWith keepsRepeated contributors = do
 -- | Assembly order: human ('FromSource') before derived ('Derived'), each by
 -- their ultimate source line; ties broken by id. Position is NEVER a merge key
 -- -- only the assembly rule for Append subjects (spec: ordered assembly).
-sourceKey :: Decision -> (Int, Int, Text)
+--
+-- The id tie-break is NUMERIC ('naturalKey'), because one line's decisions are
+-- numbered @d\<n\>.1@, @d\<n\>.2@, ... and a list hole's items are among them:
+-- compared as text, @d9.10@ sorts before @d9.2@, and the eleventh emit of a
+-- line would land its item ahead of the second.
+sourceKey :: Decision -> (Int, Int, [Either Int Text])
 sourceKey d = case dProv d of
-  FromSource (SourceLoc _ n)            -> (0, n, unId (dId d))
-  Derived (DecisionId parent : _) _     -> (1, parentLine parent, unId (dId d))
-  _                                     -> (2, 0, unId (dId d))
+  FromSource (SourceLoc _ n)            -> (0, n, naturalKey (unId (dId d)))
+  Derived (DecisionId parent : _) _     -> (1, parentLine parent, naturalKey (unId (dId d)))
+  _                                     -> (2, 0, naturalKey (unId (dId d)))
   where
     unId (DecisionId i) = i
     -- The standard id scheme is d<n> (or d<n>.k for a dense line); a derived
@@ -136,4 +141,19 @@ sourceKey d = case dProv d of
         Right (n, _) -> n
         Left _       -> 0
       Nothing  -> 0
+    isDigit c = c >= '0' && c <= '9'
+
+-- | An id cut into its digit runs (compared as numbers) and the text between
+-- them, so @d9.2@ < @d9.10@ and @d9.2/r1#1@ < @d9.10/r1#1@. Ids share one
+-- scheme, so two keys line up run against run; where they do not, 'Either''s
+-- own order still gives a total, deterministic one.
+naturalKey :: Text -> [Either Int Text]
+naturalKey t
+  | T.null t  = []
+  | otherwise = case T.span isDigit t of
+      ("", _)      -> let (txt, rest) = T.break isDigit t in Right txt : naturalKey rest
+      (digits, rest) -> case TR.decimal digits of
+        Right (n, _) -> Left n : naturalKey rest
+        Left _       -> Right digits : naturalKey rest   -- unreachable: all digits
+  where
     isDigit c = c >= '0' && c <= '9'
