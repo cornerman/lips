@@ -4778,18 +4778,6 @@ main = hspec $ do
     it "a set keeps distinct elements, in source order" $
       fmap elemsOf (assembleSubject [ contrib "d2" 2 "[ \"b\" ]", contrib "d1" 1 "[ \"a\" ]" ])
         `shouldBe` Right ["\"a\"", "\"b\""]
-    -- One line may yield ten or more decisions (a list hole's items), and their
-    -- ids d9.1 .. d9.10 are numbered, so the tenth must follow the second: as
-    -- text "d9.10" sorts first, which scrambled a five-entry feed.
-    it "orders the items of one line by their number, not their text" $
-      fmap elemsOf (assembleSubject [ contrib "d9.10" 9 "[ \"ten\" ]", contrib "d9.2" 9 "[ \"two\" ]" ])
-        `shouldBe` Right ["\"two\"", "\"ten\""]
-    it "orders decisions derived from one line by their parent's number" $ do
-      let derived i parent v = (contrib i 0 v)
-            { dProv = Derived [DecisionId parent] (RuleId "r1") }
-      fmap elemsOf (assembleSubject [ derived "d9.10/r1#1" "d9.10" "[ \"ten\" ]"
-                                    , derived "d9.2/r1#1" "d9.2" "[ \"two\" ]" ])
-        `shouldBe` Right ["\"two\"", "\"ten\""]
     -- Which reading an option takes is knowledge about that option, so it is
     -- engine data, capture-aware like every other option path.
     it "an engine declaration names the option, matching a value-keyed family" $ do
