@@ -122,13 +122,16 @@ assembleWith keepsRepeated contributors = do
 -- | Assembly order: human ('FromSource') before derived ('Derived'), each by
 -- their ultimate source line; ties broken by id. Position is NEVER a merge key
 -- -- only the assembly rule for Append subjects (spec: ordered assembly).
-sourceKey :: Decision -> (Int, Int, Text)
+--
+-- The tie-break is the id itself, never its text: 'DecisionId' orders
+-- numerically, and one line's decisions are @d\<n\>.1@ .. @d\<n\>.\<k\>@, so as
+-- text @d9.10@ would sort before @d9.2@ and scramble a list hole's items.
+sourceKey :: Decision -> (Int, Int, DecisionId)
 sourceKey d = case dProv d of
-  FromSource (SourceLoc _ n)            -> (0, n, unId (dId d))
-  Derived (DecisionId parent : _) _     -> (1, parentLine parent, unId (dId d))
-  _                                     -> (2, 0, unId (dId d))
+  FromSource (SourceLoc _ n)            -> (0, n, dId d)
+  Derived (DecisionId parent : _) _     -> (1, parentLine parent, dId d)
+  _                                     -> (2, 0, dId d)
   where
-    unId (DecisionId i) = i
     -- The standard id scheme is d<n> (or d<n>.k for a dense line); a derived
     -- Meta decision's parent is a human d<n>, so its line orders it here.
     parentLine p = case T.stripPrefix "d" p of
