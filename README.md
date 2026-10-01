@@ -11,8 +11,13 @@ small compiler for it. From then on, every build is offline, deterministic, and
 runs no model.
 
 The point is to keep what a human owns small enough to read. Machines now write
-code faster than anyone can review it, so lips shrinks the reviewed artifact to
-a few lines of meaning and derives everything else reproducibly.
+code faster than anyone can review it, so lips moves review from programs to
+languages. You review a language once: its grammar, its rules and its tests.
+After that, each program in it compiles through the same engine with no model,
+so a new program asks for no review of mechanism, only a reading of its own few
+lines of meaning. Review work grows with the number of languages, not the number
+of programs. A re-mint is the one event that asks for review again, and the
+committed tests gate it.
 
 ## The Idea
 
@@ -119,8 +124,8 @@ the only one you cannot regenerate.
 
 A program is named `<instance>.<language>.lips`, so `ledger.backup.lips` is the
 instance `ledger` written in the language `backup`. A sibling
-`photos.backup.lips` reuses the same grammar with no new AI, and the two
-compose in one configuration without collision. `backup.lips` alone is the
+`photos.backup.lips` reuses the same grammar with no new AI and no new engine
+to review, and the two compose in one configuration without collision. `backup.lips` alone is the
 singleton shorthand; add named instances later, no re-mint. Editors key on the
 constant `.lips` extension, and `lips lsp` serves completion and live
 diagnostics for any language, with no per-language setup (glue for neovim, vim,
