@@ -29,6 +29,7 @@ module Lips.Gate
   , clauseClaimGate
   , artifactGate
   , mintClaimGate
+  , worldGate
     -- * The nixpkgs a build runs against
   , artifactNixpkgs
   ) where
@@ -58,10 +59,11 @@ import           Lips.Kernel.Lang.Store (EngineData (..))
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
 import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRungs)
-import           Lips.World         (World)
+import           Lips.World         (World (..))
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Schema        (lockFlakeRef)
-import           Lips.Stage         (fillStagedTree, siteNameOf, stageBeside, withTempDir, writeSite)
+import           Lips.Stage         (fillStagedTree, siteNameOf, stageBeside, withTempDir, writeCompiled,
+                                     writeSite)
 
 -- | Read a file that may be absent. The gates here read only files lips itself
 -- wrote (a generation record), so an unreadable one is the same event as a
@@ -362,6 +364,45 @@ mintClaimGate nixpkgs stage file rl
           Just body -> TIO.writeFile (dir </> "claims.nix") body
         note ("observing " <> T.intercalate ", " (map clId (rlClaims rl)))
         forM_ (rlClaims rl) (buildClaim nixpkgs file dir)
+
+-- | The world's own gate: the build its @gate@ slot names must succeed over the
+-- render, before the engine is written.
+--
+-- Why: a world's schema may be weak on purpose (nono's grounds only the
+-- top-level sections), and then the only authority on the names below it is a
+-- validator the world runs in its own build. Without this gate that validator
+-- saw nothing until a human built the compiled directory, so an engine whose
+-- render it refuses was accepted and committed. The world says which build is
+-- its verdict; lips builds it and knows nothing about what it checks.
+--
+-- It builds @#gate@ of the very directory @compile@ writes ('writeCompiled'),
+-- with @nixpkgs@ overridden by the locked pin, so the validator is the version
+-- the mint was grounded against rather than whatever the ambient registry
+-- resolves. Only @nixpkgs@ is overridden: a world input lips cannot pin (a
+-- kubenix URL) would make the verdict drift, which is why such worlds declare
+-- no gate yet.
+--
+-- A world with no @gate@ slot is untouched, and @check@ never runs this: it
+-- stays nixpkgs-free, while the world's own package build still refuses an
+-- invalid render where it is used.
+worldGate :: Text -> World -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+worldGate nixpkgs world stage file rl = case wGate world of
+  Nothing -> pure ()
+  Just _  -> step ("the " <> wName world <> " world's own gate") $ withTempDir $ \tmp -> do
+    _ <- writeCompiled stage world file tmp rl
+    res <- try (readProcessWithExitCode "nix"
+      [ "build", "--no-link", "path:" <> tmp <> "#gate"
+      , "--override-input", "nixpkgs", T.unpack nixpkgs ] "")
+    case res of
+      Left e -> die (nixMissing file "run the world's own gate over it" "generate"
+                      (tshow (e :: IOException)))
+      Right (ExitFailure _, _, err) -> die (report
+        (T.pack file <> ": the " <> wName world <> " world refuses what lips rendered.")
+        (T.lines (T.pack err))
+        ("\8594 the rules are minted, so mint again: lips generate " <> T.pack file
+          <> ". If the refusal is a fact about the world, state it in the world"
+          <> " file's preamble first, so the next mint is told."))
+      Right (ExitSuccess, _, _) -> pure ()
 
 -- | Run ONE claim out of a staged @claims.nix@. A failure is the claim's own
 -- verdict (the comparison raises inside the build), surfaced verbatim so the

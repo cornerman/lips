@@ -62,7 +62,7 @@ import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAn
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
                                         groundExpectFaults,
                                         clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
-                                        stagedGate)
+                                        stagedGate, worldGate)
 import           Lips.Stage             (stageBeside, stageFromDisk,
                                          stagedSizes, withTempDir, writeCompiled, writeSite, writeSources)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
@@ -696,6 +696,11 @@ checkWorld contract claims dir w file program = do
 -- excludes the others does not apply. That lets a model fix a failing claim
 -- inside the one call instead of spending a whole mint on it.
 --
+-- A world's own GATE (its @gate@ slot) is run too, on the same argument: the
+-- world declared it affordable on every mint, and its refusal (a validator
+-- naming a field the schema could not) is exactly what the model can fix
+-- in-call. It builds against the pinned nixpkgs, so the door needs one.
+--
 -- The gate that DECIDES is unchanged: generate still runs every one of these
 -- checks afterwards, so a model that skips this door is refused exactly as
 -- before.
@@ -775,6 +780,12 @@ checkDraft running restart file = do
       forM_ ws $ \w -> do
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
         clauseClaimGate w file rl
+        -- The world's own gate is a build the world declared affordable on every
+        -- mint, so the door runs it too: the model then reads the validator's
+        -- refusal inside its own call instead of paying a whole mint for it.
+        when (isJust (wGate w)) $ do
+          nixpkgs <- artifactNixpkgs ("generate " <> T.pack file)
+          worldGate nixpkgs w (stageBeside (dtLangDir t) file rl) file rl
         -- The contract above is the GOVERNING one (the committed .expect on a
         -- regeneration), which cannot say whether the draft's NEW promises are
         -- evaluable at all. The ground half of those costs no nix, so the door
@@ -1436,6 +1447,10 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   when (any (not . null . snd . rlArtifact . snd) validated) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
     forM_ validated $ \(f, rl) -> artifactGate nixpkgs (stage rl) f rl
+  -- The world's own verdict over its render, where the world declares one.
+  when (isJust (wGate world)) $ lift $ do
+    nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
+    forM_ validated $ \(f, rl) -> worldGate nixpkgs world (stage rl) f rl
   forM_ validated $ \(f, rl) -> lift (clauseClaimGate world f rl)
   unless (null claims) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
