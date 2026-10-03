@@ -206,7 +206,8 @@ bindSelf name mr = mr { mrEmits = map bindEmit (mrEmits mr) }
     seg = fillName (\t -> if t == selfName then Just name else Nothing)
 
 -- | Interpret a minted rule with the kernel's generic refinement machinery.
--- The emitted decisions are 'Meta' (mapped mechanisms); ids and provenance are
+-- The emitted decisions are 'Meta' (mapped mechanisms), or 'Glue' where they
+-- land in a builder's argument (see @emitKind@); ids and provenance are
 -- stamped by the refiner, so only subject and assertion matter here.
 -- A rule subject may name a value-keyed FAMILY: a @<name>@ segment is a
 -- capture that binds any concrete segment (e.g. @route.<path>.status@ matches
@@ -238,12 +239,20 @@ toRule mr =
       Right Decision
         { dId        = DecisionId ""
         , dSubject   = Subject p
-        , dKind      = Meta
+        , dKind      = emitKind p
         , dAssertion = Assertion a
         , dStrength  = Stated
         , dProv      = FromSource (SourceLoc "" 0)
         , dRationale = Nothing
         }
+    -- An argument to somebody else's builder is the one place the kernel knows
+    -- holds foreign text: no schema declares it, and only the builder's own
+    -- conventions govern what it means (a shell script in a text argument). So
+    -- the emit is marked GLUE there, by position, which is structural and names
+    -- no builder. A source path is excluded: it names a tree rather than
+    -- carrying text, and the no-blob gate refuses the tree itself.
+    emitKind ("artifact" : _ : "args" : arg : _) | arg /= "src" = Glue
+    emitKind _ = Meta
     -- Fill the captured key into an emit-path segment (whole or embedded); a
     -- shared primitive so rules, expects, and demands resolve captures alike.
     fillSeg caps seg = either (\r -> Left ("engine rule " <> mrId mr <> ": emit path " <> r))

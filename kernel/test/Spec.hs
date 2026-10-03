@@ -7456,15 +7456,15 @@ main = hspec $ do
           , (Subject ["claim", "run", "stdout"], mk "k1" "x" "\"hi\"" Stated)
           , (Subject ["artifact", "greet", "args", "text"],
               (mk "g1" "x" "echo \"hello from lips\"" Stated)
-                { dProv = FromSource (SourceLoc "greet.lips" 1) })
+                { dKind = Glue, dProv = FromSource (SourceLoc "greet.lips" 1) })
           , (Subject ["artifact", "greet", "builder"], mk "b1" "x" "\"writeShellApplication\"" Stated)
           , (Subject ["artifact", "logscan", "args", "src"],
               (mk "s1" "x" "./artifacts/logscan" Stated)
                 { dProv = FromSource (SourceLoc "logscan.lips" 4) })
           ]
         g = grounding noTemplate base
-        -- These fixtures state their values as the rule would have written them,
-        -- so the filled value is the template: no lookup is needed.
+        -- No template is known, so glue is graded as the mint's and every word
+        -- of it counts: the grade that asks for a claim.
         noTemplate = const Nothing
 
     it "counts what the schema vouches for" $
@@ -7485,21 +7485,21 @@ main = hspec $ do
         , (Subject ["claim", "other", "run"], mk "d" "x" "\"echo\"" Stated)
         ]) `shouldBe` 2
 
-    it "names an artifact argument as glue, because no schema declares one" $
-      map (uSubject) (gGlue g) `shouldBe` [Subject ["artifact", "greet", "args", "text"]]
+    it "names a glue decision as mint glue when no template says otherwise" $
+      map (uSubject) (gMintGlue g) `shouldBe` [Subject ["artifact", "greet", "args", "text"]]
 
     it "names a staged source tree separately: the same defect at file scale" $
       map (uSubject) (gStaged g) `shouldBe` [Subject ["artifact", "logscan", "args", "src"]]
 
     it "does not count a builder reference, which names rather than carries text" $
-      length (gGlue g) + length (gStaged g) `shouldBe` 2
+      length (gMintGlue g) + length (gStaged g) `shouldBe` 2
 
     -- Several program lines may state the same artifact argument; that is one
     -- assertion, not three, and reporting three would overstate the program.
     it "counts one subject once, however many agreeing decisions carry it" $
       let twice = base <> [ (Subject ["artifact", "greet", "args", "text"]
-                            , mk "g2" "x" "echo \"hello from lips\"" Stated) ]
-       in length (gGlue (grounding noTemplate twice)) `shouldBe` 1
+                            , (mk "g2" "x" "echo \"hello from lips\"" Stated) { dKind = Glue }) ]
+       in length (gMintGlue (grounding noTemplate twice)) `shouldBe` 1
 
     -- A schema vouches for a name and a type, never for the text inside a string.
     -- A live mint put a whole shell pipeline into systemd.services.x.script and
@@ -7538,12 +7538,89 @@ main = hspec $ do
                                     [ (dSubject d, d) | d <- toList (rlGround rl) ]))
               `shouldBe` [5]
 
+    -- Glue is MARKED, not inferred from a path afterwards: a rule emit landing in
+    -- somebody else's builder argument is stamped kind Glue when it is emitted,
+    -- and the template says whose words it carries -- the mint's literal text,
+    -- or only the program's own words through a hole.
+    describe "glue, marked at emit and graded by its template" $ do
+      let pat = patOne "p" [TLit "say", THole "msg"] Fact [SLit "cmd.msg"] [SHole "msg"]
+          rule = MapRule "r" Fact ["cmd", "msg"]
+                   [ Emit ["artifact", "hi", "builder"] (VStr [PLit "writeShellApplication"])
+                   , Emit ["artifact", "hi", "args", "name"] (VStr [PLit "hi"])
+                   , Emit ["artifact", "hi", "args", "text"] (VStr [PLit "echo ", PHole "value"])
+                   , Emit ["artifact", "hi", "args", "runtimeEnv", "MSG"] (VStr [PHole "value"])
+                   , Emit ["artifact", "hi", "args", "src"] (VPath "./artifacts/hi")
+                   , Emit ["services", "x", "description"] (VStr [PHole "value"]) ]
+          runHi prog = case crystallize "f" [pat] prog of
+            Left e -> Left (show e)
+            Right human -> either (Left . show) (\rl -> Right (human, rl))
+              (runBase (const Replace) noAssembly schemeVocabulary 100 (Engine [toRule rule] [] []) human)
+          kindAt rl ss = [ dKind d | d <- toList (rlGround rl), dSubject d == Subject ss ]
+      it "stamps a builder argument Glue and everything else Meta" $
+        case runHi "say hello\n" of
+          Left e -> expectationFailure e
+          Right (_, rl) -> do
+            kindAt rl ["artifact", "hi", "args", "text"] `shouldBe` [Glue]
+            kindAt rl ["artifact", "hi", "args", "runtimeEnv", "MSG"] `shouldBe` [Glue]
+            kindAt rl ["artifact", "hi", "builder"] `shouldBe` [Meta]
+            kindAt rl ["services", "x", "description"] `shouldBe` [Meta]
+            -- A source path names a tree rather than carrying text; the no-blob
+            -- gate refuses the tree itself.
+            kindAt rl ["artifact", "hi", "args", "src"] `shouldBe` [Meta]
+      it "grades glue by whose words the template holds" $
+        case runHi "say hello\n" of
+          Left e -> expectationFailure e
+          Right (human, rl) -> do
+            let gr = grounding (emitTemplate "f" [rule] (toList human))
+                               [ (dSubject d, d) | d <- toList (rlGround rl) ]
+            map uSubject (gMintGlue gr) `shouldMatchList`
+              [ Subject ["artifact", "hi", "args", "text"], Subject ["artifact", "hi", "args", "name"] ]
+            map uSubject (gAuthorGlue gr) `shouldBe` [Subject ["artifact", "hi", "args", "runtimeEnv", "MSG"]]
+            -- The mint's words, never the program's: "echo", not "echo hello".
+            [ uWords u | u <- gMintGlue gr, uSubject u == Subject ["artifact", "hi", "args", "text"] ]
+              `shouldBe` [1]
+      -- Only a RULE can mark glue. A program decision of kind glue that no rule
+      -- maps is an obligation the engine never met, exactly as an unmapped fact is.
+      it "still refuses a program-level glue decision no rule maps" $ do
+        let gpat = patOne "g" [TLit "run", THole "cmd"] Glue [SLit "job.cmd"] [SHole "cmd"]
+        case crystallize "f" [gpat] "run df\n" of
+          Left e -> expectationFailure (show e)
+          Right human ->
+            case runBase (const Replace) noAssembly schemeVocabulary 100 (Engine [] [] []) human of
+              Left (Unmapped ds) -> map dSubject ds `shouldBe` [Subject ["job", "cmd"]]
+              Left e  -> expectationFailure ("refused for another reason: " <> show e)
+              Right _ -> expectationFailure "an unmapped glue decision was realized"
+
+    -- MINT glue is what a re-mint rewrites, so a claim must RUN it. A claim runs
+    -- an artifact its command names, and through it every artifact that one's
+    -- arguments name (a wrapper exec'ing a core).
+    describe "mint glue is pinned only by a claim that runs it" $ do
+      let glue n t = ( Subject ["artifact", n, "args", "text"]
+                     , (mk ("g" <> n) "x" t Stated) { dKind = Glue } )
+          runs t = (Subject ["claim", "c1", "run"], mk "c" "x" t Stated)
+          unpinned ws = map uSubject (gUnpinned (grounding (const Nothing) ws))
+          core = Subject ["artifact", "core", "args", "text"]
+          wrap = Subject ["artifact", "wrap", "args", "text"]
+      it "names glue no claim runs" $
+        unpinned [glue "core" "\"echo hi\""] `shouldBe` [core]
+      it "is satisfied by a claim naming the artifact" $
+        unpinned [glue "core" "\"echo hi\"", runs "\"${artifact.core}/bin/core\""] `shouldBe` []
+      it "follows a wrapper to the core it names" $
+        unpinned [ glue "core" "\"echo hi\"", glue "wrap" "\"exec ${artifact.core}/bin/core\""
+                 , runs "\"${artifact.wrap}/bin/wrap\"" ] `shouldBe` []
+      it "does not follow a reference backwards" $
+        unpinned [ glue "core" "\"echo hi\"", glue "wrap" "\"exec ${artifact.core}/bin/core\""
+                 , runs "\"${artifact.core}/bin/core\"" ] `shouldBe` [wrap]
+      it "asks nothing of author glue" $
+        let authored = grounding (const (Just (VStr [PHole "value"]))) [glue "core" "\"echo hi\""]
+         in (gAuthorGlue authored /= [], gUnpinned authored) `shouldBe` (True, [])
+
     it "reports the four classes on one line, then names the unvouched" $ do
       case groundingReport g of
         (summary : glueLine : _) -> do
           summary `shouldBe`
-            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 2 unvouched assertions (nothing), 5 words, 0 mint-written words inside option strings"
-          glueLine `shouldSatisfy` T.isInfixOf "glue: artifact.greet.args.text"
+            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 0 glue assertions by the author (stated), 2 unvouched assertions (nothing), 5 words, 0 mint-written words inside option strings"
+          glueLine `shouldSatisfy` T.isInfixOf "glue (mint, unpinned): artifact.greet.args.text"
           glueLine `shouldSatisfy` T.isInfixOf "<- greet.lips:1"
         out -> expectationFailure ("report is too short: " <> show out)
 

@@ -224,10 +224,17 @@ runGround budget eng resolved = do
       -- which the site assembler consumes and no rule ever places.
       realizable = filter (\d -> dKind d `notElem` [Concept, Uses] && not (ignored d))
                           (toList ground)
-  case filter ((/= Meta) . dKind) realizable of
+  case filter (not . mechanism) realizable of
     []        -> Right realizable
     leftovers -> Left (Unmapped leftovers)
   where
+    -- What a rule placed: a mapped mechanism, or glue a rule emitted into a
+    -- builder's argument. Glue counts only when DERIVED: a program decision of
+    -- kind glue that no rule maps is an obligation the engine never met.
+    mechanism d = case (dKind d, dProv d) of
+      (Meta, _)          -> True
+      (Glue, Derived {}) -> True
+      _                  -> False
     -- Resolve groups by subject; a subject is either Replace (a conflict) or
     -- Append (an assembly defect). Conflicts are the author's to edit; an
     -- assembly failure on the human base is an engine defect surfaced as

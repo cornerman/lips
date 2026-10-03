@@ -39,7 +39,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 
 import Lips.Kernel.Decision
-import Lips.Kernel.Engine.Value (Piece (..), Value (..), parseValue)
+import Lips.Kernel.Engine.Value (Piece (..), Value (..), parseValue, valueArtifactNames)
 
 -- | One assertion nothing outside lips vouches for.
 data Unvouched = Unvouched
@@ -56,7 +56,17 @@ data Grounding = Grounding
     -- ^ The observables the author stated, by id. IDS, not decisions: one claim
     -- is stated in several sections (a call, what it equals, what it is fed), and
     -- counting those separately reported logscan's single claim as four.
-  , gGlue     :: [Unvouched] -- ^ artifact arguments: foreign text, vouched by nothing
+  , gMintGlue :: [Unvouched]
+    -- ^ MINT glue: builder arguments ('Glue' decisions) whose template holds
+    -- literal text the mint wrote. Vouched by nothing, and exactly what a re-mint
+    -- rewrites, so each must be pinned by a claim. Words are the mint's own.
+  , gAuthorGlue :: [Unvouched]
+    -- ^ AUTHOR glue: builder arguments filled only with the program's words. The
+    -- foreign text is the author's, stated in the program, so it is legitimate
+    -- without qualification and counted apart from what nothing vouches for.
+  , gUnpinned :: [Unvouched]
+    -- ^ The mint glue no claim reaches: no @claim.\<id\>.run@ names its artifact,
+    -- directly or through another artifact's arguments. @generate@ refuses these.
   , gStaged   :: [Unvouched] -- ^ staged source trees: the same defect at file scale
   , gWritten  :: [Unvouched]
     -- ^ String option values carrying literal words no program word reaches: text
@@ -66,26 +76,28 @@ data Grounding = Grounding
   }
   deriving (Eq, Show)
 
--- | Classify every winner of a resolved base by what vouches for it. Subject
--- shape decides, so this is structural and domain-blind: @clause.@ and @claim.@
--- are kernel vocabulary, @artifact.\<n\>.args.@ is an argument to somebody
--- else's builder, and everything else names an option of the target world.
 -- | How many observables the author stated: distinct claim ids.
 claimCount :: Grounding -> Int
 claimCount = length . nub . gClaimIds
 
+-- | Classify every winner of a resolved base by what vouches for it. Structural
+-- and domain-blind: @clause.@ and @claim.@ are kernel vocabulary, a 'Glue'
+-- decision is a builder argument the rule was marked for when it emitted it, and
+-- everything else names an option of the target world.
+--
 -- @templateOf@ gives the rhs template a decision was filled from
 -- ('Lips.Kernel.Engine.Data.emitTemplate'). Mint-written words are counted in
 -- the TEMPLATE, because by the time a decision is ground its holes are filled
 -- and a program word inside the string is indistinguishable from the mint's.
 grounding :: (Decision -> Maybe Value) -> [(Subject, Decision)] -> Grounding
-grounding templateOf winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy sameSubject winners)
+grounding templateOf winners = pin (foldr add (Grounding 0 0 [] [] [] [] [] []) unique)
   where
     -- One SUBJECT is one assertion, however many agreeing decisions carry it.
     -- Several program lines may state the same artifact argument (three lines
     -- naming one build), and counting those separately would report a program
     -- as three times more unvouched than it is.
     sameSubject (a, _) (b, _) = a == b
+    unique = nubBy sameSubject winners
 
     add (s, d) g = case segments s of
       ("clause" : _) -> g { gClauses = gClauses g + 1 }
@@ -94,7 +106,13 @@ grounding templateOf winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy same
       -- schema vouches for it and counting it as an option overstates what does.
       ("site" : _)   -> g
       ["artifact", _, "args", "src"] -> g { gStaged = unvouchedOf s d : gStaged g }
-      ("artifact" : _ : "args" : _)  -> g { gGlue = unvouchedOf s d : gGlue g }
+      _ | dKind d == Glue -> case templateOf d of
+            -- Only the program's words went in: the author's glue.
+            Just t | wordsIn t == 0 -> g { gAuthorGlue = unvouchedOf s d : gAuthorGlue g }
+            Just t -> g { gMintGlue = (unvouchedOf s d) { uWords = wordsIn t } : gMintGlue g }
+            -- No template to tell whose words these are: graded as the mint's,
+            -- the grade that asks for a claim, rather than waved through.
+            Nothing -> g { gMintGlue = unvouchedOf s d : gMintGlue g }
       -- An artifact's builder and its fills name things; only its arguments
       -- carry text, so the rest is not counted as unvouched.
       ("artifact" : _) -> g
@@ -104,6 +122,20 @@ grounding templateOf winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy same
                  n -> g' { gWritten = (unvouchedOf s d) { uWords = n } : gWritten g' }
 
     segments (Subject ss) = ss
+
+    -- A claim pins glue by RUNNING its artifact. Its command names artifacts,
+    -- and an artifact whose arguments name another (a wrapper exec'ing a core)
+    -- runs that one too, so the reach is closed over artifact references.
+    pin g = g { gUnpinned = [ u | u <- gMintGlue g, artifactOf (uSubject u) `notElem` map Just reached ] }
+    reached = close (concat [ refsIn d | (Subject ["claim", _, "run"], d) <- unique ]) []
+    close [] seen = seen
+    close (n : ns) seen
+      | n `elem` seen = close ns seen
+      | otherwise = close (ns <> concat [ refsIn d | (Subject ("artifact" : m : _), d) <- unique, m == n ])
+                          (n : seen)
+    refsIn d = either (const []) valueArtifactNames (parseValue (assertionOf d))
+    artifactOf (Subject ("artifact" : n : _)) = Just n
+    artifactOf _                              = Nothing
 
     unvouchedOf s d = Unvouched
       { uSubject = s
@@ -135,7 +167,7 @@ grounding templateOf winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy same
 -- growth is visible at a glance: a five-line program that acquires seventy lines
 -- of Go moves it by hundreds.
 unvouchedWords :: Grounding -> Int
-unvouchedWords g = sum (map uWords (gGlue g <> gStaged g))
+unvouchedWords g = sum (map uWords (gMintGlue g <> gStaged g))
 
 -- | The report, one line per fact, ready to print. Ordered so the two unvouched
 -- classes come last and largest-first: what a reviewer should look at, in the
@@ -146,19 +178,23 @@ groundingReport g =
       [ count (gOptions g) "option assignment" <> " (schema)"
       , count (gClauses g) "clause" <> " (contracts)"
       , count (claimCount g) "claim" <> " (stated)"
-      , count (length (gGlue g) + length (gStaged g)) "unvouched assertion"
+      , count (length (gAuthorGlue g)) "glue assertion" <> " by the author (stated)"
+      , count (length (gMintGlue g) + length (gStaged g)) "unvouched assertion"
           <> " (nothing), " <> count (unvouchedWords g) "word"
       , count (sum (map uWords (gWritten g))) "mint-written word"
           <> " inside option strings"
       ]
   ]
-    <> map (line "glue") (sortOn (negate . uWords) (gGlue g))
+    <> map (line "glue (mint, unpinned)") (largest (gUnpinned g))
+    <> map (line "glue (mint)") (largest (filter (`notElem` gUnpinned g) (gMintGlue g)))
+    <> map (line "glue (author)") (largest (gAuthorGlue g))
     <> map (line "staged") (sortOn (negate . uWords) (gStaged g))
     -- Only the wordiest few: prose in a description is normal, and a list of
     -- every one-word string would bury the number that matters.
     <> map (line "mint wrote")
            (take 3 (filter ((> 3) . uWords) (sortOn (negate . uWords) (gWritten g))))
   where
+    largest = sortOn (negate . uWords)
     count 1 what = "1 " <> what
     count n what = T.pack (show n) <> " " <> what <> "s"
     line label u =
