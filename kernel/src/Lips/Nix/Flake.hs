@@ -130,8 +130,21 @@ packagesOutput w rungs
   | null body = []
   | otherwise = [ "      packages = forSystems (system: {" ] ++ body ++ [ "      });" ]
   where
-    body = artLine ++ siteLine ++ siteClaimLine ++ claimLine ++ worldLines
+    body = artLine ++ siteLine ++ siteClaimLine ++ claimLine ++ worldLines ++ gateLines
     worldLines = maybe [] textLines (wPackages w)
+    -- The world's own verdict over the render, under ONE lips-owned name: the
+    -- mint builds @#gate@ and CI builds @packages.<system>.gate@, so neither has
+    -- to learn which of a world's packages is the validating one. Absent where
+    -- the world declares none, so those flakes stay byte-identical.
+    -- The slot's lines stay verbatim (a blank or an indent inside it is the
+    -- world's own formatting); only the first is joined to the binding and the
+    -- last carries its semicolon.
+    gateLines = case semiLast (maybe [] textLines (wGate w)) of
+      []          -> []
+      (l0 : rest) -> ("        gate = " <> T.strip l0) : rest
+    semiLast = reverse . (\ls -> case ls of
+      (l : more) -> (l <> ";") : more
+      []         -> []) . reverse
     -- The program's own behaviour, built by the runtime its contracts chose. The
     -- builder is the runtime's file, copied verbatim; this flake knows only its
     -- interface.

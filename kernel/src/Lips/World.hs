@@ -26,8 +26,12 @@ import           Text.Read  (readMaybe)
 -- | The format this binary reads. A file declaring a NEWER format is refused
 -- naming both numbers: it carries structure this lips cannot honour, and
 -- honouring part of it would be a silent half-read.
+--
+-- 2 added the @gate@ slot. A world that uses it declares 2, so a lips that
+-- predates the slot says "upgrade lips" instead of "unknown slot gate"; every
+-- format-1 file reads exactly as before.
 worldFormat :: Int
-worldFormat = 1
+worldFormat = 2
 
 -- | The slot a line opens, when it is a slot marker (@--- builds ---@). The one
 -- authority on that syntax: 'Lips.World.Check' finds the same regions to hand
@@ -69,6 +73,11 @@ data World = World
   , wPackages    :: Maybe Text  -- ^ slot @packages@
   , wApps        :: Maybe Text  -- ^ slot @apps@
   , wDevShells   :: Maybe Text  -- ^ slot @devShells@
+  , wGate        :: Maybe Text
+    -- ^ slot @gate@: one derivation, in the scope of the @packages@ slot, whose
+    -- successful build is the world's own verdict over a render (a validator
+    -- the schema cannot stand in for). The mint must pass it, so a world states
+    -- here only a build it can afford on every mint.
   , wRungs       :: [Rung]      -- ^ slot @rungs@
   , wRaw         :: Text        -- ^ the file verbatim, for copying beside an engine and hashing
   }
@@ -78,7 +87,7 @@ headerKeys :: [Text]
 headerKeys = ["format", "world", "module-attr", "schema-pin", "schema-flake", "input-args", "claims"]
 
 slotNames :: [Text]
-slotNames = ["preamble", "schema", "inputs", "builds", "packages", "apps", "devShells", "rungs"]
+slotNames = ["preamble", "schema", "inputs", "builds", "packages", "apps", "devShells", "gate", "rungs"]
 
 -- | Parse a world file, or say exactly what is wrong with it.
 parseWorld :: Text -> Either Text World
@@ -114,6 +123,7 @@ parseWorld raw = do
     , wPackages = fmap T.unlines (lookup "packages" slots)
     , wApps = fmap T.unlines (lookup "apps" slots)
     , wDevShells = fmap T.unlines (lookup "devShells" slots)
+    , wGate = fmap T.unlines (lookup "gate" slots)
     , wRungs = rungs
     , wRaw = raw
     }

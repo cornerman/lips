@@ -396,8 +396,14 @@ main = hspec $ do
       parseWorld (minimal <> "--- rung ---\nx\n") `shouldSatisfy`
         either (T.isInfixOf "rung") (const False)
     it "refuses a newer format, naming both versions" $
-      parseWorld (T.replace "format: 1" "format: 2" minimal) `shouldSatisfy`
-        either (\e -> T.isInfixOf "2" e && T.isInfixOf "1" e) (const False)
+      parseWorld (T.replace "format: 1" "format: 3" minimal) `shouldSatisfy`
+        either (\e -> T.isInfixOf "3" e && T.isInfixOf "2" e) (const False)
+    -- A world's own render gate: optional, so every world written before it
+    -- reads unchanged, and a world that declares one hands lips a build to pass.
+    it "reads the optional gate slot, absent by default" $ do
+      right wGate minimal `shouldBe` Nothing
+      right (fmap T.strip . wGate) (minimal <> "--- gate ---\n(builds system).profile\n")
+        `shouldBe` Just "(builds system).profile"
     it "refuses a missing required header" $
       parseWorld "format: 1\nworld: w\n--- preamble ---\nP\n--- schema ---\nE\n"
         `shouldSatisfy` either (T.isInfixOf "module-attr") (const False)
@@ -503,6 +509,9 @@ main = hspec $ do
       it "wraps a slot that is a fragment, on the marker lines around it" $
         lookup "builds" (sliced world)
           `shouldBe` Just ["", "", "", "", "", "", "", "with {}; let", "      builds = system: null;", "in null"]
+      it "slices the gate slot as a whole expression" $
+        lookup "gate" (sliced (world <> "--- gate ---\n(builds system).p\n"))
+          `shouldBe` Just ["", "", "", "", "", "", "", "", "", "with {}; ", "(builds system).p"]
       it "skips a slot with nothing in it" $
         map fst (sliced (world <> "--- packages ---\n\n")) `shouldBe` ["schema", "builds"]
       it "slices every slot the built-in worlds fill" $
@@ -4483,6 +4492,20 @@ main = hspec $ do
       flakeText w noRungs `shouldNotSatisfy` T.isInfixOf "builds ="
       flakeText w noRungs `shouldNotSatisfy` T.isInfixOf "packages"
       flakeText w noRungs `shouldSatisfy` T.isInfixOf "wModules.default = import ./default.nix;"
+
+    -- The gate is the world's own verdict over its render, built by the mint
+    -- and by CI under ONE lips-owned name, so neither has to learn which of a
+    -- world's packages is the validating one.
+    it "exposes a world's gate as packages.gate, and nothing where none is declared" $ do
+      let w = either (error . T.unpack) id (parseWorld
+            ("format: 2\nworld: w\nmodule-attr: wModules\n"
+              <> "--- preamble ---\nP\n--- schema ---\nE\n"
+              <> "--- builds ---\n      builds = system: { p = null; };\n"
+              <> "--- packages ---\n        p = (builds system).p;\n"
+              <> "--- gate ---\n(builds system).p\n"))
+      flakeText w noRungs `shouldSatisfy` T.isInfixOf "        gate = (builds system).p;"
+      mapM_ (\(n, _) -> flakeText (shippedWorld n) noRungs `shouldNotSatisfy` T.isInfixOf "gate =")
+        builtinWorlds
 
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $

@@ -62,7 +62,8 @@ withScope = "with {}; "
 -- | Which slots hold Nix, and what each one is a FRAGMENT of. The wrappers
 -- mirror the embeddings exactly: 'Lips.Nix.Flake.flakeText' puts @inputs@ in
 -- the flake's own attribute set, @builds@ in a @let@, @packages@ in an attrset
--- of derivations, and @apps@\/@devShells@ as the body of
+-- of derivations, @gate@ as the value of one attribute in it, and
+-- @apps@\/@devShells@ as the body of
 -- @forSystems (system: ...)@; 'Lips.Schema.ensureOptionSchema' takes @schema@
 -- as a whole expression. A slot missing from this table holds prose (@preamble@)
 -- or lips's own line syntax (@rungs@), and nix would refuse it for saying so.
@@ -74,6 +75,8 @@ nixContexts =
   , ("packages",  ("{", "}"))
   , ("apps",      ("", ""))
   , ("devShells", ("", ""))
+    -- The right-hand side of @packages.gate@, so a whole expression.
+  , ("gate",      ("", ""))
   ]
 
 -- | Every Nix-bearing slot of a world file, as text nix can parse on its own.
