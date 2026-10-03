@@ -388,6 +388,26 @@ test-draft:
     fi
     grep -q "holds a source tree" "$tmp/out24" \
       || { echo "FAIL: check did not name the source tree"; cat "$tmp/out24"; exit 1; }
+    rm -rf "$tmp/watch/artifacts"
+    # Text the mint writes into a builder's argument is MINT glue, which a claim
+    # must run: refused in the door while the model can still add one.
+    printf 'say hello\n' > "$tmp/one.watch.lips"
+    cat > "$tmp/glue.txt" <<'EOF'
+    0.95 p1 pattern say <msg> => fact cmd.msg "<msg>"
+    0.95 r1 match fact cmd.msg => artifact.hi.builder "\"writeShellApplication\"" ; artifact.hi.args.name "\"hi\"" ; artifact.hi.args.text "\"echo <value>\"" ; environment.systemPackages "[ ${artifact.hi} ]"
+    EOF
+    sed -i 's/^    //' "$tmp/glue.txt"
+    if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/glue.txt" > "$tmp/out25" 2>&1; then
+      echo "FAIL: --draft accepted mint glue no claim runs"; cat "$tmp/out25"; exit 1
+    fi
+    grep -q "artifact.hi.args.text" "$tmp/out25" \
+      || { echo "FAIL: the glue refusal did not name the argument"; cat "$tmp/out25"; exit 1; }
+    # A claim whose run names the artifact pins every word written into it.
+    sed 's|\]"$|]" ; claim.c1.run "\\"${artifact.hi}/bin/hi\\"" ; claim.c1.stdout "\\"<value>\\""|' "$tmp/glue.txt" > "$tmp/pinned.txt"
+    "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/pinned.txt" > "$tmp/out26" 2>&1 \
+      || { echo "FAIL: glue a claim runs was refused"; cat "$tmp/out26"; exit 1; }
+    grep -q "glue (mint): artifact.hi.args.text" "$tmp/out26" \
+      || { echo "FAIL: the pinned glue was not reported as mint glue"; cat "$tmp/out26"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

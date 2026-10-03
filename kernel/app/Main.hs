@@ -68,7 +68,7 @@ import           Lips.Stage             (stageBeside, stageFromDisk,
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
 import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission,
-                                         committedSourceReport, failureReport, mintedSourceReport, noSubmission,
+                                         committedSourceReport, failureReport, mintedSourceReport, noSubmission, unpinnedGlueReport,
                                          gapArtifact, nixEvalFailed, nixMissing, plural,
                                          printFail, refusalReport, renderDiagnosis,
                                          renderParseError, unanswerableReport, unansweredReport,
@@ -87,7 +87,7 @@ import qualified Lips.Kernel.Base       as Base
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), compatSlug, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Run
-import           Lips.Kernel.Grounding  (Grounding, grounding, groundingReport)
+import           Lips.Kernel.Grounding  (Grounding (..), grounding, groundingReport)
 import           Lips.Runtime            (schemeVocabulary)
 import           Lips.Kernel.Clause.Vocabulary (withLent)
 import           Lips.Kernel.Lang.Crystallize  (LineOutcome (..), crystallize)
@@ -790,6 +790,12 @@ checkDraft running restart file = do
       forM_ ws $ \w -> do
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
         clauseClaimGate w file rl
+        -- The glue gate generate runs, said in the door while the mint can still
+        -- add the claim; check alone only reports unpinned glue.
+        eng <- loadLangOrDie (dtLangDir t) (wName w) file
+        case gUnpinned (groundingOf file eng rl) of
+          [] -> pure ()
+          us -> die (unpinnedGlueReport file (wName w) us)
         -- The world's own gate is a build the world declared affordable on every
         -- mint, so the door runs it too: the model then reads the validator's
         -- refusal inside its own call instead of paying a whole mint for it.
@@ -1410,6 +1416,12 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
       ids
       ("\8594 state the observable over the program's own binary, which needs no"
         <> " machine, and mint again: lips generate " <> T.pack rep))
+  -- Mint glue is what the next mint rewrites, so a claim must run it. Judged
+  -- here, before anything costs a build: which artifact a claim runs is read
+  -- off the realization, not observed.
+  forM_ validated $ \(f, rl) -> case gUnpinned (groundingOf f eng rl) of
+    [] -> pure ()
+    us -> throwE (unpinnedGlueReport f wn us)
   -- Which contract governs is one word from the human (--compat), applied to the
   -- committed set and this run's minted one, per world: a contract pins option
   -- paths, and an option path exists inside one world's namespace only.

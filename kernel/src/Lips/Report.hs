@@ -27,6 +27,7 @@ module Lips.Report
   , uncheckableReport
   , mintedSourceReport
   , committedSourceReport
+  , unpinnedGlueReport
   , demandGenerateFail
   , validationReport
   , renderParseError
@@ -50,6 +51,7 @@ import           Lips.Kernel.Decision
 import           Lips.Kernel.Engine.Answerable (UnanswerableDemand)
 import           Lips.Kernel.Engine.Gate       (unanswerableProblem)
 import           Lips.Kernel.Expect            (Expect (..))
+import           Lips.Kernel.Grounding         (Unvouched (..))
 import           Lips.Kernel.Lang.Crystallize  (CrystError (..), LineOutcome (..))
 import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..))
 import           Lips.Kernel.Reader            (ParseError (..))
@@ -442,6 +444,26 @@ committedSourceReport file tree = report
   [T.pack tree]
   ("\8594 remove the tree and mint the language again, so its behaviour is"
     <> " stated as clauses: lips generate " <> T.pack file)
+
+-- | Mint glue no claim runs: literal text the mint wrote into a builder's
+-- argument, which a re-mint rewrites with every gate green unless something
+-- runs it. Per world, since the rules that write it are a world's own. The
+-- remedy names the claim's shape with the artifact filled in, because the gap
+-- between "state a claim" and the line to write is where a mint guesses.
+unpinnedGlueReport :: FilePath -> Text -> [Unvouched] -> Text
+unpinnedGlueReport file world us = report
+  (T.pack file <> ": the " <> world <> " engine writes its own text into "
+    <> plural (length us) "builder argument" <> ", and no claim runs it:")
+  [ subj (uSubject u) <> " (" <> plural (uWords u) "word" <> ")" | u <- us ]
+  ("\8594 deduce an example from the program's words and claim it with a run that"
+    <> " names the artifact (claim.<id>.run \"${artifact." <> firstArtifact <> "}/bin/...\"),"
+    <> " or carry the program's own words there instead. Mint again: lips generate "
+    <> T.pack file)
+  where
+    subj (Subject ss) = T.intercalate "." ss
+    firstArtifact = case [ n | Unvouched (Subject ("artifact" : n : _)) _ _ <- us ] of
+      (n : _) -> n
+      []      -> "<name>"
 
 -- | A demand the minted engine leaves unmet at generate. Ambiguous by
 -- construction (the kernel cannot tell a silent program from patterns that

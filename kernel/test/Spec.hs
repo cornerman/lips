@@ -32,7 +32,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
-import Lips.Report                 (committedSourceReport, emptySubmission, mintedSourceReport, noSubmission, unansweredReport, unportableReport)
+import Lips.Report                 (committedSourceReport, emptySubmission, mintedSourceReport, noSubmission, unansweredReport, unpinnedGlueReport, unportableReport)
 import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, mergeReply, replyLinesOf, sharedFileViolations, touchedIds)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
@@ -6002,6 +6002,12 @@ main = hspec $ do
       t `shouldSatisfy` T.isInfixOf "clauses"
       t `shouldSatisfy` T.isInfixOf "${pkgs."
       t `shouldSatisfy` T.isInfixOf "gap"
+    it "names unclaimed mint glue, its words, and the claim that fixes it" $ do
+      let u = Unvouched (Subject ["artifact", "greet", "args", "text"]) 1 (Derived [DecisionId "d1"] (RuleId "r1"))
+          r = unpinnedGlueReport "greet.lips" "home-manager" [u]
+      r `shouldSatisfy` T.isInfixOf "artifact.greet.args.text"
+      r `shouldSatisfy` T.isInfixOf "home-manager"
+      r `shouldSatisfy` T.isInfixOf "${artifact.greet}"
     it "names the committed tree check finds, and sends the reader to generate" $ do
       let c = committedSourceReport "logscan.lips" "examples/logscan/artifacts"
       c `shouldSatisfy` T.isInfixOf "examples/logscan/artifacts"
