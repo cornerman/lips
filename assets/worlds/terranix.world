@@ -81,6 +81,13 @@ in pkgs.runCommand "options.json" { }
 --- packages ---
         config = (builds system).config;
 
+--- gate ---
+        # The render itself. terranix's namespaces are free-form, so this proves only
+        # that the module evaluates to a config.tf.json; a misspelled resource field
+        # still reaches `tofu plan`. Its inputs are pinned (terranix by schema-input,
+        # nixpkgs following terranix), so the verdict cannot drift.
+        (builds system).config
+
 --- apps ---
         let b = builds system; p = pkgsFor system; in {
           config = { type = "app"; program = "${p.writeShellScript "print-config" "cat ${b.config}"}"; };

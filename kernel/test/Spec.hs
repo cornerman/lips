@@ -4598,8 +4598,15 @@ main = hspec $ do
               <> "--- packages ---\n        p = (builds system).p;\n"
               <> "--- gate ---\n(builds system).p\n"))
       flakeText w ambientNixpkgs noRungs `shouldSatisfy` T.isInfixOf "        gate = (builds system).p;"
-      mapM_ (\(n, _) -> flakeText (shippedWorld n) ambientNixpkgs noRungs `shouldNotSatisfy` T.isInfixOf "gate =")
-        builtinWorlds
+      -- Only a world whose every input lips pins may declare one, or its verdict
+      -- would drift with whatever an unpinned URL resolves to today.
+      mapM_ (\n -> flakeText (shippedWorld n) ambientNixpkgs noRungs `shouldNotSatisfy` T.isInfixOf "gate =")
+        ["nixos", "home-manager"]
+      mapM_ (\(n, g) -> flakeText (shippedWorld n) ambientNixpkgs noRungs
+                          `shouldSatisfy` (\t -> T.isInfixOf "        gate = " t && T.isInfixOf g t))
+        [("kubenix", "        (builds system).yaml;"), ("terranix", "        (builds system).config;")]
+      mapM_ (\(n, _) -> wSchemaInput (shippedWorld n) `shouldSatisfy` (/= Nothing))
+        [ x | x@(n, _) <- builtinWorlds, n /= "home-manager" ]
 
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $

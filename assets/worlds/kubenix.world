@@ -86,6 +86,13 @@ in pkgs.runCommand "options.json" { } ''
         manifest = (builds system).yaml;
         manifest-json = (builds system).json;
 
+--- gate ---
+        # The render itself: kubenix refuses an unknown Kubernetes field while
+        # it evaluates, so building the manifest is this world's verdict. Every
+        # input it reads is pinned (kubenix by schema-input, nixpkgs following
+        # kubenix), so the verdict cannot drift with what a URL resolves to.
+        (builds system).yaml
+
 --- apps ---
         let b = builds system; p = pkgsFor system; in {
           manifest = { type = "app"; program = "${p.writeShellScript "print-manifest" "cat ${b.yaml}"}"; };
