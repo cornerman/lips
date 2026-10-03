@@ -56,14 +56,14 @@ import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRun
 import           Lips.World         (World (..))
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Schema        (lockFlakeRef)
-import           Lips.Stage         (fillStagedTree, siteNameOf, stageBeside, withTempDir, writeCompiled,
+import           Lips.Stage         (siteNameOf, stageBeside, withTempDir, writeCompiled,
                                      writeSite)
 
 -- | The claim gate: every observable the program states must actually hold.
 --
 -- This is the ONE gate that observes a running thing rather than reading the
--- module text, so it is what holds minted source -- and every future re-mint --
--- to the author's own words.
+-- module text, so it is what holds minted behaviour -- and every future
+-- re-mint -- to the author's own words.
 --
 -- It builds the compiled directory's @#claims@ rung, which is the very command
 -- @compile@ prints, so what CI runs and what an author runs cannot drift. A
@@ -123,7 +123,6 @@ commandClaimGate world dir file rl
       step ("claims: " <> plural (length (rlClaims rl)) "claim") $ withTempDir $ \tmp -> do
         TIO.writeFile (tmp </> "default.nix") (rlModule rl)
         stageBeside dir file rl tmp
-        fillStagedTree file (tmp </> "artifacts") (rlFills rl)
         let (artBody, artNames) = rlArtifact rl
         TIO.writeFile (tmp </> "artifact.nix") artBody
         case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
@@ -138,8 +137,8 @@ commandClaimGate world dir file rl
           Right (ExitFailure _, _, err) -> die (report
             (T.pack file <> ": what the program says it does is not what it does.")
             (T.lines (T.pack err))
-            ("\8594 the behaviour lives in minted source, so rebuild it from the"
-              <> " program as it stands: lips generate " <> T.pack file))
+            ("\8594 the behaviour is minted, so rebuild it from the program as it"
+              <> " stands: lips generate " <> T.pack file))
           Right (ExitSuccess, _, _) -> pure ()
 
 -- | Evaluate the realized module with @nix@ and judge a contract against it.
@@ -216,9 +215,8 @@ evalOptionExpects stage nixModule pairs = withTempDir $ \dir -> do
           pvs     = map snd pairs
           tmp     = dir <> "/module.nix"
       TIO.writeFile tmp nixModule
-      -- The module may name things BESIDE it: a staged source tree, and the site
-      -- its own clauses build. So the callback stages the whole neighbourhood
-      -- rather than one subdirectory of it; a module referencing ./site/build.nix
+      -- The module may name things BESIDE it: the site its own clauses build.
+      -- So the callback stages the neighbourhood; a module referencing ./site/build.nix
       -- in a directory nobody wrote it into dies inside nix, naming no remedy.
       stage dir
       let expr = evalExpr tmp expects
@@ -236,50 +234,40 @@ evalOptionExpects stage nixModule pairs = withTempDir $ \dir -> do
                        fs -> Left (violations fs)
         Right (ExitFailure _, _, err) -> Left (EvalFailed (T.pack err))
 
--- | The staged-source gate: every relative path the realized module names must
--- exist in the tree lips stages beside it (an artifact's minted source).
--- Without it such a path reaches nix, which fails with @path '...' does not
--- exist@ over a store path, naming neither lips, the program, the artifact nor
--- a remedy -- and only at the user's @nix run@ for a program lips does not build
--- (the artifact gate below builds every artifact a mint declares, but this gate
--- runs on the cheap path too). Checked against a real staging into a temp dir,
--- not against a guess at how a path maps to the language folder, so the gate
--- sees exactly what nix will see.
---
--- A path filled from a program word (@src ./artifacts/\<name\>@) is how this
--- fails in practice: the staged tree exists under the ONE name that was minted,
--- so renaming the command in the program leaves the path pointing at nothing.
--- Hence the remedy is regeneration: the source tree is minted, never edited.
+-- | The staged-path gate: every relative path the realized module names must
+-- exist in what lips stages beside it (the site its clauses build). Without it
+-- such a path reaches nix, which fails with @path '...' does not exist@ over a
+-- store path, naming neither lips, the program nor a remedy. Checked against a
+-- real staging into a temp dir, not against a guess at how a path maps to the
+-- language folder, so the gate sees exactly what nix will see. No language
+-- holds a source tree (model-written source is refused), so a path naming one
+-- (@src ./artifacts/\<name\>@) is refused here too.
 stagedGate :: (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 stagedGate stage file rl
-  | null staged && null (rlFills rl) = pure ()
+  | null staged = pure ()
   | otherwise = withTempDir $ \dir -> do
   stage dir
-  -- The same fill compile performs, so a fill defect (a value no source names, a
-  -- marker no engine declares) is refused here rather than shipping @marker@
-  -- verbatim into a compiled program.
-  fillStagedTree file (dir </> "artifacts") (rlFills rl)
   missing <- filterM (fmap not . doesPathExist . (dir </>) . T.unpack . fst) staged
   case missing of
     [] -> pure ()
     ms -> die (report
       (T.pack file <> " names " <> plural (length ms) "file" <> " that lips never staged:")
       [ p <> " (named by " <> niceSubject (dSubject d) <> ")" | (p, d) <- ms ]
-      ("→ the source tree is minted, so rebuild it: lips generate " <> T.pack file))
+      ("→ lips stages only the site its clauses build, so the engine must not name"
+        <> " another path; rebuild it: lips generate " <> T.pack file))
   where staged = rlStaged rl
 
 -- | The build gate: every artifact the engine declares must BUILD, and every
 -- path the output names inside one must really be there.
 --
 -- Why observation and not a static check: what a build CONTAINS is decided by
--- the source, and a binary's name is spelled in a @go.mod@ or a @Cargo.toml@,
--- never in the derivation. So an engine emitting
--- @ExecStart = "${artifact.hello}\/bin\/hello"@ beside a @go.mod@ saying
--- @module server@ is well-formed everywhere lips can read: it passed the mint
--- gate, @check@, and the artifact EVAL check, and shipped a unit that cannot
--- start -- twice. Knowing the answer requires looking inside the result, and
--- teaching lips what each builder names its output would be an open list the
--- kernel enumerates (the doctrine forbids it).
+-- the builder and its arguments, never by anything lips reads. An engine
+-- emitting @ExecStart = "${artifact.hello}\/bin\/hello"@ over a build that
+-- installs @bin\/server@ was well-formed everywhere lips can read: it passed the
+-- mint gate, @check@, and the artifact EVAL check, and shipped a unit that
+-- cannot start -- twice. Knowing the answer requires looking inside the result,
+-- and teaching lips what each builder names its output would be an open list
+-- the kernel enumerates (the doctrine forbids it).
 --
 -- Why in @generate@ only: it is the one verb that is already online and already
 -- builds a pinned nixpkgs, so the cost is a build it can afford. @compile@ stays
@@ -291,13 +279,11 @@ artifactGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 artifactGate nixpkgs stage file rl = case rlArtifact rl of
   (_, [])         -> pure ()
   (body, names) -> step ("build " <> plural (length names) "artifact") $ withTempDir $ \dir -> do
-    -- The build reads the tree exactly as compile writes it: artifact.nix beside
-    -- a staged, FILLED artifacts/ tree, so `src = ./artifacts/<name>` resolves.
+    -- The build reads the directory exactly as compile writes it.
     TIO.writeFile (dir </> "artifact.nix") body
     -- The whole neighbourhood, since an artifact's own argument may name the
     -- site: a wrapper renaming the program is exactly that shape.
     stage dir
-    fillStagedTree file (dir </> "artifacts") (rlFills rl)
     note ("looking inside " <> T.intercalate ", " names)
     built <- forM names (\n -> (,) n <$> buildArtifact nixpkgs file dir n)
     -- A path whose artifact did not build is unreachable: the build above dies
@@ -311,8 +297,8 @@ artifactGate nixpkgs stage file rl = case rlArtifact rl of
         [ "${artifact." <> n <> "}" <> p <> " (named by " <> niceSubject (dSubject d)
             <> "), built as " <> maybe "?" T.pack (lookup n built)
         | (n, p, d) <- ms ]
-        ("\8594 the name in that path is decided by the source lips minted, not by"
-          <> " the build, so both are rebuilt together: lips generate " <> T.pack file))
+        ("\8594 the name in that path is decided by the build's own arguments, so"
+          <> " both are rebuilt together: lips generate " <> T.pack file))
   where
     inside built (n, p, _) = maybe "" id (lookup n built) <> T.unpack p
 
@@ -344,7 +330,6 @@ mintClaimGate nixpkgs stage file rl
         -- The whole neighbourhood: the module, its claims file, or an artifact
         -- argument may all name the site.
         stage dir
-        fillStagedTree file (dir </> "artifacts") (rlFills rl)
         let (artBody, artNames) = rlArtifact rl
         TIO.writeFile (dir </> "artifact.nix") artBody
         case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
@@ -404,8 +389,8 @@ buildClaim nixpkgs file dir c = do
     Right (ExitFailure _, _, err) -> die (report
       (T.pack file <> ": the setup lips minted does not do what the program says.")
       (T.lines (T.pack err))
-      ("\8594 the behaviour lives in the source lips minted, so both are rebuilt"
-        <> " together: lips generate " <> T.pack file))
+      ("\8594 the behaviour is minted, so it is rebuilt from the program:"
+        <> " lips generate " <> T.pack file))
     Right (ExitSuccess, _, _) -> pure ()
   where
     -- The claim id is identifier text, so it is indexed as a quoted key, exactly
@@ -430,7 +415,7 @@ buildArtifact nixpkgs file dir name = do
     Right (ExitFailure _, _, err) -> die (report
       (T.pack file <> ": the artifact " <> name <> " lips wrote does not build.")
       (T.lines (T.pack err))
-      ("\8594 the build and its source are minted together, so rebuild both:"
+      ("\8594 the build's arguments are minted, so rebuild them:"
         <> " lips generate " <> T.pack file))
     Right (ExitSuccess, out, _) -> pure (T.unpack (T.strip (T.pack out)))
   where
