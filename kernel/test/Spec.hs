@@ -7357,9 +7357,6 @@ main = hspec $ do
               (mk "g1" "x" "echo \"hello from lips\"" Stated)
                 { dKind = Glue, dProv = FromSource (SourceLoc "greet.lips" 1) })
           , (Subject ["artifact", "greet", "builder"], mk "b1" "x" "\"writeShellApplication\"" Stated)
-          , (Subject ["artifact", "logscan", "args", "src"],
-              (mk "s1" "x" "./artifacts/logscan" Stated)
-                { dProv = FromSource (SourceLoc "logscan.lips" 4) })
           ]
         g = grounding noTemplate base
         -- No template is known, so glue is graded as the mint's and every word
@@ -7387,11 +7384,8 @@ main = hspec $ do
     it "names a glue decision as mint glue when no template says otherwise" $
       map (uSubject) (gMintGlue g) `shouldBe` [Subject ["artifact", "greet", "args", "text"]]
 
-    it "names a staged source tree separately: the same defect at file scale" $
-      map (uSubject) (gStaged g) `shouldBe` [Subject ["artifact", "logscan", "args", "src"]]
-
     it "does not count a builder reference, which names rather than carries text" $
-      length (gMintGlue g) + length (gStaged g) `shouldBe` 2
+      length (gMintGlue g) `shouldBe` 1
 
     -- Several program lines may state the same artifact argument; that is one
     -- assertion, not three, and reporting three would overstate the program.
@@ -7518,7 +7512,7 @@ main = hspec $ do
       case groundingReport g of
         (summary : glueLine : _) -> do
           summary `shouldBe`
-            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 0 glue assertions by the author (stated), 2 unvouched assertions (nothing), 5 words, 0 mint-written words inside option strings"
+            "grounding: 1 option assignment (schema), 1 clause (contracts), 1 claim (stated), 0 glue assertions by the author (stated), 1 unvouched assertion (nothing), 4 words, 0 mint-written words inside option strings"
           glueLine `shouldSatisfy` T.isInfixOf "glue (mint, unpinned): artifact.greet.args.text"
           glueLine `shouldSatisfy` T.isInfixOf "<- greet.lips:1"
         out -> expectationFailure ("report is too short: " <> show out)

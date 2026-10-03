@@ -18,12 +18,11 @@ module Lips.Stage
   , stageBeside
   , siteNameOf
   , writeSite
-  , stagedSizes
   , writeCompiled
   ) where
 
 import           Control.Exception  (finally)
-import           Control.Monad      (forM, forM_, void, when)
+import           Control.Monad      (forM_, void, when)
 import           Data.Maybe         (fromMaybe)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -37,8 +36,6 @@ import           System.Posix.Temp  (mkdtemp)
 
 import           Lips.Cli.Output       (die, report)
 import           Lips.Identity         (artifactsPathIn, languageName)
-import           Lips.Kernel.Decision   (Subject (..))
-import           Lips.Kernel.Grounding (Grounding, Unvouched (..), gStaged)
 import           Lips.Kernel.Realize   (defaultSiteName)
 import           Lips.Kernel.Run       (Realization (..))
 import           Lips.Nix.Claims       (claimsFile)
@@ -160,37 +157,6 @@ removeIfPresent dir name = do
   let path = dir </> name
   there <- doesFileExist path
   when there (removeFile path)
-
--- | How much source each staged tree actually holds, in lines and files. The
--- number that matters for review: an unvouched path is cheap to write and
--- expensive to trust, and only its size says which it is.
-stagedSizes :: FilePath -> FilePath -> Grounding -> IO [Text]
-stagedSizes dir file g = mapM one (gStaged g)
-  where
-    one u = do
-      let root = artifactsPathIn dir file
-      (ls, fs) <- treeSize root
-      pure ("  staged tree: " <> subjectDots (uSubject u) <> " holds "
-             <> T.pack (show ls) <> " lines in " <> T.pack (show fs)
-             <> (if fs == 1 then " file" else " files")
-             <> ", vouched by nothing")
-    subjectDots (Subject ss) = T.intercalate "." ss
-
--- | Total lines and file count under a directory, recursively. Zero for a path
--- that is not there, so a program whose tree is missing reports honestly rather
--- than failing here (the staged-source gate is the one that refuses).
-treeSize :: FilePath -> IO (Int, Int)
-treeSize root = do
-  there <- doesDirectoryExist root
-  if not there then pure (0, 0) else do
-    entries <- listDirectory root
-    sizes <- forM entries $ \e -> do
-      let path = root </> e
-      isDir <- doesDirectoryExist path
-      if isDir then treeSize path else do
-        body <- TIO.readFile path
-        pure (length (T.lines body), 1)
-    pure (sum (map fst sizes), sum (map snd sizes))
 
 -- | Copy a directory tree, creating @dst@ and mirroring files and subdirectories
 -- (the @cp -rT@ shape: contents of @src@ land directly in @dst@). Loud on any

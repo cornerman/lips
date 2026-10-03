@@ -64,7 +64,7 @@ import           Lips.Gate              (ExpectFail (..), artifactGate, artifact
                                         clauseClaimGate, mintClaimGate, runExpects,
                                         stagedGate, worldGate)
 import           Lips.Stage             (stageBeside, stageFromDisk,
-                                         stagedSizes, withTempDir, writeCompiled, writeSite)
+                                         withTempDir, writeCompiled, writeSite)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
 import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission,
@@ -667,16 +667,11 @@ checkWorld contract claims dir w file program = do
         -- exactly as a local one is.
         rl <- expectGate contract claims dir w file eng (composeWith imports rl0)
         -- What vouches for each assertion, always printed. An unvouched
-        -- assertion (mint glue in a builder argument, a staged source tree)
+        -- assertion (mint glue in a builder argument)
         -- is the one thing lips cannot check, so the count is stated on every
         -- run rather than discovered later by a reviewer reading generated code.
         let ground = groundingOf file eng rl
         mapM_ note (groundingReport ground)
-        -- A staged tree's size is the one thing the kernel cannot report: it is
-        -- pure and owns no filesystem, so the path counts as one word while the
-        -- file behind it may hold seventy lines nobody reviewed. The caller that
-        -- stages measures.
-        mapM_ note =<< stagedSizes dir file ground
         -- What this world drops, said on every run rather than left for a
         -- reviewer who opens the rules file: a declaration is cheap to write and
         -- must not be cheap to overlook.

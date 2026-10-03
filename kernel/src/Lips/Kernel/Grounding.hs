@@ -10,8 +10,8 @@
 -- it -- is foreign text only the builder's conventions govern, and comes in two
 -- grades. AUTHOR glue carries only the program's words, so the author vouches
 -- for it. MINT glue carries text the mint wrote (a shell line in @args.text@),
--- vouched by nothing lips can read, so it must at least be RUN by a claim. A
--- STAGED SOURCE TREE is the same defect at file scale, refused at generate.
+-- vouched by nothing lips can read, so it must at least be RUN by a claim. (A
+-- source tree, the same defect at file scale, is refused at generate.)
 --
 -- A schema vouches for a NAME and a TYPE, never for the text inside a string. So
 -- there is a fifth number beside the four classes: how many words of literal text
@@ -69,7 +69,6 @@ data Grounding = Grounding
   , gUnpinned :: [Unvouched]
     -- ^ The mint glue no claim reaches: no @claim.\<id\>.run@ names its artifact,
     -- directly or through another artifact's arguments. @generate@ refuses these.
-  , gStaged   :: [Unvouched] -- ^ staged source trees: the same defect at file scale
   , gWritten  :: [Unvouched]
     -- ^ String option values carrying literal words no program word reaches: text
     -- the mint wrote and a schema cannot vouch for. Not a defect by itself (a
@@ -92,7 +91,7 @@ claimCount = length . nub . gClaimIds
 -- the TEMPLATE, because by the time a decision is ground its holes are filled
 -- and a program word inside the string is indistinguishable from the mint's.
 grounding :: (Decision -> Maybe Value) -> [(Subject, Decision)] -> Grounding
-grounding templateOf winners = pin (foldr add (Grounding 0 0 [] [] [] [] [] []) unique)
+grounding templateOf winners = pin (foldr add (Grounding 0 0 [] [] [] [] []) unique)
   where
     -- One SUBJECT is one assertion, however many agreeing decisions carry it.
     -- Several program lines may state the same artifact argument (three lines
@@ -107,7 +106,6 @@ grounding templateOf winners = pin (foldr add (Grounding 0 0 [] [] [] [] [] []) 
       -- Where the behaviour runs and what to call it: kernel vocabulary, so no
       -- schema vouches for it and counting it as an option overstates what does.
       ("site" : _)   -> g
-      ["artifact", _, "args", "src"] -> g { gStaged = unvouchedOf s d : gStaged g }
       _ | dKind d == Glue -> case templateOf d of
             -- Only the program's words went in: the author's glue.
             Just t | wordsIn t == 0 -> g { gAuthorGlue = unvouchedOf s d : gAuthorGlue g }
@@ -169,7 +167,7 @@ grounding templateOf winners = pin (foldr add (Grounding 0 0 [] [] [] [] [] []) 
 -- growth is visible at a glance: a five-line program that acquires seventy lines
 -- of Go moves it by hundreds.
 unvouchedWords :: Grounding -> Int
-unvouchedWords g = sum (map uWords (gMintGlue g <> gStaged g))
+unvouchedWords g = sum (map uWords (gMintGlue g))
 
 -- | The report, one line per fact, ready to print. Ordered so the two unvouched
 -- classes come last and largest-first: what a reviewer should look at, in the
@@ -181,7 +179,7 @@ groundingReport g =
       , count (gClauses g) "clause" <> " (contracts)"
       , count (claimCount g) "claim" <> " (stated)"
       , count (length (gAuthorGlue g)) "glue assertion" <> " by the author (stated)"
-      , count (length (gMintGlue g) + length (gStaged g)) "unvouched assertion"
+      , count (length (gMintGlue g)) "unvouched assertion"
           <> " (nothing), " <> count (unvouchedWords g) "word"
       , count (sum (map uWords (gWritten g))) "mint-written word"
           <> " inside option strings"
@@ -190,7 +188,6 @@ groundingReport g =
     <> map (line "glue (mint, unpinned)") (largest (gUnpinned g))
     <> map (line "glue (mint)") (largest (filter (`notElem` gUnpinned g) (gMintGlue g)))
     <> map (line "glue (author)") (largest (gAuthorGlue g))
-    <> map (line "staged") (sortOn (negate . uWords) (gStaged g))
     -- Only the wordiest few: prose in a description is normal, and a list of
     -- every one-word string would bury the number that matters.
     <> map (line "mint wrote")
