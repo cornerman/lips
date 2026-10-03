@@ -21,6 +21,7 @@ module Lips.World.Check
   , SlotFault (..)
   , nixSlices
   , checkNixSlots
+  , inputsSlotDeclares
   ) where
 
 import           Control.Exception  (IOException, try)
@@ -137,3 +138,25 @@ checkNixSlots display raw = withTempDir $ \dir -> go (dir </> takeFileName displ
           let fault = SlotFault (nsSlot s)
                         (T.strip (T.replace (T.pack scratch) (T.pack display) (T.pack err)))
           fmap (fault :) <$> go scratch ss
+
+-- | Does the world's @inputs@ slot declare the input its @schema-input@ names?
+-- lips writes that input itself, from the record's pin, so a second
+-- declaration would either float beside the pin or, written as the same
+-- attribute, fail at nix naming the GENERATED flake. Asked of nix, which reads
+-- every spelling of an attribute set (@inputs.x.url@, @inputs = { x = ...; }@)
+-- alike: the slot is literal flake inputs, so evaluating it fetches nothing.
+-- Only asked of a slot that parses ('checkNixSlots' reports the rest); a world
+-- with no @inputs@ slot declares nothing. 'Left' means nix could not be run.
+inputsSlotDeclares :: Text -> Text -> IO (Either Text Bool)
+inputsSlotDeclares raw name = case [ s | s <- nixSlices raw, nsSlot s == "inputs" ] of
+  [] -> pure (Right False)
+  (s : _) -> withTempDir $ \dir -> do
+    let scratch = dir </> "inputs.nix"
+    TIO.writeFile scratch (nsText s)
+    res <- try (readProcessWithExitCode "nix-instantiate"
+      [ "--eval", "--expr"
+      , "builtins.hasAttr " <> show (T.unpack name) <> " ((import " <> show scratch <> ").inputs or { })" ] "")
+    pure $ case res of
+      Left e -> Left (T.pack (show (e :: IOException)))
+      Right (ExitSuccess, out, _) -> Right (T.strip (T.pack out) == "true")
+      Right (ExitFailure _, _, err) -> Left (T.strip (T.pack err))

@@ -223,6 +223,24 @@
           # point of slicing a slot line-aligned.
           grep -q "schema slot is not valid Nix" refusal
           grep -q "house-broken.world:7:9" refusal
+          # lips writes a world's schema input itself, at the record's pin, so
+          # an inputs slot declaring it too is refused, whatever its spelling.
+          cat > house-dup.world <<'EOF'
+          format: 3
+          world: house-dup
+          module-attr: houseModules
+          schema-input: kubenix github:hall/kubenix
+          --- preamble ---
+          prose
+          --- schema ---
+          null
+          --- inputs ---
+            inputs = { kubenix.url = "github:hall/kubenix"; };
+          EOF
+          if lips world --check house-dup > refusal 2>&1; then
+            echo "a world declaring its schema input twice was accepted:"; cat refusal; exit 1
+          fi
+          grep -q "its inputs slot declares kubenix" refusal
           touch "$out"
         '';
         kernel-tests = pkgs.runCommand "lips-kernel-tests"

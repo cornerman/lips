@@ -98,9 +98,9 @@ import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, rend
 import           Lips.Kernel.Engine.Answerable (unanswerableDemands)
 import           Lips.Kernel.Engine.Gate       (engineViolations, unholdableExpects, unholdableProblem)
 import           Lips.Nix.Flake                (SchemaInput, compiledInput, runCommands)
-import           Lips.World                     (World (..), parseWorld)
+import           Lips.World                     (InputDecl (..), World (..), parseWorld)
 import           Lips.World.Resolve            (builtinNames, localWorldNames, resolveWorld, resolveWorldFrom)
-import           Lips.World.Check               (SlotFault (..), checkNixSlots)
+import           Lips.World.Check               (SlotFault (..), checkNixSlots, inputsSlotDeclares)
 import           Lips.Lsp.Server               (runLsp)
 
 -- | Refinement step budget: generous, since a runaway rule fails loud anyway.
@@ -309,11 +309,27 @@ checkOneWorld here dir name = do
           "lips needs nix to check a world file's slots, but couldn't run it:"
           [why]
           ("\8594 install nix, or run lips through it: nix run . -- world --check " <> name))
-        Right fs -> pure
-          [ report ("lips can't use " <> whose <> ": its " <> sfSlot f <> " slot is not valid Nix.")
-                   (T.lines (sfNix f))
-                   "\8594 fix that slot; the line nix names is the line in that file."
-          | f <- fs ]
+        Right fs -> do
+          dup <- case wSchemaInput w of
+            Just d | "inputs" `notElem` map sfSlot fs -> do
+              declared <- inputsSlotDeclares (wRaw w) (idName d)
+              case declared of
+                Left why -> die (report
+                  "lips needs nix to check a world file's slots, but couldn't run it:"
+                  [why]
+                  ("\8594 install nix, or run lips through it: nix run . -- world --check " <> name))
+                Right True -> pure
+                  [ report ("lips can't use " <> whose <> ": its inputs slot declares "
+                              <> idName d <> ", which its schema-input header already names.")
+                           [ "lips writes " <> idName d <> " itself, at the pin the engine's record carries." ]
+                           ("\8594 delete " <> idName d <> " from the inputs slot.") ]
+                Right False -> pure []
+            _ -> pure []
+          pure (dup ++
+            [ report ("lips can't use " <> whose <> ": its " <> sfSlot f <> " slot is not valid Nix.")
+                     (T.lines (sfNix f))
+                     "\8594 fix that slot; the line nix names is the line in that file."
+            | f <- fs ])
 
 -- | @compile@: verify the program's committed contract, then crystallize +
 -- realize and materialize a DIRECTORY -- default @<language>/out/<instance>/@, or
