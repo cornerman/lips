@@ -588,11 +588,10 @@ uncheckableExpects rules = filter uncheckable
 -- A pure-configuration mint is deliberately unaffected: its behaviour IS its
 -- option assignments, which the committed contract already pins.
 --
--- WARNED, not refused (@generate@ says it in the report it prints): the witness
--- can only come from the author's own example, so a refusal here throws away an
--- engine that is otherwise correct and leaves the author with nothing to state
--- the example against. The prompt asks the mint for a claim and tells it to file
--- a gap where the program offers no example.
+-- REFUSED by @generate@ (since 2026-08-04): deducing the observable from the
+-- program's own words is the mint's job, and `logscan` spent months as the
+-- counter-example, baked source with every gate green. The prompt asks the mint
+-- for a claim and tells it to file a gap where the program offers no example.
 claimlessBakedSource :: [SourceFile] -> [Claim] -> Bool
 claimlessBakedSource sources claims = not (null sources) && null claims
 
