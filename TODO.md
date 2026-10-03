@@ -249,30 +249,25 @@ tracks only what is still open.
    recurs, is the twin of `diagInert`: a word whose only landing is a claim is
    inert in the same sense and should be named.
 
-6. **A world's own render gate runs at build time, not at mint time**
-   (filed 2026-09-18 by `examples/nono.world`, DESIGN §13 "A world lips never
-   heard of").
-
-   `generate` accepts an engine on crystallization, the contract and its
-   claims, and never builds the world's `builds` slot. So the nono world's
-   `nono profile validate` -- the only thing that knows the profile fields its
-   deliberately weak schema leaves free-form -- did not see the first mint, and
-   an engine whose render nono refuses was accepted and committed. `nix flake
-   check`'s `lipsModules-eval` enumerates the four shipped world attributes by
-   name, so `nonoModules` is outside that net as well, and the gate fires only
-   when a human runs `nix build path:examples/policy/out/dev/nono#profile`.
-
-   Two candidate remedies, neither built. Let a world declare a package the
-   mint gate must build (a world-level statement, so no kernel branch), which
-   is the general form and costs a build inside every mint. Or let
-   `lipsModules-eval` find world attributes by looking rather than by name,
-   which closes the CI half only and leaves an accepted-but-invalid engine
-   possible.
+6. **A world's gate pins only nixpkgs** (the open half of the render gate,
+   which landed 2026-10-03: DESIGN §13, "A world's own gate runs at mint time").
+   `worldGate` overrides the compiled flake's `nixpkgs` input with the locked
+   pin and nothing else, so a world whose flake carries another input (kubenix's
+   `github:hall/kubenix`, terranix's) would build its gate against whatever that
+   URL resolves to today. That is why kubenix and terranix declare no gate,
+   although both render cheaply and kubenix refuses an unknown Kubernetes field
+   at evaluation. The missing piece is a relation between a world's flake inputs
+   and the pins lips bakes (`schema-pin:` names an env var, the `inputs` slot
+   names an input, and nothing says they are the same flake). Decide that
+   relation before declaring either gate. nixos has no gate candidate cheaper
+   than a system build, so it declares none.
 
 7. **Remaining known gaps on the clause axis** (none blocking).
 
-   a. **`app/Main.hs` grew back to 1360 lines** (990 after the 2026-08-05
-      extraction, 2135 before it; the worlds arc added the difference). Four
+   a. **`app/Main.hs` grew back to 1761 lines** (990 after the 2026-08-05
+      extraction, 2135 before it; the worlds arc and the mint-feedback work
+      added the difference, and the compiled-directory writer moved out to
+      `Lips.Stage.writeCompiled` on 2026-10-03, from 1775). Four
       seams moved out then: `Lips.Report` (every message it prints, pure),
       `Lips.Schema` (flakeref locking, option JSON, the `options` verb, the
       admissibility gate), `Lips.Stage` (staging trees into a temp dir) and

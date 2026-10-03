@@ -925,6 +925,47 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A world's own gate runs at mint time.** A world file may now carry an
+  optional `--- gate ---` slot: one derivation, written in the scope of the
+  `packages` slot, whose successful build is the world's own verdict over a
+  render. `flakeText` emits it as `packages.<system>.gate`, a name lips owns as it
+  owns `claims` and `site`, and a world without the slot compiles byte-identical
+  (checked by compiling all 23 example programs with the binary before and after,
+  `diff -r` empty). `examples/nono.world` declares `(builds system).profile`,
+  the build that runs `nono profile validate`, and moves to `format: 2`, so a lips
+  that predates the slot answers "upgrade lips" instead of "unknown slot gate".
+  The four shipped worlds stay at format 1 and declare no gate.
+
+  `Lips.Gate.worldGate` writes the directory exactly as `compile` does (one
+  writer, `Lips.Stage.writeCompiled`, now shared by both) and builds `#gate`
+  with `--override-input nixpkgs` set to the locked `LIPS_NIXPKGS_FLAKE`. The
+  validator is therefore the nono the schema came from (0.68.0), never the one the
+  ambient registry happens to resolve (0.74.0 on 2026-09-18, TODO 2a). `generate`
+  runs it per program after the contract, beside the artifact and claim gates.
+  `check --draft` runs it too, so a model reads the validator's refusal inside its
+  own call. The first nono mint was accepted broken and cost $0.74 to discover
+  it; the same refusal is now one resubmission. `check` and `compile` stay
+  nixpkgs-free and do not run it; the world's own `#profile` build still refuses
+  an invalid render where it is used.
+
+  Measured by hand, 2026-10-03: a one-line nono draft whose command entry carries
+  no `sandbox` object is refused in 6.3s, carrying nono's own words ("data did
+  not match any variant of untagged enum CommandFromConfig"); adding
+  `sandbox.fs_read "[ ]"` passes in 1.8s. `just test-draft` now pins both
+  directions.
+
+  CI half: `lipsModules-eval` compiles every attribute `modulesFromDir` produces,
+  found by looking, so `nonoModules` is no longer outside the net. The new check
+  `lipsWorld-gates` imports each compiled directory's `flake.nix`, calls its
+  `outputs` with this flake's own inputs, chosen by the argument names the
+  outputs function asks for, and BUILDS every `packages.<system>.gate`. It
+  refuses to pass with zero gates. No world is named in either check.
+
+  Deliberately not done: only `nixpkgs` is overridden, so a world whose flake
+  has other inputs (kubenix, terranix) would build its gate against an unpinned
+  input. Those worlds declare no gate yet (TODO 6). nixos has no cheap gate to
+  declare, since its only candidate is a system build.
+
 - **A list within one sentence (`<p.list:,|or>`).** A template hole may bind a
   run of tokens and cut it into ITEMS on the separators the engine declares;
   every emit mentioning the hole is produced once per item, with `<p>` the item
@@ -1018,7 +1059,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   terminal approval backend once. Total $1.07, against $3 to $4 for a
   service-shaped nixos mint.
 
-  THE GAP this leaves, stated because it is why an invalid engine was accepted:
+  THE GAP this leaves, stated because it is why an invalid engine was accepted
+  (CLOSED 2026-10-03, "A world's own gate runs at mint time" above):
   `generate` never builds a world's `builds` slot, so the validator is a
   build-time gate, not a mint gate. `nix flake check`'s `lipsModules-eval`
   enumerates the four shipped world attributes by name, so a local world's
@@ -1602,7 +1644,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   a data file: header lines (`world`, `module-attr`, `schema-pin`,
   `schema-flake`, `input-args`, `claims`, `format`) plus named slots
   (`preamble`, `schema`, `inputs`, `builds`, `packages`, `apps`, `devShells`,
-  `rungs`), parsed strictly by `Lips.World` -- an unknown key or slot names
+  `rungs`, and since format 2 `gate`), parsed strictly by `Lips.World` -- an unknown key or slot names
   itself in the refusal, and a file declaring a newer `format:` says which lips
   to upgrade. The four lips ships live in `assets/worlds/*.world`, embedded, and
   a `<name>.world` beside a program (or under `--worlds DIR`) resolves the same
