@@ -925,6 +925,60 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A patch is answered against the whole committed language.** A patch
+  mint's inherited engine carried the committed grammar and rules only, while
+  `assets/mint/body.md` promised "the previous engine, its report, and its
+  expect contract", and a report was required on every mint. So a patch wrote
+  its report blind. MEASURED 2026-10, `examples/deploy` patched into the new
+  kubenix world, both runs discarded. sonnet-5 ($0.091, 29s, 1,422 output
+  tokens) kept the engine right, but its report became "No changes were
+  needed" and stated `<self>` = `web.deploy` (it is `web`). opus-5 ($0.279,
+  54s, 2,125 output tokens) restated a1-a6 byte-identically and reported them
+  as "the behavioral contract that was missing".
+
+  Now one reader, `readBasis` (Main), feeds generate's prompt and merge and
+  the draft door's merge, replacing two copies of the same assembly. It reads
+  the grammar, each world's rules and committed `.expect`, and the report the
+  governing record's raw reply carried (`Record.recordedReply`,
+  `Minting.reportUnitOf`). The README is a rendering and is never parsed back.
+  `Minting.basisReply` renders that basis in reply format: expects as
+  `1.0 aN [@w] expect ...`, tagged per world as rules are, the rest of each
+  line kept byte for byte, and the report as its verbatim block. The existing
+  `mergeReply` then inherits an unmentioned expect or report like any other
+  id, so the "came back without a report" guard binds only a first or fresh
+  mint. Consequence, accepted: a patch can no longer DROP an assertion, since a
+  patch deletes no line, so under a patch the contract-change and forwards
+  refusals name `lips generate --fresh --compat <mode>`. It also closes a
+  latent hole: a patch under `--compat none` that wrote no expects used to
+  leave an empty contract.
+
+  One structural guard, `Minting.reportFault`, judged identically in the door
+  and in generate. A merged engine with two reports is refused, naming them
+  ("restate d1"). A patch that changes what the engine means is also refused
+  while the basis carries a report the patch does not restate, naming the ids
+  ("leaves the report as it was"). "Changes" means a pattern, rule, demand,
+  merge, ignore or expect that is new or whose text differs, with confidence
+  and spacing ignored. A byte-identical restatement passes. The prompt now
+  says what is true. patch.md: the inherited engine carries its contract and
+  report, and the report is the account, not a patch log, restated whole only
+  when the engine changes. body.md: the engine, contract and report are shown
+  "unless the human asked for a fresh engine".
+
+  MEASURED, the re-mints this unblocked (2026-10, branch binary). `deploy`,
+  opus-5, thinking medium: $0.265, 46s, 1,861 output tokens. It patched only
+  a1, byte-identically, and README and `.expect` came out unchanged: the
+  account was inherited. `bucket`, sonnet-5, thinking medium: $0.134, 38s,
+  4,123 output tokens, 3 submissions. The first two restated r2 and r3 with
+  `\${` where the committed rule has `\\${`, and the door refused both as a
+  changed engine with an old report. That was a real change: one lost backslash
+  turns Terraform's escaped reference into a Nix interpolation. The third
+  restated all eleven lines faithfully. Grammar, rules, `.expect` and README
+  are unchanged but for stamps. So the stale-report guard caught a needless
+  restatement that would have broken the render. hspec has 11 new cases;
+  `just test-draft` refuses a q5 added on the committed deploy basis without a
+  report, and a second report d2. `nix flake check` passes, and
+  `lipsWorld-gates` builds 3 gates (nono, kubenix, terranix).
+
 - **A world names the flake its schema pin locks (`schema-input`).** Before
   this, nothing related a world's flake inputs to the pins lips bakes:
   `schema-pin:` named an env var, the `inputs` slot named an input, and only
@@ -977,13 +1031,13 @@ but the loop around it is incomplete; "missing" means specced, not built.
   refused as an unreachable kubenix. By hand, the terranix gate over the
   committed `bucket` engine builds in 2.1s, and a top-level
   `inputs.nixpkgs.follows = "kubenix/nixpkgs"` resolves to kubenix's locked
-  nixpkgs (20535e4). NOT yet proved by CI: `lipsWorld-gates` builds only gates
-  of committed compiled directories, and `deploy` and `bucket` still carry
-  their old world copies. Their re-mints wait on the patch-prompt defect
-  (TODO, "A patch mint does not see the committed contract or report"). CI
-  calls each compiled flake's `outputs` with lips's own inputs, so it builds
-  gates against lips's locked nixpkgs (kubenix and terranix following it),
-  never against the record pin or the follows.
+  nixpkgs (20535e4). CI proves it since `deploy` and `bucket` were re-minted
+  into the new worlds ("A patch is answered against the whole committed
+  language" above): `lipsWorld-gates` now builds three gates, nono's profile,
+  kubenix's manifest and terranix's config.tf.json. CI calls each compiled
+  flake's `outputs` with lips's own inputs, so it builds gates against lips's
+  locked nixpkgs (kubenix and terranix following it), never against the record
+  pin or the follows.
 
 - **`generate` without `-t` mints the world the language already holds.**
   `-t` used to default to nixos whatever the language folder held, so a re-mint

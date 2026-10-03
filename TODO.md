@@ -13,15 +13,15 @@ tracks only what is still open.
    (269s / $0.77 against 295s / $0.94), so its 28 percent is a datapoint, not a
    mean. Repeat that arm the next time a mint runs for another reason, and only
    then decide whether a patch is sonnet-able.
-   Sonnet datapoint (2026-10, `examples/deploy` patched into the kubenix world,
-   sonnet-5, thinking medium): accepted on the first submission, $0.091, 29s,
-   1,422 output tokens, the engine correct (rules unchanged but for stamps). The
-   report degraded: d1 became "No changes were needed", dropping the language
-   account, and stated `<self>` = `web.deploy` (it is `web`). An opus-5 run of
-   the same patch ($0.279, 54s) wrote a sound account but claimed it "adds the
-   behavioral contract that was missing", which was already committed. Both
-   were discarded, and both trace to item 6, so judge sonnet-ability only after
-   item 6 closes.
+   Sonnet datapoints (2026-10, DESIGN §13 "A patch is answered against the
+   whole committed language"). Before that fix a sonnet-5 `deploy` patch
+   ($0.091) kept the engine right and degraded the report. After it, the
+   sonnet-5 `bucket` patch was accepted ($0.134, 3 submissions): it needlessly
+   restated every line, twice with a backslash lost from a Terraform
+   reference, and the stale-report guard refused both drafts in the door. The
+   opus-5 `deploy` patch after the fix cost $0.265 and changed nothing. So
+   far: sonnet is cheaper but restates what it should leave alone, and only a
+   gate keeps that honest. Neither run had artifacts or several worlds.
 
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
@@ -149,21 +149,6 @@ tracks only what is still open.
       existed: a mint that lands the program's words only in CLAIMS and mints
       behaviour that ignores them. The guard, if it recurs, is the twin of
       `diagInert`: a word whose only landing is a claim is inert.
-
-6. **A patch mint does not see the committed contract or report** (found
-   2026-10 re-minting `examples/deploy`; next errand, branch `patch-basis`).
-   The patch prompt's inherited engine (`basisEngine`, `kernel/app/Main.hs`)
-   renders only the committed grammar and rules, while `assets/mint/body.md`
-   promises the model "the previous engine, its report, and its expect
-   contract". A report is required on every mint, so a patch writes d1 blind:
-   sonnet-5 replaced the language account with "No changes were needed", and
-   opus-5 restated a1-a6 byte-identically and reported them as newly added
-   (item 0 has both runs). Fix in the kernel, not the prompt: render the
-   committed `<world>.expect` and report into the basis, and let an
-   unmentioned d1 inherit like any other id. Then re-mint `deploy` (opus-5)
-   and `bucket` (sonnet-5), so `lipsWorld-gates` builds the kubenix and
-   terranix gates (DESIGN §13, "A world names the flake its schema pin
-   locks").
 
 7. **Remaining known gaps on the clause axis** (none blocking).
 
