@@ -989,6 +989,23 @@ but the loop around it is incomplete; "missing" means specced, not built.
   construction only (one `nixpkgs` binding shared with the clause claims); no
   stub-`pi` mint exercises them.
 
+  An unreachable nixpkgs is refused as itself, not blamed on the rules. Before
+  the first build, `Gate.reachNixpkgs` asks nix once whether it can fetch the ref
+  (`nix flake metadata`). The question is asked at each of three sites, and only
+  when a build follows: `gateOneWorld`, the draft door per world, and `check`'s
+  claim gates. If nix cannot fetch it, the refusal names the ref, quotes nix,
+  and names its source (`--schema`, `LIPS_NIXPKGS_FLAKE` or the record's
+  `schema:` line, else the `flake:nixpkgs` registry). Before this, an unfetchable
+  pin read "the rules are minted, so mint again" (world gate) or "the program
+  and its claims disagree" (clause claims), remedies that cannot help. A gate's
+  own refusal now follows a fetchable nixpkgs, so its blame is honest. Residual,
+  accepted rather than parsed out of nix's stderr: a build that fails mid-way on
+  a network drop (a substitute download) still reads as the gate's verdict.
+  `just test-draft` proves the door: both bogus-pin cases say "can't reach" and
+  no longer carry the gate's remedy. `check`'s site is covered by construction
+  only, because a record copy with an edited pin fails the invariant-6 re-hash
+  before any build runs, and no test-only bypass exists.
+
   Prevention, not comparison: with the evaluator equal to the grounding there
   is nothing left to warn about. The trigger is domain-blind: a world whose
   `schema-pin:` header names the substrate var `LIPS_NIXPKGS_FLAKE` grounds on

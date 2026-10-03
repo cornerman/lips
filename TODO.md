@@ -55,6 +55,10 @@ tracks only what is still open.
         `<schema-pin>` hole in the world's `--- inputs ---` slot, filled by
         compile. World copies are hash-sealed in records, so a committed engine
         gains it only on its next re-mint.
+        The same item covers a mint's own builds for these worlds (and
+        home-manager): since 2026-10 they build ambient like `check`, so a
+        mint's artifact, claim and gate builds depend on the host's
+        `flake:nixpkgs` registry.
       - AN IMPORTED MODULE EVALUATES UNDER THE IMPORTER'S NIXPKGS, deliberately
         unchecked: `lib.modulesFromDir` hands the module to the consumer's
         `pkgs`, as every third-party module is. A rev comparison there would
