@@ -1,7 +1,8 @@
-format: 2
+format: 3
 world: nono
 module-attr: nonoModules
 schema-pin: LIPS_NIXPKGS_FLAKE
+schema-input: nixpkgs flake:nixpkgs
 
 --- preamble ---
 TARGET WORLD: nono (https://nono.sh), a capability-based sandbox that runs one

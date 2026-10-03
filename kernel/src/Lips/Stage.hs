@@ -36,7 +36,7 @@ import           Lips.Identity         (languageName)
 import           Lips.Kernel.Realize   (defaultSiteName)
 import           Lips.Kernel.Run       (Realization (..))
 import           Lips.Nix.Claims       (claimsFile)
-import           Lips.Nix.Flake        (Nixpkgs, Rungs (..), SiteRung (..), flakeText)
+import           Lips.Nix.Flake        (Rungs (..), SchemaInput, SiteRung (..), flakeText)
 import           Lips.Runtime          (runtimeAsset, runtimes)
 import           Lips.Site             (SitePlan (..), planSite)
 import           Lips.World            (World)
@@ -64,8 +64,8 @@ stageBeside file rl root = void (writeSite (T.pack (languageName file)) root rl)
 -- directory a compile writes.
 --
 -- Returns the artifact names and the rungs, which is what @compile@ prints.
-writeCompiled :: World -> Nixpkgs -> FilePath -> FilePath -> Realization -> IO ([Text], Rungs)
-writeCompiled world nixpkgs file out rl = do
+writeCompiled :: World -> SchemaInput -> FilePath -> FilePath -> Realization -> IO ([Text], Rungs)
+writeCompiled world si file out rl = do
   createDirectoryIfMissing True out
   TIO.writeFile (out </> "default.nix") (rlModule rl)
   -- The clause core, when the program states behaviour: one site directory
@@ -88,7 +88,7 @@ writeCompiled world nixpkgs file out rl = do
                     , siteRung = if not hasSite then Nothing
                                  else Just (SiteRung (siteNameOf rl)
                                                      (not (null (rlClauseClaims rl)))) }
-  TIO.writeFile (out </> "flake.nix") (flakeText world nixpkgs rungs)
+  TIO.writeFile (out </> "flake.nix") (flakeText world si rungs)
   pure (artNames, rungs)
 
 -- | What the program is installed as. A realization names the site only where

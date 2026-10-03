@@ -49,8 +49,8 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Claims (claimsFile)
-import Lips.Nix.Flake (Nixpkgs (..), Rungs (..), SiteRung (..), compiledNixpkgs, flakeText,
-                       nixpkgsRef, noRungs, runCommands)
+import Lips.Nix.Flake (InputRef (..), Rungs (..), SchemaInput (..), SiteRung (..), compiledInput,
+                       flakeText, inputRef, nixpkgsExpr, noRungs, runCommands)
 import Lips.World
 import Lips.World.Builtin (builtinWorld, builtinWorlds)
 import Lips.World.Check (NixSlice (..), nixSlices)
@@ -4465,76 +4465,112 @@ main = hspec $ do
     it "admits a machine claim where there IS a machine" $
       unplaceableClaims (wClaims (shippedWorld "nixos")) [machC] `shouldBe` []
 
-  -- The schema that admitted the rules and the nixpkgs a compiled directory
-  -- evaluates against are the same pin wherever the world grounds on the
-  -- substrate nixpkgs: otherwise a rule is judged by one version of a tool and
-  -- run by another (nono 0.68.0 against 0.74.0).
-  describe "the compiled flake's nixpkgs" $ do
+  -- The schema that admitted the rules and the flake a compiled directory
+  -- evaluates are the same pin: otherwise a rule is judged by one version of a
+  -- tool and run by another (nono 0.68.0 against 0.74.0). A world names the
+  -- input its pin locks (schema-input); a copy written before that header reads
+  -- as it always did, so a committed example compiles byte-identically.
+  describe "the compiled flake's schema input" $ do
     let pin = "github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12Kr%3D"
-    it "pins the recorded schema where the world grounds on the substrate nixpkgs" $
-      compiledNixpkgs (shippedWorld "nixos") (Just pin) `shouldBe` Pinned pin
+        kpin = "github:hall/kubenix/e3e9a30fa0684ab21cd6d757c856d2e0a32d15a9?narHash=sha256-bgk2%3D"
+        world t = either (error . T.unpack) id (parseWorld t)
+        -- The shape every committed nixos/nono copy has: no schema-input.
+        legacy = world ("format: 1\nworld: house\nmodule-attr: houseModules\nschema-pin: LIPS_NIXPKGS_FLAKE\n"
+                          <> "--- preamble ---\nP\n--- schema ---\nE\n")
+        legacyKubenix = world ("format: 1\nworld: kubenix\nmodule-attr: kubenixModules\n"
+                          <> "schema-pin: LIPS_KUBENIX_FLAKE\ninput-args: , kubenix\n"
+                          <> "--- preamble ---\nP\n--- schema ---\nE\n"
+                          <> "--- inputs ---\n  inputs.kubenix.url = \"github:hall/kubenix\";\n")
+        nixpkgsAt = SchemaInput "nixpkgs"
 
-    -- Keyed on the substrate's pin, never on a world name: a house world that
-    -- grounds the same way is pinned with no lips change.
-    it "pins a world nobody foresaw by the same header" $ do
-      let w = either (error . T.unpack) id (parseWorld
-            ("format: 1\nworld: house\nmodule-attr: houseModules\nschema-pin: LIPS_NIXPKGS_FLAKE\n"
-              <> "--- preamble ---\nP\n--- schema ---\nE\n"))
-      compiledNixpkgs w (Just pin) `shouldBe` Pinned pin
+    it "pins the world's named input to the recorded schema" $ do
+      compiledInput (shippedWorld "nixos") (Just pin) `shouldBe` nixpkgsAt (Pinned pin)
+      compiledInput (shippedWorld "kubenix") (Just kpin) `shouldBe` SchemaInput "kubenix" (Pinned kpin)
 
-    -- home-manager's pin names home-manager, not the nixpkgs the flake imports.
-    it "stays ambient where the schema pin names another flake" $
-      compiledNixpkgs (shippedWorld "home-manager")
+    it "falls back to the world's own ref when the record pins no flake" $ do
+      compiledInput (shippedWorld "nixos") Nothing `shouldBe` nixpkgsAt (Unpinned "flake:nixpkgs")
+      compiledInput (shippedWorld "kubenix") Nothing
+        `shouldBe` SchemaInput "kubenix" (Unpinned "github:hall/kubenix")
+      compiledInput (shippedWorld "terranix") (Just (contentPin "{}"))
+        `shouldBe` SchemaInput "terranix" (Unpinned "github:terranix/terranix")
+
+    -- A copy without the header: pinned only where it grounds on the substrate
+    -- nixpkgs, keyed on that header and never on a world name.
+    it "reads a copy without schema-input as before" $ do
+      compiledInput legacy (Just pin) `shouldBe` nixpkgsAt (Pinned pin)
+      compiledInput legacy (Just (contentPin "{}")) `shouldBe` nixpkgsAt (Unpinned "flake:nixpkgs")
+      compiledInput legacy Nothing `shouldBe` nixpkgsAt (Unpinned "flake:nixpkgs")
+      compiledInput legacyKubenix (Just kpin) `shouldBe` nixpkgsAt (Unpinned "flake:nixpkgs")
+
+    -- home-manager's pin names home-manager, and the consumer brings it.
+    it "stays ambient where the world names no input" $
+      compiledInput (shippedWorld "home-manager")
         (Just "github:nix-community/home-manager/041a999e8c1c5b731913855909e68d30ca69b8e0")
-        `shouldBe` Ambient
-
-    it "stays ambient for a schema pinned by content, which names no flake" $
-      compiledNixpkgs (shippedWorld "nixos") (Just (contentPin "{}")) `shouldBe` Ambient
-
-    it "stays ambient for a record that predates the pin" $
-      compiledNixpkgs (shippedWorld "nixos") Nothing `shouldBe` Ambient
+        `shouldBe` nixpkgsAt (Unpinned "flake:nixpkgs")
 
     it "writes the pin as the flake's nixpkgs input, and says so" $ do
-      let t = flakeText (shippedWorld "nixos") (Pinned pin) noRungs
+      let t = flakeText (shippedWorld "nixos") (nixpkgsAt (Pinned pin)) noRungs
       t `shouldSatisfy` T.isInfixOf ("inputs.nixpkgs.url = \"" <> pin <> "\";")
       t `shouldNotSatisfy` T.isInfixOf "flake:nixpkgs"
       t `shouldSatisfy` T.isInfixOf "nixpkgs pinned to the schema"
 
     -- Ambient is a fact about the record, so the flake states it rather than
-    -- letting a reader assume the grounding holds.
-    it "writes the registry as the input when nothing pins it, and says why" $ do
-      let t = flakeText (shippedWorld "nixos") Ambient noRungs
-      t `shouldSatisfy` T.isInfixOf "inputs.nixpkgs.url = \"flake:nixpkgs\";"
-      t `shouldSatisfy` T.isInfixOf "nixpkgs resolved ambiently"
+    -- letting a reader assume the grounding holds. These exact lines are what
+    -- every committed copy compiles to, so they must not move.
+    it "writes the registry as the input when nothing pins it, and says why" $
+      take 4 (T.lines (flakeText legacyKubenix (nixpkgsAt (Unpinned "flake:nixpkgs")) noRungs))
+        `shouldBe`
+          [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
+          , "{"
+          , "  description = \"lips-compiled program (nixpkgs resolved ambiently: its record pins no nixpkgs)\";"
+          , "  inputs.nixpkgs.url = \"flake:nixpkgs\";" ]
 
-    -- A mint's own builds (artifacts, command claims, the world's gate) name
-    -- nixpkgs by this ref, so they observe exactly what the flake's input names.
-    it "names the same nixpkgs for a mint's builds as the flake's input" $ do
-      let input n = T.isInfixOf ("inputs.nixpkgs.url = \"" <> nixpkgsRef n <> "\";")
-                                (flakeText (shippedWorld "nixos") n noRungs)
-      nixpkgsRef (Pinned pin) `shouldBe` pin
-      nixpkgsRef Ambient `shouldBe` "flake:nixpkgs"
-      mapM_ (\n -> n `shouldSatisfy` input) [Pinned pin, Ambient]
+    -- A world whose schema lives in another flake: that flake is the pinned
+    -- input, and nixpkgs is ITS nixpkgs, the one the schema slot evaluated with.
+    it "pins another flake as its own input, with nixpkgs following it" $ do
+      let ls = T.lines (flakeText (shippedWorld "kubenix") (SchemaInput "kubenix" (Pinned kpin)) noRungs)
+      take 3 (drop 2 ls) `shouldBe`
+        [ "  description = \"lips-compiled program (kubenix pinned to the schema its engine was grounded against)\";"
+        , "  inputs.kubenix.url = \"" <> kpin <> "\";"
+        , "  inputs.nixpkgs.follows = \"kubenix/nixpkgs\";" ]
+      length (filter (T.isInfixOf "inputs.kubenix.url") ls) `shouldBe` 1
+      filter (T.isInfixOf "inputs.nixpkgs.url") ls `shouldBe` []
+
+    it "follows the input's nixpkgs even when the input is unpinned" $ do
+      let t = flakeText (shippedWorld "terranix") (SchemaInput "terranix" (Unpinned "github:terranix/terranix")) noRungs
+      t `shouldSatisfy` T.isInfixOf "inputs.terranix.url = \"github:terranix/terranix\";"
+      t `shouldSatisfy` T.isInfixOf "inputs.nixpkgs.follows = \"terranix/nixpkgs\";"
+      t `shouldSatisfy` T.isInfixOf "terranix resolved ambiently: its record pins no terranix"
+
+    -- A mint's own builds (artifacts, command claims, the reach check) name
+    -- nixpkgs through this one expression, so they evaluate the nixpkgs the
+    -- flake's inputs resolve to.
+    it "names the same nixpkgs for a mint's builds as the flake's inputs" $ do
+      inputRef (nixpkgsAt (Pinned pin)) `shouldBe` pin
+      nixpkgsExpr (nixpkgsAt (Pinned pin)) `shouldBe` "builtins.getFlake \"" <> pin <> "\""
+      nixpkgsExpr (nixpkgsAt (Unpinned "flake:nixpkgs")) `shouldBe` "builtins.getFlake \"flake:nixpkgs\""
+      nixpkgsExpr (SchemaInput "kubenix" (Pinned kpin))
+        `shouldBe` "(builtins.getFlake \"" <> kpin <> "\").inputs.nixpkgs"
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do
-      let txt = flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = True, hasClaims = True }
+      let txt = flakeText (shippedWorld "nixos") ambientNixpkgs noRungs { hasArtifacts = True, hasClaims = True }
       txt `shouldSatisfy` T.isInfixOf "claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
       txt `shouldSatisfy` T.isInfixOf "import ./claims.nix { pkgs = pkgsFor system; }"
 
     it "leaves a claim-free flake free of claim vocabulary" $
-      flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
+      flakeText (shippedWorld "nixos") ambientNixpkgs noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
 
     -- artifact.nix is always written, so the shell reaches it without asking
     -- whether the program declared artifacts: one less conditional in the text.
     it "the nixos shell references artifact.nix unconditionally" $
-      flakeText (shippedWorld "nixos") Ambient noRungs `shouldSatisfy`
+      flakeText (shippedWorld "nixos") ambientNixpkgs noRungs `shouldSatisfy`
         T.isInfixOf "builtins.attrValues (import ./artifact.nix"
 
     -- The harness is a world-neutral skeleton plus the world's own slots, so
     -- the four built-ins must reproduce what the four Haskell arms produced.
     it "the assembled nixos flake still carries vm, shell and serviceShells" $ do
-      let t = flakeText (shippedWorld "nixos") Ambient noRungs
+      let t = flakeText (shippedWorld "nixos") ambientNixpkgs noRungs
       mapM_ (\s -> t `shouldSatisfy` T.isInfixOf s)
         [ "builds = ", "vm = (builds system).vm", "nixosModules.default"
         , "default = b.shell;" ]
@@ -4546,10 +4582,10 @@ main = hspec $ do
       let w = either (error . T.unpack) id (parseWorld
             ("format: 1\nworld: w\nmodule-attr: wModules\n"
               <> "--- preamble ---\nP\n--- schema ---\nE\n"))
-      flakeText w Ambient noRungs { hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
-      flakeText w Ambient noRungs `shouldNotSatisfy` T.isInfixOf "builds ="
-      flakeText w Ambient noRungs `shouldNotSatisfy` T.isInfixOf "packages"
-      flakeText w Ambient noRungs `shouldSatisfy` T.isInfixOf "wModules.default = import ./default.nix;"
+      flakeText w ambientNixpkgs noRungs { hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
+      flakeText w ambientNixpkgs noRungs `shouldNotSatisfy` T.isInfixOf "builds ="
+      flakeText w ambientNixpkgs noRungs `shouldNotSatisfy` T.isInfixOf "packages"
+      flakeText w ambientNixpkgs noRungs `shouldSatisfy` T.isInfixOf "wModules.default = import ./default.nix;"
 
     -- The gate is the world's own verdict over its render, built by the mint
     -- and by CI under ONE lips-owned name, so neither has to learn which of a
@@ -4561,13 +4597,13 @@ main = hspec $ do
               <> "--- builds ---\n      builds = system: { p = null; };\n"
               <> "--- packages ---\n        p = (builds system).p;\n"
               <> "--- gate ---\n(builds system).p\n"))
-      flakeText w Ambient noRungs `shouldSatisfy` T.isInfixOf "        gate = (builds system).p;"
-      mapM_ (\(n, _) -> flakeText (shippedWorld n) Ambient noRungs `shouldNotSatisfy` T.isInfixOf "gate =")
+      flakeText w ambientNixpkgs noRungs `shouldSatisfy` T.isInfixOf "        gate = (builds system).p;"
+      mapM_ (\(n, _) -> flakeText (shippedWorld n) ambientNixpkgs noRungs `shouldNotSatisfy` T.isInfixOf "gate =")
         builtinWorlds
 
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $
-      flakeText (shippedWorld "kubenix") Ambient noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
+      flakeText (shippedWorld "kubenix") ambientNixpkgs noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
 
     it "prints the build command only when the program states claims" $ do
       runCommands (shippedWorld "nixos") [] noRungs { hasClaims = True } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
@@ -4576,8 +4612,8 @@ main = hspec $ do
     -- The site rung is the program's own behaviour, so it appears exactly when
     -- the program states some and never otherwise.
     it "offers the site rung, and its run command, only for a program with behaviour" $ do
-      flakeText (shippedWorld "nixos") Ambient noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
-      flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
+      flakeText (shippedWorld "nixos") ambientNixpkgs noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
+      flakeText (shippedWorld "nixos") ambientNixpkgs noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
       runCommands (shippedWorld "nixos") [] noRungs { siteRung = Just (SiteRung "\"tool\"" False) } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
       runCommands (shippedWorld "nixos") [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
 
@@ -4586,8 +4622,8 @@ main = hspec $ do
     -- never be printed as if it verified something.
     it "offers the judging rung only when the program states claims over its clauses" $ do
       let withClaims = noRungs { siteRung = Just (SiteRung "\"tool\"" True) }
-      flakeText (shippedWorld "nixos") Ambient withClaims `shouldSatisfy` T.isInfixOf "site-claims"
-      flakeText (shippedWorld "nixos") Ambient noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
+      flakeText (shippedWorld "nixos") ambientNixpkgs withClaims `shouldSatisfy` T.isInfixOf "site-claims"
+      flakeText (shippedWorld "nixos") ambientNixpkgs noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
       runCommands (shippedWorld "nixos") [] withClaims "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site-claims")
 
   describe "claims.nix (the experiments, as nix)" $ do
@@ -6523,7 +6559,7 @@ main = hspec $ do
     -- config, carrying that unit's environment. Derived inside nix from the
     -- same evaluation, so lips knows no unit name.
     it "nixos exposes a shell per unit the program adds, holding its env" $ do
-      let t = flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "nixos") ambientNixpkgs noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "baseServices", "systemd.services", "genAttrs", "subtractLists"
         , "// b.serviceShells", "service-${u}", "env = cfg.systemd.services" ]
@@ -6532,7 +6568,7 @@ main = hspec $ do
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix develop path:/tmp/out#service-<unit>", "nix flake show" ]
     it "kubenix exposes the module and kubenix's own rendered outputs" $ do
-      let t = flakeText (shippedWorld "kubenix") Ambient noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "kubenix") ambientNixpkgs noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "kubenixModules.default", "kubenix.evalModules", "kubenix.modules.k8s"
         , "config.kubernetes", "cfg.resultYAML", "cfg.result", "kubectl" ]
@@ -6545,7 +6581,7 @@ main = hspec $ do
         , "nix build", "#manifest-json", "nix develop" ]
       ls `shouldNotSatisfy` T.isInfixOf "#vm"
     it "terranix exposes the module and terranix's own config.tf.json" $ do
-      let t = flakeText (shippedWorld "terranix") Ambient noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "terranix") ambientNixpkgs noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "terranixModules.default", "terranix.lib.terranixConfiguration"
         , "config = ", "opentofu" ]
@@ -7978,6 +8014,11 @@ withBase f ds = let b = fromList ds in f b b
 -- exactly as a program does, through the same door a house world comes in by.
 shippedWorld :: Text -> World
 shippedWorld n = maybe (error ("no built-in world " <> T.unpack n)) id (builtinWorld n)
+
+-- | The flake input a record without a pin compiles to, for flake-shape cases
+-- that are about something else.
+ambientNixpkgs :: SchemaInput
+ambientNixpkgs = SchemaInput "nixpkgs" (Unpinned "flake:nixpkgs")
 
 -- The NixOS prompt, which most prompt cases are stated over: one world's
 -- preamble plus the world-neutral body.

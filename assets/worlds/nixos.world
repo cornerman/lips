@@ -1,7 +1,8 @@
-format: 1
+format: 3
 world: nixos
 module-attr: nixosModules
 schema-pin: LIPS_NIXPKGS_FLAKE
+schema-input: nixpkgs flake:nixpkgs
 claims: machine sandbox
 
 --- preamble ---

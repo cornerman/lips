@@ -37,20 +37,21 @@
 -- the rung stays top-level. @artifact.vm@ can never equal the rung @vm@ --
 -- impossible by construction, no reserved word.
 --
--- Nixpkgs is the one the engine's rules were grounded against, wherever the
--- record names it ('compiledNixpkgs'): the locked ref is text in the committed
--- record, so @compile@ still fetches nothing and emits bit-identical text. Where
--- no record names it, the input is the @flake:nixpkgs@ registry, resolved at
--- @nix run@ time, and the flake's description says so. Either way stock nix
--- overrides it (@--override-input nixpkgs \<ref\>@).
+-- The world's schema input (the flake its rules were grounded against) is
+-- pinned wherever the record names it ('compiledInput'): the locked ref is text
+-- in the committed record, so @compile@ still fetches nothing and emits
+-- bit-identical text. Where no record names it, the input is the world's own
+-- fallback ref, resolved at @nix run@ time, and the flake's description says so.
+-- Either way stock nix overrides it (@--override-input \<input\> \<ref\>@).
 module Lips.Nix.Flake
   ( Rungs (..)
   , SiteRung (..)
   , noRungs
-  , Nixpkgs (..)
-  , compiledNixpkgs
-  , nixpkgsRef
-  , substrateNixpkgsVar
+  , SchemaInput (..)
+  , InputRef (..)
+  , compiledInput
+  , inputRef
+  , nixpkgsExpr
   , hasSite
   , hasSiteClaims
   , flakeText
@@ -61,43 +62,64 @@ import           Data.Text     (Text)
 import qualified Data.Text     as T
 
 import Lips.Generate.Record (isContentPin)
-import Lips.World (Rung (..), World (..))
+import Lips.World (InputDecl (..), Rung (..), World (..))
 
--- | Which nixpkgs a compiled directory evaluates against. A sum rather than a
--- 'Maybe', so the call site says which one it chose.
-data Nixpkgs
-  = Ambient       -- ^ the @flake:nixpkgs@ registry, resolved by nix at run time
-  | Pinned Text   -- ^ a locked flakeref, exactly as the record names it
+-- | The flake input a compiled directory's grounding lives in, and what it
+-- resolves to. Every build lips runs for an engine reads its nixpkgs from this
+-- one value ('nixpkgsExpr'), and the compiled flake writes it ('flakeText').
+data SchemaInput = SchemaInput
+  { siName :: Text      -- ^ the input's name in the compiled flake
+  , siRef  :: InputRef
+  }
   deriving (Eq, Show)
 
--- | The environment variable lips's own package bakes its nixpkgs into. A world
--- whose @schema-pin:@ names it grounds its rules on the SUBSTRATE nixpkgs, the
--- same one this flake skeleton imports as @nixpkgs@ -- which is the only reason
--- lips may relate the two. The kernel knows nixpkgs as the substrate it builds
--- on, never which world uses it.
-substrateNixpkgsVar :: Text
-substrateNixpkgsVar = "LIPS_NIXPKGS_FLAKE"
+-- | A sum rather than a bare ref, so the call site says which one it chose.
+data InputRef
+  = Pinned Text    -- ^ a locked flakeref, exactly as the record names it
+  | Unpinned Text  -- ^ a ref nix resolves at run time, since no record pins it
+  deriving (Eq, Show)
 
--- | The nixpkgs a compiled directory must evaluate against, given its world and
--- the @schema:@ pin its record carries for that world.
+-- | The flake input a compiled directory of this world evaluates, given the
+-- @schema:@ pin its record carries for that world.
 --
--- Pinned to the grounding wherever the world grounds on the substrate nixpkgs:
--- otherwise the schema that admitted the rules and the tool that runs the render
--- are two versions of the same thing, and nothing relates them (nono 0.68.0
--- admitted a profile that 0.74.0 judged). Ambient where no pin can say which
--- nixpkgs that is: a record that predates the pin, a document pinned by content,
--- or a world whose pin names another flake (home-manager's names home-manager).
-compiledNixpkgs :: World -> Maybe Text -> Nixpkgs
-compiledNixpkgs w (Just pin)
-  | wSchemaPin w == Just substrateNixpkgsVar && not (isContentPin pin) = Pinned pin
-compiledNixpkgs _ _ = Ambient
+-- A world naming its @schema-input@ gets that input pinned to the record's
+-- flake pin, else set to the world's own fallback ref: a content pin
+-- (@options-json:@) names no flake, and a record without a pin names nothing.
+--
+-- A world copy without that header was written before it existed, and its
+-- record is sealed, so it reads exactly as it always compiled: its nixpkgs is
+-- pinned only where its @schema-pin:@ names the substrate's env var (the one
+-- case where the schema's flake IS the nixpkgs this skeleton imports), and is
+-- the @flake:nixpkgs@ registry otherwise. That is the only place the literal
+-- and the env var name survive.
+compiledInput :: World -> Maybe Text -> SchemaInput
+compiledInput w mpin = case wSchemaInput w of
+  Just d  -> SchemaInput (idName d) (maybe (Unpinned (idFallback d)) Pinned flakePin)
+  Nothing -> SchemaInput "nixpkgs" $ case flakePin of
+    Just p | wSchemaPin w == Just "LIPS_NIXPKGS_FLAKE" -> Pinned p
+    _ -> Unpinned "flake:nixpkgs"
+  where
+    flakePin = case mpin of
+      Just p | not (isContentPin p) -> Just p
+      _ -> Nothing
 
--- | The flakeref a 'Nixpkgs' names. The compiled flake's input and every
--- build a mint runs outside that flake read it here, so the two cannot name
--- different nixpkgs for the same choice.
-nixpkgsRef :: Nixpkgs -> Text
-nixpkgsRef (Pinned ref) = ref
-nixpkgsRef Ambient      = "flake:nixpkgs"
+-- | The flakeref the input is written as.
+inputRef :: SchemaInput -> Text
+inputRef si = case siRef si of
+  Pinned r   -> r
+  Unpinned r -> r
+
+-- | A Nix expression for the nixpkgs flake every build of this engine uses: the
+-- input itself when it is nixpkgs, else that input's own nixpkgs, which is what
+-- the compiled flake's @follows@ resolves to and what a world's schema slot
+-- evaluated with. Builds outside the compiled flake (a mint's artifact and
+-- claim builds, the reach check) read it here, so they cannot evaluate a
+-- different nixpkgs than the flake does.
+nixpkgsExpr :: SchemaInput -> Text
+nixpkgsExpr si
+  | siName si == "nixpkgs" = getFlake
+  | otherwise              = "(" <> getFlake <> ").inputs.nixpkgs"
+  where getFlake = "builtins.getFlake \"" <> inputRef si <> "\""
 
 -- | What the site axis offers, when it offers anything. A sum rather than two
 -- booleans, so "judge the clauses of a program that has none" cannot be written.
@@ -132,16 +154,20 @@ hasSite = (/= Nothing) . siteRung
 hasSiteClaims :: Rungs -> Bool
 hasSiteClaims r = maybe False srClaims (siteRung r)
 
--- | The compiled directory's flake. Its nixpkgs input is what 'compiledNixpkgs'
+-- | The compiled directory's flake. Its schema input is what 'compiledInput'
 -- chose, and the description says which, so a reader of the flake can tell
 -- whether the grounding holds where it runs.
-flakeText :: World -> Nixpkgs -> Rungs -> Text
-flakeText w nixpkgs rungs = T.unlines $
+flakeText :: World -> SchemaInput -> Rungs -> Text
+flakeText w si rungs = T.unlines $
   [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
   , "{"
   , "  description = \"lips-compiled program (" <> said <> ")\";"
-  , "  inputs.nixpkgs.url = \"" <> nixpkgsRef nixpkgs <> "\";"
+  , "  inputs." <> siName si <> ".url = \"" <> inputRef si <> "\";"
   ]
+  -- The skeleton imports nixpkgs, and the schema slot evaluated with the
+  -- input's OWN nixpkgs, so the render runs on the nixpkgs the rules were
+  -- grounded against only if nixpkgs follows that input.
+  ++ [ "  inputs.nixpkgs.follows = \"" <> siName si <> "/nixpkgs\";" | siName si /= "nixpkgs" ]
   ++ wInputs w
   ++
   [ "  outputs = { self, nixpkgs" <> wInputArgs w <> " }:"
@@ -165,9 +191,9 @@ flakeText w nixpkgs rungs = T.unlines $
      , "}"
      ]
   where
-    said = case nixpkgs of
-      Pinned _ -> "nixpkgs pinned to the schema its engine was grounded against"
-      Ambient  -> "nixpkgs resolved ambiently: its record pins no nixpkgs"
+    said = case siRef si of
+      Pinned _   -> siName si <> " pinned to the schema its engine was grounded against"
+      Unpinned _ -> siName si <> " resolved ambiently: its record pins no " <> siName si
 
 -- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
 -- activate). The only output lips contributes entries to: artifacts (under the

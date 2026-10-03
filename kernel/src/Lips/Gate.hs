@@ -28,8 +28,8 @@ module Lips.Gate
   , artifactGate
   , mintClaimGate
   , worldGate
-    -- * The nixpkgs every one of them builds against
-  , reachNixpkgs
+    -- * The schema input every one of them builds against
+  , reachInput
   ) where
 
 import           Control.Exception  (IOException, try)
@@ -51,8 +51,8 @@ import           Lips.Kernel.Expect (Expect, checkArtifactValues, checkValues, e
                                      expandExpects, expectedValue, isGroundExpect)
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
-import           Lips.Nix.Flake     (Nixpkgs (..), Rungs (..), SiteRung (..), flakeText, nixpkgsRef,
-                                     noRungs, substrateNixpkgsVar)
+import           Lips.Nix.Flake     (InputRef (..), Rungs (..), SchemaInput (..), SiteRung (..),
+                                     flakeText, inputRef, nixpkgsExpr, noRungs)
 import           Lips.World         (World (..))
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Stage         (siteNameOf, stageBeside, withTempDir, writeCompiled,
@@ -71,11 +71,11 @@ import           Lips.Stage         (siteNameOf, stageBeside, withTempDir, write
 -- "not verified" must never render as verified.
 --
 -- Consequence, stated rather than hidden: for a claim-bearing program @check@
--- needs a nixpkgs, the one the compiled flake names ('compiledNixpkgs': the
--- grounding pin where the world grounds on the substrate, else the ambient
--- registry), as it does for every other rung. A claim-free program is untouched
+-- needs a nixpkgs, the one the compiled flake names ('compiledInput': the
+-- world's schema input at the grounding pin, else at its fallback ref), as it
+-- does for every other rung. A claim-free program is untouched
 -- and @check@ stays nixpkgs-free for it.
-claimGate :: World -> Nixpkgs -> FilePath -> Realization -> IO ()
+claimGate :: World -> SchemaInput -> FilePath -> Realization -> IO ()
 claimGate world nixpkgs file rl =
   clauseClaimGate world nixpkgs file rl >> commandClaimGate world nixpkgs file rl
 
@@ -87,7 +87,7 @@ claimGate world nixpkgs file rl =
 -- It is still a @nix build@, so a clause-claiming program's @check@ needs a
 -- nixpkgs exactly as a command-claiming one does. A program that states
 -- no observable is untouched and its @check@ stays nixpkgs-free.
-clauseClaimGate :: World -> Nixpkgs -> FilePath -> Realization -> IO ()
+clauseClaimGate :: World -> SchemaInput -> FilePath -> Realization -> IO ()
 clauseClaimGate world nixpkgs file rl
   | null (rlClauseClaims rl) = pure ()
   | otherwise =
@@ -108,7 +108,7 @@ clauseClaimGate world nixpkgs file rl
                 <> " fix the sentence, or the claim that pins it."))
             Right (ExitSuccess, _, _) -> pure ()
 
-commandClaimGate :: World -> Nixpkgs -> FilePath -> Realization -> IO ()
+commandClaimGate :: World -> SchemaInput -> FilePath -> Realization -> IO ()
 commandClaimGate world nixpkgs file rl
   | null (rlClaims rl) = pure ()
   | otherwise = do
@@ -271,13 +271,13 @@ stagedGate stage file rl
 --
 -- Why in @generate@ only: it is the one verb that is already online and already
 -- builds against nixpkgs, so the cost is a build it can afford. Built against
--- the nixpkgs the compiled flake will name ('compiledNixpkgs' over the pin the
+-- the nixpkgs the compiled flake will name ('compiledInput' over the pin the
 -- mint records), so the build observed here is the one a user later runs. @compile@ stays
 -- offline and nixpkgs-free always; @check@ does too EXCEPT for a program that
 -- states observables, which it must build something to observe (an artifact for a
 -- command claim, a small derivation for a clause claim). Stated where the rule
 -- is, so nobody reads "offline" as a promise the claim gates cannot keep.
-artifactGate :: Nixpkgs -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+artifactGate :: SchemaInput -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 artifactGate nixpkgs stage file rl = case rlArtifact rl of
   (_, [])         -> pure ()
   (body, names) -> step ("build " <> plural (length names) "artifact") $ withTempDir $ \dir -> do
@@ -315,7 +315,7 @@ artifactGate nixpkgs stage file rl = case rlArtifact rl of
 -- Built against the same nixpkgs as 'artifactGate', the one @check@ reads back
 -- from the record, so the mint observes what @check@ later re-observes. A machine claim boots the module and so needs KVM; without it the
 -- mint REFUSES rather than admitting an engine whose claims never ran.
-mintClaimGate :: Nixpkgs -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+mintClaimGate :: SchemaInput -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 mintClaimGate nixpkgs stage file rl
   | null (rlClaims rl) = pure ()
   | otherwise = do
@@ -351,16 +351,16 @@ mintClaimGate nixpkgs stage file rl
 -- its verdict; lips builds it and knows nothing about what it checks.
 --
 -- It builds @#gate@ of the very directory @compile@ writes ('writeCompiled'),
--- with the nixpkgs that directory names: for a world grounded on the substrate,
--- the pin the mint records, so the validator is the version the rules were
--- grounded against. Only @nixpkgs@ is pinned: a world input lips cannot pin (a
--- kubenix URL) would make the verdict drift, which is why such worlds declare
--- no gate yet.
+-- with the schema input that directory names at the pin the mint records, and
+-- nixpkgs following it, so the validator is the version the rules were
+-- grounded against. A world input lips does not pin (one written in the world's
+-- own @inputs@ slot) would make the verdict drift, so a world should declare a
+-- gate only when its schema input is every input its render depends on.
 --
 -- A world with no @gate@ slot is untouched, and @check@ never runs this: it
 -- stays nixpkgs-free, while the world's own package build still refuses an
 -- invalid render where it is used.
-worldGate :: Nixpkgs -> World -> FilePath -> Realization -> IO ()
+worldGate :: SchemaInput -> World -> FilePath -> Realization -> IO ()
 worldGate nixpkgs world file rl = case wGate world of
   Nothing -> pure ()
   Just _  -> step ("the " <> wName world <> " world's own gate") $ withTempDir $ \tmp -> do
@@ -381,7 +381,7 @@ worldGate nixpkgs world file rl = case wGate world of
 -- | Run ONE claim out of a staged @claims.nix@. A failure is the claim's own
 -- verdict (the comparison raises inside the build), surfaced verbatim so the
 -- author reads what was observed against what they stated.
-buildClaim :: Nixpkgs -> FilePath -> FilePath -> Claim -> IO ()
+buildClaim :: SchemaInput -> FilePath -> FilePath -> Claim -> IO ()
 buildClaim nixpkgs file dir c = do
   res <- try (readProcessWithExitCode "nix"
     [ "build", "--impure", "--no-link", "--print-out-paths", "--expr", T.unpack expr ] "")
@@ -398,7 +398,7 @@ buildClaim nixpkgs file dir c = do
     -- as an artifact name is (a '-' is legal in an attribute name but not in a
     -- dotted selection).
     expr = T.pack (concat
-      [ "let np = builtins.getFlake \"", T.unpack (nixpkgsRef nixpkgs), "\"; "
+      [ "let np = ", T.unpack (nixpkgsExpr nixpkgs), "; "
       , "pkgs = import np { system = builtins.currentSystem; }; in "
       , "(import ", show (dir </> "claims.nix"), " { inherit pkgs; })"
       , ".${", show (T.unpack (clId c)), "}" ])
@@ -407,7 +407,7 @@ buildClaim nixpkgs file dir c = do
 -- path. Built against the nixpkgs the compiled flake names, so the gate
 -- observes what a user of the compiled directory builds; @--impure@ covers
 -- @builtins.currentSystem@ and lets an ambient registry ref resolve.
-buildArtifact :: Nixpkgs -> FilePath -> FilePath -> Text -> IO FilePath
+buildArtifact :: SchemaInput -> FilePath -> FilePath -> Text -> IO FilePath
 buildArtifact nixpkgs file dir name = do
   res <- try (readProcessWithExitCode "nix"
     [ "build", "--impure", "--no-link", "--print-out-paths", "--expr", T.unpack expr ] "")
@@ -424,7 +424,7 @@ buildArtifact nixpkgs file dir name = do
     -- indexed as a quoted key: a '-' is legal in an attribute name but not in a
     -- dotted selection.
     expr = T.pack (concat
-      [ "let np = builtins.getFlake \"", T.unpack (nixpkgsRef nixpkgs), "\"; "
+      [ "let np = ", T.unpack (nixpkgsExpr nixpkgs), "; "
       , "pkgs = import np { system = builtins.currentSystem; }; in "
       , "(import ", show (dir </> "artifact.nix"), " { inherit pkgs; })"
       , ".${", show (T.unpack name), "}" ])
@@ -432,31 +432,33 @@ buildArtifact nixpkgs file dir name = do
 -- | Can nix fetch the nixpkgs the gates are about to build against? Asked ONCE,
 -- before the first build, so that a gate's own refusal can honestly blame the
 -- rules or the claims: without it an unreachable pin surfaced as "the rules are
--- minted, so mint again", a remedy that cannot help. Only fetchability is
--- asked (the output is discarded): a pinned ref is already locked, and an
--- ambient one stays ambient because @check@ and the compiled flake resolve it
--- the same way. @verb@ is the lips verb a refusal suggests re-running.
+-- minted, so mint again", a remedy that cannot help. It evaluates the same
+-- 'nixpkgsExpr' the builds use, so for a world whose schema input is another
+-- flake it fetches that flake AND the nixpkgs it locks, which is everything
+-- those builds fetch first. Only fetchability is asked (the output is
+-- discarded). @verb@ is the lips verb a refusal suggests re-running.
 --
 -- What it cannot rule out, deliberately not parsed out of nix's stderr: a build
 -- that fails later on a network drop (a substitute download) still reads as the
 -- gate's own verdict.
-reachNixpkgs :: Text -> FilePath -> Nixpkgs -> IO ()
-reachNixpkgs verb file nixpkgs = do
-  res <- try (readProcessWithExitCode "nix" ["flake", "metadata", "--json", T.unpack ref] "")
+reachInput :: Text -> FilePath -> SchemaInput -> IO ()
+reachInput verb file si = do
+  res <- try (readProcessWithExitCode "nix"
+    [ "eval", "--impure", "--raw", "--expr", T.unpack ("(" <> nixpkgsExpr si <> ").outPath") ] "")
   case res of
-    Left e -> die (nixMissing file "fetch the nixpkgs it builds against" verb
+    Left e -> die (nixMissing file ("fetch the " <> siName si <> " it builds against") verb
                     (tshow (e :: IOException)))
     Right (ExitFailure _, _, err) -> die (report
-      ("lips can't reach the nixpkgs " <> T.pack file <> " builds against: " <> ref <> ".")
+      ("lips can't reach the " <> siName si <> " " <> T.pack file <> " builds against: " <> ref <> ".")
       (T.lines (T.pack err))
       remedy)
     Right (ExitSuccess, _, _) -> pure ()
   where
-    ref = nixpkgsRef nixpkgs
-    remedy = case nixpkgs of
-      Pinned _ -> "\8594 it is the pin this engine is grounded on (--schema, else "
-        <> substrateNixpkgsVar <> "; for a committed engine its record's schema: line):"
+    ref = inputRef si
+    remedy = case siRef si of
+      Pinned _ -> "\8594 it is the pin this engine is grounded on (--schema, else the"
+        <> " world's schema-pin variable; for a committed engine its record's schema: line):"
         <> " check the network, or mint against a pin nix can fetch: lips generate --schema <ref> "
         <> T.pack file
-      Ambient -> "\8594 this world resolves nixpkgs from the flake:nixpkgs registry:"
-        <> " check the network, or the registry (nix registry list)."
+      Unpinned _ -> "\8594 no record pins it, so nix resolves " <> ref <> " at run time:"
+        <> " check the network, or that nix can resolve that ref (nix registry list)."

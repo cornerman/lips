@@ -59,7 +59,7 @@ import           Lips.Identity                 (watchedFiles, timingPathIn, lang
 import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintTargets, mintedWorlds, orphanIgnores, soleWorld)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs, defaultTargetName)
 import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAnswer, setState, step, tshow)
-import           Lips.Gate              (ExpectFail (..), artifactGate, claimGate, reachNixpkgs,
+import           Lips.Gate              (ExpectFail (..), artifactGate, claimGate, reachInput,
                                         groundExpectFaults,
                                         clauseClaimGate, mintClaimGate, runExpects,
                                         stagedGate, worldGate)
@@ -97,7 +97,7 @@ import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (unanswerableDemands)
 import           Lips.Kernel.Engine.Gate       (engineViolations, unholdableExpects, unholdableProblem)
-import           Lips.Nix.Flake                (Nixpkgs, compiledNixpkgs, runCommands)
+import           Lips.Nix.Flake                (SchemaInput, compiledInput, runCommands)
 import           Lips.World                     (World (..), parseWorld)
 import           Lips.World.Resolve            (builtinNames, localWorldNames, resolveWorld, resolveWorldFrom)
 import           Lips.World.Check               (SlotFault (..), checkNixSlots)
@@ -461,13 +461,13 @@ exitUnlessEveryWorldHeld file rls = case [ w | (w, Left _) <- rls ] of
 -- sharing one directory would leave only the last one written.
 compileWorld :: Maybe FilePath -> FilePath -> FilePath -> (Text, Realization) -> IO ()
 compileWorld mout dir file (w, rl) = do
-  (world, nixpkgs) <- readRecordedWorld dir w file
+  (world, si) <- readRecordedWorld dir w file
   -- An explicit @--out@ splits by world too, for the same reason the default
   -- path does: the flag names where the outputs go, not which one survives.
   let outDirPath = maybe (compiledPath file w) (</> T.unpack w) mout
   (artNames, rungs) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
-    writeCompiled world nixpkgs file outDirPath rl
+    writeCompiled world si file outDirPath rl
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
   mapM_ note (runCommands world artNames rungs outDirPath)
 
@@ -490,10 +490,10 @@ ensureDerived file = do
 -- copy must hash to it, so a compiled flake can never come from physics the
 -- record does not name.
 --
--- Returned beside the world: the nixpkgs a compiled directory of it evaluates
--- against, read from the same record, so the schema that admitted the rules
--- and the nixpkgs that runs them are related by one reading ('compiledNixpkgs').
-readRecordedWorld :: FilePath -> Text -> FilePath -> IO (World, Nixpkgs)
+-- Returned beside the world: the schema input a compiled directory of it
+-- evaluates, read from the same record, so the schema that admitted the rules
+-- and the flake that runs them are related by one reading ('compiledInput').
+readRecordedWorld :: FilePath -> Text -> FilePath -> IO (World, SchemaInput)
 readRecordedWorld dir w file = do
   -- The world's own record when it was minted alone, else the language-level
   -- record of the call that covered it: one mint may write for several worlds,
@@ -545,7 +545,7 @@ readRecordedWorld dir w file = do
       [ T.pack path <> " pins " <> pin <> ", and " <> T.pack wpath <> " hashes to " <> worldHash world ]
       "\8594 restore that world file, or re-mint against this one: lips generate <program>.")
     _ -> pure ()
-  pure (world, compiledNixpkgs world (worldSchemaPin src name))
+  pure (world, compiledInput world (worldSchemaPin src name))
 
 -- | @check@: verify the program's committed behavioral contract holds against
 -- its realized module, deterministically (no AI). This is the offline guardian
@@ -825,13 +825,13 @@ checkDraft running restart file = do
       -- back from the record. A door run outside a mint has none: ambient.
       pins <- envPairs "LIPS_MINT_PINS"
       forM_ ws $ \w -> do
-        let nixpkgs = compiledNixpkgs w (T.pack <$> lookup (wName w) pins)
+        let si = compiledInput w (T.pack <$> lookup (wName w) pins)
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
         -- The door's only builds are the clause claims and the world's gate.
         -- Fetchable first, so their refusals can honestly blame the draft.
         when (isJust (wGate w) || not (null (rlClauseClaims rl))) $
-          reachNixpkgs "generate" file nixpkgs
-        clauseClaimGate w nixpkgs file rl
+          reachInput "generate" file si
+        clauseClaimGate w si file rl
         -- The glue gate generate runs, said in the door while the mint can still
         -- add the claim; check alone only reports unpinned glue.
         eng <- loadLangOrDie (dtLangDir t) (wName w) file
@@ -841,7 +841,7 @@ checkDraft running restart file = do
         -- The world's own gate is a build the world declared affordable on every
         -- mint, so the door runs it too: the model then reads the validator's
         -- refusal inside its own call instead of paying a whole mint for it.
-        when (isJust (wGate w)) $ worldGate nixpkgs w file rl
+        when (isJust (wGate w)) $ worldGate si w file rl
         -- The contract above is the GOVERNING one (the committed .expect on a
         -- regeneration), which cannot say whether the draft's NEW promises are
         -- evaluable at all. The ground half of those costs no nix, so the door
@@ -925,11 +925,11 @@ expectGate contract claims dir w file eng rl = do
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
   when claims $ do
-    (world, nixpkgs) <- readRecordedWorld dir w file
+    (world, si) <- readRecordedWorld dir w file
     -- Fetchable first, so a claim that fails can honestly blame the program.
     when (not (null (rlClaims rl)) || not (null (rlClauseClaims rl))) $
-      reachNixpkgs "check" file nixpkgs
-    claimGate world nixpkgs file rl
+      reachInput "check" file si
+    claimGate world si file rl
   pure rl
 
 -- | The facts a world declares it cannot place, in the words of its own
@@ -1465,16 +1465,16 @@ gateOneWorld compat rep progs candidates stage world schemaPath pin = runExceptT
   -- readable reason never pays a build. Every one builds against the nixpkgs
   -- the compiled flake will name for the pin this mint records, so the mint
   -- observes what `check` reads back from the record and builds against.
-  let nixpkgs = compiledNixpkgs world (Just pin)
+  let si = compiledInput world (Just pin)
       builds rl = isJust (wGate world) || not (null (snd (rlArtifact rl)))
                   || not (null (rlClaims rl)) || not (null (rlClauseClaims rl))
   -- Fetchable first, so a gate below that refuses can honestly blame the rules.
-  when (any (builds . snd) validated) $ lift (reachNixpkgs "generate" rep nixpkgs)
-  forM_ validated $ \(f, rl) -> lift (artifactGate nixpkgs (stage rl) f rl)
+  when (any (builds . snd) validated) $ lift (reachInput "generate" rep si)
+  forM_ validated $ \(f, rl) -> lift (artifactGate si (stage rl) f rl)
   -- The world's own verdict over its render, where the world declares one.
-  forM_ validated $ \(f, rl) -> lift (worldGate nixpkgs world f rl)
-  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world nixpkgs f rl)
-  forM_ validated $ \(f, rl) -> lift (mintClaimGate nixpkgs (stage rl) f rl)
+  forM_ validated $ \(f, rl) -> lift (worldGate si world f rl)
+  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world si f rl)
+  forM_ validated $ \(f, rl) -> lift (mintClaimGate si (stage rl) f rl)
   lift (mapM_ note (ignoreNotes wn eng))
   pure WorldResult { wrEngine = eng, wrValidated = validated
                    , wrExpects = expects, wrCommitted = committed }

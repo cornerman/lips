@@ -1,7 +1,8 @@
-format: 1
+format: 3
 world: kubenix
 module-attr: kubenixModules
 schema-pin: LIPS_KUBENIX_FLAKE
+schema-input: kubenix github:hall/kubenix
 input-args: , kubenix
 claims: sandbox
 
@@ -66,9 +67,6 @@ in pkgs.runCommand "options.json" { } ''
     | from_entries
   ' ${doc}/share/doc/nixos/options.json > $out
 ''
-
---- inputs ---
-  inputs.kubenix.url = "github:hall/kubenix";
 
 --- builds ---
       # The per-system kubenix evaluation, defined once so the buildable
