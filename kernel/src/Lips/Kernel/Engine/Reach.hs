@@ -120,8 +120,8 @@ carriedBy l = any carries (lgRules l)
 -- that word changes no output.
 --
 -- Reported rather than refused, and separate from 'droppedValues': a concept is
--- a legitimate reading the mint chose deliberately (a heading, a specification
--- for baked source), so this is an author-facing observation, not an engine
+-- a legitimate reading the mint chose deliberately (a heading), so this is an
+-- author-facing observation, not an engine
 -- defect. It is invisible everywhere else -- the whole LINE is not inert
 -- ('Lips.Kernel.Lang.Diagnose.diagInert' works per line, and such a line
 -- usually realizes something through its other holes), and the drop gate

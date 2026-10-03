@@ -61,10 +61,9 @@ import Lips.Kernel.Expect          (Expect (..), isGroundExpect, parseExpectBody
 import Lips.Kernel.Lang.Store        (EngineData (..), parsePatternBody)
 import Lips.Kernel.Lang.Pattern     (Pattern)
 
--- | A generated source file for an artifact: its artifact name, the relative
--- path within the artifact's source tree, and the verbatim content. Written to
--- @<language>/artifacts/<name>/<path>@ and staged at @./artifacts/<name>@ for
--- the build (artifacts plan, option 1).
+-- | A source file a mint wrote for an artifact: its artifact name, its relative
+-- path, and the verbatim content. Parsed only so @generate@ and the draft door
+-- can REFUSE it by name: lips accepts no model-written source.
 data SourceFile = SourceFile
   { sfArtifact :: Text
   , sfPath     :: Text
@@ -484,9 +483,8 @@ mkBlock prefix rawHeader content = do
 -- items tagged for that world. The grammar is the shared half, so two worlds'
 -- engines differ only below it.
 --
--- Source blocks are deliberately not filtered here: 'sourcesOf' takes every
--- item, because a baked source tree is one program's source, shared by the
--- worlds that run it, and only a mint that saw every world may write it.
+-- Source blocks are not filtered here: 'sourcesOf' takes every item, since a
+-- source block is refused whichever world it would serve.
 itemsFor :: Text -> [ItemCandidate] -> [EngineItem]
 itemsFor world = map icItem . filter (\c -> icWorld c `elem` [Nothing, Just world])
 
@@ -610,7 +608,7 @@ parseLine worlds line = do
   where
     firstWord t = case T.words t of { (w : _) -> w; [] -> "" }
     -- A shared item is the language's own: how a program is READ, the source it
-    -- bakes, and the prose about it. Everything else names an option path, and
+    -- would bake (refused), and the prose about it. Everything else names an option path, and
     -- an option path exists only inside one world's namespace.
     shared it = case it of
       ItemPattern _ -> True

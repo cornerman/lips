@@ -249,8 +249,8 @@ toRule mr =
     -- holds foreign text: no schema declares it, and only the builder's own
     -- conventions govern what it means (a shell script in a text argument). So
     -- the emit is marked GLUE there, by position, which is structural and names
-    -- no builder. A source path is excluded: it names a tree rather than
-    -- carrying text, and the no-blob gate refuses the tree itself.
+    -- no builder. A source argument is excluded: it names where to build from
+    -- (another package's source) rather than carrying text.
     emitKind ("artifact" : _ : "args" : arg : _) | arg /= "src" = Glue
     emitKind _ = Meta
     -- Fill the captured key into an emit-path segment (whole or embedded); a

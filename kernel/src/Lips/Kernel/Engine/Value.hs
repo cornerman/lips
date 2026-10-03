@@ -186,8 +186,8 @@ valueArtifactNames _                 = []
 
 -- | Every path a value names INSIDE an artifact: each @${artifact.<name>}@
 -- interpolation paired with the @\/rel\/path@ that follows it in the same
--- string. What that path holds is decided by the artifact's SOURCE (a go.mod
--- module line, a Cargo name), not by the derivation, so it is the one thing no
+-- string. What that path holds is decided by the builder and its arguments,
+-- not by anything lips reads, so it is the one thing no
 -- static gate can know: 'Lips.Kernel.Realize.realizeArtifactPaths' reports the
 -- pairs and a caller that may BUILD looks inside the result. A bare reference
 -- (a list element) names the whole build and yields nothing -- building it is
@@ -211,7 +211,8 @@ valueArtifactPaths _          = []
 -- | Every path literal a value names, anywhere inside it. A path is the only
 -- value that points OUTSIDE the module text at a file that must be there, so
 -- 'Lips.Kernel.Realize.realizeStagedPaths' collects them for the caller to
--- check against the staged tree. Structural, like 'valueArtifactNames': a
+-- check against what lips stages beside the module. Structural, like
+-- 'valueArtifactNames': a
 -- @\"./x\"@ written as a string is a string, not a path.
 valuePaths :: Value -> [Text]
 valuePaths (VPath p)  = [p]

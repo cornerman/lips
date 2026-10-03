@@ -4,10 +4,10 @@
 -- module text.
 --
 -- Every other gate lips has judges the MAP (an option assignment, a staged
--- path, a stamp). So a program whose behaviour lives in baked source could
--- state a sentence, have it minted into code, and then have that code drift
--- from the sentence with every gate green -- the module text says nothing about
--- what minted code DOES. A claim closes that by naming an observable the AUTHOR
+-- path, a stamp). So a program whose behaviour was minted (clauses, or text in
+-- a builder's argument) could state a sentence and then have that behaviour
+-- drift from it with every gate green -- the module text says nothing about
+-- what minted behaviour DOES. A claim closes that by naming an observable the AUTHOR
 -- stated: a command, what it is fed, what it must print, how it must exit.
 --
 -- Nothing here is domain knowledge. @claim.\<id\>@ is a reserved emit head

@@ -100,7 +100,7 @@ statesClauses = any (\(Subject segs, _) -> clauseRooted segs)
 -- inside it (anywhere a value holds @${artifact.\<name\>}/bin/\<x\>@ -- an
 -- ExecStart, a wrapper's own arg naming its core). @nix run@/@nix develop@'s
 -- implicit program lookup assumes @bin/\<pname\>@; a builder is free to name
--- its output differently (a go.mod's @module@, a Cargo @[[bin]] name@), so
+-- its output differently (writeShellApplication installs @bin\/\<its name\>@), so
 -- that assumption silently breaks whenever the two diverge -- exactly the
 -- "knowing the answer requires looking inside the result" case 'artifactGate'
 -- (the online build gate) already documents. Nothing here builds anything or
@@ -515,8 +515,8 @@ realizeStagedPaths modeOf assemble base =
 -- @(artifact, \/rel\/path, the decision that named it)@. Twin of
 -- 'realizeStagedPaths' one level in: a staged path must exist BESIDE the module,
 -- an artifact path must exist INSIDE the build. Neither is knowable from the
--- module text -- what a build contains is decided by its source, and a binary's
--- name is spelled in a go.mod or a Cargo.toml, not in the derivation -- so the
+-- module text -- what a build contains is decided by the builder and its
+-- arguments, not by anything lips reads -- so the
 -- kernel reports the pairs and the caller that owns nix builds the artifact and
 -- looks. Both artifact groups' own args and option values are scanned, since a
 -- wrapper's script names its core's binary exactly as a unit's ExecStart does.

@@ -38,7 +38,7 @@ data DraftTree = DraftTree
   -- governs it. A draft covers every world its mint writes for, because that is
   -- what the committed engine will cover.
   , dtWorlds  :: [(Text, Text, Text)]
-  , dtSources :: [SourceFile] -- ^ the baked source tree, staged under artifacts/
+  , dtSources :: [SourceFile] -- ^ source the draft wrote, which the door refuses
   , dtOwnExpects :: [(Text, [Expect])]
     -- ^ Per world, the expects the DRAFT itself wrote -- which is not what
     -- 'dtWorlds' carries on a regeneration, where the committed contract

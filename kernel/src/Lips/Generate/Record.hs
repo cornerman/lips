@@ -296,10 +296,6 @@ recordedProgram file rec = lookup (takeFileName file) (recordedPrograms rec)
 -- The record stores the corpus verbatim, so this is a read, not a
 -- reconstruction, and 'recordedProgram' is one lookup into it -- one parser for
 -- both, so the "this program" and "the whole corpus" readings cannot drift.
---
--- The corpus reading is what lets a baked-source language judge a program the
--- record holds no section for (a sibling added after the mint): its sentences
--- must at least be sentences the mint SAW, in some program of the language.
 recordedPrograms :: Text -> [(FilePath, Text)]
 recordedPrograms rec = sections (takeWhile notBlock (drop 1 (dropWhile (/= marker) (T.lines rec))))
   where
