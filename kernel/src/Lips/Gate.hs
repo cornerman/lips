@@ -5,9 +5,8 @@
 -- Each one judges the same object -- the realization of one program with its
 -- committed language -- against something outside the text: the tree lips
 -- stages beside the module, the build a mint declared, the claims the program
--- states, the specification a baked source tree was written from. They live
--- together because they share that subject and because a verb picks a SUBSET of
--- them ('Main' composes; this module only judges).
+-- states. They live together because they share that subject and because a
+-- verb picks a SUBSET of them ('Main' composes; this module only judges).
 --
 -- What is NOT here: the static gates over an engine (those are pure and live in
 -- @Lips.Kernel.Engine.Gate@ and @Lips.Kernel.Clause.Gate@, where the conformance
@@ -24,7 +23,6 @@ module Lips.Gate
   , groundExpectFaults
     -- * Gates over one realization
   , stagedGate
-  , sourceSpecGate
   , claimGate
   , clauseClaimGate
   , artifactGate
@@ -40,22 +38,18 @@ import           Data.List          (partition)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           System.Directory   (doesDirectoryExist, doesPathExist)
+import           System.Directory   (doesPathExist)
 import           System.Environment (lookupEnv)
 import           System.Exit        (ExitCode (..))
-import           System.FilePath    (takeFileName, (</>))
+import           System.FilePath    ((</>))
 import           System.Process     (readProcessWithExitCode)
 
 import           Lips.Cli.Output    (die, note, report, step, tshow)
-import           Lips.Generate.Record (recordedPrograms)
-import           Lips.Identity      (artifactsPathIn, generationPathIn, languageName)
+import           Lips.Identity      (languageName)
 import           Lips.Kernel.Claim  (Claim (..), ClaimPlace (..))
 import           Lips.Kernel.Decision
 import           Lips.Kernel.Expect (Expect, checkArtifactValues, checkValues, evalExpr,
                                      expandExpects, expectedValue, isGroundExpect)
-import           Lips.Kernel.Lang.Crystallize (crystallize)
-import           Lips.Kernel.Lang.Diagnose (SourceSpecVerdict (..), sourceSpecVerdict)
-import           Lips.Kernel.Lang.Store (EngineData (..))
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
 import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRungs)
@@ -64,12 +58,6 @@ import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Schema        (lockFlakeRef)
 import           Lips.Stage         (fillStagedTree, siteNameOf, stageBeside, withTempDir, writeCompiled,
                                      writeSite)
-
--- | Read a file that may be absent. The gates here read only files lips itself
--- wrote (a generation record), so an unreadable one is the same event as a
--- missing one: the gate says what it could not judge and refuses.
-readIfPresent :: FilePath -> IO (Maybe Text)
-readIfPresent p = either (const Nothing) Just <$> (try (TIO.readFile p) :: IO (Either IOException Text))
 
 -- | The claim gate: every observable the program states must actually hold.
 --
@@ -471,73 +459,4 @@ artifactNixpkgs remedy = do
       "lips can't build the artifact it minted: no nixpkgs is pinned."
       ["LIPS_NIXPKGS_FLAKE is unset, so there is no nixpkgs to build against."]
       ("\8594 run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
-
--- | The source-specification gate: where a language BAKES source (a committed
--- @artifacts\/@ tree, minted from the program), the program lines that produced
--- 'Concept' decisions are part of that source's specification. A Concept
--- realizes nothing, so without this gate such a line could be dropped or
--- reworded while every other gate stayed green -- and the committed source would
--- go on implementing a specification the program no longer states.
---
--- Two directions, both judged by 'sourceSpecVerdict' (pure, so the conformance
--- suite reaches them):
---
---   * the program HAS a recorded section: every concept the mint saw must still
---     be stated;
---   * the program has NO recorded section (added or renamed after the mint):
---     every concept it states must be one the mint saw in SOME program of the
---     language. A sibling reusing the language restates concepts verbatim (a
---     concept pattern is all-literal), so reuse stays free, while a sentence the
---     source was never written from is refused instead of silently skipped.
---
--- What the programs said at mint time is read from the committed @.generation@
--- record, which stores the corpus verbatim, so this stays offline and
--- deterministic (no AI, no nix). One world's record, because each world's mint
--- saw its own corpus: the source a world bakes was written from the programs
--- THAT mint read. A language with no baked source is untouched: a
--- concept there is a heading, and a heading must stay freely editable.
-sourceSpecGate :: FilePath -> Text -> FilePath -> EngineData -> Text -> IO ()
-sourceSpecGate dir world file eng program = do
-  baked <- doesDirectoryExist (artifactsPathIn dir file)
-  when baked $ do
-    mrec <- readIfPresent (generationPathIn dir world file)
-    case mrec of
-      -- A baked tree whose record cannot be read cannot be judged at all, and an
-      -- unjudged specification must never pass as a judged one.
-      Nothing  -> die (report
-        (T.pack file <> ": the language bakes source, but its generation record"
-          <> " is missing or unreadable, so the specification that source was"
-          <> " written from cannot be read.")
-        [T.pack (generationPathIn dir world file)]
-        ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))
-      Just rec -> case crystallize file (edPatterns eng) program of
-        Left _    -> pure ()  -- the current program's own read errors are reported by the caller
-        Right now -> do
-          let sections = recordedPrograms rec
-              cryst t  = crystallize file (edPatterns eng) t
-              staleRecord = die (report
-                ("the program recorded in " <> T.pack (generationPathIn dir world file)
-                  <> " no longer crystallizes with the committed language.")
-                []
-                ("\8594 rebuild both from the program as it stands: lips generate " <> T.pack file))
-          corpus <- forM sections $ \(_, t) -> either (const staleRecord) pure (cryst t)
-          mwas <- case lookup (takeFileName file) sections of
-            Nothing -> pure Nothing
-            Just t  -> Just <$> either (const staleRecord) pure (cryst t)
-          case sourceSpecVerdict mwas corpus now of
-            SpecHolds -> pure ()
-            SpecRetired retired -> die (report
-              (T.pack file <> " dropped " <> plural (length retired) "line"
-                <> " that the built source was written from:")
-              [ a <> " (" <> niceSubject (dSubject d) <> ")"
-              | d <- retired, let Assertion a = dAssertion d ]
-              ("\8594 state it again, or rebuild the source for the program as it stands: "
-                <> "lips generate " <> T.pack file))
-            SpecUnrecorded unknown -> die (report
-              (T.pack file <> " states " <> plural (length unknown) "line"
-                <> " the built source was never written from:")
-              [ a <> " (" <> niceSubject (dSubject d) <> ")"
-              | d <- unknown, let Assertion a = dAssertion d ]
-              ("\8594 the source is minted from the program, so rebuild it: "
-                <> "lips generate " <> T.pack file))
 

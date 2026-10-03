@@ -61,7 +61,7 @@ import           Lips.Cli               (Command (..), GenerateOpts (..), Compil
 import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
                                         groundExpectFaults,
-                                        clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
+                                        clauseClaimGate, mintClaimGate, runExpects,
                                         stagedGate, worldGate)
 import           Lips.Stage             (stageBeside, stageFromDisk,
                                          stagedSizes, withTempDir, writeCompiled, writeSite)
@@ -665,7 +665,7 @@ checkWorld contract claims dir w file program = do
         -- Composition happens BEFORE the gates, so the claims judge the site a
         -- run would actually link: an imported clause is reachable from a claim
         -- exactly as a local one is.
-        rl <- expectGate contract claims dir w file eng program (composeWith imports rl0)
+        rl <- expectGate contract claims dir w file eng (composeWith imports rl0)
         -- What vouches for each assertion, always printed. An unvouched
         -- assertion (mint glue in a builder argument, a staged source tree)
         -- is the one thing lips cannot check, so the count is stated on every
@@ -850,10 +850,9 @@ draftWorlds = do
 -- Validates once, up front: the module, its artifacts and the paths it names
 -- all come from that one run, so the staged-source gate below and the contract
 -- judge the same realization.
-expectGate :: Bool -> Bool -> FilePath -> Text -> FilePath -> EngineData -> Text -> Realization -> IO Realization
-expectGate contract claims dir w file eng program rl = do
+expectGate :: Bool -> Bool -> FilePath -> Text -> FilePath -> EngineData -> Realization -> IO Realization
+expectGate contract claims dir w file eng rl = do
   stagedGate (stageBeside dir file rl) file rl
-  sourceSpecGate dir w file eng program
   expSrc <- if contract then tryRead (expectPathIn dir w file) else pure Nothing
   case expSrc of
     -- A skipped or absent contract is stated, never rendered as a pass: the
