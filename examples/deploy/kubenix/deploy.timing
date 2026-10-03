@@ -1,0 +1,17 @@
+format: 1
+verdict: accepted
+model: claude-opus-5
+thinking: medium
+wall: 46.3
+phase 2.6 kubenix option schema
+phase 42.2 mint .deploy from 1 program for kubenix
+phase 1.0 the kubenix world's own gate
+phase 0.0 write ./deploy
+turns: 4
+tool query_options: 4
+tool submit_draft: 1
+tokens input: 8
+tokens output: 1861
+tokens cache-read: 81988
+tokens cache-write: 28434
+cost-usd: 0.2652715
