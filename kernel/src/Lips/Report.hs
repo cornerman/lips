@@ -25,6 +25,8 @@ module Lips.Report
   , gapArtifact
   , refusalReport
   , uncheckableReport
+  , mintedSourceReport
+  , committedSourceReport
   , demandGenerateFail
   , validationReport
   , renderParseError
@@ -41,7 +43,7 @@ import qualified Data.Text          as T
 
 import           Lips.Cli.Output               (report, reportHead, tshow)
 import           Lips.Generate.Harness         (Confidence (..))
-import           Lips.Generate.Minting         (Gap (..), ItemCandidate (..))
+import           Lips.Generate.Minting         (Gap (..), ItemCandidate (..), SourceFile (..))
 import           Lips.Generate.Record          (genId)
 import           Lips.Kernel.Base              (Conflict (..))
 import           Lips.Kernel.Decision
@@ -415,6 +417,31 @@ uncheckableReport file bad = report
   [ T.intercalate "." (exPath e) <> " (check " <> exId e <> ")" | e <- bad ]
   ("→ a check must name an option that holds a value from " <> T.pack file
     <> ", not a package or build. Rebuild the setup: lips generate " <> T.pack file)
+
+-- | A mint wrote source for one program. Refused whatever else the mint holds
+-- (DESIGN §13, "No per-program source written by a model"): a staged tree has no
+-- bound, grew to 80 lines in `logscan`, and is exactly what the next mint
+-- rewrites unseen. Addressed to the mint first, since the draft door says it
+-- inside the model's own call, where all three remedies are still open to it.
+mintedSourceReport :: FilePath -> [SourceFile] -> Text
+mintedSourceReport file srcs = report
+  (T.pack file <> ": the mint wrote source for this one program, and lips does not"
+    <> " accept model-written source:")
+  [ sfArtifact sf <> "/" <> sfPath sf | sf <- srcs ]
+  ("\8594 state the behaviour as clauses, or name an existing package"
+    <> " (${pkgs.<name>}); where no contract reaches what the program needs, file"
+    <> " a gap naming it. Mint again: lips generate " <> T.pack file)
+
+-- | A language folder holds a source tree. No mint writes one any more, so a
+-- tree here was put by hand or by an older lips, and either way it is
+-- per-program source nobody reviewed once for every program.
+committedSourceReport :: FilePath -> FilePath -> Text
+committedSourceReport file tree = report
+  (T.pack file <> ": its language holds a source tree, and lips does not accept"
+    <> " per-program source:")
+  [T.pack tree]
+  ("\8594 remove the tree and mint the language again, so its behaviour is"
+    <> " stated as clauses: lips generate " <> T.pack file)
 
 -- | A demand the minted engine leaves unmet at generate. Ambiguous by
 -- construction (the kernel cannot tell a silent program from patterns that

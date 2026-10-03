@@ -32,7 +32,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
-import Lips.Report                 (emptySubmission, noSubmission, unansweredReport, unportableReport)
+import Lips.Report                 (committedSourceReport, emptySubmission, mintedSourceReport, noSubmission, unansweredReport, unportableReport)
 import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, mergeReply, replyLinesOf, sharedFileViolations, touchedIds)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
@@ -5990,6 +5990,23 @@ main = hspec $ do
       t `shouldSatisfy` T.isInfixOf "services thing enable"
     it "does not send the reader to generate" $
       t `shouldNotSatisfy` T.isInfixOf "lips generate"
+
+  -- No per-program source written by a model: a mint that bakes a tree is
+  -- refused whatever else it holds, and the refusal says what to do instead.
+  describe "the no-blob gate (Lips.Report.mintedSourceReport, committedSourceReport)" $ do
+    let t = mintedSourceReport "logscan.lips"
+              [ SourceFile "logscan" "main.go" "package main", SourceFile "logscan" "go.mod" "module x" ]
+    it "names every file the mint wrote" $ do
+      t `shouldSatisfy` T.isInfixOf "logscan/main.go"
+      t `shouldSatisfy` T.isInfixOf "logscan/go.mod"
+    it "names the remedies a mint has: clauses, a package by name, a gap" $ do
+      t `shouldSatisfy` T.isInfixOf "clauses"
+      t `shouldSatisfy` T.isInfixOf "${pkgs."
+      t `shouldSatisfy` T.isInfixOf "gap"
+    it "names the committed tree check finds, and sends the reader to generate" $ do
+      let c = committedSourceReport "logscan.lips" "examples/logscan/artifacts"
+      c `shouldSatisfy` T.isInfixOf "examples/logscan/artifacts"
+      c `shouldSatisfy` T.isInfixOf "lips generate logscan.lips"
 
   -- A world minted after the first inherits the grammar and may only add to it.
   describe "append-only grammar (Lips.Generate.Minting.appendOnlyViolations)" $ do

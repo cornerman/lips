@@ -68,7 +68,7 @@ import           Lips.Stage             (stageBeside, stageFromDisk,
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
 import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission,
-                                         failureReport, noSubmission,
+                                         committedSourceReport, failureReport, mintedSourceReport, noSubmission,
                                          gapArtifact, nixEvalFailed, nixMissing, plural,
                                          printFail, refusalReport, renderDiagnosis,
                                          renderParseError, unanswerableReport, unansweredReport,
@@ -545,6 +545,11 @@ checkLoose contract claims mLangDir file = do
   -- cannot place only where another world spends it. Judged once, over every
   -- world's engine, before any verdict about a single world.
   assertIgnoresPlaced dir ws file
+  -- No per-program source written by a model: generate refuses to write a tree,
+  -- so one found here was placed past that gate and is refused just the same.
+  let tree = artifactsPathIn dir file
+  hasTree <- doesDirectoryExist tree
+  when hasTree $ die (committedSourceReport file tree)
   forM ws $ \w -> do
     r <- checkWorld contract claims dir w file program
     case r of
@@ -750,6 +755,9 @@ checkDraft running restart file = do
     Left errs -> die (validationReport file ("the draft cannot be read as an engine:\n"
                         <> T.unlines [ "  - " <> e | e <- errs ]))
     Right t   -> do
+      -- The no-blob gate, in the door the model checks through, so a mint that
+      -- reached for a source tree hears why while it can still write clauses.
+      unless (null (dtSources t)) $ die (mintedSourceReport file (dtSources t))
       createDirectoryIfMissing True (dtLangDir t)
       TIO.writeFile (grammarPathIn (dtLangDir t) file) (dtGrammar t)
       forM_ (dtWorlds t) $ \(w, rules, expect) -> do
@@ -1159,6 +1167,11 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
         let minted = sourcesOf (map icItem candidates)
             stage rl root = writeSources (root </> "artifacts") minted
                               >> void (writeSite (T.pack lang) root rl)
+        -- No per-program source written by a model, whatever else the mint
+        -- holds: refused before any gate that costs a build. (The checks below
+        -- that judge a minted tree are unreachable now and go with the machinery
+        -- that stages it.)
+        unless (null minted) $ die (mintedSourceReport rep minted)
         -- A source tree is written under the artifact name the block gives, so a
         -- name still holding a hole makes a directory called "<self>" and the
         -- module's src points at nothing. Refused here, where the mint is still

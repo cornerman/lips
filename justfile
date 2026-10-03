@@ -362,6 +362,32 @@ test-draft:
       || { echo "FAIL: a render the validator accepts was refused"; cat "$tmp/out22"; exit 1; }
     grep -q "the nono world's own gate" "$tmp/out22" \
       || { echo "FAIL: the world's gate did not run on a sound draft"; cat "$tmp/out22"; exit 1; }
+    # No per-program source written by a model: a draft carrying a source block
+    # is refused inside the mint's own call, naming the file, whatever else holds.
+    export LIPS_MINT_WORLDS=nixos
+    export LIPS_MINT_PROGRAMS="$tmp/one.watch.lips"
+    printf 'watch 30 seconds\n' > "$tmp/one.watch.lips"
+    cat > "$tmp/src.txt" <<'EOF'
+    0.95 p1 pattern watch <secs> seconds => fact watch.interval "<secs>"
+    0.95 r1 match fact watch.interval => systemd.services.w.environment.S "<value:int>"
+    0.9 s1 source watch main.go <<<lips
+    package main
+    lips>>>
+    EOF
+    sed -i 's/^    //' "$tmp/src.txt"
+    if "$lips" check --draft "$tmp/one.watch.lips" < "$tmp/src.txt" > "$tmp/out23" 2>&1; then
+      echo "FAIL: --draft accepted model-written source"; cat "$tmp/out23"; exit 1
+    fi
+    grep -q "watch/main.go" "$tmp/out23" \
+      || { echo "FAIL: the no-blob refusal did not name the file"; cat "$tmp/out23"; exit 1; }
+    # The same rule for a committed folder: a tree found there is refused by check.
+    mkdir -p "$tmp/watch/artifacts/watch"
+    printf 'package main\n' > "$tmp/watch/artifacts/watch/main.go"
+    if "$lips" check "$tmp/one.watch.lips" > "$tmp/out24" 2>&1; then
+      echo "FAIL: check accepted a language folder holding a source tree"; cat "$tmp/out24"; exit 1
+    fi
+    grep -q "holds a source tree" "$tmp/out24" \
+      || { echo "FAIL: check did not name the source tree"; cat "$tmp/out24"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
