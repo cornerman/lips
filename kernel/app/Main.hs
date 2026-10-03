@@ -1260,7 +1260,7 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
         -- rules) and answers for itself: a world that cannot serve the program
         -- fails alone, and the worlds that hold are still written.
         results <- forM grounds $ \(w, schemaPath, pin) ->
-          (,) w <$> gateOneWorld compat rep progs candidates stage w schemaPath pin
+          (,) w <$> gateOneWorld compat (isJust basisEngine) rep progs candidates stage w schemaPath pin
         let held = [ (w, r) | (w, Right r) <- results ]
             failed = [ (wName w, why) | (w, Left why) <- results ]
         -- Nothing is written for a world that failed, and the account of the
@@ -1370,12 +1370,21 @@ data WorldResult = WorldResult
 -- exists in no schema means the mint hallucinated a name, and a mint that
 -- invents is not a mint half of whose output should be kept; and the nixpkgs
 -- lookup behind the artifact build is a tool failure, not a verdict.
-gateOneWorld :: Compat -> FilePath -> [(FilePath, Text)] -> [ItemCandidate]
+--
+-- @patching@ says the reply was merged with the committed engine, contract
+-- included. A patch then keeps every assertion it does not restate, so no
+-- --compat mode lets it DROP one, and a refusal that would suggest dropping
+-- names --fresh as well, the one way to answer without inheriting.
+gateOneWorld :: Compat -> Bool -> FilePath -> [(FilePath, Text)] -> [ItemCandidate]
              -> (Realization -> FilePath -> IO ()) -> World -> FilePath -> Text
              -> IO (Either Text WorldResult)
-gateOneWorld compat rep progs candidates stage world schemaPath pin = runExceptT $ do
+gateOneWorld compat patching rep progs candidates stage world schemaPath pin = runExceptT $ do
   let wn   = wName world
       eng0 = assemble (itemsFor wn candidates)
+      -- How a deliberate contract change is asked for: under a patch an
+      -- inherited assertion survives every mode, so only --fresh drops it.
+      compatCmd m = "lips generate " <> (if patching then "--fresh " else "")
+                      <> "--compat " <> compatSlug m <> " " <> T.pack rep
   -- Validate the engine EXACTLY as it will be persisted: render and read it
   -- back, so any round-trip drift is caught at mint time rather than on a later
   -- compile. The read-back engine is what gets written.
@@ -1441,7 +1450,7 @@ gateOneWorld compat rep progs candidates stage world schemaPath pin = runExceptT
         <> " the " <> wn <> " engine still fills, which --compat forwards does not permit:")
       [ renderAttrPath (exPath e) | e <- kept ]
       ("→ keep them (drop --compat forwards), or accept the loss deliberately: "
-        <> "lips generate --compat none " <> T.pack rep))
+        <> compatCmd None))
   case uncheckableExpects (edRules eng) expects of
     bad@(_ : _) -> throwE (uncheckableReport rep bad)
     []          -> pure ()
@@ -1467,9 +1476,10 @@ gateOneWorld compat rep progs candidates stage world schemaPath pin = runExceptT
         fs
         -- Name the SMALLEST mode that would admit this change.
         ("→ run generate again. If you changed the program on purpose, accept "
-          <> "the new behavior: lips generate --compat "
-          <> compatSlug (smallestCompat (edRules eng) broken) <> " " <> T.pack rep
-          <> " (rewrites " <> T.pack (expectPathIn (langDir rep) wn rep) <> ")."))
+          <> "the new behavior: " <> compatCmd (smallestCompat (edRules eng) broken)
+          <> " (rewrites " <> T.pack (expectPathIn (langDir rep) wn rep) <> ")"
+          <> (if patching then ": a patch keeps every assertion it does not restate,"
+                                 <> " so dropping one takes --fresh." else ".")))
       Right () -> pure ()
   -- The gates that observe rather than read, last, so a mint that fails for a
   -- readable reason never pays a build. Every one builds against the nixpkgs
