@@ -50,7 +50,7 @@ import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Claims (claimsFile)
 import Lips.Nix.Flake (Nixpkgs (..), Rungs (..), SiteRung (..), compiledNixpkgs, flakeText,
-                       noRungs, runCommands)
+                       nixpkgsRef, noRungs, runCommands)
 import Lips.World
 import Lips.World.Builtin (builtinWorld, builtinWorlds)
 import Lips.World.Check (NixSlice (..), nixSlices)
@@ -4462,6 +4462,15 @@ main = hspec $ do
       let t = flakeText (shippedWorld "nixos") Ambient noRungs
       t `shouldSatisfy` T.isInfixOf "inputs.nixpkgs.url = \"flake:nixpkgs\";"
       t `shouldSatisfy` T.isInfixOf "nixpkgs resolved ambiently"
+
+    -- A mint's own builds (artifacts, command claims, the world's gate) name
+    -- nixpkgs by this ref, so they observe exactly what the flake's input names.
+    it "names the same nixpkgs for a mint's builds as the flake's input" $ do
+      let input n = T.isInfixOf ("inputs.nixpkgs.url = \"" <> nixpkgsRef n <> "\";")
+                                (flakeText (shippedWorld "nixos") n noRungs)
+      nixpkgsRef (Pinned pin) `shouldBe` pin
+      nixpkgsRef Ambient `shouldBe` "flake:nixpkgs"
+      mapM_ (\n -> n `shouldSatisfy` input) [Pinned pin, Ambient]
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do

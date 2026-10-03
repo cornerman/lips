@@ -49,6 +49,7 @@ module Lips.Nix.Flake
   , noRungs
   , Nixpkgs (..)
   , compiledNixpkgs
+  , nixpkgsRef
   , substrateNixpkgsVar
   , hasSite
   , hasSiteClaims
@@ -91,6 +92,13 @@ compiledNixpkgs w (Just pin)
   | wSchemaPin w == Just substrateNixpkgsVar && not (isContentPin pin) = Pinned pin
 compiledNixpkgs _ _ = Ambient
 
+-- | The flakeref a 'Nixpkgs' names. The compiled flake's input and every
+-- build a mint runs outside that flake read it here, so the two cannot name
+-- different nixpkgs for the same choice.
+nixpkgsRef :: Nixpkgs -> Text
+nixpkgsRef (Pinned ref) = ref
+nixpkgsRef Ambient      = "flake:nixpkgs"
+
 -- | What the site axis offers, when it offers anything. A sum rather than two
 -- booleans, so "judge the clauses of a program that has none" cannot be written.
 data SiteRung = SiteRung
@@ -132,7 +140,7 @@ flakeText w nixpkgs rungs = T.unlines $
   [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
   , "{"
   , "  description = \"lips-compiled program (" <> said <> ")\";"
-  , "  inputs.nixpkgs.url = \"" <> url <> "\";"
+  , "  inputs.nixpkgs.url = \"" <> nixpkgsRef nixpkgs <> "\";"
   ]
   ++ wInputs w
   ++
@@ -157,9 +165,9 @@ flakeText w nixpkgs rungs = T.unlines $
      , "}"
      ]
   where
-    (url, said) = case nixpkgs of
-      Pinned ref -> (ref, "nixpkgs pinned to the schema its engine was grounded against")
-      Ambient    -> ("flake:nixpkgs", "nixpkgs resolved ambiently: its record pins no nixpkgs")
+    said = case nixpkgs of
+      Pinned _ -> "nixpkgs pinned to the schema its engine was grounded against"
+      Ambient  -> "nixpkgs resolved ambiently: its record pins no nixpkgs"
 
 -- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
 -- activate). The only output lips contributes entries to: artifacts (under the
