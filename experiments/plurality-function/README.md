@@ -177,3 +177,9 @@ kernel may not.
 - `scan/Scan.hs`, `scan/corpus.txt`, `scan/mints.txt`: the singleton scan.
   Build: `ghc -Wall -ikernel/src experiments/plurality-function/scan/Scan.hs
   -outputdir /tmp/<dir> -o /tmp/<dir>/scan`, then run it over `examples/*.lips`.
+
+## Follow-Up
+
+The contract defect is fixed (DESIGN §13, "A ground check reads its own line's
+contribution"). Re-run against the fixed binary, `S-two` and `S-three` compile
+and print every call. The engines here were not re-minted.

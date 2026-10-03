@@ -4264,7 +4264,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   FIRST decision with its subject (`(a : _)`), one contributor of an
   Append-assembled slot. It is a likely kernel defect, inferred from probes,
   not yet pinned by a test, and with one call the mint's own gate cannot see
-  it. Corpus scan (`scan/Scan.hs`, built from the kernel's own matcher and
+  it. (Fixed the next day: "A ground check reads its own line's contribution".) Corpus scan (`scan/Scan.hs`, built from the kernel's own matcher and
   `wordLandings`): 59 of 92 (pattern, hole) pairs are singletons, 9 land in
   clauses, and all 9 are honest (board's markers, columns and separator,
   habit's two marks, hello's two texts and its `<var>`). Across corpus and
@@ -4320,6 +4320,35 @@ but the loop around it is incomplete; "missing" means specced, not built.
   machinery that judged a staged tree (`Lips.Stage` fills, `sourceSpecGate`,
   `stagedSizes`, `claimlessBakedSource`, `unnamedSources`) is unreachable now,
   and deleting it is the next errand (TODO 5).
+
+- **A ground check reads its own line's contribution** (2026-10-03, the
+  defect the plurality experiment found). A slot several program lines feed (an
+  Append-assembled claim section or clause) holds one ground decision PER LINE,
+  and `checkArtifactValues` judged every check against the first of them
+  (`(a : _)`). So a family check `expect claim.main.equals-lines from call.<n>`
+  held at one call and refused two (`should be [ "du" ], but is [ "hallo" ]`)
+  for a program the engine realized correctly, naming a re-mint as the remedy.
+  A check now reads the slot decisions DESCENDING from its own `from`
+  decision. Refinement names every product `<parent id>/<rule>#<i>`
+  (`Lips.Kernel.Refine.stamp`), so descent is an id prefix at any depth, and
+  the program base rides in beside the ground one (two call sites in
+  `Lips.Gate`), because refinement consumes the `from` decision. Chosen over
+  "any contributor holds", which misses the drop that matters: two lines that
+  print the same word, with the second one's contribution gone, still match
+  the first line's element, and clauses keep repeats on purpose. The old
+  first-contributor reading stayed in as an instrumented fallback for one corpus
+  run: `lips check` over all 23 programs plus both experiment arms (10 ground
+  checks) reached it ZERO times. So it is now a loud refusal naming the check,
+  its `from` and the slot ("nothing call.2 produced reaches this slot"), pinned
+  by a test, and the mint meets it inside its own call through the draft door.
+  Evidence: `just check-expect` green with the same 23 verdicts as before the
+  change, `just test-draft` OK, 978 examples. Probes against the one-call
+  variant: `S-two` and `S-three` now compile and print every call (before:
+  refused by the contract), and `C-two` is unchanged. Stricter than before: a
+  check whose `from` is a SIBLING of the slot's feeder (two emits of one
+  pattern line, with the slot filled by the other one) used to pass whenever
+  the value happened to appear in the slot. It is now refused, naming the
+  decision to cite instead. No committed contract has that shape.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every

@@ -156,17 +156,6 @@ tracks only what is still open.
    points at (two declarations of different types) is not expressible until
    7c's `identifier-from-program` closes.
 
-   **A ground expect over an Append slot checks only the first contributor**
-   (found by the same experiment, not yet pinned by a test). The one-call mint
-   wrote `expect claim.main.equals-lines from call.<n>`; with two or three
-   calls every expanded check compares against the FIRST call's element, so
-   the contract refuses a program the engine realizes correctly, naming re-mint
-   as the remedy. Likely site: `checkArtifactValues` in `Lips.Kernel.Expect`
-   takes `(a : _)`. Reproduce with `experiments/plurality-function/probe.sh`
-   (`S-two`, `S-three` in `probes.txt`). Kernel work: write the failing test
-   first, then decide whether an expanded check is judged against its OWN
-   line's contribution or by containment in the assembled slot.
-
 4. **The contract set reaches stdin-to-stdout text tools and nothing else**
    (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked
    to sweep three directories of files older than 14 days, the mint wrote 97
