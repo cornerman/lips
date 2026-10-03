@@ -185,89 +185,35 @@ tracks only what is still open.
    filesystem and clock interfaces as the typed authority. Adopting one is a
    design pass, not an errand.
 
-5. **The no-blob doctrine, with its gate** (agreed 2026-08-04; its precondition
-   landed 2026-08-04, when the mint began emitting clauses and `logscan` moved
-   from "80 lines vouched by nothing" to 5 clauses and 0 unvouched assertions).
+5. **Delete the staged-source machinery** (NEXT ERRAND; the gate it served
+   landed 2026-10-03, DESIGN §13 "The no-blob doctrine is gated, and glue is
+   marked"). Model-written source is refused at generate, at the draft door
+   and at check, so everything that staged, filled or judged a source tree is
+   unreachable: `Lips.Stage` fills and `stagedSizes`, `Lips.Gate.sourceSpecGate`,
+   `gStaged`, `claimlessBakedSource`, `unnamedSources`, the committed-source
+   half of `sharedFileViolations`, the `artifact.<n>.fill.*` emit and its
+   prompt remnants. Keep the `source` block PARSER, so the refusal can name the
+   files. Delete with tests, one concern per commit.
 
-   The rule: **no per-program source written by a model.** A blob is admissible
-   only when it is not per program and reviewed once (an adapter under
-   `assets/runtime/`, serving every program), or when it is somebody else's
-   package reached by name. The escape for genuine one-offs is a VALUE, never a
-   file: `greet`'s four words of bash are bounded by sitting in one assertion
-   attached to one program line, where a staged tree has no such bound and grew
-   to 80 lines in `logscan`.
-
-   Two grades, deserving different trust. AUTHOR glue, where the foreign text is
-   in the program, is legitimate without qualification. MINT glue, where the
-   model chose it (`echo` in `greet`), is admissible but must be marked, counted
-   and pinned by a claim, since it is exactly what a re-mint rewrites.
-
-   What exists: the counting (`Lips.Kernel.Grounding`, printed on every check).
-   What is missing: the `Glue` kind is declared in `Decision.hs` and used
-   nowhere, so glue is counted structurally rather than marked as such; and no
-   gate refuses a new staged tree. NO committed program carries one any
-   longer as of 2026-08-12 (`function` shed its 21 lines and `http` its 62 on
-   2026-08-06; `board` its 40, `habit` its 78, and `website` its 220 -- the
-   largest, a whole Go http server -- all on 2026-08-12), so the gate this
-   item describes can now land without refusing the corpus it ships with.
-   Landing it is still a separate errand (the `Glue` kind marking above), but
-   nothing blocks it any more.
-
-   The `website` engine is now nginx plus a oneshot unit that lays out its
-   document root (re-minted 2026-09-20, claude-opus-5, `--fresh --compat none`,
-   accepted on the first attempt; DESIGN §13, "The website defect closes"). Its
-   ONE clause prints a fixed HTML+JS shell that FETCHES the program's words from
-   `/data/<kind>/<i>/<field>` at page load, where the rules put them as
-   `environment.etc.*` files under the served root. So the 57 mint-written words
-   inside option strings are pinned by a claim asserting HTTP 200 on `/` and
-   nothing more, which is this item's MINT-glue rule unmet: marked and counted,
-   but not pinned by an observation. The standing `website-vm` flake check
-   (renamed from `artifact-vm`, which has named no artifact since 2026-08-12)
-   carries what the claim does not -- it asks `/data/button/2/label` for the word
-   `leeren` -- but a flake check is this repo's own CI, not a gate a user's
-   engine brings with it.
-   It filed `browser-behaviour` again (no contract reaches a document, an element
-   or a click, so the clauses can only PRINT the JavaScript that
-   paints/erases/downloads a canvas -- nothing checks what that script actually
-   does in a browser). `browser-behaviour` is the sharper gap: it is the same
-   shape as `no-file-contract` (a capability class -- here, the DOM -- that no
-   contract in `assets/runtime/scheme/contracts` names), but unlike a file it
-   is not obviously closeable by adding one contract, since a browser event
-   loop is a different execution model than the sandbox clauses run in. Left
-   as a gap, not a design item, until a program's own words make the cost of
-   leaving client-side behaviour unchecked concrete.
-   Superseded, kept for the two gaps the 2026-08-12 engine filed and this one no
-   longer can: `angle-brackets-in-values` (a Nix value cannot hold literal
-   `<...>`, since that reads as an unknown hole, forcing markup through clause
-   strings, whose hole marker is `#<...>`, even where a plain file would
-   otherwise do) and `no-stated-observable` (the program states no example of the
-   rendered page, so its one claim can only be a smoke test). The second is still
-   true of `website.lips`, which is why its claim is an HTTP 200.
-
-   The `board` and `habit` re-mints (both claude-opus-5, `--compat none`)
-   each filed the same two gaps instead of faking a fix: `no-file-contract`
-   (no contract opens a file, so a sentence naming a command-line file
-   argument is honoured only for stdin, at reduced confidence) and a further
-   instance of the fixed-arity-witness shape from 1c (`fixed-witness-count`,
-   `one-line-item-list`) -- the block form frees a witness's INPUT side but
-   never its OUTPUT side, since `claim.<id>.equals` takes one expression, not
-   an aggregate. Same conclusion 1c already reached from `function` and the
-   original `habit` mint, now confirmed a fourth and fifth time; both gaps look
-   structural to the shape of a tiny CLI tool, not accidents of one mint.
-
-   The `http` re-mint also showed the second grade in the open: with the Go tree
-   gone, its route bodies became 19 mint-written words of nginx configuration
-   inside option strings, each bounded by one program line, which is the
-   admissible VALUE form. Nothing static can read them (an expect compares the
-   option's string, not what nginx does with it), so the flake's `nginx-vm` boots
-   the module and asks every route. A booted check is what MINT glue costs.
-
-   Watch for the loophole the `function` re-mint found before clause sequencing
-   existed: told that every word it reads must reach output, a mint satisfied it
-   by landing the program's words in CLAIMS and minting behaviour that ignored
-   them. A claim is an observation, not a realization. The guard, if this
-   recurs, is the twin of `diagInert`: a word whose only landing is a claim is
-   inert in the same sense and should be named.
+   Still open from the doctrine, none blocking:
+   a. Code inside an OPTION string is measured (`N mint-written words inside
+      option strings`), never marked or gated. Telling computation from prose
+      there needs shape guessing, so this is a limit by decision. `website`
+      carries 57 such words, pinned only by a claim asserting HTTP 200 on `/`;
+      the `website-vm` flake check (this repo's CI, not a gate a user's engine
+      brings) asks `/data/button/2/label` for the word `leeren`. Its gap
+      `browser-behaviour` (no contract reaches a document, an element or a
+      click) stays a gap, not a design item, until a program makes the cost
+      concrete. `http`'s 19 nginx words are watched the same way by `nginx-vm`.
+   b. The committed `greet` carries unpinned MINT glue (`echo` in two
+      `args.text`, no claim). `check` reports it as `glue (mint, unpinned)`;
+      its next re-mint must claim it. Do not re-mint it for this alone.
+   c. A word is a whitespace token, so `echo \"<value>\"` counts as three mint
+      words. Refine only if a count misleads someone.
+   d. Watch the loophole the `function` re-mint found before clause sequencing
+      existed: a mint that lands the program's words only in CLAIMS and mints
+      behaviour that ignores them. The guard, if it recurs, is the twin of
+      `diagInert`: a word whose only landing is a claim is inert.
 
 6. **A world's gate pins only nixpkgs** (the open half of the render gate,
    which landed 2026-10-03: DESIGN §13, "A world's own gate runs at mint time").
@@ -631,9 +577,9 @@ tracks only what is still open.
   when a real mint fails for lack of a fact, not before.
 
 - **Glue** -- the one deliberate incompleteness (computation inside the
-  decision layer). `Glue` is a `Kind` with no rigor-downgrade mechanism.
-  Blocks a *computed value*, not building a program (that is artifacts,
-  done).
+  decision layer). Builder arguments are marked `Glue` and mint glue must be
+  run by a claim (DESIGN §13); no property testing over glue exists. Blocks a
+  *computed value*; building a program from model-written source is refused.
 
 - **Dependency-fetching builders** (cargo/vendor hashes) -- untried. The
   proven path is no-dependency source (Go stdlib with `vendorHash = null`);

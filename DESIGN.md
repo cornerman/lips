@@ -4274,6 +4274,53 @@ but the loop around it is incomplete; "missing" means specced, not built.
   behaviour, which is domain knowledge. So the counting diagnostic is NOT
   built: its exemption list would be an open list the kernel enumerates.
 
+- **The no-blob doctrine is gated, and glue is marked** (2026-10-03, TODO 5;
+  no mint run, no engine re-minted). Three changes, each structural, none
+  naming a builder, a language or a world.
+  NO MODEL-WRITTEN SOURCE. A mint whose reply carries a `source` block is
+  refused whatever else it holds, at three doors: `generate` (before any gate
+  that costs a build), the draft door (so the model hears it inside its own
+  call), and `check`/`compile`, which refuse a language folder holding an
+  `artifacts/` tree (no committed example has one, so the corpus is
+  untouched). The refusal names every file and three remedies: clauses, an
+  existing package by name, or a gap naming the missing contract. The mint
+  prompt lost its source-block form and its worked Go example, and now says
+  there is no source to fall back on. The parser still reads a `source` block
+  so the refusal can name the files. Unconditional, by decision: a program
+  whose behaviour needs a capability no contract offers (`rotate`, TODO 4)
+  is refused until that contract exists, rather than admitted as a blob.
+  GLUE IS MARKED AT EMIT. A rule emit into `artifact.<n>.args.*` (except
+  `src`, a path naming a tree) is stamped kind `Glue` instead of `Meta`
+  (`Engine.Data.toRule`). Position is the one thing the kernel knows about
+  foreign text: no schema declares a builder argument. The anti-MDA guard
+  admits `Glue` only when DERIVED, so a program-level glue decision no rule
+  maps is still refused as unmapped. The GRADE is read from the emit's
+  TEMPLATE (`Engine.Data.emitTemplate`, replaying the one rewrite the
+  provenance names): literal text the mint wrote makes it MINT glue, a value
+  made only of holes makes it AUTHOR glue. Grounding now prints `N glue
+  assertions by the author (stated)` beside the unvouched count, and one line
+  per glue assertion graded `glue (mint, unpinned)`, `glue (mint)` or `glue
+  (author)`. Rejected: a `glue` mark the mint writes itself. It would be
+  syntax the model omits exactly when omitting it escapes a gate.
+  MINT GLUE MUST BE RUN BY A CLAIM. A mint glue assertion is pinned when some
+  `claim.<id>.run` names its artifact, directly or through another artifact's
+  arguments (a wrapper exec'ing a core). `generate` refuses a world whose
+  mint glue no claim runs (a per-world failure; the other worlds are still
+  written), the draft door refuses it too, and `check` only reports it,
+  because the committed `greet` carries exactly that (`echo` in two
+  `args.text`, no claim) and moving it costs a re-mint.
+  A COUNT CORRECTED ON THE WAY. The "mint-written words inside option strings"
+  number was computed on FILLED values, so program words filled into a string
+  counted as the mint's. It is now counted in the rule template. `website`
+  falls from 70 to 57, and `hello.http` stays at 19.
+  LIMITS, by decision. Code inside an OPTION string (`systemd.services.*.script`,
+  nginx `extraConfig`) is measured by that count, but neither marked nor gated:
+  telling computation from prose there needs shape guessing. A word is still a
+  whitespace token, so `echo \"<value>\"` counts as three mint words. The
+  machinery that judged a staged tree (`Lips.Stage` fills, `sourceSpecGate`,
+  `stagedSizes`, `claimlessBakedSource`, `unnamedSources`) is unreachable now,
+  and deleting it is the next errand (TODO 5).
+
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
   deterministic verb, not just `generate`: `check` is the gate alone and
@@ -4295,8 +4342,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   vocabulary/ontology). A cross-program corpus still does not typecheck because
   engines are per-problem (`feed.loose.lang` and `backup.loose.lang` are
   independent); the gate is per-program by design.
-- **Glue.** `Glue` exists as a `Kind`, but its rigor downgrade (marked glue ->
-  property testing, visible blast radius) is not implemented. This is the wall
+- **Glue.** `Glue` is MARKED where the kernel can see it, a rule emit into a
+  builder's argument, and graded author or mint by its template. Mint glue must
+  be run by a claim before `generate` accepts it (Done, "The no-blob doctrine is
+  gated"). Text inside an option string is counted but not marked. Property
+  testing over glue is not implemented. This is the wall
   behind the expressiveness frontier: the closed rhs value language forbids
   computation by construction (which is what makes injection unrepresentable),
   so an engine can *reference* a prebuilt package (`${pkgs.cudaPackages...}`,
@@ -4304,9 +4354,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   kernel inline). Concretely: GPU/GUI domains are reachable now
   for prebuilt stacks (they are just more NixOS options, bools, lists, and
   package refs, all of which the value language expresses). What is blocked
-  without glue is a *computed value inside the decision layer*, not building a
-  program: building a custom program from its own source is the artifacts path
-  below, which is first-class and does not need glue. Glue and artifacts are
+  without glue is a *computed value inside the decision layer*. Building a
+  program from model-written source is refused since 2026-10-03; behaviour
+  goes in clauses. Glue and artifacts are
   separate axes; glue is deferred as far as possible.
 
 ### Verified Breakages (Broken Promises, Review of 2026-07-29)
@@ -4495,9 +4545,9 @@ gate on an artifact-only engine, and the concept escape.
   design rather than by oversight.
 
 ### Missing
-- **Artifacts: deferred pieces.** The core landed (see Done), a program value
-  reaches inside baked source through a *fill*, and repeating source is settled as
-  unnecessary (both in Done). Still open: dependency-fetching builders (a
+- **Artifacts: deferred pieces.** The core landed (see Done). Model-written
+  source is refused since 2026-10-03, so the *fill* and staged-tree machinery is
+  dead code awaiting deletion (TODO 5). Still open: dependency-fetching builders (a
   `cargoHash`/`vendorHash` over fetched crates) move the fetch to generate and
   are untried (the proven path is no-dependency source, e.g. Go stdlib with
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A
@@ -4641,7 +4691,9 @@ gate on an artifact-only engine, and the concept escape.
     the last piece (see "Blocks" in Done): the deferred framing was wrong -- what
     was missing was never a decision that owns a list, but a line's ability to see
     the block it sits in.
-  - Glue: TODO. The one documented incompleteness (computation).
+  - Glue: builder arguments are marked and mint glue is claim-gated (Done). A
+    computed value inside the decision layer stays the one documented
+    incompleteness.
 - **Language migration.** When `.lang` regenerates to a different shape, there
   is no diff or migration path for existing programs.
 - **Multi-language composition.** The sketch composes three languages in one
@@ -4720,26 +4772,26 @@ from small points and is recorded here as such.
   whole Nix value algebra minus computation, the template grammar a small
   complete capture algebra. Computation is the single deliberate hole, routed
   to glue. A missing grammar case is a kernel bug, not an acceptable refusal.
-- **No per-program source written by a model (settled 2026-08-04, gated).** A
-  blob is admissible only where it is NOT per program and reviewed once (an
-  adapter under `assets/runtime/`, serving every program), or where it is somebody
-  else's package reached by name. Behaviour a program states goes in clauses.
-  Where no contract covers the capability the behaviour needs -- files, clocks,
-  sockets, as `experiments/validate` measured with `rotate` -- baked source stays
-  admissible, because refusing it would refuse the program rather than the
-  mechanism. What is NOT admissible either way is behaviour nothing observes:
-  `generate` now REFUSES an engine that bakes source with no claim, and one that
-  mints clauses with no claim over them, naming the one sentence that fixes it.
-  `logscan` spent months as the counter-example (76 lines of Go, roughly fifteen
-  traceable, two mints disagreeing about what the program did, every gate green)
-  and is now clauses.
+- **No per-program source written by a model (settled 2026-08-04, gated
+  2026-10-03).** A blob is admissible only where it is NOT per program and
+  reviewed once (an adapter under `assets/runtime/`, serving every program), or
+  where it is somebody else's package reached by name. Behaviour a program
+  states goes in clauses. A mint that writes source is REFUSED, at generate, at
+  the draft door and at check, with no exception for a capability no contract
+  covers (files, clocks, sockets, as `experiments/validate` measured with
+  `rotate`). Such a program waits for the contract; it is not admitted as a
+  blob, because refusing the mechanism is what makes the missing contract
+  visible as a gap. `logscan` spent months as the counter-example (76 lines of
+  Go, roughly fifteen traceable, two mints disagreeing about what the program
+  did, every gate green) and is now clauses.
   The escape for a genuine one-off is a VALUE, never a file: `greet`'s four words
   of bash are bounded by sitting in one assertion attached to one program line,
   where a staged tree has no such bound and grew to 76 lines. Two grades deserve
-  different trust: AUTHOR glue, whose foreign text is in the program, is
-  legitimate without qualification; MINT glue, where the model chose it (`echo` in
-  `greet`), is admissible but counted (`Lips.Kernel.Grounding`) and pinned by a
-  claim, since it is exactly what a re-mint rewrites.
+  different trust, and the kernel tells them apart from the rule's template:
+  AUTHOR glue, whose foreign text is in the program, is legitimate without
+  qualification; MINT glue, where the model chose it (`echo` in `greet`), is
+  marked kind `Glue`, counted (`Lips.Kernel.Grounding`), and refused at generate
+  unless a claim runs its artifact, since it is exactly what a re-mint rewrites.
 - **Expressiveness gaps route through three doors, never a plugin API.**
   Per-problem computation -> marked glue (in the Solution, visible blast
   radius); mechanism reach -> nixpkgs/flakes (an engine emitting the options
