@@ -97,7 +97,7 @@ import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (unanswerableDemands)
 import           Lips.Kernel.Engine.Gate       (engineViolations, unholdableExpects, unholdableProblem)
-import           Lips.Nix.Flake                (Nixpkgs (..), compiledNixpkgs, runCommands)
+import           Lips.Nix.Flake                (Nixpkgs, compiledNixpkgs, runCommands)
 import           Lips.World                     (World (..), parseWorld)
 import           Lips.World.Resolve            (builtinNames, localWorldNames, resolveWorld, resolveWorldFrom)
 import           Lips.World.Check               (SlotFault (..), checkNixSlots)
@@ -786,10 +786,14 @@ checkDraft running restart file = do
       -- will be judged in every one of them. A world the draft does not reach is
       -- this draft's verdict, and fatal here: the model is still writing it.
       program <- readProgramOrDie file
+      -- The pin each world is being grounded against, handed over by generate
+      -- because the draft has no record yet to read it from. The clause claims
+      -- build against it, so the draft observes the nixpkgs `check` will read
+      -- back from the record. A door run outside a mint has none: ambient.
+      pins <- envPairs "LIPS_MINT_PINS"
       forM_ ws $ \w -> do
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
-        -- Ambient: the draft has no record yet to read a pin from (TODO.md, the schema pin item).
-        clauseClaimGate w Ambient file rl
+        clauseClaimGate w (compiledNixpkgs w (T.pack <$> lookup (wName w) pins)) file rl
         -- The glue gate generate runs, said in the door while the mint can still
         -- add the claim; check alone only reports unpinned glue.
         eng <- loadLangOrDie (dtLangDir t) (wName w) file
@@ -1100,6 +1104,7 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
               <> " for " <> T.intercalate ", " wnames) $
         callPi verbose mmodel thinking prompt corpus worlds files committedExpects
                [ (wName w, p) | (w, p, _) <- grounds ]
+               [ (wName w, T.unpack pin) | (w, _, pin) <- grounds ]
                (maybe "" (const dir) basisEngine)
     -- From here on a refusal has a model call behind it, so the numbers the mint
     -- reported belong in the stats file however this run ends.
@@ -1213,8 +1218,8 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
         -- Every world is gated on its own engine (the shared grammar plus its own
         -- rules) and answers for itself: a world that cannot serve the program
         -- fails alone, and the worlds that hold are still written.
-        results <- forM grounds $ \(w, schemaPath, _) ->
-          (,) w <$> gateOneWorld compat rep progs candidates stage w schemaPath
+        results <- forM grounds $ \(w, schemaPath, pin) ->
+          (,) w <$> gateOneWorld compat rep progs candidates stage w schemaPath pin
         let held = [ (w, r) | (w, Right r) <- results ]
             failed = [ (wName w, why) | (w, Left why) <- results ]
         -- Nothing is written for a world that failed, and the account of the
@@ -1325,9 +1330,9 @@ data WorldResult = WorldResult
 -- invents is not a mint half of whose output should be kept; and the nixpkgs
 -- lookup behind the artifact build is a tool failure, not a verdict.
 gateOneWorld :: Compat -> FilePath -> [(FilePath, Text)] -> [ItemCandidate]
-             -> (Realization -> FilePath -> IO ()) -> World -> FilePath
+             -> (Realization -> FilePath -> IO ()) -> World -> FilePath -> Text
              -> IO (Either Text WorldResult)
-gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ do
+gateOneWorld compat rep progs candidates stage world schemaPath pin = runExceptT $ do
   let wn   = wName world
       eng0 = assemble (itemsFor wn candidates)
   -- Validate the engine EXACTLY as it will be persisted: render and read it
@@ -1434,9 +1439,9 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   when (isJust (wGate world)) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
     forM_ validated $ \(f, rl) -> worldGate nixpkgs world f rl
-  -- Ambient: a mint's clause claims are not yet held to the pin it records,
-  -- unlike its artifact and command claims (TODO.md, the schema pin item).
-  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world Ambient f rl)
+  -- Built against the pin this mint records, so the clause claims observe the
+  -- nixpkgs `check` will read back from the record and build them against.
+  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world (compiledNixpkgs world (Just pin)) f rl)
   unless (null claims) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
     forM_ validated $ \(f, rl) -> mintClaimGate nixpkgs (stage rl) f rl
@@ -1555,8 +1560,8 @@ nixParses nixModule = do
 -- engine. Handing back a tuple of the three fields it happened to need meant
 -- the numbers pi already reported were parsed and dropped.
 callPi :: Bool -> Maybe String -> String -> Text -> Text -> [World] -> [FilePath]
-       -> [(Text, FilePath)] -> [(Text, FilePath)] -> FilePath -> IO PiReply
-callPi verbose mmodel thinking system userPrompt worlds files expects schemas basisDir =
+       -> [(Text, FilePath)] -> [(Text, FilePath)] -> [(Text, String)] -> FilePath -> IO PiReply
+callPi verbose mmodel thinking system userPrompt worlds files expects schemas pins basisDir =
   -- The answer travels in a file, not in the model's words, so generate owns a
   -- scratch directory for the whole call and the tool writes into it. The
   -- directory is created and the file is NOT: its absence is the signal that no
@@ -1598,6 +1603,9 @@ callPi verbose mmodel thinking system userPrompt worlds files expects schemas ba
              -- first mint or --renew.
              , ("LIPS_MINT_EXPECTS",  pairs expects)
              , ("LIPS_MINT_SCHEMAS",  pairs schemas)
+             -- The pin each schema was built from, as the record will name it:
+             -- the door's clause claims build against it.
+             , ("LIPS_MINT_PINS",     pairs pins)
              -- Where a checked draft becomes the answer. The tool stages here;
              -- nothing else lips runs writes this path.
              , ("LIPS_MINT_ANSWER",   answerPath)

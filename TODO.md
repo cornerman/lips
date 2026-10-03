@@ -111,9 +111,9 @@ tracks only what is still open.
       - A MINT'S BUILDS IGNORE `--schema`. `Gate.artifactNixpkgs` builds
         artifacts, command claims and the world gate against the baked
         `LIPS_NIXPKGS_FLAKE`, so a mint grounded with `--schema X` observes
-        another nixpkgs than X. A mint's clause claims (`clauseClaimGate`, in
-        the draft door and in generate) still resolve `flake:nixpkgs`
-        ambiently, since no record exists yet to read a pin from.
+        another nixpkgs than X. Only a mint's clause claims follow the pin it
+        records (`LIPS_MINT_PINS` in the draft door, the grounding in
+        generate); the other three should take the same pin.
       - AN IMPORTED MODULE EVALUATES UNDER THE IMPORTER'S NIXPKGS, deliberately
         unchecked: `lib.modulesFromDir` hands the module to the consumer's
         `pkgs`, as every third-party module is. A rev comparison there would

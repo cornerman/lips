@@ -938,7 +938,12 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `description` says which nixpkgs it names. `check`'s claim gates build the
   same flake, so they observe the nixpkgs the mint's own gates observed, and
   `worldGate` writes its pin into the flake instead of passing
-  `--override-input`. `compile` still fetches nothing and stays bit-identical:
+  `--override-input`. A mint's clause claims build against the pin the mint
+  records too: generate passes it to `gateOneWorld`, and to the draft door as
+  `LIPS_MINT_PINS` (world=pin, beside `LIPS_MINT_SCHEMAS`), so a draft, the
+  final gate and a later `check` observe one nixpkgs. `just test-draft` pins it:
+  the committed `function` engine, judged as a draft through its basis, holds
+  with no pin and fails on a pin nix cannot fetch. `compile` still fetches nothing and stays bit-identical:
   the pin is text in the committed record.
 
   Prevention, not comparison: with the evaluator equal to the grounding there
@@ -961,7 +966,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   README now says an imported module evaluates under the importer's nixpkgs),
   and per-option fingerprints (they cannot work for nono, whose schema is
   top-level only). Still open in TODO 2a: kubenix and terranix inputs float,
-  and a mint's builds ignore `--schema`.
+  and a mint's artifact, command-claim and world-gate builds ignore
+  `--schema`.
 
 - **A world's own gate runs at mint time.** A world file may now carry an
   optional `--- gate ---` slot: one derivation, written in the scope of the

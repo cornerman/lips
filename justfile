@@ -408,6 +408,23 @@ test-draft:
       || { echo "FAIL: glue a claim runs was refused"; cat "$tmp/out26"; exit 1; }
     grep -q "glue (mint): artifact.hi.args.text" "$tmp/out26" \
       || { echo "FAIL: the pinned glue was not reported as mint glue"; cat "$tmp/out26"; exit 1; }
+    # A mint's clause claims observe the nixpkgs the mint grounds against, which
+    # generate hands the door per world (LIPS_MINT_PINS), so they build against
+    # the pin `check` reads back from the record. The committed `function`
+    # engine, judged as a draft through its basis, states one clause claim: it
+    # holds with no pin handed over, and a pin nix cannot fetch must fail it.
+    export LIPS_MINT_WORLDS=nixos
+    export LIPS_MINT_PROGRAMS="$PWD/examples/function.lips"
+    export LIPS_MINT_BASIS="$PWD/examples/function"
+    "$lips" check --draft examples/function.lips < /dev/null > "$tmp/out27" 2>&1 \
+      || { echo "FAIL: the function engine's clause claim failed as a draft"; cat "$tmp/out27"; exit 1; }
+    if LIPS_MINT_PINS="nixos=path:$tmp/no-such-nixpkgs" \
+         "$lips" check --draft examples/function.lips < /dev/null > "$tmp/out28" 2>&1; then
+      echo "FAIL: the mint's clause claims ignored the pin they were handed"; cat "$tmp/out28"; exit 1
+    fi
+    grep -q "no-such-nixpkgs" "$tmp/out28" \
+      || { echo "FAIL: the clause claims did not fail on the pin"; cat "$tmp/out28"; exit 1; }
+    unset LIPS_MINT_BASIS
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
