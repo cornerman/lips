@@ -59,7 +59,7 @@ import           Lips.Identity                 (watchedFiles, timingPathIn, lang
 import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintTargets, mintedWorlds, orphanIgnores, soleWorld)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs, defaultTargetName)
 import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAnswer, setState, step, tshow)
-import           Lips.Gate              (ExpectFail (..), artifactGate, claimGate,
+import           Lips.Gate              (ExpectFail (..), artifactGate, claimGate, reachNixpkgs,
                                         groundExpectFaults,
                                         clauseClaimGate, mintClaimGate, runExpects,
                                         stagedGate, worldGate)
@@ -827,6 +827,10 @@ checkDraft running restart file = do
       forM_ ws $ \w -> do
         let nixpkgs = compiledNixpkgs w (T.pack <$> lookup (wName w) pins)
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
+        -- The door's only builds are the clause claims and the world's gate.
+        -- Fetchable first, so their refusals can honestly blame the draft.
+        when (isJust (wGate w) || not (null (rlClauseClaims rl))) $
+          reachNixpkgs "generate" file nixpkgs
         clauseClaimGate w nixpkgs file rl
         -- The glue gate generate runs, said in the door while the mint can still
         -- add the claim; check alone only reports unpinned glue.
@@ -922,6 +926,9 @@ expectGate contract claims dir w file eng rl = do
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
   when claims $ do
     (world, nixpkgs) <- readRecordedWorld dir w file
+    -- Fetchable first, so a claim that fails can honestly blame the program.
+    when (not (null (rlClaims rl)) || not (null (rlClauseClaims rl))) $
+      reachNixpkgs "check" file nixpkgs
     claimGate world nixpkgs file rl
   pure rl
 
@@ -1459,6 +1466,10 @@ gateOneWorld compat rep progs candidates stage world schemaPath pin = runExceptT
   -- the compiled flake will name for the pin this mint records, so the mint
   -- observes what `check` reads back from the record and builds against.
   let nixpkgs = compiledNixpkgs world (Just pin)
+      builds rl = isJust (wGate world) || not (null (snd (rlArtifact rl)))
+                  || not (null (rlClaims rl)) || not (null (rlClauseClaims rl))
+  -- Fetchable first, so a gate below that refuses can honestly blame the rules.
+  when (any (builds . snd) validated) $ lift (reachNixpkgs "generate" rep nixpkgs)
   forM_ validated $ \(f, rl) -> lift (artifactGate nixpkgs (stage rl) f rl)
   -- The world's own verdict over its render, where the world declares one.
   forM_ validated $ \(f, rl) -> lift (worldGate nixpkgs world f rl)

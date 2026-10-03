@@ -368,8 +368,12 @@ test-draft:
          "$lips" check --draft "$sandbox/one.sb.lips" < "$sandbox/boxed.txt" > "$tmp/out29" 2>&1; then
       echo "FAIL: the world's gate ignored the pin it was handed"; cat "$tmp/out29"; exit 1
     fi
-    grep -q "no-such-nixpkgs" "$tmp/out29" \
+    grep -q "can't reach the nixpkgs.*no-such-nixpkgs" "$tmp/out29" \
       || { echo "FAIL: the world's gate did not fail on the pin"; cat "$tmp/out29"; exit 1; }
+    # An unreachable pin is not the rules' fault, so the gate's own remedy must not appear.
+    if grep -q "the rules are minted" "$tmp/out29"; then
+      echo "FAIL: an unreachable pin was blamed on the rules"; cat "$tmp/out29"; exit 1
+    fi
     unset LIPS_MINT_PINS
     # No per-program source written by a model: a draft carrying a source block
     # is refused inside the mint's own call, naming the file, whatever else holds.
@@ -431,8 +435,12 @@ test-draft:
          "$lips" check --draft examples/function.lips < /dev/null > "$tmp/out28" 2>&1; then
       echo "FAIL: the mint's clause claims ignored the pin they were handed"; cat "$tmp/out28"; exit 1
     fi
-    grep -q "no-such-nixpkgs" "$tmp/out28" \
+    grep -q "can't reach the nixpkgs.*no-such-nixpkgs" "$tmp/out28" \
       || { echo "FAIL: the clause claims did not fail on the pin"; cat "$tmp/out28"; exit 1; }
+    # An unreachable pin is not a disagreement between the program and its claims.
+    if grep -q "disagree" "$tmp/out28"; then
+      echo "FAIL: an unreachable pin was blamed on the claims"; cat "$tmp/out28"; exit 1
+    fi
     unset LIPS_MINT_BASIS
     # generate with no -t over a language holding several worlds refuses before
     # any model call, naming both remedies. Run on a copy with nothing on PATH,

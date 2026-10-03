@@ -28,6 +28,8 @@ module Lips.Gate
   , artifactGate
   , mintClaimGate
   , worldGate
+    -- * The nixpkgs every one of them builds against
+  , reachNixpkgs
   ) where
 
 import           Control.Exception  (IOException, try)
@@ -50,7 +52,7 @@ import           Lips.Kernel.Expect (Expect, checkArtifactValues, checkValues, e
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
 import           Lips.Nix.Flake     (Nixpkgs (..), Rungs (..), SiteRung (..), flakeText, nixpkgsRef,
-                                     noRungs)
+                                     noRungs, substrateNixpkgsVar)
 import           Lips.World         (World (..))
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Stage         (siteNameOf, stageBeside, withTempDir, writeCompiled,
@@ -426,3 +428,35 @@ buildArtifact nixpkgs file dir name = do
       , "pkgs = import np { system = builtins.currentSystem; }; in "
       , "(import ", show (dir </> "artifact.nix"), " { inherit pkgs; })"
       , ".${", show (T.unpack name), "}" ])
+
+-- | Can nix fetch the nixpkgs the gates are about to build against? Asked ONCE,
+-- before the first build, so that a gate's own refusal can honestly blame the
+-- rules or the claims: without it an unreachable pin surfaced as "the rules are
+-- minted, so mint again", a remedy that cannot help. Only fetchability is
+-- asked (the output is discarded): a pinned ref is already locked, and an
+-- ambient one stays ambient because @check@ and the compiled flake resolve it
+-- the same way. @verb@ is the lips verb a refusal suggests re-running.
+--
+-- What it cannot rule out, deliberately not parsed out of nix's stderr: a build
+-- that fails later on a network drop (a substitute download) still reads as the
+-- gate's own verdict.
+reachNixpkgs :: Text -> FilePath -> Nixpkgs -> IO ()
+reachNixpkgs verb file nixpkgs = do
+  res <- try (readProcessWithExitCode "nix" ["flake", "metadata", "--json", T.unpack ref] "")
+  case res of
+    Left e -> die (nixMissing file "fetch the nixpkgs it builds against" verb
+                    (tshow (e :: IOException)))
+    Right (ExitFailure _, _, err) -> die (report
+      ("lips can't reach the nixpkgs " <> T.pack file <> " builds against: " <> ref <> ".")
+      (T.lines (T.pack err))
+      remedy)
+    Right (ExitSuccess, _, _) -> pure ()
+  where
+    ref = nixpkgsRef nixpkgs
+    remedy = case nixpkgs of
+      Pinned _ -> "\8594 it is the pin this engine is grounded on (--schema, else "
+        <> substrateNixpkgsVar <> "; for a committed engine its record's schema: line):"
+        <> " check the network, or mint against a pin nix can fetch: lips generate --schema <ref> "
+        <> T.pack file
+      Ambient -> "\8594 this world resolves nixpkgs from the flake:nixpkgs registry:"
+        <> " check the network, or the registry (nix registry list)."
