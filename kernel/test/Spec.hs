@@ -32,7 +32,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
-import Lips.Report                 (committedSourceReport, emptySubmission, heldWorldReport, inferredWorldsLine, mintedSourceReport, noSubmission, severalWorldsReport, unansweredReport, unpinnedGlueReport, unportableReport)
+import Lips.Report                 (committedSourceReport, reportFaultReport, emptySubmission, heldWorldReport, inferredWorldsLine, mintedSourceReport, noSubmission, severalWorldsReport, unansweredReport, unpinnedGlueReport, unportableReport)
 import Lips.Generate.Minting       (Basis (..), ReportFault (..), appendOnlyViolations, basisReply, mergeGrammar, mergeReply,
                                     replyLinesOf, reportFault, reportUnitOf, touchedIds)
 import Lips.Kernel.Engine.Parts
@@ -5945,6 +5945,10 @@ main = hspec $ do
     -- needs no new report (opus-5 restated a1-a6 byte for byte).
     it "admits a restatement that changes nothing, whatever its confidence" $
       reportFault (Just basis) "0.8 a1 expect services.job.n   from job.n\n" `shouldBe` Nothing
+    it "says which lines changed, and that the report is restated under its own id" $ do
+      let t = reportFaultReport "web.deploy.lips" (StaleReport ["r1", "a3"])
+      mapM_ (\x -> t `shouldSatisfy` T.isInfixOf x) ["r1", "a3", "restate the report whole", "lips generate web.deploy.lips"]
+      reportFaultReport "web.deploy.lips" (TwoReports ["d1", "d2"]) `shouldSatisfy` T.isInfixOf "restate d1"
     it "asks nothing of a patch whose basis carries no report" $
       reportFault (basisReply one { bReport = Nothing }) "0.9 r1 match fact job.n => x \"<value:int>\"\n"
         `shouldBe` Nothing

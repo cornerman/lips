@@ -67,7 +67,7 @@ import           Lips.Stage             (stageBeside,
                                          withTempDir, writeCompiled, writeSite)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
-import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission, heldWorldReport, inferredWorldsLine, severalWorldsReport,
+import           Lips.Report            (Failure (..), demandGenerateFail, reportFaultReport, emptySubmission, heldWorldReport, inferredWorldsLine, severalWorldsReport,
                                          committedSourceReport, failureReport, mintedSourceReport, noSubmission, unpinnedGlueReport,
                                          gapArtifact, nixEvalFailed, nixMissing, plural,
                                          printFail, refusalReport, renderDiagnosis,
@@ -76,11 +76,11 @@ import           Lips.Report            (Failure (..), demandGenerateFail, empty
 import           Options.Applicative    (customExecParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), appendOnlyViolations, assemble, itemsFor, carriesEngineMeaning, mergeGrammar, mergeReply, replyLinesOf, touchedIds, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, unplaceableClaims)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), appendOnlyViolations, assemble, itemsFor, carriesEngineMeaning, mergeGrammar, mergeReply, touchedIds, Basis (..), basisReply, reportFault, reportUnitOf, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, unplaceableClaims)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Stats    (MintStats (..), renderStats, verdictOf)
-import           Lips.Generate.Record   (corpusText, genId, record,
+import           Lips.Generate.Record   (corpusText, genId, record, recordedReply,
                                          recordedSchemaFor, recordedWorld, recordedWorldPin, renderStampFault, stampFaults, worldHash,
                                          worldSchemaPin)
 import           Lips.Kernel.Decision
@@ -791,15 +791,13 @@ checkDraft running restart file = do
   -- carry it. generate names the basis directory (LIPS_MINT_BASIS); nothing is
   -- guessed, and an absent one means the reply is the whole engine.
   basisDir <- lookupEnv "LIPS_MINT_BASIS"
-  reply <- case basisDir of
-    Just d | not (null d) -> do
-      g  <- tryRead (grammarPathIn d file)
-      rs <- forM (map wName ws) $ \w -> fmap ((,) w) <$> tryRead (rulesPathIn d w file)
-      let tagOf w = if length ws > 1 then Just w else Nothing
-          parts = maybe [] (\t -> [replyLinesOf Nothing t]) g
-                    ++ [ replyLinesOf (tagOf w) t | Just (w, t) <- rs ]
-      pure (if null parts then patch else mergeReply (T.concat parts) patch)
-    _ -> pure patch
+  basis <- case basisDir of
+    Just d | not (null d) -> readBasis d (map wName ws) file
+    _                     -> pure Nothing
+  let reply = maybe patch (`mergeReply` patch) basis
+  -- The report the patch leaves standing must be one, and must describe the
+  -- engine the patch makes: said here, where restating it is one line away.
+  forM_ (reportFault basis patch) (die . reportFaultReport file)
   withTempDir $ \root -> case materializeDraft root (map wName ws) file reply governing of
     Left errs -> die (validationReport file ("the draft cannot be read as an engine:\n"
                         <> T.unlines [ "  - " <> e | e <- errs ]))
@@ -1094,19 +1092,10 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
               (w : _) -> governingRecord dir w rep
               []      -> pure Nothing
       pure (maybe "fresh" (\r -> "inherited " <> genId r) mr)
-    -- The engine this mint GROWS FROM, rendered back into the reply format: the
-    -- shared grammar (never tagged -- patterns belong to the language) plus each
-    -- world's rules, tagged only when the run writes for several worlds. Absent
+    -- The engine this mint GROWS FROM, in the reply format ('readBasis'). Absent
     -- under --fresh and on a first mint, and then every step below is exactly the
     -- whole-engine path it always was.
-    committedGrammar <- if fresh then pure Nothing else tryRead (grammarPathIn dir rep)
-    basisEngine <- if fresh then pure Nothing else do
-      let g = committedGrammar
-      rs <- forM wnames $ \w -> fmap ((,) w) <$> tryRead (rulesPathIn dir w rep)
-      let tagOf w = if length wnames > 1 then Just w else Nothing
-          parts = maybe [] (\t -> [replyLinesOf Nothing t]) g
-                    ++ [ replyLinesOf (tagOf w) t | Just (w, t) <- rs ]
-      pure (if null parts then Nothing else Just (T.concat parts))
+    basisEngine <- if fresh then pure Nothing else readBasis dir wnames rep
     progs <- forM files (\f -> (,) f <$> readProgramOrDie f)
     -- Owner taste is language-level (shared); read once from the language path.
     direction <- tryRead (directionPath rep)
@@ -1161,6 +1150,7 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
         -- anything reads it, so every gate, every render and every write below
         -- sees a complete engine and needs no notion of a patch at all.
         reply      = maybe patchReply (`mergeReply` patchReply) basisEngine
+        reportBad  = reportFault basisEngine patchReply
         -- Which ids the model actually wrote, for the human: after a patch every
         -- line is RE-STAMPED with this run's record, and that is correct rather
         -- than a loss -- the record stores the MERGED reply, so it really does
@@ -1209,7 +1199,11 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
       else do
         -- A mint without an explanation is incomplete: the human's review
         -- artifact is the report, not the engine. A structural guard, so the
-        -- channel cannot rot into an optional pleasantry the model skips.
+        -- channel cannot rot into an optional pleasantry the model skips. A
+        -- patch inherits the committed report, so only a first or fresh mint
+        -- can lack one; and the report that stands must be one, and must still
+        -- describe the engine (the door judged the same, 'reportFault').
+        forM_ reportBad (die . reportFaultReport rep)
         reportBody <- case reportOf (map icItem candidates) of
           Just b | not (T.null (T.strip b)) -> pure b
           _ -> die (report
@@ -1542,6 +1536,23 @@ governingRecord dir w file = do
   case own of
     Just r  -> pure (Just r)
     Nothing -> tryRead (languageRecordPathIn dir file)
+
+-- | The committed language a patch is answered against, in reply format: the
+-- shared grammar, each world's rules and contract, and the report the governing
+-- record's reply carried ('Lips.Generate.Minting.basisReply'). ONE reader for
+-- generate's prompt and merge and for the draft door's merge, so the engine the
+-- model was shown, the one its drafts are judged as and the one generate writes
+-- cannot differ. The report is taken from the record because that is the only
+-- place it survives as written; the README is a rendering of it.
+readBasis :: FilePath -> [Text] -> FilePath -> IO (Maybe Text)
+readBasis dir wnames file = do
+  g  <- tryRead (grammarPathIn dir file)
+  ws <- forM wnames $ \w ->
+    (,,) w <$> tryRead (rulesPathIn dir w file) <*> tryRead (expectPathIn dir w file)
+  rec <- case wnames of
+    (w : _) -> governingRecord dir w file
+    []      -> pure Nothing
+  pure (basisReply (Basis g ws (rec >>= recordedReply >>= reportUnitOf)))
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.

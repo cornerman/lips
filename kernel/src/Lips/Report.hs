@@ -26,6 +26,7 @@ module Lips.Report
   , refusalReport
   , uncheckableReport
   , mintedSourceReport
+  , reportFaultReport
   , committedSourceReport
   , unpinnedGlueReport
   , demandGenerateFail
@@ -47,7 +48,7 @@ import qualified Data.Text          as T
 
 import           Lips.Cli.Output               (report, reportHead, tshow)
 import           Lips.Generate.Harness         (Confidence (..))
-import           Lips.Generate.Minting         (Gap (..), ItemCandidate (..), SourceFile (..))
+import           Lips.Generate.Minting         (Gap (..), ItemCandidate (..), ReportFault (..), SourceFile (..))
 import           Lips.Generate.Record          (genId)
 import           Lips.Kernel.Base              (Conflict (..))
 import           Lips.Kernel.Decision
@@ -472,6 +473,24 @@ mintedSourceReport file srcs = report
   ("\8594 state the behaviour as clauses, or name an existing package"
     <> " (${pkgs.<name>}); where no contract reaches what the program needs, file"
     <> " a gap naming it. Mint again: lips generate " <> T.pack file)
+
+-- | A patch whose report cannot stand ('Lips.Generate.Minting.reportFault').
+-- Addressed to the mint first, since the draft door says it inside the model's
+-- own call, where restating the report is still one line away.
+reportFaultReport :: FilePath -> ReportFault -> Text
+reportFaultReport file (TwoReports ids) = report
+  (T.pack file <> ": the engine would carry " <> plural (length ids) "report"
+    <> ", and a language has one account:")
+  ids
+  ("\8594 restate " <> T.concat (take 1 ids) <> " to replace the report: a patch replaces a"
+    <> " line by restating its id. Mint again: lips generate " <> T.pack file)
+reportFaultReport file (StaleReport ids) = report
+  (T.pack file <> ": the patch changes " <> plural (length ids) "line"
+    <> " and leaves the report as it was, so the account would describe an engine"
+    <> " that no longer exists:")
+  ids
+  ("\8594 restate the report whole, under its committed id, describing the language"
+    <> " as it now stands. Mint again: lips generate " <> T.pack file)
 
 -- | A language folder holds a source tree. No mint writes one any more, so a
 -- tree here was put by hand or by an older lips, and either way it is
