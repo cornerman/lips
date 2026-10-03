@@ -13,6 +13,15 @@ tracks only what is still open.
    (269s / $0.77 against 295s / $0.94), so its 28 percent is a datapoint, not a
    mean. Repeat that arm the next time a mint runs for another reason, and only
    then decide whether a patch is sonnet-able.
+   Sonnet datapoint (2026-10, `examples/deploy` patched into the kubenix world,
+   sonnet-5, thinking medium): accepted on the first submission, $0.091, 29s,
+   1,422 output tokens, the engine correct (rules unchanged but for stamps). The
+   report degraded: d1 became "No changes were needed", dropping the language
+   account, and stated `<self>` = `web.deploy` (it is `web`). An opus-5 run of
+   the same patch ($0.279, 54s) wrote a sound account but claimed it "adds the
+   behavioral contract that was missing", which was already committed. Both
+   were discarded, and both trace to item 6, so judge sonnet-ability only after
+   item 6 closes.
 
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
@@ -42,23 +51,24 @@ tracks only what is still open.
       close"). Let its next re-mint add them, because hand-editing a minted
       contract breaks invariant 4.
 
-2. **The schema pin reaches the nixpkgs substrate only** (DESIGN §13
-   "Option-schema grounding" and "A compiled directory runs the nixpkgs its
-   rules were grounded against"). Three separate questions, in the order they
-   hurt:
+2. **Where the schema pin does not reach** (DESIGN §13 "Option-schema
+   grounding", "A compiled directory runs the nixpkgs its rules were grounded
+   against" and "A world names the flake its schema pin locks"). Three separate
+   questions, in the order they hurt:
 
    a. Where the pin does not yet reach:
 
-      - KUBENIX AND TERRANIX INPUTS FLOAT. Their schema pin names their own
-        flake, while the compiled flake's world slot writes
-        `inputs.kubenix.url = "github:hall/kubenix"` unpinned. Candidate (A2): a
-        `<schema-pin>` hole in the world's `--- inputs ---` slot, filled by
-        compile. World copies are hash-sealed in records, so a committed engine
-        gains it only on its next re-mint.
-        The same item covers a mint's own builds for these worlds (and
-        home-manager): since 2026-10 they build ambient like `check`, so a
-        mint's artifact, claim and gate builds depend on the host's
-        `flake:nixpkgs` registry.
+      - HOME-MANAGER BUILDS AMBIENT. It declares no `schema-input` (its
+        consumer brings home-manager), so a mint's artifact, claim and gate
+        builds for it, and its compiled flake, use the host's `flake:nixpkgs`
+        registry.
+      - CI BUILDS WORLD GATES AGAINST LIPS'S OWN INPUTS. `lipsWorld-gates`
+        calls each compiled flake's `outputs` with lips's locked inputs, not
+        the record pin and not the flake's `inputs.nixpkgs.follows`.
+      - `schema-flake:` OVERLAPS `schema-input`'s fallback ref. Both name a
+        flake to use when nothing pins one, the first for grounding at mint
+        time, the second for compile; no shipped world uses `schema-flake:`.
+        Fold them into one only when a world needs either.
       - AN IMPORTED MODULE EVALUATES UNDER THE IMPORTER'S NIXPKGS, deliberately
         unchecked: `lib.modulesFromDir` hands the module to the consumer's
         `pkgs`, as every third-party module is. A rev comparison there would
@@ -140,18 +150,20 @@ tracks only what is still open.
       behaviour that ignores them. The guard, if it recurs, is the twin of
       `diagInert`: a word whose only landing is a claim is inert.
 
-6. **A world's gate pins only nixpkgs** (the open half of the render gate,
-   which landed 2026-10-03: DESIGN §13, "A world's own gate runs at mint time").
-   `worldGate` builds the compiled flake, whose `nixpkgs` input is the locked
-   pin and nothing else is pinned, so a world whose flake carries another input (kubenix's
-   `github:hall/kubenix`, terranix's) would build its gate against whatever that
-   URL resolves to today. That is why kubenix and terranix declare no gate,
-   although both render cheaply and kubenix refuses an unknown Kubernetes field
-   at evaluation. The missing piece is a relation between a world's flake inputs
-   and the pins lips bakes (`schema-pin:` names an env var, the `inputs` slot
-   names an input, and nothing says they are the same flake). Decide that
-   relation before declaring either gate. nixos has no gate candidate cheaper
-   than a system build, so it declares none.
+6. **A patch mint does not see the committed contract or report** (found
+   2026-10 re-minting `examples/deploy`; next errand, branch `patch-basis`).
+   The patch prompt's inherited engine (`basisEngine`, `kernel/app/Main.hs`)
+   renders only the committed grammar and rules, while `assets/mint/body.md`
+   promises the model "the previous engine, its report, and its expect
+   contract". A report is required on every mint, so a patch writes d1 blind:
+   sonnet-5 replaced the language account with "No changes were needed", and
+   opus-5 restated a1-a6 byte-identically and reported them as newly added
+   (item 0 has both runs). Fix in the kernel, not the prompt: render the
+   committed `<world>.expect` and report into the basis, and let an
+   unmentioned d1 inherit like any other id. Then re-mint `deploy` (opus-5)
+   and `bucket` (sonnet-5), so `lipsWorld-gates` builds the kubenix and
+   terranix gates (DESIGN §13, "A world names the flake its schema pin
+   locks").
 
 7. **Remaining known gaps on the clause axis** (none blocking).
 
