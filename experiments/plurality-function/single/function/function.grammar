@@ -1,0 +1,2 @@
+p1 meta lang.pattern.p1 stated "function <fname>(<param>: string) => fact func.<fname>.signature \"<fname> <param>\"" @gen:db71679ca87d8bca
+p2 meta lang.pattern.p2 stated "<fname>(\"<arg>\") => fact call.<n:index> \"<fname> <arg>\"" @gen:db71679ca87d8bca

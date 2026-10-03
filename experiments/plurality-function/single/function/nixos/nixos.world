@@ -1,0 +1,119 @@
+format: 1
+world: nixos
+module-attr: nixosModules
+schema-pin: LIPS_NIXPKGS_FLAKE
+claims: machine sandbox
+
+--- preamble ---
+TARGET WORLD: NixOS. A NixOS configuration governs a whole MACHINE,
+evaluated as root, so every option you emit affects the system as a whole,
+never one user's session alone. Its namespaces include services.* (system
+services), systemd.services.* and systemd.timers.* (units and timers),
+environment.* (system-wide packages and files), networking.*, and users.*.
+<self> keys an attrsOf-submodule instance name wherever this world's schema
+offers one -- systemd.services.<self>, or a service family's own instance
+table (an option shaped like services.<name>.<instances>.<self>).
+query_options searches exactly this world's pinned schema: the NixOS
+option tree, nothing narrower and nothing wider.
+
+A CLAIM MAY BE OBSERVED IN A BOOTED MACHINE here: this world has one, so a
+command that reaches beyond the program's own artifacts (a systemctl call, a
+curl against a running service) is run inside the booted module. It costs a
+boot, so where the behaviour lives in a BINARY, prefer an observable over the
+program's own binary: it needs no machine and reads the same everywhere.
+
+BUT WHERE YOUR RULES MAKE SOMETHING RUN, ONE CLAIM MUST BOOT. An option
+assignment says what the configuration CONTAINS, never that the thing it
+configures can start: an expect compares the value you wrote, and a sandbox
+claim runs a definition with no systemd around it. So when your rules wire a
+unit, a timer or a served port -- anything whose whole point is to be running
+on the machine -- state one claim whose command reaches the SYSTEM (systemctl
+is-active <unit>, curl against the port), not only the artifact. Pay the boot.
+The failure this catches is not exotic: a unit can be perfectly typed, pass
+every expect, and still never start, because an option's own semantics defeat
+the wiring (a StandardOutput= file inside a StateDirectory= that systemd
+creates only after it opens that file -- measured, 2026-08-20, and it shipped
+in a committed example for eight days with every gate green). Nothing static
+can see that. Only the boot can.
+Where the world cannot boot, this does not apply: state what you can observe
+in the sandbox and file a gap for the rest.
+
+ONE UNIT TRAP, STATED ONCE BECAUSE EVERY PROGRAM MEETS IT. Where a unit's job
+is to WRITE a file, let the command it runs write that file itself (a
+redirection in the script), rather than routing the unit's standard output
+into a path with StandardOutput=file:. systemd opens that path BEFORE it
+creates the directory the path lives in, so a unit whose StandardOutput= sits
+inside its own StateDirectory= fails 209/STDOUT on a fresh machine, with every
+option correctly typed. This is world knowledge, not taste: it holds for every
+program minted here, which is why it is stated in the world rather than left
+for each mint to rediscover by boot.
+
+--- schema ---
+let np = builtins.getFlake "<flakeref>";
+    pkgs = import np { system = <system>; };
+    doc = (import (np.outPath + "/nixos")
+      { configuration = {}; system = <system>; })
+      .config.system.build.manual.optionsJSON;
+in pkgs.runCommand "options.json" { }
+     "cp ${doc}/share/doc/nixos/options.json $out"
+
+--- builds ---
+      builds = system:
+        let
+          evalNixos = extra: mods: import (nixpkgs + "/nixos/lib/eval-config.nix") {
+            inherit system;
+            modules = extra ++ mods;
+          };
+          evalConfig = extra: evalNixos extra [ ./default.nix ];
+          shellStub = { system.stateVersion = "24.11"; };
+          # A fixed hostname so the VM boot script has a fixed name to run.
+          vm = (evalConfig [
+            (nixpkgs + "/nixos/modules/virtualisation/qemu-vm.nix")
+            { system.stateVersion = "24.11"; networking.hostName = "lips";
+              virtualisation.graphics = false; users.users.root.password = ""; }
+          ]).config.system.build.vm;
+          # A bare NixOS eval already carries the whole base system (systemd,
+          # grub, coreutils, ...) in environment.systemPackages, so subtract an
+          # empty config's list: what remains is exactly what THIS program adds
+          # to the system PATH. artifact.nix is always written, so the shell
+          # reaches it with no conditional.
+          basePackages = (evalNixos [ shellStub ] []).config.environment.systemPackages;
+          cfg = (evalConfig [ shellStub ]).config;
+          shellPackages = nixpkgs.lib.subtractLists basePackages
+            cfg.environment.systemPackages ++ builtins.attrValues (import ./artifact.nix { pkgs = pkgsFor system; });
+          shell = (pkgsFor system).mkShell { packages = shellPackages; };
+          # The same subtraction, one option over: the units a BARE eval carries
+          # are NixOS's own, so what remains is what this program adds. Each gets
+          # the tools shell plus that unit's environment. The name is
+          # `service-<unit>`, flat: a nested set is not a flake leaf, so
+          # `nix flake show` would refuse to list the units it holds. `env` is
+          # mkDerivation's dedicated channel for environment variables, so a unit
+          # variable named `packages` cannot shadow a derivation argument.
+          baseServices = builtins.attrNames (evalNixos [ shellStub ] []).config.systemd.services;
+          serviceShells = nixpkgs.lib.listToAttrs (map (u: {
+            name = "service-${u}";
+            value = (pkgsFor system).mkShell {
+              packages = shellPackages;
+              env = cfg.systemd.services.${u}.environment;
+            };
+          }) (nixpkgs.lib.subtractLists baseServices (builtins.attrNames cfg.systemd.services)));
+        in { inherit vm shell serviceShells; };
+
+--- packages ---
+        vm = (builds system).vm;
+
+--- apps ---
+        let b = builds system; in {
+          vm = { type = "app"; program = "${b.vm}/bin/run-lips-vm"; };
+        }
+
+--- devShells ---
+        let b = builds system; in {
+          default = b.shell;
+        } // b.serviceShells
+
+--- rungs ---
+run in a VM | run | vm | (full system, all services; needs KVM)
+build the system | build | vm | (checks it builds; no KVM)
+a shell of its tools | develop | | (what the config puts on PATH)
+...with a unit's env | develop | service-<unit> | (nix flake show path:<dir> lists them)

@@ -1,0 +1,3 @@
+a1 expect claim.main.equals-lines from call.<n> is "[ \"<value.2>\" ]"
+a2 expect clause.function-main from call.<n> is "[ (define (function-main) (function-print \"<value.1>\" \"<value.2>\")) ]"
+a3 expect clause.function-print from func.<fname>.signature is "(define (function-print name arg) (cond ((not (string=? name \"#<value.1>\")) (die \"undeclared function:\" name)) ((not (string? arg)) (die \"#<value.1>: parameter #<value.2> must be a String:\" arg)) (else (emit arg))))"
