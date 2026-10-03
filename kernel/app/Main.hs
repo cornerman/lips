@@ -59,7 +59,7 @@ import           Lips.Identity                 (watchedFiles, timingPathIn, lang
 import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAnswer, setState, step, tshow)
-import           Lips.Gate              (ExpectFail (..), artifactGate, artifactNixpkgs, claimGate,
+import           Lips.Gate              (ExpectFail (..), artifactGate, claimGate,
                                         groundExpectFaults,
                                         clauseClaimGate, mintClaimGate, runExpects,
                                         stagedGate, worldGate)
@@ -787,13 +787,14 @@ checkDraft running restart file = do
       -- this draft's verdict, and fatal here: the model is still writing it.
       program <- readProgramOrDie file
       -- The pin each world is being grounded against, handed over by generate
-      -- because the draft has no record yet to read it from. The clause claims
-      -- build against it, so the draft observes the nixpkgs `check` will read
+      -- because the draft has no record yet to read it from. Every build the
+      -- door runs uses it, so the draft observes the nixpkgs `check` will read
       -- back from the record. A door run outside a mint has none: ambient.
       pins <- envPairs "LIPS_MINT_PINS"
       forM_ ws $ \w -> do
+        let nixpkgs = compiledNixpkgs w (T.pack <$> lookup (wName w) pins)
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
-        clauseClaimGate w (compiledNixpkgs w (T.pack <$> lookup (wName w) pins)) file rl
+        clauseClaimGate w nixpkgs file rl
         -- The glue gate generate runs, said in the door while the mint can still
         -- add the claim; check alone only reports unpinned glue.
         eng <- loadLangOrDie (dtLangDir t) (wName w) file
@@ -803,9 +804,7 @@ checkDraft running restart file = do
         -- The world's own gate is a build the world declared affordable on every
         -- mint, so the door runs it too: the model then reads the validator's
         -- refusal inside its own call instead of paying a whole mint for it.
-        when (isJust (wGate w)) $ do
-          nixpkgs <- artifactNixpkgs ("generate " <> T.pack file)
-          worldGate nixpkgs w file rl
+        when (isJust (wGate w)) $ worldGate nixpkgs w file rl
         -- The contract above is the GOVERNING one (the committed .expect on a
         -- regeneration), which cannot say whether the draft's NEW promises are
         -- evaluable at all. The ground half of those costs no nix, so the door
@@ -1431,20 +1430,15 @@ gateOneWorld compat rep progs candidates stage world schemaPath pin = runExceptT
           <> " (rewrites " <> T.pack (expectPathIn (langDir rep) wn rep) <> ")."))
       Right () -> pure ()
   -- The gates that observe rather than read, last, so a mint that fails for a
-  -- readable reason never pays a build.
-  when (any (not . null . snd . rlArtifact . snd) validated) $ lift $ do
-    nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
-    forM_ validated $ \(f, rl) -> artifactGate nixpkgs (stage rl) f rl
+  -- readable reason never pays a build. Every one builds against the nixpkgs
+  -- the compiled flake will name for the pin this mint records, so the mint
+  -- observes what `check` reads back from the record and builds against.
+  let nixpkgs = compiledNixpkgs world (Just pin)
+  forM_ validated $ \(f, rl) -> lift (artifactGate nixpkgs (stage rl) f rl)
   -- The world's own verdict over its render, where the world declares one.
-  when (isJust (wGate world)) $ lift $ do
-    nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
-    forM_ validated $ \(f, rl) -> worldGate nixpkgs world f rl
-  -- Built against the pin this mint records, so the clause claims observe the
-  -- nixpkgs `check` will read back from the record and build them against.
-  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world (compiledNixpkgs world (Just pin)) f rl)
-  unless (null claims) $ lift $ do
-    nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
-    forM_ validated $ \(f, rl) -> mintClaimGate nixpkgs (stage rl) f rl
+  forM_ validated $ \(f, rl) -> lift (worldGate nixpkgs world f rl)
+  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world nixpkgs f rl)
+  forM_ validated $ \(f, rl) -> lift (mintClaimGate nixpkgs (stage rl) f rl)
   lift (mapM_ note (ignoreNotes wn eng))
   pure WorldResult { wrEngine = eng, wrValidated = validated
                    , wrExpects = expects, wrCommitted = committed }

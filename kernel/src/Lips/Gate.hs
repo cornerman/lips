@@ -28,8 +28,6 @@ module Lips.Gate
   , artifactGate
   , mintClaimGate
   , worldGate
-    -- * The nixpkgs a build runs against
-  , artifactNixpkgs
   ) where
 
 import           Control.Exception  (IOException, try)
@@ -39,7 +37,6 @@ import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
 import           System.Directory   (doesPathExist)
-import           System.Environment (lookupEnv)
 import           System.Exit        (ExitCode (..))
 import           System.FilePath    ((</>))
 import           System.Process     (readProcessWithExitCode)
@@ -52,11 +49,10 @@ import           Lips.Kernel.Expect (Expect, checkArtifactValues, checkValues, e
                                      expandExpects, expectedValue, isGroundExpect)
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
-import           Lips.Nix.Flake     (Nixpkgs (..), Rungs (..), SiteRung (..), flakeText, noRungs,
-                                     substrateNixpkgsVar)
+import           Lips.Nix.Flake     (Nixpkgs (..), Rungs (..), SiteRung (..), flakeText, nixpkgsRef,
+                                     noRungs)
 import           Lips.World         (World (..))
 import           Lips.Report        (niceSubject, nixMissing, plural)
-import           Lips.Schema        (lockFlakeRef)
 import           Lips.Stage         (siteNameOf, stageBeside, withTempDir, writeCompiled,
                                      writeSite)
 
@@ -272,12 +268,14 @@ stagedGate stage file rl
 -- the kernel enumerates (the doctrine forbids it).
 --
 -- Why in @generate@ only: it is the one verb that is already online and already
--- builds a pinned nixpkgs, so the cost is a build it can afford. @compile@ stays
+-- builds against nixpkgs, so the cost is a build it can afford. Built against
+-- the nixpkgs the compiled flake will name ('compiledNixpkgs' over the pin the
+-- mint records), so the build observed here is the one a user later runs. @compile@ stays
 -- offline and nixpkgs-free always; @check@ does too EXCEPT for a program that
 -- states observables, which it must build something to observe (an artifact for a
 -- command claim, a small derivation for a clause claim). Stated where the rule
 -- is, so nobody reads "offline" as a promise the claim gates cannot keep.
-artifactGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+artifactGate :: Nixpkgs -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 artifactGate nixpkgs stage file rl = case rlArtifact rl of
   (_, [])         -> pure ()
   (body, names) -> step ("build " <> plural (length names) "artifact") $ withTempDir $ \dir -> do
@@ -310,12 +308,12 @@ artifactGate nixpkgs stage file rl = case rlArtifact rl of
 -- Twin of 'artifactGate' one step further out: that one asks whether the build
 -- CONTAINS what the output names, this one asks whether the built thing DOES
 -- what the author said. Both are observations, so both live in @generate@ -- the
--- one verb that is already online and already builds a pinned nixpkgs.
+-- one verb that is already online and already builds against nixpkgs.
 --
--- Built against that same pin, so the mint observes the world it was grounded
--- against. A machine claim boots the module and so needs KVM; without it the
+-- Built against the same nixpkgs as 'artifactGate', the one @check@ reads back
+-- from the record, so the mint observes what @check@ later re-observes. A machine claim boots the module and so needs KVM; without it the
 -- mint REFUSES rather than admitting an engine whose claims never ran.
-mintClaimGate :: Text -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
+mintClaimGate :: Nixpkgs -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
 mintClaimGate nixpkgs stage file rl
   | null (rlClaims rl) = pure ()
   | otherwise = do
@@ -351,19 +349,20 @@ mintClaimGate nixpkgs stage file rl
 -- its verdict; lips builds it and knows nothing about what it checks.
 --
 -- It builds @#gate@ of the very directory @compile@ writes ('writeCompiled'),
--- with @nixpkgs@ pinned to the locked ref, so the validator is the version the
--- mint was grounded against rather than whatever the ambient registry resolves.
--- Only @nixpkgs@ is pinned: a world input lips cannot pin (a kubenix URL) would
--- make the verdict drift, which is why such worlds declare no gate yet.
+-- with the nixpkgs that directory names: for a world grounded on the substrate,
+-- the pin the mint records, so the validator is the version the rules were
+-- grounded against. Only @nixpkgs@ is pinned: a world input lips cannot pin (a
+-- kubenix URL) would make the verdict drift, which is why such worlds declare
+-- no gate yet.
 --
 -- A world with no @gate@ slot is untouched, and @check@ never runs this: it
 -- stays nixpkgs-free, while the world's own package build still refuses an
 -- invalid render where it is used.
-worldGate :: Text -> World -> FilePath -> Realization -> IO ()
+worldGate :: Nixpkgs -> World -> FilePath -> Realization -> IO ()
 worldGate nixpkgs world file rl = case wGate world of
   Nothing -> pure ()
   Just _  -> step ("the " <> wName world <> " world's own gate") $ withTempDir $ \tmp -> do
-    _ <- writeCompiled world (Pinned nixpkgs) file tmp rl
+    _ <- writeCompiled world nixpkgs file tmp rl
     res <- try (readProcessWithExitCode "nix"
       [ "build", "--no-link", "path:" <> tmp <> "#gate" ] "")
     case res of
@@ -380,7 +379,7 @@ worldGate nixpkgs world file rl = case wGate world of
 -- | Run ONE claim out of a staged @claims.nix@. A failure is the claim's own
 -- verdict (the comparison raises inside the build), surfaced verbatim so the
 -- author reads what was observed against what they stated.
-buildClaim :: Text -> FilePath -> FilePath -> Claim -> IO ()
+buildClaim :: Nixpkgs -> FilePath -> FilePath -> Claim -> IO ()
 buildClaim nixpkgs file dir c = do
   res <- try (readProcessWithExitCode "nix"
     [ "build", "--impure", "--no-link", "--print-out-paths", "--expr", T.unpack expr ] "")
@@ -397,16 +396,16 @@ buildClaim nixpkgs file dir c = do
     -- as an artifact name is (a '-' is legal in an attribute name but not in a
     -- dotted selection).
     expr = T.pack (concat
-      [ "let np = builtins.getFlake \"", T.unpack nixpkgs, "\"; "
+      [ "let np = builtins.getFlake \"", T.unpack (nixpkgsRef nixpkgs), "\"; "
       , "pkgs = import np { system = builtins.currentSystem; }; in "
       , "(import ", show (dir </> "claims.nix"), " { inherit pkgs; })"
       , ".${", show (T.unpack (clId c)), "}" ])
 
 -- | Build ONE artifact out of a staged @artifact.nix@ and return its output
--- path. Built against the pinned nixpkgs the generation records, so the gate
--- observes the same world the mint was grounded against; @--impure@ covers
--- @builtins.currentSystem@, exactly as the schema build does.
-buildArtifact :: Text -> FilePath -> FilePath -> Text -> IO FilePath
+-- path. Built against the nixpkgs the compiled flake names, so the gate
+-- observes what a user of the compiled directory builds; @--impure@ covers
+-- @builtins.currentSystem@ and lets an ambient registry ref resolve.
+buildArtifact :: Nixpkgs -> FilePath -> FilePath -> Text -> IO FilePath
 buildArtifact nixpkgs file dir name = do
   res <- try (readProcessWithExitCode "nix"
     [ "build", "--impure", "--no-link", "--print-out-paths", "--expr", T.unpack expr ] "")
@@ -423,25 +422,7 @@ buildArtifact nixpkgs file dir name = do
     -- indexed as a quoted key: a '-' is legal in an attribute name but not in a
     -- dotted selection.
     expr = T.pack (concat
-      [ "let np = builtins.getFlake \"", T.unpack nixpkgs, "\"; "
+      [ "let np = builtins.getFlake \"", T.unpack (nixpkgsRef nixpkgs), "\"; "
       , "pkgs = import np { system = builtins.currentSystem; }; in "
       , "(import ", show (dir </> "artifact.nix"), " { inherit pkgs; })"
       , ".${", show (T.unpack name), "}" ])
-
--- | The nixpkgs the artifact build runs against: lips's own baked pin, locked.
--- One authority for every world, because BUILDERS live in nixpkgs, while a
--- world's schema pin may name home-manager, kubenix or terranix -- or no flake
--- at all (@LIPS_OPTIONS_JSON@ pins by content). Resolved only when a mint
--- actually declares an artifact, so a configuration-only mint needs none.
-artifactNixpkgs :: Text -> IO Text
-artifactNixpkgs remedy = do
-  mflake <- lookupEnv (T.unpack substrateNixpkgsVar)
-  case mflake of
-    Just ref -> lockFlakeRef ref remedy
-    -- Deduce-or-fail: an artifact lips cannot build is an artifact lips cannot
-    -- vouch for, and "not verified" must never ship as verified.
-    Nothing  -> die (report
-      "lips can't build the artifact it minted: no nixpkgs is pinned."
-      [substrateNixpkgsVar <> " is unset, so there is no nixpkgs to build against."]
-      ("\8594 run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
-

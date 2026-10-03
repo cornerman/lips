@@ -334,9 +334,9 @@ test-draft:
     # A world's own gate runs in the door: nono's validator refuses a command
     # entry with no sandbox object, which its weak schema cannot see. The world
     # file is the one examples/ ships, beside the program as generate finds it,
-    # and the gate builds against the pinned nixpkgs (the packaged lips bakes it;
-    # this ghc-built one is told, from the flake's own lock).
-    export LIPS_NIXPKGS_FLAKE="github:NixOS/nixpkgs/$(nix eval --raw --impure --expr \
+    # and the gate builds against the pin generate hands the door per world
+    # (LIPS_MINT_PINS), here the flake's own locked nixpkgs.
+    export LIPS_MINT_PINS="nono=github:NixOS/nixpkgs/$(nix eval --raw --impure --expr \
       '(builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.nixpkgs.locked.rev')"
     export LIPS_MINT_WORLDS=nono
     sandbox=$(mktemp -d -p "$tmp")
@@ -362,6 +362,15 @@ test-draft:
       || { echo "FAIL: a render the validator accepts was refused"; cat "$tmp/out22"; exit 1; }
     grep -q "the nono world's own gate" "$tmp/out22" \
       || { echo "FAIL: the world's gate did not run on a sound draft"; cat "$tmp/out22"; exit 1; }
+    # The gate builds against the pin the mint records, not lips's baked one:
+    # the same sound draft fails on a pin nix cannot fetch, naming it.
+    if LIPS_MINT_PINS="nono=path:$tmp/no-such-nixpkgs" \
+         "$lips" check --draft "$sandbox/one.sb.lips" < "$sandbox/boxed.txt" > "$tmp/out29" 2>&1; then
+      echo "FAIL: the world's gate ignored the pin it was handed"; cat "$tmp/out29"; exit 1
+    fi
+    grep -q "no-such-nixpkgs" "$tmp/out29" \
+      || { echo "FAIL: the world's gate did not fail on the pin"; cat "$tmp/out29"; exit 1; }
+    unset LIPS_MINT_PINS
     # No per-program source written by a model: a draft carrying a source block
     # is refused inside the mint's own call, naming the file, whatever else holds.
     export LIPS_MINT_WORLDS=nixos
