@@ -6,7 +6,7 @@
 # nixosModules. The realized module is DERIVED by running `lips compile` in a
 # derivation (offline, deterministic); the program, the shared grammar and the
 # world's own files are the only committed inputs. Each output value is the
-# compiled DIRECTORY (default.nix + a staged artifacts/ tree); `imports` accepts
+# compiled DIRECTORY (default.nix beside the site and artifact.nix); `imports` accepts
 # the directory and resolves its default.nix.
 { pkgs, lib, lips, dir }:
 let
@@ -44,7 +44,7 @@ let
 
   # The worlds a language holds, found by looking -- the Nix twin of
   # Lips.Language.mintedWorlds, and keyed on the same marker: a subdirectory
-  # carrying this language's rules. out/ and artifacts/ are excluded for free.
+  # carrying this language's rules. out/ is excluded for free.
   worldsOf = language:
     let d = langDir language;
         subdirs = lib.attrNames (lib.filterAttrs (_: t: t == "directory")

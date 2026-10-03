@@ -515,8 +515,8 @@
         website-vm =
           let
             lips = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-            # Realize into a DIRECTORY: the module plus its source tree, so the
-            # module's relative `src = ./artifacts/<name>` resolves at import.
+            # Realize into a DIRECTORY: the module plus the site it builds, so the
+            # module's relative paths resolve at import.
             realized = pkgs.runCommand "lips-website-module" { } ''
               mkdir -p website/nixos
               cp ${./examples/website.lips} website.lips
