@@ -78,7 +78,6 @@ import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
 import Lips.Kernel.Lang.Nest
 import Lips.Kernel.Lang.Store
-import Lips.Kernel.Source
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
@@ -1193,35 +1192,22 @@ main = hspec $ do
       fmap (map fst) (realizeStagedPaths (const Replace) (\_ -> Left "unused") (fromList ps))
         `shouldBe` Right ["./artifacts/myserver", "./artifacts/myserver/motd"]
 
-    -- Source fills: the engine declares them under the artifact, realize reports
-    -- them, and the caller substitutes them into the tree it stages. Realize
-    -- refuses a fill that could never be written into source, so the defect is
-    -- named at the engine instead of appearing as Nix syntax inside a program.
-    it "reports the source fills an artifact declares" $ do
-      let ps =
-            [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","tool","builder"] }
-            , (mk "n" "x" "\"logscan\"" Stated) { dSubject = Subject ["artifact","tool","fill","name"] }
-            , (mk "p" "x" "8080" Stated) { dSubject = Subject ["artifact","tool","fill","port"] }
-            ]
-      realizeArtifactFills (const Replace) (\_ -> Left "unused") (fromList ps)
-        `shouldBe` Right [("tool","name","logscan"), ("tool","port","8080")]
-
-    it "refuses a fill whose value has no source text (a derivation is not text)" $ do
-      let ps = [ (mk "n" "x" "\"${artifact.other}\"" Stated) { dSubject = Subject ["artifact","tool","fill","name"] } ]
-      realizeArtifactFills (const Replace) (\_ -> Left "unused") (fromList ps)
-        `shouldSatisfy` \r -> case r of Left (RBadArtifact "tool" _) -> True; _ -> False
-
-    it "refuses a fill whose marker no source file could ever name" $ do
-      let ps = [ (mk "n" "x" "\"logscan\"" Stated) { dSubject = Subject ["artifact","tool","fill","2nd"] } ]
-      realizeArtifactFills (const Replace) (\_ -> Left "unused") (fromList ps)
-        `shouldSatisfy` \r -> case r of Left (RBadArtifact "tool" _) -> True; _ -> False
-
     it "refuses an artifact section the kernel does not know (it would be dropped)" $ do
       -- Before this guard, args/builder were selected and anything else silently
       -- ignored, so a mint's typo compiled to a derivation missing what it said.
       let ps =
             [ (mk "b" "x" "\"buildGoModule\"" Stated) { dSubject = Subject ["artifact","tool","builder"] }
             , (mk "a" "x" "\"0.1.0\"" Stated) { dSubject = Subject ["artifact","tool","arg","version"] }
+            ]
+      realizeReplace (fromList ps)
+        `shouldSatisfy` \r -> case r of Left (RBadArtifact "tool" _) -> True; _ -> False
+
+    -- A fill wrote a program word into a staged source tree. No language holds
+    -- one any more, so a fill would govern nothing and is refused as unknown.
+    it "refuses a fill section, which has no tree to fill" $ do
+      let ps =
+            [ (mk "b" "x" "\"writeShellApplication\"" Stated) { dSubject = Subject ["artifact","tool","builder"] }
+            , (mk "n" "x" "\"logscan\"" Stated) { dSubject = Subject ["artifact","tool","fill","name"] }
             ]
       realizeReplace (fromList ps)
         `shouldSatisfy` \r -> case r of Left (RBadArtifact "tool" _) -> True; _ -> False
@@ -2397,35 +2383,6 @@ main = hspec $ do
           labels = map ciLabel (completionItems eng)
       length labels `shouldBe` 1
       labels `shouldSatisfy` any (T.isInfixOf "given the log of")
-
-  describe "source fills (a program word inside baked source)" $ do
-    it "reads the markers a source text names, once each, in order" $
-      sourceMarkers "module @name@\nfunc main() { print(\"@name@ @greeting@\") }"
-        `shouldBe` ["name", "greeting"]
-    it "reads no marker where an @ is ordinary source text" $
-      -- A decorator, a Makefile prefix, an email: narrow marker syntax keeps
-      -- them out, so a fill is never guessed into someone's code.
-      sourceMarkers "@app.route('/')\n\t@echo hi\nme@example.com\n@ @\n@1x@"
-        `shouldBe` []
-    it "fills every marker in every file" $
-      fillTree "tool" [("name", "logscan")]
-        [("go.mod", "module @name@\n"), ("main.go", "// @name@ reads stdin\n")]
-        `shouldBe` Right [ ("go.mod", "module logscan\n")
-                         , ("main.go", "// logscan reads stdin\n") ]
-    it "refuses a declared fill no source file names (the word would govern nothing)" $
-      fillTree "tool" [("name", "logscan"), ("port", "8080")]
-        [("go.mod", "module @name@\n")]
-        `shouldBe` Left ["artifact tool declares fill port but no source file names @port@"]
-    it "refuses a marker the engine never declares (it would ship verbatim)" $
-      fillTree "tool" [("name", "logscan")]
-        [("main.go", "// @name@\nconst greeting = \"@greting@\"\n")]
-        `shouldBe` Left ["artifact tool: main.go names @greting@, which the engine never declares as a fill"]
-    it "fills in one pass, so a fill's own text is never rescanned" $
-      -- A program word that happens to read @name@ must land verbatim; a second
-      -- pass would let a program value inject a marker.
-      fillTree "tool" [("greeting", "@name@"), ("name", "x")]
-        [("main.go", "@greeting@ @name@")]
-        `shouldBe` Right [("main.go", "@name@ x")]
 
   describe "crystallize (crystallization plan: three outcomes)" $ do
     let sourceP = patOne "p1" [TLit "the", TLit "bank", TLit "drops", TLit "files", TLit "into", THole "loc"]
@@ -3978,7 +3935,7 @@ main = hspec $ do
             , edRules =
                 [ MapRule "r1" Fact ["server", "port"]
                     [ Emit ["networking", "firewall", "allowedTCPPorts"] (tval "[ <value:int> ]")
-                    , Emit ["artifact", "<self>", "fill", "port"] (tval "\"<value>\"") ] ]
+                    , Emit ["artifact", "<self>", "args", "port"] (tval "\"<value>\"") ] ]
             , edDemands = [], edMerges = [], edIgnores = []
             }
           hoverOn src n = hoverAt engH "hello" (diagnose "f" engH src) n
@@ -3990,7 +3947,7 @@ main = hspec $ do
             t `shouldSatisfy` T.isInfixOf "server.port = 8080"
             t `shouldSatisfy` T.isInfixOf "networking.firewall.allowedTCPPorts = [ 8080 ]"
             -- <self> is the program's own instance, so the path is the real one
-            t `shouldSatisfy` T.isInfixOf "artifact.hello.fill.port = \"8080\""
+            t `shouldSatisfy` T.isInfixOf "artifact.hello.args.port = \"8080\""
           Nothing -> expectationFailure "expected a hover"
 
       it "says a decorative line realizes nothing" $
@@ -7921,6 +7878,6 @@ systemPrompt = systemPromptFor [shippedWorld "nixos"]
 emptyRealization :: Realization
 emptyRealization = Realization
   { rlBase = empty, rlGround = empty, rlModule = "", rlArtifact = ("", [])
-  , rlStaged = [], rlArtPaths = [], rlFills = [], rlCore = Nothing
+  , rlStaged = [], rlArtPaths = [], rlCore = Nothing
   , rlClauseClaims = [], rlSiteProps = [], rlSiteName = Nothing
   , rlClaims = [], rlUses = [] }

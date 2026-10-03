@@ -140,12 +140,11 @@ data Value
                           -- package names realizes to a list of derivations.
   deriving (Eq, Show)
 
--- | The value as plain SOURCE text, or 'Nothing' when it has no text form. Only
--- a fully literal string and a number qualify: a reference resolves to a store
--- path that only nix knows (and lips fills source offline), and a list or
--- attrset has no textual form at all. Used by
--- 'Lips.Kernel.Realize.realizeArtifactFills', so a fill that cannot be written
--- into source fails loud instead of rendering Nix syntax into a program.
+-- | The value as plain text, or 'Nothing' when it has no text form. Only a
+-- fully literal string and a number qualify: a reference resolves to a store
+-- path that only nix knows (and lips reads these offline), and a list or
+-- attrset has no textual form at all. Used where lips needs a value's literal
+-- text without nix: a claim's sections and an expected value.
 sourceText :: Value -> Maybe Text
 sourceText (VStr ps)  = T.concat <$> traverse lit ps
   where lit (PLit t) = Just t

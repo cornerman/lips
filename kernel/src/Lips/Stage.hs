@@ -14,7 +14,6 @@
 -- 'Lips.Kernel.Source' fills a tree, while this module owns only the IO.
 module Lips.Stage
   ( withTempDir
-  , fillStagedTree
   , stageFromDisk
   , stageBeside
   , siteNameOf
@@ -42,7 +41,6 @@ import           Lips.Kernel.Decision   (Subject (..))
 import           Lips.Kernel.Grounding (Grounding, Unvouched (..), gStaged)
 import           Lips.Kernel.Realize   (defaultSiteName)
 import           Lips.Kernel.Run       (Realization (..))
-import           Lips.Kernel.Source    (fillTree)
 import           Lips.Nix.Claims       (claimsFile)
 import           Lips.Nix.Flake        (Rungs (..), SiteRung (..), flakeText)
 import           Lips.Runtime          (runtimeAsset, runtimes)
@@ -59,44 +57,6 @@ withTempDir act = do
   -- Removed even when the action dies (exitFailure throws), so a failing check
   -- does not leave a scratch tree behind on every run.
   act dir `finally` removeDirectoryRecursive dir
-
--- | Fill a staged source tree in place: every @\@marker\@@ becomes the text the
--- engine declared for it (kernel physics, 'Lips.Kernel.Source.fillTree'), so a
--- word the program states reaches inside the compiled program. Each immediate
--- subdirectory of the staged root is one artifact's tree, which is where its own
--- fills apply; a file lying loose in the root belongs to no artifact and so has
--- no fills, and a marker in it is a defect like any other undeclared one.
-fillStagedTree :: FilePath -> FilePath -> [(Text, Text, Text)] -> IO ()
-fillStagedTree file root fills = do
-  there <- doesDirectoryExist root
-  when there $ do
-    entries <- listDirectory root
-    forM_ entries $ \e -> do
-      isDir <- doesDirectoryExist (root </> e)
-      let art   = if isDir then T.pack e else ""
-          label = if isDir then art else "(staged root)"
-          decl  = [ (m, t) | (a, m, t) <- fills, a == art ]
-      -- Paths stay RELATIVE to the staged root: the root is a temp dir at the
-      -- gate, so an absolute path would name a file the reader cannot look at.
-      paths <- if isDir then map (e </>) <$> treeFiles (root </> e) else pure [e]
-      texts <- mapM (TIO.readFile . (root </>)) paths
-      case fillTree label decl (zip paths texts) of
-        Left defects -> die (report
-          (T.pack file <> ": the source lips bakes and the values it fills disagree:")
-          defects
-          ("→ the source tree and its fills are minted together, so rebuild both: "
-            <> "lips generate " <> T.pack file))
-        Right filled -> forM_ filled $ \(p, t) ->
-          when (Just t /= lookup p (zip paths texts)) (TIO.writeFile (root </> p) t)
-
--- | Every file under a directory, recursively, named relative to it.
-treeFiles :: FilePath -> IO [FilePath]
-treeFiles dir = do
-  entries <- listDirectory dir
-  fmap concat $ forM entries $ \e -> do
-    isDir <- doesDirectoryExist (dir </> e)
-    if isDir then map (e </>) <$> treeFiles (dir </> e) else pure [e]
-
 
 -- | Stage a language's committed @artifacts@ tree (found under @dir@) into
 -- @dst@ (the temp module's @artifacts\/@). A no-op when the language has no
@@ -138,9 +98,6 @@ writeCompiled stage world file out rl = do
   createDirectoryIfMissing True out
   TIO.writeFile (out </> "default.nix") (rlModule rl)
   stage out
-  -- The committed source keeps its markers (it is the template); the COMPILED
-  -- source is filled, like every other derived output.
-  fillStagedTree file (out </> "artifacts") (rlFills rl)
   -- The clause core, when the program states behaviour: one site directory
   -- holding the runtime's adapters, the minted core, the assembled entry and
   -- the runtime's own builder. A configuration-only program writes none, so

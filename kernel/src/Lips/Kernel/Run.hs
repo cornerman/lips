@@ -34,7 +34,7 @@ import Lips.Kernel.Claim    (Claim, ClauseClaim)
 import Lips.Kernel.Clause.Vocabulary (Vocabulary)
 import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, realizeClauseClaims,
                              realizeClauses, siteNameIn, sitePropertiesIn,
-                             realizeArtifactFills, realizeArtifactPaths,
+                             realizeArtifactPaths,
                              realizeClaims, realizeStagedPaths)
 import Lips.Kernel.Capture  (matchSubject)
 import Lips.Kernel.Engine.Data (Engine (..), IgnoreSpec (..))
@@ -98,9 +98,6 @@ data Realization = Realization
     -- expects to find INSIDE a build. Only building the artifact answers it,
     -- so the caller that owns nix does, exactly as it checks 'rlStaged' against
     -- the tree it stages.
-  , rlFills    :: [(Text, Text, Text)]
-    -- ^ @(artifact, marker, text)@: what the caller substitutes into the source
-    -- tree it stages, so a program word reaches inside the compiled program.
   , rlCore     :: Maybe (Text, [Text], [(Text, Maybe Int)])
     -- ^ The clause core, the contracts it reaches, and what it defines with how
     -- many parameters -- 'Nothing' for a constant, which is not a procedure of no
@@ -150,7 +147,6 @@ runBase modeOf assemble vocab budget eng base0 = do
     <*> realizeArtifactFile modeOf assemble ground
     <*> realizeStagedPaths modeOf assemble ground
     <*> realizeArtifactPaths modeOf assemble ground
-    <*> realizeArtifactFills modeOf assemble ground
     <*> realizeClauses modeOf assemble vocab base0 ground
     <*> sitePropertiesIn modeOf assemble ground
     <*> siteNameIn modeOf assemble ground

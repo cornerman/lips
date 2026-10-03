@@ -20,7 +20,6 @@ module Lips.Kernel.Realize
   , realizeArtifactFile
   , realizeStagedPaths
   , realizeArtifactPaths
-  , realizeArtifactFills
   , realizeClaims
   , realizeClauseClaims
   , realizeClauses
@@ -46,10 +45,9 @@ import Lips.Kernel.Claim        (Claim, ClauseClaim (..), Expected (..), claimRo
                                  clauseClaimsFromDecisions)
 import Lips.Kernel.Decision
 import Lips.Kernel.Sexp         (SExp, renderSexp, sexpSymbols)
-import Lips.Kernel.Source       (validMarker)
 import Lips.Kernel.Surface      (naturalKey)
 import Lips.Kernel.Engine.Value  (Piece (..), Ref (..), Value (..), parseValue, renderRealized,
-                                  sourceText, valueArtifactNames, valueArtifactPaths,
+                                  valueArtifactNames, valueArtifactPaths,
                                   valuePaths)
 
 -- | Why a ground base could not be projected to a module. Every case is an
@@ -533,35 +531,6 @@ realizeArtifactPaths modeOf assemble base =
       Left e  -> Left (RMalformed s e)
       Right v -> Right [ (n, p, d) | (n, p) <- valueArtifactPaths v ]
 
--- | Every source fill the engine declares: @(artifact, marker, text)@ from
--- @artifact.\<name\>.fill.\<marker\>@. The kernel owns no filesystem, so it
--- reports what must be substituted and the caller applies it to the tree it
--- stages (like 'realizeStagedPaths'). A fill whose value has no text form, or
--- whose marker could never appear in source, is an engine defect, loud: source
--- is text, and lips fills it offline, so a store path is not available to write.
-realizeArtifactFills :: (Subject -> MergeMode) -> ([Decision] -> Either Text Decision)
-                     -> Base -> Either RealizeError [(Text, Text, Text)]
-realizeArtifactFills modeOf assemble base =
-  case resolve modeOf assemble base of
-    Left errs     -> Left (resolveErr errs)
-    Right winners -> traverse one [ sd | sd@(Subject ("artifact" : _ : "fill" : _), _) <- Map.toList winners ]
-  where
-    one (s@(Subject (_ : n : _ : marker)), d) = do
-      m <- case marker of
-        [m] | validMarker m -> Right m
-        _ -> Left (RBadArtifact n ("fill " <> T.intercalate "." marker
-              <> " is not a source marker name (one segment, starting with a letter,"
-              <> " of letters, digits, _ or -), so no source file could name it"))
-      case parseValue (unAssertion (dAssertion d)) of
-        Left e  -> Left (RMalformed s e)
-        Right v -> case sourceText v of
-          Just t  -> Right (n, m, t)
-          Nothing -> Left (RBadArtifact n ("fill " <> m <> " has no source text: "
-                      <> unAssertion (dAssertion d)
-                      <> " (a fill writes text into source, so a reference, list"
-                      <> " or attrset cannot be one)"))
-    one (s, _) = Left (RMalformed s "artifact fill without a marker segment")
-
 -- | An artifact group is any decision whose subject is rooted at @artifact@
 -- (@artifact.<name>.builder@, @artifact.<name>.args.<key>@). These do not
 -- become option assignments; realize gathers them into a @let@-bound
@@ -712,10 +681,10 @@ artifactEntries mainProgs arts = do
       -- (args' -> arg) or an invented mechanism would compile to a derivation
       -- missing what the engine meant to say.
       case nub [ sec | (Subject ("artifact" : _ : sec : _), _) <- parts
-                     , sec `notElem` ["builder", "args", "fill"] ] of
+                     , sec `notElem` ["builder", "args"] ] of
         []   -> Right ()
         secs -> Left (RBadArtifact n ("unknown section(s) " <> T.intercalate ", " secs
-                 <> "; an artifact has a builder, args and fill"))
+                 <> "; an artifact has a builder and args"))
       b <- builderOf n parts
       argLines <- traverse argLine (sortOn (map naturalKey . fst) [ (k, d) | (Subject ("artifact" : _ : "args" : k), d) <- parts ])
       Right $
