@@ -463,6 +463,22 @@ test-draft:
     if grep -q "the rules are minted" "$tmp/out32"; then
       echo "FAIL: an unreachable kubenix pin was blamed on the rules"; cat "$tmp/out32"; exit 1
     fi
+    # A patch is merged with the committed engine, its contract and its report
+    # included, so the report must still describe the engine the patch makes: a
+    # changed engine whose report is left as it was is refused, and so is a
+    # second report beside the inherited one. Both before any build.
+    printf '0.9 q5 demand deploy.namespace "which namespace?"\n' > "$tmp/stale.txt"
+    if "$lips" check --draft examples/web.deploy.lips < "$tmp/stale.txt" > "$tmp/out33" 2>&1; then
+      echo "FAIL: --draft accepted a changed engine with its old report"; cat "$tmp/out33"; exit 1
+    fi
+    grep -q "leaves the report as it was" "$tmp/out33" \
+      || { echo "FAIL: the stale report was not named"; cat "$tmp/out33"; exit 1; }
+    printf '0.9 d2 report <<<lips\nAnother account.\nlips>>>\n' > "$tmp/second.txt"
+    if "$lips" check --draft examples/web.deploy.lips < "$tmp/second.txt" > "$tmp/out34" 2>&1; then
+      echo "FAIL: --draft accepted a second report"; cat "$tmp/out34"; exit 1
+    fi
+    grep -q "restate d1" "$tmp/out34" \
+      || { echo "FAIL: the second report was not refused naming d1"; cat "$tmp/out34"; exit 1; }
     unset LIPS_MINT_BASIS
     # generate with no -t over a language holding several worlds refuses before
     # any model call, naming both remedies. Run on a copy with nothing on PATH,
