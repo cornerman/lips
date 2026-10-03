@@ -7446,7 +7446,10 @@ main = hspec $ do
               (mk "s1" "x" "./artifacts/logscan" Stated)
                 { dProv = FromSource (SourceLoc "logscan.lips" 4) })
           ]
-        g = grounding base
+        g = grounding noTemplate base
+        -- These fixtures state their values as the rule would have written them,
+        -- so the filled value is the template: no lookup is needed.
+        noTemplate = const Nothing
 
     it "counts what the schema vouches for" $
       gOptions g `shouldBe` 1
@@ -7459,7 +7462,7 @@ main = hspec $ do
     -- logscan's single claim as four: a report that exists to make numbers
     -- trustworthy must not print a wrong one.
     it "counts one claim once, however many sections state it" $
-      claimCount (grounding
+      claimCount (grounding noTemplate
         [ (Subject ["claim", "w", "call"], mk "a" "x" "(f)" Stated)
         , (Subject ["claim", "w", "equals"], mk "b" "x" "#t" Stated)
         , (Subject ["claim", "w", "feed"], mk "c" "x" "[ \"l\" ]" Stated)
@@ -7480,14 +7483,14 @@ main = hspec $ do
     it "counts one subject once, however many agreeing decisions carry it" $
       let twice = base <> [ (Subject ["artifact", "greet", "args", "text"]
                             , mk "g2" "x" "echo \"hello from lips\"" Stated) ]
-       in length (gGlue (grounding twice)) `shouldBe` 1
+       in length (gGlue (grounding noTemplate twice)) `shouldBe` 1
 
     -- A schema vouches for a name and a type, never for the text inside a string.
     -- A live mint put a whole shell pipeline into systemd.services.x.script and
     -- the four classes called it a vouched option assignment, which is true of
     -- the option and false of the pipeline.
     it "counts the words a mint wrote into an option string" $ do
-      let g2 = grounding
+      let g2 = grounding noTemplate
             [ ( Subject ["systemd", "services", "x", "script"]
               , mk "s1" "x" "\"<value> | mail -s report ops@example.com\"" Stated )
             , ( Subject ["services", "x", "enable"], mk "s2" "x" "true" Stated )
@@ -7497,6 +7500,27 @@ main = hspec $ do
       -- A boolean is not prose, and a value that is only a hole is the program's
       -- own word, so neither is counted.
       map uSubject (gWritten g2) `shouldBe` [Subject ["systemd", "services", "x", "script"]]
+
+    -- The count is of words the MINT wrote, so it must be taken through a real
+    -- run: by then every hole is filled, and a program word sitting in the
+    -- filled string is the author's, not the mint's. Counting the filled string
+    -- reported program words as mint words.
+    it "counts only the rule's own words, never the program words filled into it" $ do
+      let pat = patOne "p" [TLit "report", THole "what"] Fact
+                  [SLit "report.what"] [SHole "what"]
+          rule = MapRule "r" Fact ["report", "what"]
+                   [ Emit ["systemd", "services", "x", "script"]
+                          (VStr [PHole "value", PLit " | mail -s report ops"]) ]
+          prog = "report df-h\n"
+      case crystallize "f" [pat] prog of
+        Left e -> expectationFailure ("crystallize failed: " <> show e)
+        Right human -> case runBase (const Replace) noAssembly schemeVocabulary 100
+                             (Engine [toRule rule] [] []) human of
+          Left e   -> expectationFailure ("run failed: " <> show e)
+          Right rl ->
+            map uWords (gWritten (grounding (emitTemplate "f" [rule] (toList (rlBase rl)))
+                                    [ (dSubject d, d) | d <- toList (rlGround rl) ]))
+              `shouldBe` [5]
 
     it "reports the four classes on one line, then names the unvouched" $ do
       case groundingReport g of
@@ -7864,4 +7888,4 @@ emptyRealization = Realization
   { rlBase = empty, rlGround = empty, rlModule = "", rlArtifact = ("", [])
   , rlStaged = [], rlArtPaths = [], rlFills = [], rlCore = Nothing
   , rlClauseClaims = [], rlSiteProps = [], rlSiteName = Nothing
-  , rlGrounding = grounding [], rlClaims = [], rlUses = [] }
+  , rlClaims = [], rlUses = [] }

@@ -74,8 +74,12 @@ data Grounding = Grounding
 claimCount :: Grounding -> Int
 claimCount = length . nub . gClaimIds
 
-grounding :: [(Subject, Decision)] -> Grounding
-grounding winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy sameSubject winners)
+-- @templateOf@ gives the rhs template a decision was filled from
+-- ('Lips.Kernel.Engine.Data.emitTemplate'). Mint-written words are counted in
+-- the TEMPLATE, because by the time a decision is ground its holes are filled
+-- and a program word inside the string is indistinguishable from the mint's.
+grounding :: (Decision -> Maybe Value) -> [(Subject, Decision)] -> Grounding
+grounding templateOf winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy sameSubject winners)
   where
     -- One SUBJECT is one assertion, however many agreeing decisions carry it.
     -- Several program lines may state the same artifact argument (three lines
@@ -113,9 +117,14 @@ grounding winners = foldr add (Grounding 0 0 [] [] [] []) (nubBy sameSubject win
     -- mint wrote rather than what the program said. A non-string value (a
     -- boolean, a number, a path, a package reference) is not prose and counts
     -- zero, so this measures text and never mistakes a typed value for it.
-    mintWords d = case parseValue (assertionOf d) of
-      Right v -> length (concatMap T.words (literals v))
-      Left _  -> 0
+    --
+    -- Without a template (a decision no minted rule emitted) the filled value is
+    -- counted instead. That over-counts, by the program words in it, which is
+    -- the safe direction for a number that exists to be watched.
+    mintWords d = case templateOf d of
+      Just t  -> wordsIn t
+      Nothing -> either (const 0) wordsIn (parseValue (assertionOf d))
+    wordsIn v = length (concatMap T.words (literals v))
 
     literals (VStr ps)  = [ t | PLit t <- ps ]
     literals (VList vs) = concatMap literals vs

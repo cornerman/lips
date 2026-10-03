@@ -38,6 +38,7 @@ module Lips.Kernel.Engine.Data
   , renderIgnoreBody
   , toRule
   , bindSelf
+  , emitTemplate
   , toDemand
   , renderRuleBody
   , parseRuleBody
@@ -264,6 +265,40 @@ toRule mr =
       | otherwise = Left ("engine rule " <> mrId mr <> ": <" <> h
                             <> "> is neither <value>/<value.N> nor a capture"
                             <> " bound by the subject")
+
+-- | The rhs TEMPLATE a ground decision was filled from: the emit, as the mint
+-- wrote it, before any program word went in.
+--
+-- Why it is needed: after refinement every hole is filled, so a filled string
+-- can no longer tell the mint's words from the program's. Only the template
+-- says which literal text the MINT wrote, which is what grounding counts.
+--
+-- Found by replaying the one rewrite that produced the decision: its provenance
+-- names the rule and the parent, the parent's subject gives the captures, and
+-- the emit whose filled path is the decision's subject is the one. Paths are
+-- compared with @\<self\>@ bound to @inst@ (as the run bound it), while the
+-- template returned is the UNBOUND one, since an instance name is the program's
+-- word, not the mint's. 'Nothing' for anything a minted rule did not emit.
+emitTemplate :: Text -> [MapRule] -> [Decision] -> Decision -> Maybe Value
+emitTemplate inst rules base d = case dProv d of
+  Derived [pid] (RuleId rid) -> do
+    parent <- Map.lookup pid parents
+    mr <- lookupRule rid
+    caps <- matchSubject (mrSubject mr) (segsOf (dSubject parent))
+    let bound = bindSelf inst mr
+        hits = [ emRhs raw
+               | (raw, b) <- zip (mrEmits mr) (mrEmits bound)
+               , traverse (fillCaptures caps) (emPath b) == Right (segsOf (dSubject d)) ]
+    case hits of
+      (t : _) -> Just t
+      []      -> Nothing
+  _ -> Nothing
+  where
+    parents = Map.fromList [ (dId p, p) | p <- base ]
+    lookupRule rid = case [ r | r <- rules, mrId r == rid ] of
+      (r : _) -> Just r
+      []      -> Nothing
+    segsOf (Subject xs) = xs
 
 -- | Interpret a minted demand: satisfied when any decision matches the subject.
 -- 'matchSubject' means a family demand (@route.<path>.status@) is met by any

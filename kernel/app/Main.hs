@@ -53,7 +53,7 @@ import           System.Process     (CreateProcess (..), StdStream (..), callPro
                                      readProcessWithExitCode, waitForProcess)
 
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
-import           Lips.Kernel.Engine.Data       (Engine (..), IgnoreSpec (..), bindSelf, keepsRepeats, renderAttrPath, toDemand, toRule)
+import           Lips.Kernel.Engine.Data       (Engine (..), IgnoreSpec (..), bindSelf, emitTemplate, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (watchedFiles, timingPathIn, languageTimingPathIn, requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
@@ -83,10 +83,11 @@ import           Lips.Generate.Stats    (MintStats (..), renderStats, verdictOf)
 import           Lips.Generate.Record   (corpusText, genId, record,
                                          recordedSchemaFor, recordedWorld, recordedWorldPin, renderStampFault, stampFaults, worldHash)
 import           Lips.Kernel.Decision
+import qualified Lips.Kernel.Base       as Base
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), compatSlug, readExpect, rebless, renderExpect, smallestCompat)
 import           Lips.Kernel.Reader     (ParseError (..), renderBase)
 import           Lips.Kernel.Run
-import           Lips.Kernel.Grounding  (groundingReport)
+import           Lips.Kernel.Grounding  (Grounding, grounding, groundingReport)
 import           Lips.Runtime            (schemeVocabulary)
 import           Lips.Kernel.Clause.Vocabulary (withLent)
 import           Lips.Kernel.Lang.Crystallize  (LineOutcome (..), crystallize)
@@ -664,12 +665,13 @@ checkWorld contract claims dir w file program = do
         -- assertion (foreign text in an artifact argument, a staged source tree)
         -- is the one thing lips cannot check, so the count is stated on every
         -- run rather than discovered later by a reviewer reading generated code.
-        mapM_ note (groundingReport (rlGrounding rl))
+        let ground = groundingOf file eng rl
+        mapM_ note (groundingReport ground)
         -- A staged tree's size is the one thing the kernel cannot report: it is
         -- pure and owns no filesystem, so the path counts as one word while the
         -- file behind it may hold seventy lines nobody reviewed. The caller that
         -- stages measures.
-        mapM_ note =<< stagedSizes dir file (rlGrounding rl)
+        mapM_ note =<< stagedSizes dir file ground
         -- What this world drops, said on every run rather than left for a
         -- reviewer who opens the rules file: a declaration is cheap to write and
         -- must not be cheap to overlook.
@@ -1551,6 +1553,14 @@ validate lent file eng program =
           -- program lines naming one thing name it once).
           assembleList = assembleWith (keepsRepeats (edMerges eng))
       in first FailRun (runBase modeOf assembleList (withLent lent schemeVocabulary) budget runEngine base)
+
+-- | What vouches for each assertion of a run, counted against the rules it was
+-- run with: the mint-written words are read from those rules' templates, since
+-- the ground decisions only hold the filled values.
+groundingOf :: FilePath -> EngineData -> Realization -> Grounding
+groundingOf file eng rl =
+  grounding (emitTemplate (instanceName file) (edRules eng) (Base.toList (rlBase rl)))
+            [ (dSubject d, d) | d <- Base.toList (rlGround rl) ]
 
 -- | Check the realized module parses as Nix (closes the garbage-rhs hole at
 -- mint time). A missing @nix-instantiate@ is a loud failure: an unverifiable

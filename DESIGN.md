@@ -4169,8 +4169,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   unit name `website.service` and then on the word `leeren`. It now waits on the
   port the PROGRAM states rather than a unit name the engine chose, and asks
   `/data/button/2/label` for the word. The mint's own claim `serve` asserts only
-  HTTP 200, so 70 mint-written words inside option strings are pinned by a smoke
-  test -- the `browser-behaviour` gap it filed, one level worse than before.
+  HTTP 200, so 57 mint-written words inside option strings are pinned by a smoke
+  test (first reported as 70, which counted program words filled into those
+  strings as the mint's; corrected when the count moved to the rule templates) -- the `browser-behaviour` gap it filed, one level worse than before.
   A SIDE EFFECT worth naming: the shell loops to 64 canvases and 64 buttons, so
   adding a button to `website.lips` needs no re-mint. The same arity question
   `board` refused to answer, answered here by data rather than by pattern.

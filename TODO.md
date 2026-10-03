@@ -218,7 +218,7 @@ tracks only what is still open.
    accepted on the first attempt; DESIGN §13, "The website defect closes"). Its
    ONE clause prints a fixed HTML+JS shell that FETCHES the program's words from
    `/data/<kind>/<i>/<field>` at page load, where the rules put them as
-   `environment.etc.*` files under the served root. So the 70 mint-written words
+   `environment.etc.*` files under the served root. So the 57 mint-written words
    inside option strings are pinned by a claim asserting HTTP 200 on `/` and
    nothing more, which is this item's MINT-glue rule unmet: marked and counted,
    but not pinned by an observation. The standing `website-vm` flake check

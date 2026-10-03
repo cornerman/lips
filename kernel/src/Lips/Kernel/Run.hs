@@ -32,7 +32,6 @@ import Lips.Kernel.Demand
 import Lips.Kernel.Reader   (ParseError, readBase)
 import Lips.Kernel.Claim    (Claim, ClauseClaim)
 import Lips.Kernel.Clause.Vocabulary (Vocabulary)
-import Lips.Kernel.Grounding    (Grounding, grounding)
 import Lips.Kernel.Realize  (RealizeError (..), realize, realizeArtifactFile, realizeClauseClaims,
                              realizeClauses, siteNameIn, sitePropertiesIn,
                              realizeArtifactFills, realizeArtifactPaths,
@@ -119,10 +118,6 @@ data Realization = Realization
     -- ^ What to call the site derivation, when anything names it. Carried so
     -- every caller that must write the same binding realize does (the claims
     -- file, the compiled flake) agrees with the module by construction.
-  , rlGrounding :: Grounding
-    -- ^ What vouches for each assertion, counted. Carried beside the module so
-    -- every caller can print it: an unvouched assertion nobody watches is how a
-    -- five-line program acquires seventy lines of foreign code.
   , rlClauseClaims :: [ClauseClaim]
     -- ^ The observables over the program's own definitions, judged offline.
     -- Projected from the same ground base as the core they observe, so what
@@ -159,7 +154,6 @@ runBase modeOf assemble vocab budget eng base0 = do
     <*> realizeClauses modeOf assemble vocab base0 ground
     <*> sitePropertiesIn modeOf assemble ground
     <*> siteNameIn modeOf assemble ground
-    <*> pure (grounding [ (dSubject d, d) | d <- realizable ])
     <*> realizeClauseClaims modeOf assemble vocab base0 ground
     <*> realizeClaims modeOf assemble ground
     <*> pure (usesIn base0)
