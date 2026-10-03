@@ -3854,25 +3854,6 @@ main = hspec $ do
       let d = diagnose "f" eng "the bank drops csv files into inbox/."
       diagInert d `shouldBe` []
 
-    -- The concept escape (review 2026-07-29, V6): a Concept realizes nothing, so
-    -- DELETING such a line changes no output and every gate stays green -- while
-    -- an artifact's minted source was written from exactly those lines. Rewording
-    -- one is already caught (its pattern is all-literal, so the line goes
-    -- unmatched); the silent case is retirement, which this names.
-    it "names a concept the program stated at mint time and no longer states" $ do
-      let engC = eng { edPatterns = edPatterns eng ++
-                        [ patOne "p3" [TLit "feed", TLit "notes"]
-                            Concept [SLit "notes"] [SLit "feed notes"] ] }
-          crys src = case crystallize "f" (edPatterns engC) src of
-            Right b -> b
-            Left e  -> error ("fixture failed to crystallize: " <> show e)
-          was = crys "feed notes\nthe bank drops csv files into inbox/."
-          now = crys "the bank drops csv files into inbox/."
-      map (dSubject) (retiredConcepts was now) `shouldBe` [Subject ["notes"]]
-      retiredConcepts was was `shouldBe` []
-      -- a program that only ADDS a concept has retired none
-      retiredConcepts now was `shouldBe` []
-
     it "derives one completion snippet per pattern, holes as numbered tab-stops" $
       case completionItems eng of
         (i0 : i1 : _) -> do
@@ -4070,54 +4051,6 @@ main = hspec $ do
       let ds = diagsOf (diagnose "f" eng "the bank drops csv files into inbox/.")
       map dgMessage [x | x <- ds, dgSeverity x == 2]
         `shouldBe` ["Open question: how often does the feed deliver?"]
-
-  -- The whole verdict, purely: what a baked-source language's specification
-  -- requires of ONE program. Two directions, because the source is shared by
-  -- every program in the language -- a recorded program must still state what
-  -- the mint saw, and an UNRECORDED sibling must state nothing the mint never
-  -- saw (the escape the gate used to skip silently).
-  describe "source-spec verdict (baked source keeps its specification)" $ do
-    let concept subj txt = Decision
-          { dId        = DecisionId subj
-          , dSubject   = Subject [subj]
-          , dKind      = Concept
-          , dAssertion = Assertion txt
-          , dStrength  = Stated
-          , dProv      = FromSource (SourceLoc "p.x.lips" 1)
-          , dRationale = Nothing
-          }
-        fact subj txt = (concept subj txt) { dKind = Fact }
-        b = fromList
-
-    it "holds when the recorded section is restated verbatim" $
-      sourceSpecVerdict (Just (b [concept "io.filter" "keep every field"]))
-                        [b [concept "io.filter" "keep every field"]]
-                        (b [concept "io.filter" "keep every field"])
-        `shouldBe` SpecHolds
-
-    it "reports a deleted recorded concept as retired" $
-      sourceSpecVerdict (Just (b [concept "io.filter" "keep every field"]))
-                        [b [concept "io.filter" "keep every field"]]
-                        (b [fact "cmd.logscan.name" "logscan"])
-        `shouldBe` SpecRetired [concept "io.filter" "keep every field"]
-
-    it "reports a reworded concept as retired (text is part of the spec)" $
-      sourceSpecVerdict (Just (b [concept "io.filter" "every field equals it"]))
-                        [b [concept "io.filter" "every field equals it"]]
-                        (b [concept "io.filter" "every field differs from it"])
-        `shouldBe` SpecRetired [concept "io.filter" "every field equals it"]
-
-    it "lets an unrecorded sibling restate only recorded concepts" $
-      sourceSpecVerdict Nothing
-                        [b [concept "io.filter" "keep every field"]]
-                        (b [concept "io.filter" "keep every field"])
-        `shouldBe` SpecHolds
-
-    it "refuses an unrecorded sibling stating a concept the record never saw" $
-      sourceSpecVerdict Nothing
-                        [b [concept "io.filter" "keep every field"]]
-                        (b [concept "io.sort" "sort the output"])
-        `shouldBe` SpecUnrecorded [concept "io.sort" "sort the output"]
 
   -- Claims: the one gate that observes a running thing. The grammar is closed
   -- (an engine fills it, never extends it) and the PLACE is derived from the
@@ -4648,39 +4581,6 @@ main = hspec $ do
       let machineNumeric = machineClaim { clId = "2" }
           txt2           = maybe "" id (claimsFile False Nothing [machineNumeric])
       txt2 `shouldSatisfy` T.isInfixOf "\"2\" = pkgs.testers.nixosTest"
-
-  -- The advisory half of the obligation: where behaviour lives in minted source
-  -- and the program states no observable, say so in the editor. A warning, never
-  -- an error: the remedy is an author writing an example.
-  describe "the lsp says when a sentence is observed by nothing" $ do
-    let engC = EngineData
-          { edPatterns =
-              [ patOne "p1" [TLit "keep", TLit "every", TLit "field"]
-                  Concept [SLit "io.filter"] [SLit "keep every field"]
-              , patOne "p2" [TLit "install", TLit "it", TLit "as", THole "name"]
-                  Fact [SLit "cmd", SHole "name"] [SHole "name"]
-              ]
-          , edRules = []
-          , edDemands = []
-          , edMerges = [], edIgnores = []
-          }
-        prog = "keep every field\ninstall it as tool"
-        d = diagnose "f" engC prog
-
-    it "warns on a concept-only line where the language bakes source and states no claim" $ do
-      let ds = unobservedDiags True False d
-      map dgLine ds `shouldBe` [0]
-      map dgSeverity ds `shouldBe` [2]
-      map dgMessage ds `shouldSatisfy` all (T.isInfixOf "Nothing observes this sentence")
-
-    it "stays silent once the program states a claim" $
-      unobservedDiags True True d `shouldBe` []
-
-    it "stays silent for a language that bakes no source" $
-      unobservedDiags False False d `shouldBe` []
-
-    it "never warns about a line that realizes something" $
-      map dgLine (unobservedDiags True False d) `shouldNotContain` [1]
 
   describe "lsp uri decoding (file:// scheme, percent-escapes)" $ do
     it "strips the file:// scheme" $

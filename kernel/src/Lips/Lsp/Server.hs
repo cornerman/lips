@@ -34,15 +34,11 @@ import qualified Data.Text.Encoding      as TE
 import qualified Data.Text.Encoding.Error as TEE
 import qualified Data.Text.IO            as TIO
 import           Data.Word               (Word8)
-import           System.Directory        (doesDirectoryExist)
 import           System.Exit             (exitSuccess)
 import           System.IO
 import           Text.Read               (readMaybe)
 
-import Lips.Identity              (artifactsPathIn, grammarPathIn, instanceName,
-                                   langDir, resolveLangDir)
-import Lips.Kernel.Claim         (claimRooted)
-import Lips.Kernel.Engine.Data   (Emit (..), MapRule (..))
+import Lips.Identity              (grammarPathIn, instanceName, langDir)
 import Lips.Kernel.Lang.Diagnose (diagnose)
 import Lips.Kernel.Lang.Store     (EngineData (..), readLang)
 import Lips.Lsp.Derive
@@ -139,19 +135,9 @@ publish :: Text -> Text -> IO ()
 publish uri text = do
   let path = uriToPath uri
   meng <- loadLang path
-  -- Whether the language bakes source is a fact about the language folder, not
-  -- about the program, so the server reads it and the derivation stays pure.
-  bakes <- case resolveLangDir path Nothing of
-    Left _    -> pure False
-    Right dir -> doesDirectoryExist (artifactsPathIn dir path)
   let diags = case meng of
         Just eng ->
-          let d = diagnose path eng text
-              -- A claim reaches the program only through a rule emit, which is
-              -- readable from the engine alone -- no realization needed, so the
-              -- editor pays nothing.
-              statesClaim = any (any (claimRooted . emPath) . mrEmits) (edRules eng)
-           in map diagValue (diagsOf d ++ unobservedDiags bakes statesClaim d)
+          map diagValue (diagsOf (diagnose path eng text))
         Nothing  -> []
   notify "textDocument/publishDiagnostics"
     (object ["uri" .= uri, "diagnostics" .= diags])

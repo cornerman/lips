@@ -44,15 +44,12 @@
 module Lips.Kernel.Lang.Diagnose
   ( Diagnosis (..)
   , diagnose
-  , retiredConcepts
-  , SourceSpecVerdict (..)
-  , sourceSpecVerdict
   ) where
 
 import           Data.Either (lefts)
 import           Data.Text (Text)
 
-import Lips.Kernel.Base            (Base, fromList, toList)
+import Lips.Kernel.Base            (fromList)
 import Lips.Kernel.Decision        (Decision (..), Kind (..))
 import Lips.Kernel.Demand          (Demand (..), openQuestions)
 import Lips.Kernel.Engine.Data     (MapRule, bindSelf, toDemand, toRule)
@@ -167,60 +164,3 @@ wordLines found outcomes =
   , not (null hs)
   ]
 
--- | The concepts a program stated when its language was minted and no longer
--- states: present in @was@, absent from @now@ (compared by subject AND text, so
--- a reworded one counts as gone).
---
--- Why it matters: a 'Concept' realizes nothing, so DELETING such a line changes
--- no output and every gate stays green -- while an artifact\'s minted source was
--- written from exactly those lines. That is the one way a program can stop being
--- the source of truth without anything failing: rewording a concept line breaks
--- its (all-literal) pattern and is reported as unmatched, and adding one is
--- unmatched too, but a deletion is silent. The caller applies this only where a
--- language bakes source, since a language whose concepts are mere headings must
--- stay freely editable.
-retiredConcepts :: Base -> Base -> [Decision]
-retiredConcepts was now =
-  [ d | d <- concepts was, (dSubject d, dAssertion d) `notElem` stated ]
-  where
-    stated   = [ (dSubject d, dAssertion d) | d <- concepts now ]
-    concepts b = [ d | d <- toList b, dKind d == Concept ]
-
--- | The verdict on a baked-source language's specification, for ONE program.
-data SourceSpecVerdict
-  = SpecHolds
-  | -- | Mint-time concepts this program no longer states (deleted or reworded).
-    SpecRetired [Decision]
-  | -- | Concepts this program states that no recorded section ever stated, so
-    --   the committed source was never written from them.
-    SpecUnrecorded [Decision]
-  deriving (Eq, Show)
-
--- | Judge a program against the corpus its language's source was minted from.
---
--- Two directions, because a language's source is shared by every program in it:
---
---   * the program HAS a recorded section: every concept the mint saw must still
---     be stated ('retiredConcepts'), so a deleted or reworded specification
---     sentence fails loud instead of leaving the baked source orphaned;
---   * the program has NO recorded section (added or renamed after the mint):
---     every concept it states must appear somewhere in the recorded corpus.
---     That keeps sibling reuse free -- a concept pattern is all-literal, so a
---     sibling restating one produces the identical subject and text -- while a
---     sentence the source was never written from is refused rather than
---     silently skipped (the escape this closes).
---
--- Pure: the caller reads the record, crystallizes, and reports.
-sourceSpecVerdict :: Maybe Base -> [Base] -> Base -> SourceSpecVerdict
-sourceSpecVerdict mrecorded corpus now =
-  case mrecorded of
-    Just was -> case retiredConcepts was now of
-      []      -> SpecHolds
-      retired -> SpecRetired retired
-    Nothing -> case [ d | d <- concepts now, key d `notElem` corpusKeys ] of
-      []      -> SpecHolds
-      unknown -> SpecUnrecorded unknown
-  where
-    concepts b = [ d | d <- toList b, dKind d == Concept ]
-    key d      = (dSubject d, dAssertion d)
-    corpusKeys = [ key d | sec <- corpus, d <- concepts sec ]

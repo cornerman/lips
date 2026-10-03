@@ -14,7 +14,6 @@ module Lips.Lsp.Derive
   , completionItemsAt
   , Diag (..)
   , diagsOf
-  , unobservedDiags
   , hoverAt
   ) where
 
@@ -308,31 +307,6 @@ diagsOf d = concatMap lineDiag (diagLines d) ++ unfitDiags ++ decorativeDiags
         ("A decision this line states cannot be read back (" <> why
           <> "). Re-mint the language: key such an item by <n:index>.")]
     openDiag q = Diag 0 0 0 2 ("Open question: " <> q)
-
--- | The sentences nothing observes: in a language that BAKES source, a line
--- realizing nothing (a 'Concept') is a specification for minted code, and the
--- module text says nothing about what that code does. So when the program states
--- no observable at all, each such line gets a warning -- nothing holds the built
--- source to it.
---
--- ADVISORY on purpose, and a warning rather than an error: the remedy is an
--- author writing an example, and the defect it points at (a word honoured by an
--- option that means something else) has no static gate a domain-blind kernel
--- could supply. @generate@ owns the refusal, turning away an engine that bakes
--- source and states no claim.
---
--- Silent for a pure-configuration language (its behaviour IS its option
--- assignments, which the contract pins), and silent once the program states one
--- claim.
-unobservedDiags :: Bool -> Bool -> Diagnosis -> [Diag]
-unobservedDiags bakesSource statesClaim d
-  | not bakesSource || statesClaim = []
-  | otherwise =
-      [ Diag (n - 1) 0 (T.length t) 2
-          ("Nothing observes this sentence: it specifies built source, so state an"
-            <> " example (what it is given, what it prints) to hold that source to it.")
-      | (n, t) <- diagInert d
-      ]
 
 -- | What one line of a program BECOMES, as markdown for a hover.
 --
