@@ -925,6 +925,66 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A world names the flake its schema pin locks (`schema-input`).** Before
+  this, nothing related a world's flake inputs to the pins lips bakes:
+  `schema-pin:` named an env var, the `inputs` slot named an input, and only
+  the substrate nixpkgs was ever pinned. kubenix's and terranix's compiled
+  flakes therefore wrote `inputs.kubenix.url = "github:hall/kubenix"`
+  unpinned, and neither world could declare a gate whose verdict would not
+  drift. Now a world header `schema-input: <input> <fallback-ref>` states the
+  relation once. `Lips.Nix.Flake.compiledInput`
+  reads it with the record's `schema:` pin into one `SchemaInput`. compile
+  writes `inputs.<input>.url` as the locked pin, `?narHash=` included, or as
+  the fallback ref when the record carries no flake pin (no `schema:` line, or
+  an `options-json:` content pin), and the description says which. When the
+  input is not `nixpkgs`, the flake also writes `inputs.nixpkgs.follows =
+  "<input>/nixpkgs"`, because both schema slots already evaluate with the
+  input's own nixpkgs (`k.inputs.nixpkgs`, `t.inputs.nixpkgs`). Every build
+  outside the flake (a mint's artifact and command-claim builds) and the reach
+  check name nixpkgs through one `nixpkgsExpr`: `builtins.getFlake "<ref>"`,
+  or `(builtins.getFlake "<ref>").inputs.nixpkgs` for another input. So mint,
+  draft door, check and compile derive their inputs from the same value.
+  `Gate.reachInput` (formerly `reachNixpkgs`) evaluates that expression's
+  `outPath`, so it fetches the input AND the nixpkgs it locks before the
+  first build, and an unfetchable pin reads "can't reach the kubenix", never
+  the gate's verdict.
+
+  Shipped worlds: nixos and `examples/nono.world` declare `schema-input:
+  nixpkgs flake:nixpkgs`, kubenix `kubenix github:hall/kubenix`, terranix
+  `terranix github:terranix/terranix`. Their own `inputs` lines are gone,
+  since lips writes them. home-manager declares none: it has no inputs slot
+  and its consumer brings home-manager. kubenix and terranix now declare a
+  `--- gate ---` that builds their render (`(builds system).yaml`,
+  `(builds system).config`). World format moves to 3, so an older lips
+  answers "upgrade lips". `lips world --check` refuses a world whose `inputs`
+  slot also declares its schema input, asking nix (`nix-instantiate --eval`
+  over the literal slot), so every spelling of an attribute set is caught; the
+  `world-slots` flake check pins that refusal.
+
+  Old world copies stay sealed and read as before. A copy without
+  `schema-input` is pinned only where its `schema-pin:` names
+  `LIPS_NIXPKGS_FLAKE`, and is the `flake:nixpkgs` registry otherwise. That
+  branch of `compiledInput` is the only place the env var name and the
+  literal survive. MEASURED with the branch binary: all 23 example programs
+  (26 compiled directories) compile byte-identically to main (`diff -r`
+  empty). The template description reproduces "nixpkgs resolved ambiently:
+  its record pins no nixpkgs" for the nixpkgs case, so `flakeText` has no
+  legacy branch.
+
+  Proof scope. `just test-draft` judges the committed `deploy` engine as a
+  draft in the new kubenix world. Its gate builds with kubenix at the pin
+  handed over (76s cold, about 1s cached), and `path:<tmp>/no-such-kubenix` is
+  refused as an unreachable kubenix. By hand, the terranix gate over the
+  committed `bucket` engine builds in 2.1s, and a top-level
+  `inputs.nixpkgs.follows = "kubenix/nixpkgs"` resolves to kubenix's locked
+  nixpkgs (20535e4). NOT yet proved by CI: `lipsWorld-gates` builds only gates
+  of committed compiled directories, and `deploy` and `bucket` still carry
+  their old world copies. Their re-mints wait on the patch-prompt defect
+  (TODO, "A patch mint does not see the committed contract or report"). CI
+  calls each compiled flake's `outputs` with lips's own inputs, so it builds
+  gates against lips's locked nixpkgs (kubenix and terranix following it),
+  never against the record pin or the follows.
+
 - **`generate` without `-t` mints the world the language already holds.**
   `-t` used to default to nixos whatever the language folder held, so a re-mint
   of the nono-only `policy` without `-t nono` minted and wrote a stray nixos
@@ -1025,7 +1085,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   following unstable differs on almost every eval, so a warning there is noise;
   README now says an imported module evaluates under the importer's nixpkgs),
   and per-option fingerprints (they cannot work for nono, whose schema is
-  top-level only). Still open in TODO 2a: kubenix and terranix inputs float.
+  top-level only). kubenix and terranix inputs are pinned since: "A world names
+  the flake its schema pin locks" above.
 
 - **A world's own gate runs at mint time.** A world file may now carry an
   optional `--- gate ---` slot: one derivation, written in the scope of the
@@ -1073,9 +1134,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   outputs function asks for, and BUILDS every `packages.<system>.gate`. It
   refuses to pass with zero gates. No world is named in either check.
 
-  Deliberately not done: only `nixpkgs` is overridden, so a world whose flake
-  has other inputs (kubenix, terranix) would build its gate against an unpinned
-  input. Those worlds declare no gate yet (TODO 6). nixos has no cheap gate to
+  Deliberately not done here: only `nixpkgs` was overridden, so kubenix and
+  terranix declared no gate. Closed since by "A world names the flake its
+  schema pin locks" above. nixos has no cheap gate to
   declare, since its only candidate is a system build.
 
 - **A list within one sentence (`<p.list:,|or>`).** A template hole may bind a
