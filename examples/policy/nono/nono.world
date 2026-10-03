@@ -1,4 +1,4 @@
-format: 1
+format: 2
 world: nono
 module-attr: nonoModules
 schema-pin: LIPS_NIXPKGS_FLAKE
@@ -64,7 +64,8 @@ unverified: emit only fields you have from the guide above, and refuse rather
 than guess a field name. What holds the deeper names to account is nono's own
 validator, which `builds` runs over the rendered profile and which rejects an
 unknown field by name (49 of the 51 object definitions in its schema are
-additionalProperties:false).
+additionalProperties:false). lips builds that validation before it accepts an
+engine, so a field it refuses is a refused mint.
 
 THIS WORLD HOSTS NO CLAIM: there is no machine to boot and no artifact to run,
 so state no observable. The profile is gated by `nono profile validate`, which
@@ -144,6 +145,13 @@ in pkgs.runCommand "options.json" { } ''
 
 --- packages ---
         profile = (builds system).profile;
+
+--- gate ---
+        # The validated profile IS the verdict: its build runs `nono profile
+        # validate`, and lips builds this before accepting an engine, against
+        # the same pinned nixpkgs the schema came from. Cheap (one small file,
+        # nono from the binary cache), which is why every mint can afford it.
+        (builds system).profile
 
 --- apps ---
         let b = builds system; p = pkgsFor system; in {

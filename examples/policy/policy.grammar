@@ -1,8 +1,8 @@
-p1 meta lang.pattern.p1 stated "the agent works in the directory it is started in and may read and write it => fact workdir.access \"readwrite\"" @gen:d95ce33ac8994c8b
-p2 meta lang.pattern.p2 stated "the agent works in the directory it is started in and may read it => fact workdir.access \"read\"" @gen:d95ce33ac8994c8b
-p3 meta lang.pattern.p3 stated "it may read <p.list:,|and|or> => fact fs.read.<p:index> \"<p>\"" @gen:d95ce33ac8994c8b
-p4 meta lang.pattern.p4 stated "it may never read <p.list:,|and|or> => fact fs.deny.<p:index> \"<p>\"" @gen:d95ce33ac8994c8b
-p5 meta lang.pattern.p5 stated "it may run <c.list:,|and|or> => fact cmd.<c>.policy \"allow\"" @gen:d95ce33ac8994c8b
-p6 meta lang.pattern.p6 stated "it may never run <c.list:,|and|or> => fact cmd.<c>.policy \"deny\"" @gen:d95ce33ac8994c8b
-p7 meta lang.pattern.p7 stated "it must ask me before running <cmd> <sub> => fact cmd.<cmd>.approve \"<sub>\"" @gen:d95ce33ac8994c8b
-p8 meta lang.pattern.p8 stated "on the network it may reach <d.list:,|and> and nothing else => fact net.allow.<d:index> \"<d>\"" @gen:d95ce33ac8994c8b
+p1 meta lang.pattern.p1 stated "the agent works in the directory it is started in and may read and write it => fact workdir.access \"readwrite\"" @gen:db45fc43c60ce3e9
+p2 meta lang.pattern.p2 stated "the agent works in the directory it is started in and may read it => fact workdir.access \"read\"" @gen:db45fc43c60ce3e9
+p3 meta lang.pattern.p3 stated "it may read <p.list:,|and|or> => fact fs.read.<p:index> \"<p>\"" @gen:db45fc43c60ce3e9
+p4 meta lang.pattern.p4 stated "it may never read <p.list:,|and|or> => fact fs.deny.<p:index> \"<p>\"" @gen:db45fc43c60ce3e9
+p5 meta lang.pattern.p5 stated "it may run <c.list:,|and|or> => fact cmd.<c>.policy \"allow\"" @gen:db45fc43c60ce3e9
+p6 meta lang.pattern.p6 stated "it may never run <c.list:,|and|or> => fact cmd.<c>.policy \"deny\"" @gen:db45fc43c60ce3e9
+p7 meta lang.pattern.p7 stated "it must ask me before running <cmd> <sub> => fact cmd.<cmd>.approve \"<sub>\"" @gen:db45fc43c60ce3e9
+p8 meta lang.pattern.p8 stated "on the network it may reach <d.list:,|and> and nothing else => fact net.allow.<d:index> \"<d>\"" @gen:db45fc43c60ce3e9

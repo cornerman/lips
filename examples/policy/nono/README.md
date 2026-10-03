@@ -2,58 +2,20 @@
 
 # The `policy` language
 
-This language writes a nono sandbox profile from plain sentences about what an
-agent may touch.
+No engine lines changed. The engine you already have reads every line of `dev.policy.lips`, so this patch adds only this report.
 
-Line shapes it accepts:
+How each line is read:
 
-- `the agent works in the directory it is started in and may read and write it.`
-  (or `... and may read it.`) -- sets `workdir.access` to `readwrite` or `read`.
-  Every profile must say this; a program that is silent is asked for it.
-- `it may read A, B and C.` -- each path becomes an element of `filesystem.read`.
-- `it may never read A, B or C.` -- each path becomes an element of
-  `filesystem.deny`.
-- `it may run git, rg, ls and cat.` -- each name becomes
-  `command_policies.commands.<tool>.from.session` with `invocation_policy.default
-  = "allow"`.
-- `it may never run curl, wget or ssh.` -- the same slot with default `"deny"`.
-- `it must ask me before running git push.` -- an `approve` entry matching the
-  argv prefix (`{ argv = { prefix = [ "push" ] }; }`) on that tool, plus a
-  `terminal` approval backend named as the approval default, because nono
-  refuses an approve entry with no backend. One subcommand word is read; a
-  longer argv prefix has no form in this language yet.
-- `on the network it may reach github.com and crates.io, and nothing else.` --
-  each host becomes an element of `network.allow_domain`. The closing "and
-  nothing else" is fixed wording: allow-listing is already exclusive in nono.
+- **"the agent works in the directory it is started in and may read and write it."** (p1) sets `workdir.access` to "readwrite". It also sets `meta.name` to the program's own name, `dev`, so you run it with `nono run --profile <dir>/profile.json -- <agent>`. The other form, "... and may read it" (p2), gives "read". If a program has neither line, it is asked for one (q1).
+- **"it may read A, B and C"** (p3) adds each path to `filesystem.read` (read-only).
+- **"it may never read A, B or C"** (p4) adds each path to `filesystem.deny`.
+- **"it may run X, Y and Z"** (p5) sets `default: "allow"` for each tool under `command_policies.commands.<tool>.from.session.invocation_policy`. It also gives each tool an empty `sandbox`, because nono's validator refuses a `from.session` entry without one.
+- **"it may never run X, Y or Z"** (p6) does the same with `default: "deny"`.
+- **"it must ask me before running git push"** (p7) adds `{argv: {prefix: ["push"]}}` to git's `approve` list. It also declares a `terminal` approval backend and makes it the default, so nono asks the person at the session before running the command. Without a backend, nono refuses the profile.
+- **"on the network it may reach A and B, and nothing else"** (p8) adds each host to `network.allow_domain`.
 
-All list sentences are read with list holes, so they take any number of items;
-there is no pattern per item count.
+Some limits you should know about:
 
-Mechanism notes and things I had to decide:
-
-- Permission lives where nono enforces it against child processes:
-  `filesystem.*`, `workdir.access`, `network.allow_domain`, and
-  `command_policies.commands.*`. The deprecated `commands.allow/deny` section is
-  never emitted.
-- The schema lookup could not read this world at mint time, so the paths below
-  `command_policies.commands.<tool>.from.session` come from the profile guide
-  alone. Each command entry carries a sandbox object (written as an empty
-  `sandbox.fs_read` list) beside its invocation policy, because an entry holding
-  only an invocation policy is rejected by nono's validator.
-- A command you want to gate with "ask me first" should also appear in an
-  `it may run ...` sentence: the sandbox object for that tool comes from the
-  run/never-run sentence, not from the approval sentence.
-- `meta.name` is the program's own instance name.
-- Subject vocabulary follows the previous engine: `workdir.access`, `fs.read.<n>`,
-  `fs.deny.<n>`, `cmd.<tool>.policy`, `cmd.<tool>.approve`, `net.allow.<n>`.
-  Paths and domains are keyed by their position in their sentence, so state all
-  read paths in one sentence and all denied paths in one sentence; two separate
-  `it may read ...` lines would collide on position 1.
-- No `groups.include` is emitted: the programs name no deny group, and inventing
-  one would silently add rules nobody asked for. Denials are exactly the paths
-  and commands the program names.
-
-The contract pins every value the sentences carry -- workdir access mode, each
-read path, each denied path, each command's default decision, each allowed
-domain. The approve entry is not expected, because its value is a record the
-expect grammar compares poorly; the rule that emits it is its whole contract.
+- **Deny groups:** the language has no line for `groups.include`, so the profile switches on none of nono's built-in deny groups. The only deny rules are the paths you list after "it may never read". To use nono's built-in groups, a new line shape is needed, which means a new mint.
+- **Asking before a command:** p7 reads only one subcommand word (`git push`, not `git push --force`).
+- **Old command section:** nothing is written to the deprecated `commands.allow`/`commands.deny` section.
