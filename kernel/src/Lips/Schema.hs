@@ -34,7 +34,7 @@ import           System.Exit        (ExitCode (..))
 import           System.Process     (readProcessWithExitCode)
 
 import           Lips.Cli.Output               (die, note, report, sayAnswer, setState, step, tshow)
-import           Lips.Generate.Record          (hashBytes)
+import           Lips.Generate.Record          (contentPin)
 import           Lips.Kernel.Lang.Store        (EngineData (..))
 import           Lips.Kernel.OptionType        (Answer (..), answerQuery, checkEmits, dotted,
                                                 renderOptionError, renderOptionType)
@@ -162,7 +162,7 @@ ensureOptionSchema world Nothing remedy = do
           ("lips can't read the option schema at " <> T.pack p <> " (LIPS_OPTIONS_JSON):")
           [tshow e]
           ("→ point LIPS_OPTIONS_JSON at a readable options.json, or unset it: " <> remedy))
-        Right bytes -> pure (p, "options-json:" <> hashBytes bytes)
+        Right bytes -> pure (p, contentPin bytes)
     Nothing -> do
       -- The world's own env var, set by the packaged binary from lips's flake
       -- lock, then the flakeref the world file itself names. A world that

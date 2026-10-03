@@ -17,6 +17,8 @@ module Lips.Generate.Record
   , worldHash
   , genId
   , hashBytes
+  , contentPin
+  , isContentPin
   , corpusText
   , recordedProgram
   , recordedPrograms
@@ -100,6 +102,20 @@ record model worlds thinking confidence basis sysPrompt program transcript reply
 -- re-checks the committed copy against. The same hash the record's own id uses.
 worldHash :: World -> Text
 worldHash = hashBytes . encodeUtf8 . wRaw
+
+-- | The pin of a caller-supplied options document: it has no flakeref to name,
+-- so the record pins it by the hash of its bytes. Defined beside its reader
+-- 'isContentPin', so the record's two kinds of pin are told apart in one place.
+contentPin :: BS.ByteString -> Text
+contentPin bytes = contentPinPrefix <> hashBytes bytes
+
+-- | Is this pin a content hash rather than a flakeref? A content pin names no
+-- flake, so nothing can be fetched or evaluated from it.
+isContentPin :: Text -> Bool
+isContentPin = T.isPrefixOf contentPinPrefix
+
+contentPinPrefix :: Text
+contentPinPrefix = "options-json:"
 
 -- | Content identity of a record: FNV-1a 64-bit over UTF-8, 16 hex digits.
 -- Deterministic, dependency-free; collision odds are negligible for its job
