@@ -37,10 +37,12 @@
 -- the rung stays top-level. @artifact.vm@ can never equal the rung @vm@ --
 -- impossible by construction, no reserved word.
 --
--- Nixpkgs is resolved ambiently (the @flake:nixpkgs@ registry indirection), so
--- @compile@ pins nothing, fetches nothing, and emits bit-identical text; the
--- world is resolved at @nix run@ time, the same Heile-Welt softness the old
--- @\<nixpkgs\>@-based VM boot already carried.
+-- Nixpkgs is the one the engine's rules were grounded against, wherever the
+-- record names it ('compiledNixpkgs'): the locked ref is text in the committed
+-- record, so @compile@ still fetches nothing and emits bit-identical text. Where
+-- no record names it, the input is the @flake:nixpkgs@ registry, resolved at
+-- @nix run@ time, and the flake's description says so. Either way stock nix
+-- overrides it (@--override-input nixpkgs \<ref\>@).
 module Lips.Nix.Flake
   ( Rungs (..)
   , SiteRung (..)
