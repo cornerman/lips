@@ -243,6 +243,12 @@ language folder before rebuilding. The compile inside that derivation cannot run
 `nix`, so it skips the behavioral contract; check it where it lives, with
 `lips check <program>` in your repo.
 
+An imported module evaluates under YOUR nixpkgs, like any module you import.
+The nixpkgs its rules were grounded against is the `schema:` line in the
+language's `.generation`. For a world grounded on nixpkgs (nixos, nono), the
+directory `lips compile` writes runs against exactly that one, so `nix build`
+over it shows the program under the nixpkgs its rules were checked against.
+
 ## Try It
 
 The examples live in the repo:

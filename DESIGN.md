@@ -925,6 +925,44 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **A compiled directory runs the nixpkgs its rules were grounded against.**
+  A mint grounds its rules against the `schema:` pin it records in
+  `.generation`, while a compiled directory's `flake.nix` said
+  `inputs.nixpkgs.url = "flake:nixpkgs"`, so nothing related the two: on
+  2026-09-18 `examples/policy` was admitted by nono 0.68.0 and its render
+  judged by the 0.74.0 the registry resolved (TODO 2a). Now
+  `Lips.Nix.Flake.compiledNixpkgs` reads the world's pin out of the record's
+  header (`Generate.Record.worldSchemaPin`, every record shape) and `flakeText`
+  writes it verbatim as the nixpkgs input, `?narHash=` included; nix accepts
+  that url and refuses a wrong hash ("NAR hash mismatch"). The flake's
+  `description` says which nixpkgs it names. `check`'s claim gates build the
+  same flake, so they observe the nixpkgs the mint's own gates observed, and
+  `worldGate` writes its pin into the flake instead of passing
+  `--override-input`. `compile` still fetches nothing and stays bit-identical:
+  the pin is text in the committed record.
+
+  Prevention, not comparison: with the evaluator equal to the grounding there
+  is nothing left to warn about. The trigger is domain-blind: a world whose
+  `schema-pin:` header names the substrate var `LIPS_NIXPKGS_FLAKE` grounds on
+  the nixpkgs the flake skeleton imports, which is the only case where the two
+  are the same flake. So nixos and nono pin with no world-file change and no
+  re-mint (9 example languages: cron, function, hello, http, logscan,
+  packages, policy, timer and website, each compiled with the branch binary),
+  and a house world declaring the same header pins too. Everything else stays `flake:nixpkgs` and says so: a record
+  that predates the pin (9 languages, e.g. `backup`), a document pinned by
+  content (`options-json:`), and a world whose pin names another flake
+  (home-manager). Measured 2026-10 with the branch binary:
+  `compile dev.policy.lips` writes the pin; `nix flake metadata` reports rev
+  61b7c44 even over a stale `flake.lock` that held a32edd7; nono there is
+  0.68.0, and `#profile` builds and validates.
+
+  Declined, with reasons: comparing revs in `lib.modulesFromDir` (a consumer
+  following unstable differs on almost every eval, so a warning there is noise;
+  README now says an imported module evaluates under the importer's nixpkgs),
+  and per-option fingerprints (they cannot work for nono, whose schema is
+  top-level only). Still open in TODO 2a: kubenix and terranix inputs float,
+  and a mint's builds ignore `--schema`.
+
 - **A world's own gate runs at mint time.** A world file may now carry an
   optional `--- gate ---` slot: one derivation, written in the scope of the
   `packages` slot, whose successful build is the world's own verdict over a
@@ -2090,9 +2128,10 @@ but the loop around it is incomplete; "missing" means specced, not built.
   body is genuinely checked. Cheap and honest as far as it goes, and narrower
   than a reader might assume.
 
-  One consequence to know: for a claim-bearing program `check` needs an ambient
-  nixpkgs (the compiled flake resolves `flake:nixpkgs`, as every other rung
-  does), and a machine claim makes `check` boot a VM. A claim-free program is
+  One consequence to know: for a claim-bearing program `check` needs a nixpkgs
+  (the one the compiled flake names, as every other rung does: the grounding
+  pin where the world grounds on the substrate, else `flake:nixpkgs`), and a
+  machine claim makes `check` boot a VM. A claim-free program is
   untouched and `check` stays nixpkgs-free for it.
 
   SOFTENED, deliberately: the missing observable is now SAID in generate's
@@ -4660,10 +4699,11 @@ gate on an artifact-only engine, and the concept escape.
   distribution artifact, not a run rung.
   Clash-proof by construction: the rung app `vm` is top-level while artifacts
   live under `artifact.<name>`, so a domain artifact named `vm` can never
-  collide. Nixpkgs is resolved ambiently (`flake:nixpkgs`
-  registry), so compile pins/fetches nothing and stays bit-identical -- the
-  same Heile-Welt softness the old `<nixpkgs>` VM boot carried; the world is
-  resolved at `nix run` time. `home-manager` (no machine) emits the module and
+  collide. Nixpkgs was resolved ambiently (`flake:nixpkgs`
+  registry) when this landed; since 2026-10 a compiled flake names the
+  record's grounding pin where it has one (see "A compiled directory runs the
+  nixpkgs its rules were grounded against"), so compile still fetches nothing
+  and stays bit-identical. `home-manager` (no machine) emits the module and
   an import hint, no vm. Full design in
   `docs/superpowers/specs/2026-07-24-run-axis-design.md`.
   Out of scope, named as separate future axes: the PACKAGE axis (Docker image,

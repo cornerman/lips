@@ -95,25 +95,30 @@ tracks only what is still open.
    "Option-schema grounding"; the mechanism landed cbd3f1f). Three separate
    questions, in the order they hurt:
 
-   a. TWO NIXPKGS, NO RELATION. A mint is grounded against the `schema:` pin,
-      while the realized module is evaluated against whatever nixpkgs the
-      importing flake has -- and a compiled directory's own `flake.nix` says
-      `inputs.nixpkgs.url = "flake:nixpkgs"`, resolved ambiently on purpose. So
-      an engine can be grounded against one option set and evaluated against
-      another, and nothing compares them. Loud in the common case (a renamed or
-      absent option fails the user's eval), silent in the bad case (an option
-      that survived but changed meaning). Candidate: `check` reads the pin from
-      `.generation` and, when nix is available, warns when the ambient nixpkgs
-      differs -- but `check` must stay nixpkgs-free, so this may belong in the
-      flake helper (`lib.modulesFromDir`, which already has a `pkgs`) instead.
-      Decide where before building anything.
+   a. TWO NIXPKGS, NO RELATION: half closed 2026-10 (DESIGN §13, "A compiled
+      directory runs the nixpkgs its rules were grounded against"). A compiled
+      directory's `flake.nix` now names the record's locked pin as its nixpkgs
+      wherever the world grounds on the substrate (`schema-pin:
+      LIPS_NIXPKGS_FLAKE`: nixos, nono), and `check`'s claim gates build that
+      same flake. What is still open:
 
-      One corpus instance, 2026-09-18: `examples/nono.world` grounds against
-      nono 0.68.0 (the pinned nixpkgs) while the compiled directory's ambient
-      `flake:nixpkgs` resolved to nono 0.74.0, so the schema that admitted the
-      rules and the validator that judged the render were two different
-      versions of the same tool. Both accepted this profile, and nothing
-      compared them.
+      - KUBENIX AND TERRANIX INPUTS FLOAT. Their schema pin names their own
+        flake, while the compiled flake's world slot writes
+        `inputs.kubenix.url = "github:hall/kubenix"` unpinned. Candidate (A2): a
+        `<schema-pin>` hole in the world's `--- inputs ---` slot, filled by
+        compile. World copies are hash-sealed in records, so a committed engine
+        gains it only on its next re-mint.
+      - A MINT'S BUILDS IGNORE `--schema`. `Gate.artifactNixpkgs` builds
+        artifacts, command claims and the world gate against the baked
+        `LIPS_NIXPKGS_FLAKE`, so a mint grounded with `--schema X` observes
+        another nixpkgs than X. A mint's clause claims (`clauseClaimGate`, in
+        the draft door and in generate) still resolve `flake:nixpkgs`
+        ambiently, since no record exists yet to read a pin from.
+      - AN IMPORTED MODULE EVALUATES UNDER THE IMPORTER'S NIXPKGS, deliberately
+        unchecked: `lib.modulesFromDir` hands the module to the consumer's
+        `pkgs`, as every third-party module is. A rev comparison there would
+        fire on almost every eval of a consumer following unstable, so it was
+        declined (README, "deploy").
 
    b. `--schema` IS PER INVOCATION AND REMEMBERED NOWHERE. A caller on a stable
       channel must pass it on every mint of every language, and forgetting it
