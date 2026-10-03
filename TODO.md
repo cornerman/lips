@@ -6,37 +6,13 @@ tracks only what is still open.
 
 ## Next up (priority order)
 
--1. **The growth mint: an author's feedback cycle** (design settled 2026-08-20,
-   `docs/superpowers/specs/2026-08-20-mint-feedback-cycle-design.md`; nothing
-   built). Adding one sentence shape to a working language costs a full re-mint
-   (4-6 minutes, opus, the whole engine re-emitted), which is the one act that
-   leaves the zero-AI edit loop and the act an author hits every time a language
-   grows. ALL THREE ERRANDS LANDED 2026-08-20 (DESIGN §13: "A mint now says what
-   it cost", "The growth mint", "compile --watch"): a mint records what it cost,
-   generate patches a committed engine by id (4.4x less wall time and 7.1x fewer
-   output tokens than a fresh mint of a SMALLER program), and the edit loop
-   recompiles on save with `g` to grow the language. This item stays only for
-   what is NOT done: nothing measures the patch path on a language with several
-   worlds or with artifacts, and the model default was left alone deliberately
-   (whether a patch is sonnet-able is now a cheap experiment against the timing
-   file rather than an assumption).
-
-   Superseded description kept for the reader who wants what was decided: (2)
-   generate inherits the committed engine and takes a PATCH
-   keyed by id (new id adds, known id replaces, unmentioned id inherited),
-   default inherit with `--fresh` to rewrite, `basis:` recorded as a sealed
-   input -- sound because the gates, not the rewrite, are what guard an engine.
-
-0. **The patched retry is measured, on one run per side** (2026-09-10; the item
-   that stood here is CLOSED -- DESIGN §13, "A retry restates a line, not an
-   engine"). Rerunning the thinking experiment's medium arm against the new
-   binary took a growth patch of libero's season table from 295s / 3 submissions
-   / 22,061 output tokens / $0.94 to 269s / 4 / 15,856 / $0.77, accepted and
-   `check` green, with submissions 2-4 beginning at `a1`, `r10` and `d1` instead
-   of `p7`. What is still open is only the sample: one run per side, and output
-   is mostly thinking, so the 28 percent is a datapoint, not a mean. Repeat the
-   arm the next time a mint runs for another reason rather than as its own
-   errand, and only then decide whether a patch is sonnet-able.
+0. **The patch mint is measured only narrowly** (the growth mint and the
+   patched retry landed; DESIGN §13 "The growth mint" and "A retry restates a
+   line, not an engine"). Nothing measures the patch path on a language with
+   several worlds or with artifacts. The patched retry has one run per side
+   (269s / $0.77 against 295s / $0.94), so its 28 percent is a datapoint, not a
+   mean. Repeat that arm the next time a mint runs for another reason, and only
+   then decide whether a patch is sonnet-able.
 
 1. **Three open questions about claims** (opened 2026-07-31 by the
    meaning-dimension work; the mechanism and the corpus landed, DESIGN §13).
@@ -55,52 +31,23 @@ tracks only what is still open.
       re-mint bakes no source), so this is a warning, not a live defect: if it
       recurs, the preamble should say when the booted machine is the only
       faithful place.
-   c. A witness sentence listing N items freezes its pattern at that arity: both
-      models minting `habit` filed the same gap (`fixed-arity-witness`,
-      `witness-entry-count`), since the grammar repeats a sub-match only in a
-      BULLETED block, never inside one prose line. The engine is honest (a
-      program with two or four entries simply fails to crystallize, loud), so
-      this is a completeness question, not a soundness one.
-      CLOSED FOR THE PATTERN 2026-09-19 (DESIGN §13 "A list within one
-      sentence"): a list hole `<p.list:,|or>` cuts a run into items on the
-      engine's own separators and repeats every emit that mentions it, and an
-      item pattern `p10.each.p9.e` reads ONE item when that item binds several
-      holes. `examples/policy` re-minted from 30 patterns to 8; `examples/habit`
-      re-minted onto both, and its witness now reads at any entry count (a
-      two-entry and a five-entry program each pass their clause claim, which
-      runs the built tool). `board` and `logscan` were re-minted 2026-09-20
-      (DESIGN §13, "A patch mint may answer by changing nothing") and BOTH
-      REFUSED to move, filing the output half as the blocker instead: `board`'s
-      gap `fixed-example-arity` argues that freeing the input side while the
-      expected output stays pinned is worse than the present symmetry, and
-      `logscan` tried `<in.list:,|and>` in its first submission and went back to
-      the fixed form in the one it submitted. So the witness arity is one errand
-      now, not two, and it is KERNEL work: until the expected output aggregates,
-      no mint takes the list hole for a witness.
-      THE OUTPUT HALF CLOSED 2026-09-26 (DESIGN §13, "An expected output that
-      aggregates"): `claim.<id>.equals-lines` is the dual of `feed`, and `board`
-      re-minted onto it, its witness now free of both item counts. Still open
-      in 1c: `habit`, `function` and `logscan` each keep a one-expression
-      `equals` witness. Let each one's next re-mint move it if its example has
-      printed lines that grow; do not re-mint them for this alone. A command
-      claim's `stdout` is still ONE string (YAGNI: no program has asked).
-   d. CLOSED 2026-09-20 (DESIGN §13, "The two expect-gate holes `logscan`
-      filed close"): `<self>` now binds inside `expandExpects`, and a template
-      carrying `#<` fills through `fillSexp`, as the rule does. Still open:
-      `logscan.expect` pins neither value yet. Let its next re-mint add them,
-      because hand-editing a minted contract breaks invariant 4.
+   c. Witness arity (list hole and `equals-lines` landed, DESIGN §13 "A list
+      within one sentence" and "An expected output that aggregates"): `habit`,
+      `function` and `logscan` each keep a one-expression `equals` witness. Let
+      each one's next re-mint move it if its example has printed lines that
+      grow; do not re-mint them for this alone. A command claim's `stdout` is
+      still ONE string (YAGNI: no program has asked).
+   d. `logscan.expect` pins neither `<self>` nor a `#<` template yet, although
+      both now work (DESIGN §13, "The two expect-gate holes `logscan` filed
+      close"). Let its next re-mint add them, because hand-editing a minted
+      contract breaks invariant 4.
 
-2. **The schema pin is recorded, but nothing relates it to the nixpkgs the
-   module is evaluated with** (open half of the schema-pin work, DESIGN §13
-   "Option-schema grounding"; the mechanism landed cbd3f1f). Three separate
-   questions, in the order they hurt:
+2. **The schema pin reaches the nixpkgs substrate only** (DESIGN §13
+   "Option-schema grounding" and "A compiled directory runs the nixpkgs its
+   rules were grounded against"). Three separate questions, in the order they
+   hurt:
 
-   a. TWO NIXPKGS, NO RELATION: half closed 2026-10 (DESIGN §13, "A compiled
-      directory runs the nixpkgs its rules were grounded against"). A compiled
-      directory's `flake.nix` now names the record's locked pin as its nixpkgs
-      wherever the world grounds on the substrate (`schema-pin:
-      LIPS_NIXPKGS_FLAKE`: nixos, nono), and `check`'s claim gates build that
-      same flake. What is still open:
+   a. Where the pin does not yet reach:
 
       - KUBENIX AND TERRANIX INPUTS FLOAT. Their schema pin names their own
         flake, while the compiled flake's world slot writes
@@ -146,16 +93,10 @@ tracks only what is still open.
    could join `diagInert` as an LSP diagnostic ("this hole is never contrasted,
    so nothing holds the source to it").
 
-   Deliberately deferred: the remedy is an author writing a richer program, an
-   advisory report may be enough, and the claims falsify the same defect by
-   observation rather than by counting.
-   THE EXPERIMENT RAN 2026-10-02 (DESIGN §13, "A singleton call stays a hole";
-   `experiments/plurality-function/`) and argues AGAINST the counting
-   diagnostic. One call did not demote the call to a constant. The defect did
-   appear, on the control's never-contrasted type word (`x: Int` compiles and
-   prints), but it shares its syntactic position with three harmless singletons.
-   Across the corpus and both mints, counting flags 14 clause-landing holes to
-   find 1 defect, and no domain-blind exemption narrows that. Left open: (a)
+   The counting diagnostic is NOT built: the experiment (DESIGN §13, "A
+   singleton call stays a hole"; `experiments/plurality-function/`) found that
+   counting flags 14 clause-landing holes to find 1 defect (`x: Int` compiles
+   and prints), and no domain-blind exemption narrows that. Left open: (a)
    whether a word whose only landing is a dead clause branch is worth a
    reachability check (a direction, not a proposal); (b) the remedy plurality
    points at (two declarations of different types) is not expressible until
@@ -203,8 +144,8 @@ tracks only what is still open.
 
 6. **A world's gate pins only nixpkgs** (the open half of the render gate,
    which landed 2026-10-03: DESIGN §13, "A world's own gate runs at mint time").
-   `worldGate` overrides the compiled flake's `nixpkgs` input with the locked
-   pin and nothing else, so a world whose flake carries another input (kubenix's
+   `worldGate` builds the compiled flake, whose `nixpkgs` input is the locked
+   pin and nothing else is pinned, so a world whose flake carries another input (kubenix's
    `github:hall/kubenix`, terranix's) would build its gate against whatever that
    URL resolves to today. That is why kubenix and terranix declare no gate,
    although both render cheaply and kubenix refuses an unknown Kubernetes field
@@ -216,13 +157,11 @@ tracks only what is still open.
 
 7. **Remaining known gaps on the clause axis** (none blocking).
 
-   a. **`app/Main.hs` grew back to 1761 lines** (990 after the 2026-08-05
-      extraction, 2135 before it; the worlds arc and the mint-feedback work
-      added the difference, and the compiled-directory writer moved out to
-      `Lips.Stage.writeCompiled` on 2026-10-03, from 1775). Four
+   a. **`kernel/app/Main.hs` is 1745 lines** (990 after the 2026-08-05
+      extraction, 2135 before it). Four
       seams moved out then: `Lips.Report` (every message it prints, pure),
       `Lips.Schema` (flakeref locking, option JSON, the `options` verb, the
-      admissibility gate), `Lips.Stage` (staging trees into a temp dir) and
+      admissibility gate), `Lips.Stage` (writing a compiled directory) and
       `Lips.Gate` (every gate judging one realization against the outside).
       The next coherent seam is now visible: reading and writing a language
       folder (`readRecordedWorld`, `writeWorld`, the joint-vs-own record
@@ -264,30 +203,7 @@ tracks only what is still open.
   §13 for what landed getting there). Accepted, with no remedy: recorded so a
   later session does not rediscover them as news.
 
-  a. **Silent concept demotion -- two cases still open** (`diagInert`,
-     `droppedValues` and `decorativeValues` cover the rest; DESIGN §13):
-     (i) a compiled artifact records no dependency on the program lines its
-     baked source came from. PARTLY CLOSED: a claim now holds the built source
-     to the author's stated observable, so an edit that changes what the program
-     DOES is caught by running it. An edit that changes a specification sentence
-     without changing any observable is caught only where that sentence is a
-     concept (the source-spec gate); a value edit that the source hard-codes
-     independently of its fill remains invisible to both, and no static gate can
-     see it.
-     (ii) STRUCTURE is enforced by nothing. Doctrine (DESIGN §13, "Repeating
-     source") puts the algorithm, the format and the protocol in baked source,
-     so a behavior sentence is a specification for the mint and correctly not a
-     decision. Reword a behaviour sentence without re-minting and every gate
-     stays green (the V6 source-specification gate catches DELETION only). No
-     trace can fix this: the words never appear in the code. DECIDED: the reword
-     is caught by source-line provenance (i); claims cannot catch it, since an
-     example written for the old wording still passes.
-     Related, and cheaper where it applies: the plurality item. A singleton
-     behaviour sentence gives the mint no reason to build the dispatch a claim
-     would then verify, so enriching the program removes the defect where a
-     claim would only have detected it.
-
-  b. **An option's own semantics can make an honest engine wrong.** postgres's
+  a. **An option's own semantics can make an honest engine wrong.** postgres's
      re-mint emits `ensureUsers = [ { name = "app"; ensureDBOwnership = true;
      } ]`, but NixOS grants ownership of the database that shares the USER's
      name, so a program naming a user and a database differently would
