@@ -4317,9 +4317,8 @@ but the loop around it is incomplete; "missing" means specced, not built.
   nginx `extraConfig`) is measured by that count, but neither marked nor gated:
   telling computation from prose there needs shape guessing. A word is still a
   whitespace token, so `echo \"<value>\"` counts as three mint words. The
-  machinery that judged a staged tree (`Lips.Stage` fills, `sourceSpecGate`,
-  `stagedSizes`, `claimlessBakedSource`, `unnamedSources`) is unreachable now,
-  and deleting it is the next errand (TODO 5).
+  machinery that judged a staged tree went in the next errand (below, "The
+  staged-source machinery is gone").
 
 - **A ground check reads its own line's contribution** (2026-10-03, the
   defect the plurality experiment found). A slot several program lines feed (an
@@ -4349,6 +4348,27 @@ but the loop around it is incomplete; "missing" means specced, not built.
   pattern line, with the slot filled by the other one) used to pass whenever
   the value happened to appear in the slot. It is now refused, naming the
   decision to cite instead. No committed contract has that shape.
+
+- **The staged-source machinery is gone** (2026-10-03, the errand the no-blob
+  gate left; no mint run, no engine re-minted). With model-written source
+  refused at every door, nothing could stage, fill or judge a source tree, so
+  the code that did is deleted rather than kept as a branch no input reaches:
+  source fills (`Lips.Kernel.Source`, `realizeArtifactFills`, `rlFills`, the
+  `artifact.<n>.fill.*` section, which realize now refuses as unknown: an
+  artifact has a builder and args), the source-specification gate
+  (`Lips.Gate.sourceSpecGate`, `Diagnose.sourceSpecVerdict` and
+  `retiredConcepts`, and the editor warning `unobservedDiags` that only fired
+  where a language held a tree), the staged-tree grounding class (`gStaged`)
+  and its size report (`stagedSizes`), copying a committed tree
+  (`stageFromDisk`), and generate's checks on a minted tree
+  (`unnamedSources`, `claimlessBakedSource`, the source half of the
+  frozen-shared-files check). What the gates stage beside a module is now its
+  site, so `writeCompiled`, `worldGate` and `claimGate` lost the staging
+  arguments that only carried a tree. The `source` block PARSER stays, so the
+  refusal can name the files. Compiled output is byte-identical to before for
+  `website`, `greet`, `board`, `habit` and `hello.http`, and all 23 examples
+  pass `check`. The suite went from 978 to 952 examples: 27 removed, each
+  pinning deleted behaviour, and one added (a `fill` section is refused).
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
@@ -4575,8 +4595,8 @@ gate on an artifact-only engine, and the concept escape.
 
 ### Missing
 - **Artifacts: deferred pieces.** The core landed (see Done). Model-written
-  source is refused since 2026-10-03, so the *fill* and staged-tree machinery is
-  dead code awaiting deletion (TODO 5). Still open: dependency-fetching builders (a
+  source is refused since 2026-10-03, and the *fill* and staged-tree machinery
+  is deleted (Done). Still open: dependency-fetching builders (a
   `cargoHash`/`vendorHash` over fetched crates) move the fetch to generate and
   are untried (the proven path is no-dependency source, e.g. Go stdlib with
   `vendorHash = null`); container/registry push stays Heile-Welt coping. A

@@ -174,17 +174,9 @@ tracks only what is still open.
    filesystem and clock interfaces as the typed authority. Adopting one is a
    design pass, not an errand.
 
-5. **Delete the staged-source machinery** (NEXT ERRAND; the gate it served
+5. **What the no-blob doctrine leaves open** (the gate and the deletion both
    landed 2026-10-03, DESIGN §13 "The no-blob doctrine is gated, and glue is
-   marked"). Model-written source is refused at generate, at the draft door
-   and at check, so everything that staged, filled or judged a source tree is
-   unreachable: `Lips.Stage` fills and `stagedSizes`, `Lips.Gate.sourceSpecGate`,
-   `gStaged`, `claimlessBakedSource`, `unnamedSources`, the committed-source
-   half of `sharedFileViolations`, the `artifact.<n>.fill.*` emit and its
-   prompt remnants. Keep the `source` block PARSER, so the refusal can name the
-   files. Delete with tests, one concern per commit.
-
-   Still open from the doctrine, none blocking:
+   marked" and "The staged-source machinery is gone"). None blocking:
    a. Code inside an OPTION string is measured (`N mint-written words inside
       option strings`), never marked or gated. Telling computation from prose
       there needs shape guessing, so this is a limit by decision. `website`
