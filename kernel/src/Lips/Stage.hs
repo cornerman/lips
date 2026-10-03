@@ -21,6 +21,7 @@ module Lips.Stage
   , siteNameOf
   , writeSite
   , stagedSizes
+  , writeCompiled
   ) where
 
 import           Control.Exception  (finally)
@@ -44,8 +45,11 @@ import           Lips.Kernel.Grounding (Grounding, Unvouched (..), gStaged)
 import           Lips.Kernel.Realize   (defaultSiteName)
 import           Lips.Kernel.Run       (Realization (..))
 import           Lips.Kernel.Source    (fillTree)
+import           Lips.Nix.Claims       (claimsFile)
+import           Lips.Nix.Flake        (Rungs (..), SiteRung (..), flakeText)
 import           Lips.Runtime          (runtimeAsset, runtimes)
 import           Lips.Site             (SitePlan (..), planSite)
+import           Lips.World            (World)
 
 -- | A fresh temporary directory. lips writes a module and its staged
 -- @artifacts/@ tree here so a relative @src = ./artifacts/<name>@ resolves at
@@ -129,6 +133,50 @@ stageBeside :: FilePath -> FilePath -> Realization -> FilePath -> IO ()
 stageBeside dir file rl root = do
   stageFromDisk dir file (root </> "artifacts")
   void (writeSite (T.pack (languageName file)) root rl)
+
+-- | Write one world's compiled directory for a realization: the module, its
+-- staged and FILLED source tree, the site, @artifact.nix@, @claims.nix@ and the
+-- @flake.nix@ assembled from the world. The ONE writer, shared by @compile@ and
+-- by the gate that builds a world's own verdict over the render, so the
+-- directory a mint judges is the directory a compile writes.
+--
+-- @stage@ puts the source tree under @\<out\>/artifacts@: from disk for a
+-- compile, from memory for a mint whose sources are not written yet. It may
+-- write the site as well (the gates' stage does); 'writeSite' rewrites the same
+-- plan here regardless, because its answer is what decides the flake's rungs.
+--
+-- Returns the artifact names and the rungs, which is what @compile@ prints.
+writeCompiled :: (FilePath -> IO ()) -> World -> FilePath -> FilePath -> Realization
+              -> IO ([Text], Rungs)
+writeCompiled stage world file out rl = do
+  createDirectoryIfMissing True out
+  TIO.writeFile (out </> "default.nix") (rlModule rl)
+  stage out
+  -- The committed source keeps its markers (it is the template); the COMPILED
+  -- source is filled, like every other derived output.
+  fillStagedTree file (out </> "artifacts") (rlFills rl)
+  -- The clause core, when the program states behaviour: one site directory
+  -- holding the runtime's adapters, the minted core, the assembled entry and
+  -- the runtime's own builder. A configuration-only program writes none, so
+  -- its output stays byte-identical.
+  hasSite <- writeSite (T.pack (languageName file)) out rl
+  -- Always written, empty set when the program declares none: the flake text
+  -- imports it unconditionally.
+  let (artBody, artNames) = rlArtifact rl
+  TIO.writeFile (out </> "artifact.nix") artBody
+  -- The experiments the program states, beside the artifacts they observe. A
+  -- claim-free program writes no file and its output stays byte-identical.
+  hasClaims' <- case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
+    Nothing   -> pure False
+    Just body -> TIO.writeFile (out </> "claims.nix") body >> pure True
+  let rungs = Rungs { hasArtifacts = not (null artNames), hasClaims = hasClaims'
+                      -- The name the module binds, so every rung of the
+                      -- compiled directory builds the same derivation.
+                    , siteRung = if not hasSite then Nothing
+                                 else Just (SiteRung (siteNameOf rl)
+                                                     (not (null (rlClauseClaims rl)))) }
+  TIO.writeFile (out </> "flake.nix") (flakeText world rungs)
+  pure (artNames, rungs)
 
 -- | What the program is installed as. A realization names the site only where
 -- something REFERENCES it, so a program whose module never mentions @${site}@

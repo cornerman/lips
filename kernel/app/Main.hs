@@ -63,8 +63,8 @@ import           Lips.Gate              (ExpectFail (..), artifactGate, artifact
                                         groundExpectFaults,
                                         clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
                                         stagedGate)
-import           Lips.Stage             (fillStagedTree, siteNameOf, stageBeside, stageFromDisk,
-                                         stagedSizes, withTempDir, writeSite, writeSources)
+import           Lips.Stage             (stageBeside, stageFromDisk,
+                                         stagedSizes, withTempDir, writeCompiled, writeSite, writeSources)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
 import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission,
@@ -95,9 +95,7 @@ import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (unanswerableDemands)
 import           Lips.Kernel.Engine.Gate       (engineViolations, unholdableExpects, unholdableProblem)
-import           Lips.Nix.Claims               (claimsFile)
-import           Lips.Nix.Flake                (Rungs (..), SiteRung (..), flakeText,
-                                                runCommands)
+import           Lips.Nix.Flake                (runCommands)
 import           Lips.World                     (World (..), parseWorld)
 import           Lips.World.Resolve            (builtinNames, localWorldNames, resolveWorld, resolveWorldFrom)
 import           Lips.World.Check               (SlotFault (..), checkNixSlots)
@@ -434,34 +432,7 @@ compileWorld mout dir file (w, rl) = do
   let outDirPath = maybe (compiledPath file w) (</> T.unpack w) mout
   (artNames, rungs) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
-    createDirectoryIfMissing True outDirPath
-    TIO.writeFile (outDirPath </> "default.nix") (rlModule rl)
-    stageFromDisk dir file (outDirPath </> "artifacts")
-    -- The committed source keeps its markers (it is the template); the COMPILED
-    -- source is filled, like every other derived output.
-    fillStagedTree file (outDirPath </> "artifacts") (rlFills rl)
-    -- The clause core, when the program states behaviour: one site directory
-    -- holding the runtime's adapters, the minted core, the assembled entry and
-    -- the runtime's own builder. A configuration-only program writes none, so
-    -- its output stays byte-identical.
-    hasSite <- writeSite (T.pack (languageName file)) outDirPath rl
-    -- Always written, empty set when the program declares none: the flake text
-    -- imports it unconditionally.
-    let (artBody, artNames) = rlArtifact rl
-    TIO.writeFile (outDirPath </> "artifact.nix") artBody
-    -- The experiments the program states, beside the artifacts they observe. A
-    -- claim-free program writes no file and its output stays byte-identical.
-    hasClaims' <- case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
-      Nothing   -> pure False
-      Just body -> TIO.writeFile (outDirPath </> "claims.nix") body >> pure True
-    let rungs = Rungs { hasArtifacts = not (null artNames), hasClaims = hasClaims'
-                        -- The name the module binds, so every rung of the
-                        -- compiled directory builds the same derivation.
-                      , siteRung = if not hasSite then Nothing
-                                   else Just (SiteRung (siteNameOf rl)
-                                                       (not (null (rlClauseClaims rl)))) }
-    TIO.writeFile (outDirPath </> "flake.nix") (flakeText world rungs)
-    pure (artNames, rungs)
+    writeCompiled (\o -> stageFromDisk dir file (o </> "artifacts")) world file outDirPath rl
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
   mapM_ note (runCommands world artNames rungs outDirPath)
 
