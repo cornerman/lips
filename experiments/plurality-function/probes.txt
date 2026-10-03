@@ -24,3 +24,6 @@ S-rename: compiled; runs -> [hallo|]
 S-param: compiled; runs -> [hallo|]
 S-int: REFUSED:   line 1  no match  "function println_to_stdout(x: Int)"
 S-mismatch: REFUSED: clause claims: FAIL main got=(died "undeclared function:" "shout") want=("hallo")
+# Two follow-ups to S-two: does the contract compare every call to the first?
+S-three: REFUSED: claim.main.equals-lines: should be [ "du" ], but is [ "hallo" ]; should be [ "!" ], but is [ "hallo" ] (clause.function-main likewise)
+C-swap (calls "du", "hallo"): compiled; runs -> [du|hallo|]
