@@ -185,12 +185,9 @@ pattern template may itself begin with any word:
   <confidence> <id> expect <option.path> from <subject>[#<n>]
   <confidence> <id> because "<reason>"
 
-Three more forms ride a heredoc, so verbatim text (source, prose, a bug
-report) never needs escaping:
+Two more forms ride a heredoc, so verbatim text (prose, a bug report) never
+needs escaping:
 
-  <confidence> <id> source <name> <relpath> <<<lips
-  ...verbatim file content...
-  lips>>>
   <confidence> <id> report <<<lips
   ...markdown prose...
   lips>>>
@@ -198,14 +195,19 @@ report) never needs escaping:
   ...blocked line and a minimal repro...
   lips>>>
 
-These seven forms sort into three groups by what becomes of them. `pattern`,
+These forms sort into three groups by what becomes of them. `pattern`,
 `match`, `merge`, and `demand` become the ENGINE, the `<language>.lang`
-artifact lips crystallizes future programs with. `expect` and `source`
-become sibling artifacts beside it (`<language>.expect`, `artifacts/`),
-committed and reviewable but not part of the engine itself. `because`,
+artifact lips crystallizes future programs with. `expect` becomes a sibling
+artifact beside it (`<language>.expect`), committed and reviewable but not
+part of the engine itself. `because`,
 `report`, and `gap` are conversation only: they explain a low-confidence
 item, tell the human what you built, or file a capability gap, and none of
 the three ever reaches `.lang`.
+
+There is NO source form. lips refuses a reply that writes a source file for
+the program, whatever else it holds: per-program code written by a model has
+no bound, traces to no program line, and is rewritten unseen by the next
+mint. Behaviour goes in clauses; a capability no contract reaches is a gap.
 
 confidence: a number in [0,1], ALWAYS token 1, on every line including a
 because line -- below 0.7 means unsure, and the build will refuse the
@@ -488,8 +490,7 @@ means "copy this location into the store": an absolute one is refused outright
 by pure evaluation, and a directory the program names (a document root, a data
 dir) exists on the RUNNING MACHINE, not in the store. A path-typed option
 accepts a string, so write "\"<value>\"". lips refuses an engine that does
-otherwise. Keep an unquoted path for a literal YOU write, like
-./artifacts/<name>. Realize work as services
+otherwise. Keep an unquoted path for a literal YOU write. Realize work as services
 and timers or other options in the target world.
 
 ### Package Holes
@@ -564,18 +565,20 @@ elsewhere it is rejected. A capture fills the emit PATH and may also fill a
 VALUE by its own name (<path> as a rhs hole yields the captured key), beside
 <value>/<value.N> which carry the matched decision's assertion.
 
-### Artifacts and Source Blocks
+### Artifacts
 
-ARTIFACTS (only when the program needs a program BUILT FROM SOURCE, e.g. a
-server you must write): a rule may emit an artifact group under the subject
-root artifact.<name>: a builder and its arguments. The builder is a nixpkgs
-builder path (a name, not code), e.g. rustPlatform.buildRustPackage or
-buildGoModule. Example emits inside a rule:
-  artifact.<name>.builder "\"rustPlatform.buildRustPackage\"" ;
-  artifact.<name>.args.pname "\"<name>\"" ;
-  artifact.<name>.args.version "\"0.1.0\"" ;
-  artifact.<name>.args.src "./artifacts/<name>" ;
-  artifact.<name>.args.cargoHash "\"<sha256>\""
+ARTIFACTS (only when a program needs a derivation BUILT for it that no
+package already is): a rule may emit an artifact group under the subject root
+artifact.<name>: a builder and its arguments. The builder is a nixpkgs builder
+path (a name, not code), e.g. writeShellApplication or writeText. Example
+emits inside a rule:
+  artifact.<name>.builder "\"writeShellApplication\"" ;
+  artifact.<name>.args.name "\"<name>\"" ;
+  artifact.<name>.args.text "\"<value>\""
+The arguments are VALUES in the closed value grammar, exactly like any other
+rhs. There is no source tree and no way to write one: lips refuses a reply
+holding a source file. Behaviour the program states goes in CLAUSES (see
+"Behaviour: Clauses, Not Source" below), which need no artifact at all.
 The artifact NAME is a literal you write, <self> (the program's own instance
 name), or a <capture> the rule's subject binds -- so a build may be keyed by
 a program value, and the SAME capture may fill a value: a rule matching
@@ -593,78 +596,35 @@ BOTH pname and version, where the version is yours to choose (see MECHANISM
 above: a constant, never a demand). A pname with no version cannot build:
 nixpkgs derives the name from pname and version together, and nix fails with
 'attribute name missing'. Give every other argument the builder requires
-too (a Go module needs vendorHash, a Rust one cargoHash). An argument whose
-value is a Nix null is written bare -- vendorHash "null", never
-vendorHash "\"null\"": the quoted form is the STRING "null", and nix refuses it
-with 'hash null does not include a type'.
-A name may COMPOSE literal text with <self> or a <capture>, in the path, in
-args.src and in a reference: artifact.<self>-core is a SECOND build beside
-artifact.<self>, so a program needing a wrapper around a compiled core puts
-buildGoModule under artifact.<self>-core (src ./artifacts/<self>-core) and
-writeShellApplication under artifact.<self>, whose text execs
-${artifact.<self>-core}/bin/<self>-core.
-The source tree is staged at ./artifacts/<name>, so args.src is that exact
-path. Provide each source file with a source block (a heredoc); the path is
-relative to the artifact's source root:
-  <confidence> <id> source <name> <relpath> <<<lips
-  ...verbatim file content...
-  lips>>>
-In a source block, <name> is the CONCRETE name this program gives the thing
-(hello, logscan) -- never <self> and never a capture: the block becomes a
-directory on disk, so a literal '<self>' would leave args.src pointing at
-nothing. The RULE keeps the hole (args.src ./artifacts/<name>), so the same
-language serves the next program; a program that renames the thing rebuilds
-its source, which is what regeneration is for.
+too. An argument whose value is a Nix null is written bare -- "null", never
+"\"null\"": the quoted form is the STRING "null".
+A name may COMPOSE literal text with <self> or a <capture>, in the path and
+in a reference: artifact.<self>-cfg is a SECOND build beside artifact.<self>.
 Reference the built artifact in an option with ${artifact.<name>}, e.g.
   systemd.services.<name>.serviceConfig.ExecStart
     "\"${artifact.<name>}/bin/<name>\""
+A PATH INSIDE A BUILD MUST EXIST: the name under /bin is decided by the
+builder's own arguments (writeShellApplication installs bin/<its name>), and
+no gate can look inside a build, so make the path and the argument agree.
 Prefer configuring a PREBUILT ${pkgs.<name>} package; mint an artifact only
-when the program itself must be written. Keep source self-contained (no
-external dependency fetch) unless the program clearly requires it.
-A built program has an INTERFACE: where its input comes from, where its
-output goes, and how its configuration reaches it. Deduce it from the
-program: what fits the problem that program states, by the best practice of
-the kind of program it is. There is no default to fall back on.
-A program VALUE may reach INSIDE the source, through a FILL. Write the value
-in the source as @marker@ (a name starting with a letter, of letters, digits,
-_ or -) and declare the marker beside the artifact's args:
-  artifact.<name>.fill.<marker> "\"<value>\""
-The rhs is an ordinary value, so every hole works there (<value>, <value.N>,
-a capture), and lips substitutes it when it stages the source -- offline, at
-compile time, so editing the program flows through to the built binary. This
-is how a captured command name reaches go.mod ('module @name@') or Cargo.toml.
-Both halves must agree or lips refuses: every fill you declare must be named
-by some source file, and every @marker@ in source must be declared. A fill
-carries TEXT, so its value must be a literal string or number -- never a
-${...} reference (a store path is not known offline). Do NOT smuggle shell
-into a build argument (a postInstall loop renaming a binary) to work around
-a missing hole: a fill is the mechanism, and a computation is a gap to file.
-A PATH INSIDE A BUILD MUST EXIST: when an option references something under
-${artifact.<name>} (a binary under /bin), the name in that path is decided by
-the SOURCE you wrote, not by the derivation, and no gate can look inside a
-build. So make the source name it: whatever file of yours names the built
-program must carry the same word the option's path uses -- through a fill when
-that word comes from the program. Re-read your own source before you finish
-and check the two agree; a mismatch ships a service that cannot start.
-A fill is substituted ONCE, at compile: for a value that changes while the
-program runs, or a value the source must read per request, carry it through
-an OPTION instead and let the source read it at runtime -- an environment
-variable on the unit that runs it (the unit's environment holds the hole, the
-source reads that variable by name), or, when nothing runs it, a second
-artifact built with writeShellApplication whose text sets the variable and
-execs the first. Source still holds STRUCTURE: the algorithm, the file
-format, the protocol. A REPEATING structure inside source (one code block per
-route, per mount) has no hole form -- a fill replaces a marker, it cannot
-repeat a block -- so that is a gap to file, not something to fake.
+when nothing in nixpkgs is the thing the program needs.
+TEXT YOU WRITE INTO AN ARGUMENT IS GLUE. Where an argument's value is the
+PROGRAM's own words through a hole (a command the author spelled out), it is
+the author's text and needs nothing more. Where YOU write literal text into
+an argument (an echo, a pipeline, a flag), that text is MINT GLUE: lips marks
+it, counts it, and refuses the engine unless a claim runs that artifact (see
+Claims), because it is exactly what the next mint may rewrite. Keep glue to a
+few words bound to one program line; anything larger is behaviour, and
+behaviour is clauses.
 
 ### Claims
 
 CLAIMS (ids c1, c2, ...): what the program says it DOES, as something that
 can be run and compared. Every other check reads the configuration text; a
 claim runs the thing and looks. That is the only way a program's words can
-govern SOURCE you bake: the module text says nothing about what your code
-does, so without a claim nothing holds it -- or any later re-mint -- to the
-sentences it was written from.
+govern BEHAVIOUR you write: the module text says nothing about what your
+clauses or your glue do, so without a claim nothing holds them -- or any later
+re-mint -- to the sentences they were written from.
 
 A claim is a reserved emit root, like artifact.<name>. Four sections, and no
 others:
@@ -689,7 +649,7 @@ expected output, plus a rule emitting the three sections from them:
            claim.echo.stdout "\"<value>\""
 
 NEVER INVENT A WITNESS. An example is intent, so it comes from the program
-and nowhere else. If a program bakes source and states no example, file a
+and nowhere else. If a program states behaviour and no example, file a
 GAP saying an observable is missing -- do not make one up, and do not guess
 what the program would print.
 
@@ -714,9 +674,12 @@ DO EXPECT A CLAIM SECTION, exactly as you expect an artifact arg:
 so a later mint that drops the author's example is refused instead of
 quietly narrowing what is observed.
 
-IF YOU BAKE SOURCE, STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE. This
-is where a claim earns the most: nothing else holds minted code to the
-sentences it was written from. Read every line for an example -- an input
+STATE A CLAIM WHEREVER THE PROGRAM GIVES YOU ONE. This is where a claim earns
+the most: nothing else holds behaviour you wrote to the sentences it was
+written from. MINT GLUE IN AN ARTIFACT REQUIRES ONE: a claim whose run names
+${artifact.<name>} (or names an artifact whose arguments name it) pins every
+word you wrote into that artifact, and an engine leaving glue unclaimed is
+refused. Read every line for an example -- an input
 and what it prints, an exit status, a usage error -- and turn it into a
 claim rather than into prose. Where the program truly states no example,
 file a GAP saying the observable is missing and mint the rest; lips says the
@@ -810,9 +773,9 @@ GAPS (ids g1, g2, ...; zero or more): whenever you wanted to express
 something and the grammar above could not, file it instead of working
 around it. Each names the missing capability by a short slug, and its body
 gives the blocked program line and the smallest repro:
-  <confidence> g1 gap repeating-source <<<lips
-  blocked line: - /hi => status 200
-  a fill replaces a marker; it cannot repeat a code block per route.
+  <confidence> g1 gap no-file-contract <<<lips
+  blocked line: read the board from the file named on the command line
+  no contract opens a file, so only standard input is honoured.
   lips>>>
 A gap is a bug report against lips, never an excuse: file it AND still
 give the item you could not express low confidence.
@@ -857,7 +820,7 @@ express); when you do change it, say in your report what moved and why, so
 the human sees the vocabulary they write against is not shifting for no
 reason.
 
-## Two Worked Examples
+## A Worked Example
 
 ### A Configuration-Only Language
 
@@ -898,44 +861,6 @@ lips>>>
 The human gets a plain-sentence language for describing a watcher, a report
 explaining the mechanism (one systemd service per instance), and a contract
 pinning every numeric and address value to the option it must reach.
-
-### A Language Built from Source
-
-Program (`greet.echo.lips`, instance name `greet`):
-```
-say "hello, friend" when someone runs greet.
-```
-
-The full engine:
-```lips-engine
-0.95 p1 pattern say "<msg>" when someone runs greet. => fact cmd.greet.msg "<msg>"
-0.9 r1 match fact cmd.greet.msg => artifact.greet.builder "\"buildGoModule\"" ; artifact.greet.args.pname "\"greet\"" ; artifact.greet.args.version "\"0.1.0\"" ; artifact.greet.args.src "./artifacts/greet" ; artifact.greet.args.vendorHash "null" ; artifact.greet.fill.msg "\"<value>\"" ; systemd.services.greet.serviceConfig.ExecStart "\"${artifact.greet}/bin/greet\""
-0.9 a1 expect artifact.greet.fill.msg from cmd.greet.msg
-0.9 s1 source greet go.mod <<<lips
-module greet
-
-go 1.21
-lips>>>
-0.9 s2 source greet main.go <<<lips
-package main
-
-import "fmt"
-
-func main() {
-	fmt.Println("@msg@")
-}
-lips>>>
-0.9 d1 report <<<lips
-This language builds a tiny greeter binary from the message the program
-states. The message reaches the Go source through a fill (@msg@ in
-main.go); no expect names the ExecStart line, since it holds a build
-reference, not a checkable value -- the fill is expected instead.
-lips>>>
-```
-
-The human gets a language that writes a whole small program from one
-sentence, with the message pinned by an expect on the fill that carries it
-into the source, and no expect wasted on the build reference itself.
 
 ## Self-Review Checklist
 
@@ -1132,12 +1057,10 @@ STATING it is the requirement, so there is no negative form and none is needed.
 The assertion is the REASON, quoted back to the author when no runtime has the
 property, so write the sentence's own words there. State only what the program
 actually requires.
-A program whose behaviour is clauses needs no artifact and no source block for
-this, and MUST NOT WRAP THE SITE: a writeShellApplication around
+A program whose behaviour is clauses needs no artifact for this, and
+MUST NOT WRAP THE SITE: a writeShellApplication around
 ${site}/bin/... only renames what site.name already names, and gets the inner
 path wrong the moment the two names differ. Install ${site} itself.
 
-A SOURCE BLOCK IS THE LAST RESORT, for behaviour clauses genuinely cannot
-express. Prefer clauses every time you can: a source file is traceable to no
-program line, is rewritten wholesale on the next mint, and is the one thing lips
-cannot check.
+THERE IS NO SOURCE BLOCK TO FALL BACK ON. Behaviour clauses cannot express is
+a gap to file, never a file to write: lips refuses model-written source.

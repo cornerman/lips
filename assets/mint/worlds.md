@@ -9,7 +9,7 @@ TAG EVERY WORLD-BOUND ITEM. A match, demand, merge or expect names its world
 with @<world> right after the id:
   0.95 r1 @nixos match fact job.name => systemd.services.<self>.description "\"<value>\""
   0.95 r2 @kubenix match fact job.name => kubernetes.resources.cronJobs.<self>.metadata.name "\"<value>\""
-A pattern, a source block, a because-note, a gap and the report carry NO tag:
+A pattern, a because-note, a gap and the report carry NO tag:
 they are the language's, shared by every world. Ids are unique across the whole
 reply, so two worlds' rules never collide -- except a because-note, which
 repeats the id of the item it explains.

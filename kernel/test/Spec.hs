@@ -4328,8 +4328,8 @@ main = hspec $ do
     it "forbids wrapping the site, which only renames what site.name names" $
       p `shouldSatisfy` T.isInfixOf "MUST NOT WRAP THE SITE"
 
-    it "makes a source block the last resort rather than the first reach" $
-      p `shouldSatisfy` T.isInfixOf "A SOURCE BLOCK IS THE LAST RESORT"
+    it "offers no source block to fall back on" $
+      p `shouldSatisfy` T.isInfixOf "THERE IS NO SOURCE BLOCK TO FALL BACK ON"
 
   -- Three live mints refused to contract an option whose text their own rule
   -- assembled, and the third filed the missing form as a gap. The form exists
@@ -5426,12 +5426,11 @@ main = hspec $ do
         -- A list option is a SET by default and a LIST only where the engine says
         -- so: the kernel cannot know which, so the mint must be told it can say.
         , "merge <option.path> set|list"
-        -- A built program has an interface, and a program word reaches inside its
-        -- source through a fill: both are universal physics, so they belong here
-        -- and not in a per-language .direction file (docs/gaps/README.md,
-        -- findings 1 and 4; TODO 1d for the fill).
-        , "A built program has an INTERFACE"
-        , "reach INSIDE the source, through a FILL"
+        -- No per-program source written by a model, and the text a mint writes
+        -- into an artifact argument is glue a claim must pin: both are gated, so
+        -- the prompt must say so before the gate does (DESIGN §13).
+        , "There is NO source form"
+        , "TEXT YOU WRITE INTO AN ARGUMENT IS GLUE"
         -- The capture forms are dead capability unless the prompt offers them.
         , "multi-token hole <name.words>"
         -- A decision line separates its subject by whitespace, so a subject
@@ -5468,7 +5467,7 @@ main = hspec $ do
         , "What You May Say"
         , "Construct Reference"
         , "Designing a Good Language"
-        , "Two Worked Examples"
+        , "A Worked Example"
         , "Self-Review Checklist"
         ]
 
