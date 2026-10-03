@@ -29,19 +29,16 @@ module Lips.Generate.Minting
   , itemsFor
   , expectsOf
   , sourcesOf
-  , unnamedSources
   , reportOf
   , gapsOf
   , carriesEngineMeaning
   , uncheckableExpects
-  , claimlessBakedSource
   , unplaceableClaims
   , appendOnlyViolations
   , replyLinesOf
   , mergeReply
   , touchedIds
   , mergeGrammar
-  , sharedFileViolations
   ) where
 
 import           Data.Maybe      (isJust, mapMaybe)
@@ -49,7 +46,6 @@ import           Data.Text       (Text)
 import qualified Data.Text       as T
 import qualified Data.Text.Read  as TR
 import           Data.FileEmbed  (embedStringFile)
-import qualified System.FilePath as FP
 
 import Lips.Kernel.Engine.Data      (DemandSpec, Emit (..), IgnoreSpec, MapRule (..), MergeSpec,
                                      parseDemandBody, parseIgnoreBody, parseMergeBody, parseRuleBody)
@@ -58,7 +54,6 @@ import Lips.Generate.Harness (Confidence (..))
 import Lips.Kernel.Clause.Vocabulary (Contract (..), Vocabulary (..))
 import Lips.Runtime                 (schemeVocabulary)
 import Lips.World            (World (..))
-import Lips.Kernel.Capture      (nameTokens)
 import Lips.Kernel.Decision     (Assertion (..), Decision (..), DecisionId (..), Provenance (..), SourceLoc (..), Subject (..))
 import Lips.Kernel.Reader       (readDecision)
 import Lips.Kernel.Claim           (Claim (..), ClaimPlace (..))
@@ -305,28 +300,6 @@ appendOnlyViolations old new =
     -- One provenance for both sides, so the comparison cannot see the field.
     anywhere = FromSource (SourceLoc "" 0)
 
--- | What a mint may NOT change when it does not own the language level: the
--- grammar the other worlds' rules were lowered from, and the source tree they
--- all build. Returns one line per violation, empty when the mint only appends.
---
--- The grammar may be APPENDED to (a pattern for a line no world could read
--- before cannot break a world that already holds, since every committed program
--- already crystallizes and an overlap is refused). The source tree may not
--- change at all: it is one program's source, shared by the worlds that run it,
--- and a world minted later replacing it would silently delete the code an
--- earlier world's rules reference.
-sharedFileViolations :: Text -> Text -> [(FilePath, Text)] -> [SourceFile] -> [Text]
-sharedFileViolations old new committed minted =
-  [ "pattern " <> i <> " changed, and other worlds are built on it"
-  | i <- appendOnlyViolations old new ]
-  ++ [ "artifacts/" <> T.pack p <> " would be rewritten"
-     | (p, t) <- committed, lookup p mintedTree /= Just t ]
-  ++ [ "artifacts/" <> T.pack p <> " would be added"
-     | (p, _) <- mintedTree, p `notElem` map fst committed ]
-  where
-    mintedTree = [ (T.unpack (sfArtifact sf) FP.</> T.unpack (sfPath sf), sfContent sf)
-                 | sf <- minted ]
-
 -- | The grammar to WRITE when a later world appends to an inherited one: every
 -- committed line verbatim, then the ids this mint added. Verbatim because an
 -- inherited line belongs to the mint that wrote it -- re-rendering would stamp
@@ -538,17 +511,6 @@ expectsOf items = [e | ItemExpect e <- items]
 sourcesOf :: [EngineItem] -> [SourceFile]
 sourcesOf items = [s | ItemSource s <- items]
 
--- | The source blocks whose artifact name still carries a @\<hole\>@ token. A
--- source tree is written to disk under that name, so a block minted for
--- @artifact.\<self\>@ creates a directory literally called @\<self\>@ and the
--- module's @src = ./artifacts/hello@ then points at nothing -- a defect two live
--- mints produced in a row. The remedy is a concrete name: the tree is baked for
--- the program as it stands (renaming the thing in the program is a regeneration,
--- which is what the staged-source gate says), while the RULE keeps the hole so
--- the same language serves the next instance.
-unnamedSources :: [SourceFile] -> [SourceFile]
-unnamedSources = filter (not . null . nameTokens . sfArtifact)
-
 -- | The language explained in the mint's own words (the @README.md@ body).
 -- The first report wins; @generate@ refuses a mint that has none.
 reportOf :: [EngineItem] -> Maybe Text
@@ -576,24 +538,6 @@ uncheckableExpects rules = filter uncheckable
     uncheckable e = not (isGroundExpect e) && exPath e `elem` derivationPaths
     derivationPaths =
       [ emPath em | r <- rules, em <- mrEmits r, valueRefsDerivation (emRhs em) ]
-
--- | Does this mint BAKE source without stating a single observable?
---
--- Where behaviour lives in minted code, the module text says nothing about what
--- that code does: every gate lips has reads the map, and the map is silent. So
--- without one experiment, nothing holds the implementation -- or any future
--- re-mint -- to the author's own words, and a reworded sentence or a rewritten
--- algorithm passes unseen.
---
--- A pure-configuration mint is deliberately unaffected: its behaviour IS its
--- option assignments, which the committed contract already pins.
---
--- REFUSED by @generate@ (since 2026-08-04): deducing the observable from the
--- program's own words is the mint's job, and `logscan` spent months as the
--- counter-example, baked source with every gate green. The prompt asks the mint
--- for a claim and tells it to file a gap where the program offers no example.
-claimlessBakedSource :: [SourceFile] -> [Claim] -> Bool
-claimlessBakedSource sources claims = not (null sources) && null claims
 
 -- | The claims a world cannot observe, by id: those whose PLACE the world does
 -- not host. A machine claim boots the realized module, which only a world with

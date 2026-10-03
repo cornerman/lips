@@ -33,7 +33,7 @@ import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
 import Lips.Report                 (committedSourceReport, emptySubmission, mintedSourceReport, noSubmission, unansweredReport, unpinnedGlueReport, unportableReport)
-import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, mergeReply, replyLinesOf, sharedFileViolations, touchedIds)
+import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, mergeReply, replyLinesOf, touchedIds)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
@@ -62,7 +62,7 @@ import System.FilePath ((</>))
 import Data.List (nubBy, sort, sortOn)
 import Lips.Generate.Harness
 import Lips.Generate.Readme (renderReadme)
-import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, claimlessBakedSource, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), itemsFor, systemPromptFor, promptWithDirection)
+import Lips.Generate.Minting (parseEngineCandidates, assemble, expectsOf, sourcesOf, reportOf, gapsOf, carriesEngineMeaning, uncheckableExpects, unplaceableClaims, EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), itemsFor, systemPromptFor, promptWithDirection)
 import Lips.Generate.Stats (MintStats (..), renderStats, verdictOf)
 import Lips.Generate.PiJson (PiReply (..), Usage (..), parsePiReply, PiEvent (..), progressEvent, abbreviate, resultSummary)
 import Lips.Cli.Output (Style (..), Verdict (..), Phase (..), phaseLog, runningText, verdictText, elapsedText, report, reportHead)
@@ -4488,22 +4488,12 @@ main = hspec $ do
     it "offers the booted machine only in the world that has one" $
       systemPromptFor [shippedWorld "nixos"] `shouldSatisfy` T.isInfixOf "MAY BE OBSERVED IN A BOOTED MACHINE"
 
-  describe "the mint is asked for an observable where it bakes source" $ do
-    let src = SourceFile { sfArtifact = "tool", sfPath = "main.go", sfContent = "package main" }
-        vstr t = case parseValue t of
+  describe "a claim must be observable in the world it is minted for" $ do
+    let vstr t = case parseValue t of
           Right v -> v
           Left e  -> error (T.unpack e)
         derivC = Claim "echo" (vstr "\"${artifact.tool}/bin/tool\"") Nothing (Just "hi") 0 PlaceDerivation
         machC  = Claim "alive" (vstr "\"systemctl is-active api\"") Nothing (Just "active") 0 PlaceMachine
-
-    it "warns on baked source with no claim" $
-      claimlessBakedSource [src] [] `shouldBe` True
-
-    it "stays quiet on baked source with one claim" $
-      claimlessBakedSource [src] [derivC] `shouldBe` False
-
-    it "leaves a pure-configuration mint unaffected" $
-      claimlessBakedSource [] [] `shouldBe` False
 
     -- Which places a world hosts is its file's own `claims:` header, so this
     -- gate reads data and never asks which world it is looking at.
@@ -6180,23 +6170,6 @@ main = hspec $ do
       case crystallize "f" [top, pat] (T.unlines ["install packages:", "htop", "ripgrep"]) of
         Left e     -> expectationFailure ("crystallize failed: " <> show e)
         Right base -> runBaseIgnoring 100 [] [] [ign] base `shouldSatisfy` isRight
-
-  describe "the shared files are frozen together (Lips.Generate.Minting)" $ do
-    let g = "p1 meta lang.pattern.p1 stated \"a\" @gen:aaaa\n"
-        committed = [("hello/main.go", "old")]
-        minted = [SourceFile "hello" "main.go" "new"]
-        kept   = [SourceFile "hello" "main.go" "old"]
-    it "accepts a mint that changes nothing shared" $
-      sharedFileViolations g g committed kept `shouldBe` []
-    it "accepts an appended pattern, which cannot break a world that holds" $
-      sharedFileViolations g (g <> "p2 meta lang.pattern.p2 stated \"b\" @gen:bbbb\n")
-                           committed kept `shouldBe` []
-    it "refuses a rewritten source file, naming it" $
-      sharedFileViolations g g committed minted
-        `shouldSatisfy` any (T.isInfixOf "hello/main.go")
-    it "refuses a changed pattern, naming it" $
-      sharedFileViolations g (T.replace "\"a\"" "\"b\"" g) committed kept
-        `shouldSatisfy` any (T.isInfixOf "p1")
 
   -- The guard that keeps `ignore` from becoming an escape hatch: a world may
   -- drop a fact only where another world spends it.

@@ -46,7 +46,7 @@ import           System.IO          (BufferMode (..), hClose, hGetBuffering, hGe
 import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Except (runExceptT, throwE)
 import           System.Directory   (createDirectoryIfMissing, doesDirectoryExist, doesFileExist,
-                                     doesPathExist, getModificationTime, listDirectory,
+                                     doesPathExist, getModificationTime,
                                      removePathForcibly)
 import           System.FilePath    (takeDirectory, (</>))
 import           System.Process     (CreateProcess (..), StdStream (..), callProcess, createProcess, proc,
@@ -55,7 +55,7 @@ import           System.Process     (CreateProcess (..), StdStream (..), callPro
 import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (Engine (..), IgnoreSpec (..), bindSelf, emitTemplate, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
-import           Lips.Identity                 (watchedFiles, timingPathIn, languageTimingPathIn, requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPath, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
+import           Lips.Identity                 (watchedFiles, timingPathIn, languageTimingPathIn, requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
 import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
 import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
 import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAnswer, setState, step, tshow)
@@ -64,7 +64,7 @@ import           Lips.Gate              (ExpectFail (..), artifactGate, artifact
                                         clauseClaimGate, mintClaimGate, runExpects, sourceSpecGate,
                                         stagedGate, worldGate)
 import           Lips.Stage             (stageBeside, stageFromDisk,
-                                         stagedSizes, withTempDir, writeCompiled, writeSite, writeSources)
+                                         stagedSizes, withTempDir, writeCompiled, writeSite)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
 import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission,
@@ -76,7 +76,7 @@ import           Lips.Report            (Failure (..), demandGenerateFail, empty
 import           Options.Applicative    (customExecParser)
 import           Lips.Generate.Harness  (Confidence (..))
 import           Lips.Generate.Draft    (DraftTree (..), materializeDraft, splitEngine)
-import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), SourceFile (..), assemble, itemsFor, sharedFileViolations, carriesEngineMeaning, mergeGrammar, mergeReply, replyLinesOf, touchedIds, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, claimlessBakedSource, unplaceableClaims, unnamedSources)
+import           Lips.Generate.Minting  (EngineItem (..), Gap (..), ItemCandidate (..), appendOnlyViolations, assemble, itemsFor, carriesEngineMeaning, mergeGrammar, mergeReply, replyLinesOf, touchedIds, expectsOf, gapsOf, parseEngineCandidates, promptWithDirection, reportOf, sourcesOf, uncheckableExpects, unplaceableClaims)
 import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate, parsePiReply,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Stats    (MintStats (..), renderStats, verdictOf)
@@ -764,7 +764,6 @@ checkDraft running restart file = do
         createDirectoryIfMissing True (worldDirIn (dtLangDir t) w)
         TIO.writeFile (rulesPathIn (dtLangDir t) w file) rules
         TIO.writeFile (expectPathIn (dtLangDir t) w file) expect
-      writeSources (artifactsPathIn (dtLangDir t) file) (dtSources t)
       -- The schema gate cannot live in check, which stays nixpkgs-free so a
       -- committed engine is judged offline. The draft path runs on the mint
       -- side, where generate has already built every world's schema and hands
@@ -1165,31 +1164,13 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
             ("the mint for ." <> T.pack lang <> " came back without a report block.")
             ["lips needs the language explained in plain words before it commits it."]
             ("\8594 run generate again: lips generate " <> T.pack rep))
-        -- Sources are minted in memory; stage them (not yet on disk) so a staged
-        -- @src = ./artifacts/<name>@ resolves during the behavioral eval and so
-        -- the staged-source gate below judges the tree this mint actually writes.
-        -- The tree is the LANGUAGE's: one program's source, shared by every world
-        -- that runs it, which is why only a call that saw every world may write it.
-        let minted = sourcesOf (map icItem candidates)
-            stage rl root = writeSources (root </> "artifacts") minted
-                              >> void (writeSite (T.pack lang) root rl)
         -- No per-program source written by a model, whatever else the mint
-        -- holds: refused before any gate that costs a build. (The checks below
-        -- that judge a minted tree are unreachable now and go with the machinery
-        -- that stages it.)
+        -- holds: refused before any gate that costs a build.
+        let minted = sourcesOf (map icItem candidates)
         unless (null minted) $ die (mintedSourceReport rep minted)
-        -- A source tree is written under the artifact name the block gives, so a
-        -- name still holding a hole makes a directory called "<self>" and the
-        -- module's src points at nothing. Refused here, where the mint is still
-        -- rejectable, instead of as a missing path two gates later.
-        case unnamedSources minted of
-          []  -> pure ()
-          bad -> die (report
-            (T.pack rep <> ": " <> plural (length bad) "source file"
-              <> " named for an artifact whose name is still a hole:")
-            [ sfArtifact sf <> "/" <> sfPath sf | sf <- bad ]
-            ("\8594 a baked source tree needs the concrete name this program gives it"
-              <> " (the RULE keeps the hole); run generate again."))
+        -- What a realized module names beside itself is the site its clauses
+        -- build, so that is what every gate stages.
+        let stage rl root = void (writeSite (T.pack lang) root rl)
         -- The patterns are shared, so the append-only guard runs ONCE over the
         -- grammar this reply renders, before any gate that costs a build: a mint
         -- that does not own the language level may only add to what the worlds it
@@ -1200,9 +1181,9 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
             freshGrammar = fst (splitEngine (renderLang (FromSource (SourceLoc "lang" 0)) sharedEng))
         case inherited of
           Nothing -> pure ()
-          Just g -> do
-            committedSources <- readTree (artifactsPath rep)
-            case sharedFileViolations g freshGrammar committedSources minted of
+          Just g ->
+            case [ "pattern " <> i <> " changed, and other worlds are built on it"
+                 | i <- appendOnlyViolations g freshGrammar ] of
               []   -> pure ()
               bad  -> do
                 held <- mintedWorlds dir rep
@@ -1236,25 +1217,6 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
           (,) w <$> gateOneWorld compat rep progs candidates stage w schemaPath
         let held = [ (w, r) | (w, Right r) <- results ]
             failed = [ (wName w, why) | (w, Left why) <- results ]
-        -- Where an engine BAKES source, the module text says nothing about what
-        -- that code does, so without one stated observable nothing holds the
-        -- implementation -- or any future re-mint -- to the author's own words.
-        -- Refused, not warned (2026-08-04): `logscan` spent months as the
-        -- counter-example, 76 lines of Go with every gate green throughout.
-        -- Addressed to the MINT, not the author: deducing the observable from the
-        -- program's own words is the mint's job (measured 2026-08-06, opus-5 on
-        -- examples/function.lips). The source tree is the LANGUAGE's, so a claim
-        -- in ANY world observes it, and this gate is the whole run's.
-        when (claimlessBakedSource minted (concatMap (concatMap (rlClaims . snd) . wrValidated . snd) held)) $
-          die (report
-            (T.pack rep <> " builds a program from source, and nothing observes what"
-              <> " that program does:")
-            [ sfArtifact sf <> "/" <> sfPath sf | sf <- minted ]
-            ("\8594 the mint must deduce an example from the program's own words --"
-              <> " what it is given and what it prints -- and file a claim over it;"
-              <> " mint again: lips generate " <> T.pack rep
-              <> ". State the example in the program only where the mint reports it"
-              <> " cannot deduce one."))
         -- Nothing is written for a world that failed, and the account of the
         -- event is filed at the scope of the event: one call covering several
         -- worlds writes one README at the language level.
@@ -1264,18 +1226,12 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
           step ("write " <> T.pack dir) $ do
             createDirectoryIfMissing True dir
             -- Shared, and written only by a call that owns the language level:
-            -- the grammar every world reads, the source tree they all build, the
-            -- record of this event and its account.
+            -- the grammar every world reads, the record of this event and its
+            -- account.
             -- The grammar is always written: frozen means APPEND-ONLY, so a mint
             -- that added a pattern must land it, and 'mergeGrammar' keeps every
             -- inherited line's own bytes and stamp.
             TIO.writeFile (grammarPathIn dir rep) grammarText
-            when (inherited == Nothing) $ do
-              -- The artifacts tree is machine-owned and minted whole, so REPLACE
-              -- it: a previous mint's tree under another artifact name would
-              -- otherwise stay committed forever, dead source nothing builds.
-              removePathForcibly (artifactsPath rep)
-              writeSources (artifactsPath rep) minted
             case wnames of
               [_] -> pure ()   -- a single-world mint files its record in its world folder
               _   -> do
@@ -1533,23 +1489,6 @@ governingRecord dir w file = do
   case own of
     Just r  -> pure (Just r)
     Nothing -> tryRead (languageRecordPathIn dir file)
-
--- | Every file of a committed source tree, as (path relative to the tree,
--- contents). Read so a frozen mint can be held to the tree the other worlds
--- were built on.
-readTree :: FilePath -> IO [(FilePath, Text)]
-readTree root = do
-  there <- doesDirectoryExist root
-  if not there then pure [] else go ""
-  where
-    go rel = do
-      entries <- listDirectory (root </> rel)
-      fmap concat $ forM entries $ \e -> do
-        let p = rel </> e
-        isDir <- doesDirectoryExist (root </> p)
-        if isDir then go p else do
-          c <- tryRead (root </> p)
-          pure [ (p, t) | Just t <- [c] ]
 
 -- | Crystallize and fully run the program with a candidate engine; on success
 -- return the crystal and the realized module.

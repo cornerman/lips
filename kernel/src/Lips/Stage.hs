@@ -14,7 +14,6 @@
 -- 'Lips.Kernel.Source' fills a tree, while this module owns only the IO.
 module Lips.Stage
   ( withTempDir
-  , writeSources
   , fillStagedTree
   , stageFromDisk
   , stageBeside
@@ -34,11 +33,10 @@ import           System.Directory   (copyFile, createDirectoryIfMissing, doesDir
                                      doesFileExist, getPermissions, getTemporaryDirectory,
                                      listDirectory, removeDirectoryRecursive, removeFile,
                                      setOwnerWritable, setPermissions)
-import           System.FilePath    (takeDirectory, (</>))
+import           System.FilePath    ((</>))
 import           System.Posix.Temp  (mkdtemp)
 
 import           Lips.Cli.Output       (die, report)
-import           Lips.Generate.Minting (SourceFile (..))
 import           Lips.Identity         (artifactsPathIn, languageName)
 import           Lips.Kernel.Decision   (Subject (..))
 import           Lips.Kernel.Grounding (Grounding, Unvouched (..), gStaged)
@@ -61,18 +59,6 @@ withTempDir act = do
   -- Removed even when the action dies (exitFailure throws), so a failing check
   -- does not leave a scratch tree behind on every run.
   act dir `finally` removeDirectoryRecursive dir
-
--- | Write minted source files under @<root>/<artifact>/<relpath>@. Used to
--- persist to the language folder's @artifacts/@ and to stage into a temp
--- module dir.
-writeSources :: FilePath -> [SourceFile] -> IO ()
-writeSources root = mapM_ one
-  where
-    one sf = do
-      let p = root </> T.unpack (sfArtifact sf) </> T.unpack (sfPath sf)
-      createDirectoryIfMissing True (takeDirectory p)
-      TIO.writeFile p (sfContent sf)
-
 
 -- | Fill a staged source tree in place: every @\@marker\@@ becomes the text the
 -- engine declared for it (kernel physics, 'Lips.Kernel.Source.fillTree'), so a
