@@ -1,0 +1,2 @@
+p1 meta lang.pattern.p1 stated "function println_to_stdout(<param>: <ptype>) => fact func.println_to_stdout.param \"<param> <ptype>\"" @gen:84eb115a36ed22ee
+p2 meta lang.pattern.p2 stated "println_to_stdout(\"<text>\") => fact call.<n:index> \"<text>\"" @gen:84eb115a36ed22ee
