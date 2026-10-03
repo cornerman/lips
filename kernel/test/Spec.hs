@@ -444,8 +444,20 @@ main = hspec $ do
       parseWorld (minimal <> "--- rung ---\nx\n") `shouldSatisfy`
         either (T.isInfixOf "rung") (const False)
     it "refuses a newer format, naming both versions" $
-      parseWorld (T.replace "format: 1" "format: 3" minimal) `shouldSatisfy`
-        either (\e -> T.isInfixOf "3" e && T.isInfixOf "2" e) (const False)
+      parseWorld (T.replace "format: 1" "format: 4" minimal) `shouldSatisfy`
+        either (\e -> T.isInfixOf "4" e && T.isInfixOf "3" e) (const False)
+    -- The flake input the world's schema pin locks, and what compile writes for
+    -- it when the record has no flake pin. Optional: a world without it reads
+    -- as every world did before it existed.
+    it "reads schema-input as an input name and a fallback ref, absent by default" $ do
+      right wSchemaInput minimal `shouldBe` Nothing
+      right wSchemaInput (hdr <> "schema-input: kubenix github:hall/kubenix\n"
+                              <> "--- preamble ---\nP\n--- schema ---\nE\n")
+        `shouldBe` Just (InputDecl "kubenix" "github:hall/kubenix")
+    it "refuses a schema-input that is not exactly an input and a ref, naming it" $
+      mapM_ (\v -> parseWorld (hdr <> "schema-input: " <> v <> "\n--- preamble ---\nP\n--- schema ---\nE\n")
+                     `shouldSatisfy` either (T.isInfixOf "schema-input") (const False))
+        ["kubenix", "kubenix github:hall/kubenix extra", ""]
     -- A world's own render gate: optional, so every world written before it
     -- reads unchanged, and a world that declares one hands lips a build to pass.
     it "reads the optional gate slot, absent by default" $ do

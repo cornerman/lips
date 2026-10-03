@@ -12,6 +12,7 @@
 -- must be named rather than silently dropped.
 module Lips.World
   ( World (..)
+  , InputDecl (..)
   , Rung (..)
   , parseWorld
   , slotMarker
@@ -30,8 +31,11 @@ import           Text.Read  (readMaybe)
 -- 2 added the @gate@ slot. A world that uses it declares 2, so a lips that
 -- predates the slot says "upgrade lips" instead of "unknown slot gate"; every
 -- format-1 file reads exactly as before.
+--
+-- 3 added the @schema-input@ header, for the same reason: a lips that predates
+-- it would otherwise refuse "unknown header key schema-input".
 worldFormat :: Int
-worldFormat = 2
+worldFormat = 3
 
 -- | The slot a line opens, when it is a slot marker (@--- builds ---@). The one
 -- authority on that syntax: 'Lips.World.Check' finds the same regions to hand
@@ -51,6 +55,16 @@ data Rung
   | RungLine Text
   deriving (Eq, Show)
 
+-- | The flake input a world's schema pin locks (header @schema-input:@). It is
+-- the one relation between what a mint grounds against and what a compiled
+-- flake evaluates: compile writes this input from the record's pin, so the two
+-- name the same flake by construction.
+data InputDecl = InputDecl
+  { idName     :: Text  -- ^ the flake input's name (@nixpkgs@, @kubenix@)
+  , idFallback :: Text  -- ^ the ref compile writes when the record pins no flake
+  }
+  deriving (Eq, Show)
+
 -- | Everything lips needs to mint into a world, ground against it, and build
 -- its flake. Headers name the world; slots carry text lips places verbatim, so
 -- a world's Nix is the world file's business and never a branch in lips.
@@ -59,6 +73,7 @@ data World = World
   , wModuleAttr  :: Text        -- ^ header @module-attr:@, e.g. @nixosModules@
   , wSchemaPin   :: Maybe Text  -- ^ header @schema-pin:@, env var holding a locked flakeref
   , wSchemaFlake :: Maybe Text  -- ^ header @schema-flake:@, the fallback flakeref
+  , wSchemaInput :: Maybe InputDecl  -- ^ header @schema-input:@, see 'InputDecl'
   , wClaims      :: [Text]      -- ^ header @claims:@, the places this world can host
   , wInputArgs   :: Text        -- ^ header @input-args:@, extra outputs-function args
   , wPreamble    :: Text        -- ^ slot @preamble@, the world's half of the mint prompt
@@ -84,7 +99,7 @@ data World = World
   deriving (Eq, Show)
 
 headerKeys :: [Text]
-headerKeys = ["format", "world", "module-attr", "schema-pin", "schema-flake", "input-args", "claims"]
+headerKeys = ["format", "world", "module-attr", "schema-pin", "schema-flake", "schema-input", "input-args", "claims"]
 
 slotNames :: [Text]
 slotNames = ["preamble", "schema", "inputs", "builds", "packages", "apps", "devShells", "gate", "rungs"]
@@ -109,11 +124,13 @@ parseWorld raw = do
   preamble <- requiredSlot slots "preamble"
   schema <- requiredSlot slots "schema"
   rungs <- mapM rungOf (filter (not . blank) (slotLines' slots "rungs"))
+  schemaInput <- mapM inputDeclOf (lookup "schema-input" hdrs)
   Right World
     { wName = name
     , wModuleAttr = modAttr
     , wSchemaPin = lookup "schema-pin" hdrs
     , wSchemaFlake = lookup "schema-flake" hdrs
+    , wSchemaInput = schemaInput
     , wClaims = maybe [] T.words (lookup "claims" hdrs)
     , wInputArgs = fromMaybe "" (lookup "input-args" hdrs)
     , wPreamble = preamble
@@ -156,6 +173,12 @@ parseWorld raw = do
     requiredSlot slots s =
       maybe (err ("missing required slot " <> s)) (Right . T.unlines) (lookup s slots)
     slotLines' slots s = fromMaybe [] (lookup s slots)
+
+    -- Exactly two words: a flake input name has no spaces, and neither does a
+    -- flakeref, so anything else is a typo that must not be half-read.
+    inputDeclOf v = case T.words v of
+      [n, ref] -> Right (InputDecl n ref)
+      _ -> err ("schema-input is not '<input> <fallback-ref>': " <> v)
 
     -- Two forms, so a printed line that is not a nix command needs no fake attribute.
     rungOf l
