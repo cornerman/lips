@@ -178,19 +178,6 @@ tracks only what is still open.
       before any program is seen. Revisit if a program wants two differently
       named functions.
 
-8. **`generate` without `-t` should mint into the worlds the language already
-   holds** (filed 2026-10-03 by the render-gate re-mint, DESIGN §13 "A world's
-   own gate runs at mint time"; nothing built). `Lips.Cli.defaultTargetName` is
-   `nixos` whatever the language folder holds, so re-minting a language
-   committed only in `nono` without `-t nono` silently mints and writes a nixos
-   world beside it. It happened once and cost $0.29 (72s, opus-5) before the
-   stray `nixos/` folder was deleted. Candidate: with no `-t`, take the worlds
-   `Lips.Language.mintedWorlds` finds for the language, and fall back to `nixos`
-   only for a language with no world yet. Adding a world stays an explicit `-t`.
-   Open before building: whether a no-`-t` run over a language holding SEVERAL
-   worlds mints all of them, which is a full joint re-mint and the expensive
-   case, or refuses and asks for `-t`.
-
 ## Backlog (larger / deferred by design)
 
 - **Defects no gate can catch** (the residue of the CLI-tool work; see DESIGN

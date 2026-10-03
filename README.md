@@ -137,9 +137,11 @@ programs and it generalizes one grammar across them. Nothing is written unless
 the engine compiles every program and the tests hold, so a bad mint costs you
 nothing.
 
-`-t <world>` picks the world the engine is born into: `nixos` (default),
+`-t <world>` picks the world the engine is born into: `nixos`,
 `home-manager`, `kubenix`, `terranix`, or any `<name>.world` file beside your
-program. A world is data, not a lips feature, so a world lips never heard of
+program. Without `-t`, a new language is born into `nixos` and a re-mint keeps
+the one world the language already holds; a language holding several asks you
+to name them. A world is data, not a lips feature, so a world lips never heard of
 works without changing lips (`lips world` lists them). Repeat the flag to mint
 several worlds in one call. Every minted option path is grounded against that
 world's own pinned schema, the same one `lips options <query>` searches, so a

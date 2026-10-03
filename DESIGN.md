@@ -925,6 +925,29 @@ but the loop around it is incomplete; "missing" means specced, not built.
 
 ### Done
 
+- **`generate` without `-t` mints the world the language already holds.**
+  `-t` used to default to nixos whatever the language folder held, so a re-mint
+  of the nono-only `policy` without `-t nono` minted and wrote a stray nixos
+  world ($0.29, 72s, opus-5, 2026-10-03; "A world's own gate runs at mint
+  time" below). Now the parser leaves `-t` unset, and the pure
+  `Lips.Language.mintTargets` decides from what `mintedWorlds` finds: named
+  worlds win, so adding a world stays an explicit `-t`; no world yet falls back
+  to `Lips.Cli.defaultTargetName` (nixos); exactly one held world is minted;
+  several are REFUSED before any model call, because minting all of them is a
+  full joint re-mint. The refusal (`Lips.Report.severalWorldsReport`) spells
+  out both remedies as commands, the joint `-t a -t b` first and one `-t a`
+  second. An inferred world is said aloud (`no -t: minting into nono, the
+  world .policy already holds.`), and one whose world file does not resolve is
+  refused by `heldWorldReport` naming the path it looked at and `--worlds`,
+  since the human never typed that name. The watch loop's `g` key runs
+  `generate <file>` with no `-t`, so it inherits the fix unchanged. No other
+  verb had the question: `compile` and `check` judge every held world,
+  `exports` already chooses with `soleWorld`, and `options` has no language
+  folder to read. Pinned by hspec (`mintTargets`, the three wordings, the
+  parser) and by `just test-draft`, which runs generate over a copy of
+  `cron` (kubenix + nixos) with nothing on PATH, so a regression fails at the
+  missing `pi` instead of starting a paid mint.
+
 - **A compiled directory runs the nixpkgs its rules were grounded against.**
   A mint grounds its rules against the `schema:` pin it records in
   `.generation`, while a compiled directory's `flake.nix` said
@@ -1022,8 +1045,9 @@ but the loop around it is incomplete; "missing" means specced, not built.
   and the mint printed the gate as a step of its own ("the nono world's own
   gate", 0.6s), the first live run of the mint-side path. A misfired first
   attempt without `-t nono` minted a nixos lowering instead ($0.29, deleted
-  before commit); `-t` defaults to nixos even for a language committed
-  only in nono, which surprised its operator once.
+  before commit); `-t` defaulted to nixos even for a language committed
+  only in nono, which surprised its operator once (closed: "`generate`
+  without `-t` mints the world the language already holds" above).
 
   CI half: `lipsModules-eval` compiles every attribute `modulesFromDir` produces,
   found by looking, so `nonoModules` is no longer outside the net. The new check
