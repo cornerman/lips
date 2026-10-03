@@ -330,6 +330,38 @@ test-draft:
     if "$lips" check --draft --running "$running" --restart "$grown/one.watch.lips" < "$grown/patch2.txt" > "$tmp/out20" 2>&1; then
       echo "FAIL: --restart kept the earlier submissions"; cat "$tmp/out20"; exit 1
     fi
+    unset LIPS_MINT_BASIS
+    # A world's own gate runs in the door: nono's validator refuses a command
+    # entry with no sandbox object, which its weak schema cannot see. The world
+    # file is the one examples/ ships, beside the program as generate finds it,
+    # and the gate builds against the pinned nixpkgs (the packaged lips bakes it;
+    # this ghc-built one is told, from the flake's own lock).
+    export LIPS_NIXPKGS_FLAKE="github:NixOS/nixpkgs/$(nix eval --raw --impure --expr \
+      '(builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.nixpkgs.locked.rev')"
+    export LIPS_MINT_WORLDS=nono
+    sandbox=$(mktemp -d -p "$tmp")
+    export LIPS_MINT_PROGRAMS="$sandbox/one.sb.lips"
+    cp examples/nono.world "$sandbox/"
+    printf 'it may run git.\n' > "$sandbox/one.sb.lips"
+    cat > "$sandbox/bare.txt" <<'EOF'
+    0.95 p1 pattern it may run <c> => fact cmd.<c>.policy "allow"
+    0.95 r1 match fact cmd.<c>.policy => command_policies.commands.<c>.from.session.invocation_policy.default "\"<value>\"" ; meta.name "\"<self>\""
+    EOF
+    sed -i 's/^    //' "$sandbox/bare.txt"
+    if "$lips" check --draft "$sandbox/one.sb.lips" < "$sandbox/bare.txt" > "$tmp/out21" 2>&1; then
+      echo "FAIL: --draft accepted a render the world's own gate refuses"; cat "$tmp/out21"; exit 1
+    fi
+    grep -q "the nono world refuses what lips rendered" "$tmp/out21" \
+      || { echo "FAIL: the refusal did not name the world's gate"; cat "$tmp/out21"; exit 1; }
+    grep -q "CommandFromConfig" "$tmp/out21" \
+      || { echo "FAIL: the refusal did not carry the validator's own words"; cat "$tmp/out21"; exit 1; }
+    # The same rule with the sandbox object the validator requires holds.
+    sed 's|; meta.name|; command_policies.commands.<c>.from.session.sandbox.fs_read "[ ]" ; meta.name|' \
+      "$sandbox/bare.txt" > "$sandbox/boxed.txt"
+    "$lips" check --draft "$sandbox/one.sb.lips" < "$sandbox/boxed.txt" > "$tmp/out22" 2>&1 \
+      || { echo "FAIL: a render the validator accepts was refused"; cat "$tmp/out22"; exit 1; }
+    grep -q "the nono world's own gate" "$tmp/out22" \
+      || { echo "FAIL: the world's gate did not run on a sound draft"; cat "$tmp/out22"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
