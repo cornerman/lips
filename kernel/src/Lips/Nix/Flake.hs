@@ -122,12 +122,15 @@ hasSite = (/= Nothing) . siteRung
 hasSiteClaims :: Rungs -> Bool
 hasSiteClaims r = maybe False srClaims (siteRung r)
 
-flakeText :: World -> Rungs -> Text
-flakeText w rungs = T.unlines $
+-- | The compiled directory's flake. Its nixpkgs input is what 'compiledNixpkgs'
+-- chose, and the description says which, so a reader of the flake can tell
+-- whether the grounding holds where it runs.
+flakeText :: World -> Nixpkgs -> Rungs -> Text
+flakeText w nixpkgs rungs = T.unlines $
   [ "# lips addressable entry. Generated; do not edit. Running is `nix` over this dir."
   , "{"
-  , "  description = \"lips-compiled program (nixpkgs resolved ambiently)\";"
-  , "  inputs.nixpkgs.url = \"flake:nixpkgs\";"
+  , "  description = \"lips-compiled program (" <> said <> ")\";"
+  , "  inputs.nixpkgs.url = \"" <> url <> "\";"
   ]
   ++ wInputs w
   ++
@@ -151,6 +154,10 @@ flakeText w rungs = T.unlines $
   ++ [ "    };"
      , "}"
      ]
+  where
+    (url, said) = case nixpkgs of
+      Pinned ref -> (ref, "nixpkgs pinned to the schema its engine was grounded against")
+      Ambient    -> ("flake:nixpkgs", "nixpkgs resolved ambiently: its record pins no nixpkgs")
 
 -- | @packages@: the buildable things (@nix build \<x\>@ produces, does not
 -- activate). The only output lips contributes entries to: artifacts (under the

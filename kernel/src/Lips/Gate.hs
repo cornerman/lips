@@ -52,7 +52,8 @@ import           Lips.Kernel.Expect (Expect, checkArtifactValues, checkValues, e
                                      expandExpects, expectedValue, isGroundExpect)
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
-import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRungs, substrateNixpkgsVar)
+import           Lips.Nix.Flake     (Nixpkgs (..), Rungs (..), SiteRung (..), flakeText, noRungs,
+                                     substrateNixpkgsVar)
 import           Lips.World         (World (..))
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Schema        (lockFlakeRef)
@@ -72,30 +73,31 @@ import           Lips.Stage         (siteNameOf, stageBeside, withTempDir, write
 -- "not verified" must never render as verified.
 --
 -- Consequence, stated rather than hidden: for a claim-bearing program @check@
--- needs an ambient nixpkgs (the compiled flake resolves @flake:nixpkgs@, as it
--- does for every other rung). A claim-free program is untouched and @check@
--- stays nixpkgs-free for it.
-claimGate :: World -> FilePath -> Realization -> IO ()
-claimGate world file rl =
-  clauseClaimGate world file rl >> commandClaimGate world file rl
+-- needs a nixpkgs, the one the compiled flake names ('compiledNixpkgs': the
+-- grounding pin where the world grounds on the substrate, else the ambient
+-- registry), as it does for every other rung. A claim-free program is untouched
+-- and @check@ stays nixpkgs-free for it.
+claimGate :: World -> Nixpkgs -> FilePath -> Realization -> IO ()
+claimGate world nixpkgs file rl =
+  clauseClaimGate world nixpkgs file rl >> commandClaimGate world nixpkgs file rl
 
 -- | The clause claims, judged: one small derivation that evaluates the program's
 -- own definitions with the runtime's list-backed adapters. No machine boots and
 -- no binary is compiled, so this gate costs a fraction of the one below and can
 -- observe a single definition rather than a whole process.
 --
--- It is still a @nix build@, so a clause-claiming program's @check@ needs an
--- ambient nixpkgs exactly as a command-claiming one does. A program that states
+-- It is still a @nix build@, so a clause-claiming program's @check@ needs a
+-- nixpkgs exactly as a command-claiming one does. A program that states
 -- no observable is untouched and its @check@ stays nixpkgs-free.
-clauseClaimGate :: World -> FilePath -> Realization -> IO ()
-clauseClaimGate world file rl
+clauseClaimGate :: World -> Nixpkgs -> FilePath -> Realization -> IO ()
+clauseClaimGate world nixpkgs file rl
   | null (rlClauseClaims rl) = pure ()
   | otherwise =
       step ("clause claims: " <> plural (length (rlClauseClaims rl)) "claim") $
         withTempDir $ \tmp -> do
           _ <- writeSite (T.pack (languageName file)) tmp rl
           TIO.writeFile (tmp </> "flake.nix")
-            (flakeText world noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
+            (flakeText world nixpkgs noRungs { siteRung = Just (SiteRung (siteNameOf rl) True) })
           res <- try (readProcessWithExitCode "nix"
             ["build", "--no-link", "path:" <> tmp <> "#site-claims"] "")
           case res of
@@ -108,8 +110,8 @@ clauseClaimGate world file rl
                 <> " fix the sentence, or the claim that pins it."))
             Right (ExitSuccess, _, _) -> pure ()
 
-commandClaimGate :: World -> FilePath -> Realization -> IO ()
-commandClaimGate world file rl
+commandClaimGate :: World -> Nixpkgs -> FilePath -> Realization -> IO ()
+commandClaimGate world nixpkgs file rl
   | null (rlClaims rl) = pure ()
   | otherwise = do
       let machine = [ clId c | c <- rlClaims rl, clPlace c == PlaceMachine ]
@@ -129,7 +131,7 @@ commandClaimGate world file rl
           Nothing   -> pure ()   -- unreachable: the claim list is non-empty here
           Just body -> TIO.writeFile (tmp </> "claims.nix") body
         TIO.writeFile (tmp </> "flake.nix")
-          (flakeText world noRungs { hasArtifacts = not (null artNames), hasClaims = True })
+          (flakeText world nixpkgs noRungs { hasArtifacts = not (null artNames), hasClaims = True })
         res <- try (readProcessWithExitCode "nix"
           ["build", "--no-link", "path:" <> tmp <> "#claims"] "")
         case res of
@@ -349,11 +351,10 @@ mintClaimGate nixpkgs stage file rl
 -- its verdict; lips builds it and knows nothing about what it checks.
 --
 -- It builds @#gate@ of the very directory @compile@ writes ('writeCompiled'),
--- with @nixpkgs@ overridden by the locked pin, so the validator is the version
--- the mint was grounded against rather than whatever the ambient registry
--- resolves. Only @nixpkgs@ is overridden: a world input lips cannot pin (a
--- kubenix URL) would make the verdict drift, which is why such worlds declare
--- no gate yet.
+-- with @nixpkgs@ pinned to the locked ref, so the validator is the version the
+-- mint was grounded against rather than whatever the ambient registry resolves.
+-- Only @nixpkgs@ is pinned: a world input lips cannot pin (a kubenix URL) would
+-- make the verdict drift, which is why such worlds declare no gate yet.
 --
 -- A world with no @gate@ slot is untouched, and @check@ never runs this: it
 -- stays nixpkgs-free, while the world's own package build still refuses an
@@ -362,10 +363,9 @@ worldGate :: Text -> World -> FilePath -> Realization -> IO ()
 worldGate nixpkgs world file rl = case wGate world of
   Nothing -> pure ()
   Just _  -> step ("the " <> wName world <> " world's own gate") $ withTempDir $ \tmp -> do
-    _ <- writeCompiled world file tmp rl
+    _ <- writeCompiled world (Pinned nixpkgs) file tmp rl
     res <- try (readProcessWithExitCode "nix"
-      [ "build", "--no-link", "path:" <> tmp <> "#gate"
-      , "--override-input", "nixpkgs", T.unpack nixpkgs ] "")
+      [ "build", "--no-link", "path:" <> tmp <> "#gate" ] "")
     case res of
       Left e -> die (nixMissing file "run the world's own gate over it" "generate"
                       (tshow (e :: IOException)))

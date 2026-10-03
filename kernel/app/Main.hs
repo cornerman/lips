@@ -81,7 +81,8 @@ import           Lips.Generate.PiJson   (PiEvent (..), PiReply (..), abbreviate,
                                          progressEvent, resultSummary)
 import           Lips.Generate.Stats    (MintStats (..), renderStats, verdictOf)
 import           Lips.Generate.Record   (corpusText, genId, record,
-                                         recordedSchemaFor, recordedWorld, recordedWorldPin, renderStampFault, stampFaults, worldHash)
+                                         recordedSchemaFor, recordedWorld, recordedWorldPin, renderStampFault, stampFaults, worldHash,
+                                         worldSchemaPin)
 import           Lips.Kernel.Decision
 import qualified Lips.Kernel.Base       as Base
 import           Lips.Kernel.Expect     (Compat (..), Expect (..), compatSlug, readExpect, rebless, renderExpect, smallestCompat)
@@ -96,7 +97,7 @@ import           Lips.Kernel.Lang.Diagnose     (Diagnosis (..), diagnose)
 import           Lips.Kernel.Lang.Store         (EngineData (..), readLang, renderLang)
 import           Lips.Kernel.Engine.Answerable (unanswerableDemands)
 import           Lips.Kernel.Engine.Gate       (engineViolations, unholdableExpects, unholdableProblem)
-import           Lips.Nix.Flake                (runCommands)
+import           Lips.Nix.Flake                (Nixpkgs (..), compiledNixpkgs, runCommands)
 import           Lips.World                     (World (..), parseWorld)
 import           Lips.World.Resolve            (builtinNames, localWorldNames, resolveWorld, resolveWorldFrom)
 import           Lips.World.Check               (SlotFault (..), checkNixSlots)
@@ -427,13 +428,13 @@ exitUnlessEveryWorldHeld file rls = case [ w | (w, Left _) <- rls ] of
 -- sharing one directory would leave only the last one written.
 compileWorld :: Maybe FilePath -> FilePath -> FilePath -> (Text, Realization) -> IO ()
 compileWorld mout dir file (w, rl) = do
-  world   <- readRecordedWorld dir w file
+  (world, nixpkgs) <- readRecordedWorld dir w file
   -- An explicit @--out@ splits by world too, for the same reason the default
   -- path does: the flag names where the outputs go, not which one survives.
   let outDirPath = maybe (compiledPath file w) (</> T.unpack w) mout
   (artNames, rungs) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
-    writeCompiled world file outDirPath rl
+    writeCompiled world nixpkgs file outDirPath rl
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
   mapM_ note (runCommands world artNames rungs outDirPath)
 
@@ -455,7 +456,11 @@ ensureDerived file = do
 -- now and the shipped one may have moved on. When the record carries a pin, the
 -- copy must hash to it, so a compiled flake can never come from physics the
 -- record does not name.
-readRecordedWorld :: FilePath -> Text -> FilePath -> IO World
+--
+-- Returned beside the world: the nixpkgs a compiled directory of it evaluates
+-- against, read from the same record, so the schema that admitted the rules
+-- and the nixpkgs that runs them are related by one reading ('compiledNixpkgs').
+readRecordedWorld :: FilePath -> Text -> FilePath -> IO (World, Nixpkgs)
 readRecordedWorld dir w file = do
   -- The world's own record when it was minted alone, else the language-level
   -- record of the call that covered it: one mint may write for several worlds,
@@ -507,7 +512,7 @@ readRecordedWorld dir w file = do
       [ T.pack path <> " pins " <> pin <> ", and " <> T.pack wpath <> " hashes to " <> worldHash world ]
       "\8594 restore that world file, or re-mint against this one: lips generate <program>.")
     _ -> pure ()
-  pure world
+  pure (world, compiledNixpkgs world (worldSchemaPin src name))
 
 -- | @check@: verify the program's committed behavioral contract holds against
 -- its realized module, deterministically (no AI). This is the offline guardian
@@ -783,7 +788,8 @@ checkDraft running restart file = do
       program <- readProgramOrDie file
       forM_ ws $ \w -> do
         rl <- either die pure =<< checkWorld True False (dtLangDir t) (wName w) file program
-        clauseClaimGate w file rl
+        -- Ambient: the draft has no record yet to read a pin from (TODO.md, the schema pin item).
+        clauseClaimGate w Ambient file rl
         -- The glue gate generate runs, said in the door while the mint can still
         -- add the claim; check alone only reports unpinned glue.
         eng <- loadLangOrDie (dtLangDir t) (wName w) file
@@ -879,8 +885,8 @@ expectGate contract claims dir w file eng rl = do
               fs
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
   when claims $ do
-    world <- readRecordedWorld dir w file
-    claimGate world file rl
+    (world, nixpkgs) <- readRecordedWorld dir w file
+    claimGate world nixpkgs file rl
   pure rl
 
 -- | The facts a world declares it cannot place, in the words of its own
@@ -1428,7 +1434,9 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   when (isJust (wGate world)) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
     forM_ validated $ \(f, rl) -> worldGate nixpkgs world f rl
-  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world f rl)
+  -- Ambient: a mint's clause claims are not yet held to the pin it records,
+  -- unlike its artifact and command claims (TODO.md, the schema pin item).
+  forM_ validated $ \(f, rl) -> lift (clauseClaimGate world Ambient f rl)
   unless (null claims) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
     forM_ validated $ \(f, rl) -> mintClaimGate nixpkgs (stage rl) f rl

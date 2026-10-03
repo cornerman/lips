@@ -4450,25 +4450,38 @@ main = hspec $ do
     it "stays ambient for a record that predates the pin" $
       compiledNixpkgs (shippedWorld "nixos") Nothing `shouldBe` Ambient
 
+    it "writes the pin as the flake's nixpkgs input, and says so" $ do
+      let t = flakeText (shippedWorld "nixos") (Pinned pin) noRungs
+      t `shouldSatisfy` T.isInfixOf ("inputs.nixpkgs.url = \"" <> pin <> "\";")
+      t `shouldNotSatisfy` T.isInfixOf "flake:nixpkgs"
+      t `shouldSatisfy` T.isInfixOf "nixpkgs pinned to the schema"
+
+    -- Ambient is a fact about the record, so the flake states it rather than
+    -- letting a reader assume the grounding holds.
+    it "writes the registry as the input when nothing pins it, and says why" $ do
+      let t = flakeText (shippedWorld "nixos") Ambient noRungs
+      t `shouldSatisfy` T.isInfixOf "inputs.nixpkgs.url = \"flake:nixpkgs\";"
+      t `shouldSatisfy` T.isInfixOf "nixpkgs resolved ambiently"
+
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do
-      let txt = flakeText (shippedWorld "nixos") noRungs { hasArtifacts = True, hasClaims = True }
+      let txt = flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = True, hasClaims = True }
       txt `shouldSatisfy` T.isInfixOf "claims = (pkgsFor system).linkFarmFromDrvs \"claims\""
       txt `shouldSatisfy` T.isInfixOf "import ./claims.nix { pkgs = pkgsFor system; }"
 
     it "leaves a claim-free flake free of claim vocabulary" $
-      flakeText (shippedWorld "nixos") noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
+      flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = True, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "claims"
 
     -- artifact.nix is always written, so the shell reaches it without asking
     -- whether the program declared artifacts: one less conditional in the text.
     it "the nixos shell references artifact.nix unconditionally" $
-      flakeText (shippedWorld "nixos") noRungs `shouldSatisfy`
+      flakeText (shippedWorld "nixos") Ambient noRungs `shouldSatisfy`
         T.isInfixOf "builtins.attrValues (import ./artifact.nix"
 
     -- The harness is a world-neutral skeleton plus the world's own slots, so
     -- the four built-ins must reproduce what the four Haskell arms produced.
     it "the assembled nixos flake still carries vm, shell and serviceShells" $ do
-      let t = flakeText (shippedWorld "nixos") noRungs
+      let t = flakeText (shippedWorld "nixos") Ambient noRungs
       mapM_ (\s -> t `shouldSatisfy` T.isInfixOf s)
         [ "builds = ", "vm = (builds system).vm", "nixosModules.default"
         , "default = b.shell;" ]
@@ -4480,10 +4493,10 @@ main = hspec $ do
       let w = either (error . T.unpack) id (parseWorld
             ("format: 1\nworld: w\nmodule-attr: wModules\n"
               <> "--- preamble ---\nP\n--- schema ---\nE\n"))
-      flakeText w noRungs { hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
-      flakeText w noRungs `shouldNotSatisfy` T.isInfixOf "builds ="
-      flakeText w noRungs `shouldNotSatisfy` T.isInfixOf "packages"
-      flakeText w noRungs `shouldSatisfy` T.isInfixOf "wModules.default = import ./default.nix;"
+      flakeText w Ambient noRungs { hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
+      flakeText w Ambient noRungs `shouldNotSatisfy` T.isInfixOf "builds ="
+      flakeText w Ambient noRungs `shouldNotSatisfy` T.isInfixOf "packages"
+      flakeText w Ambient noRungs `shouldSatisfy` T.isInfixOf "wModules.default = import ./default.nix;"
 
     -- The gate is the world's own verdict over its render, built by the mint
     -- and by CI under ONE lips-owned name, so neither has to learn which of a
@@ -4495,13 +4508,13 @@ main = hspec $ do
               <> "--- builds ---\n      builds = system: { p = null; };\n"
               <> "--- packages ---\n        p = (builds system).p;\n"
               <> "--- gate ---\n(builds system).p\n"))
-      flakeText w noRungs `shouldSatisfy` T.isInfixOf "        gate = (builds system).p;"
-      mapM_ (\(n, _) -> flakeText (shippedWorld n) noRungs `shouldNotSatisfy` T.isInfixOf "gate =")
+      flakeText w Ambient noRungs `shouldSatisfy` T.isInfixOf "        gate = (builds system).p;"
+      mapM_ (\(n, _) -> flakeText (shippedWorld n) Ambient noRungs `shouldNotSatisfy` T.isInfixOf "gate =")
         builtinWorlds
 
     -- A sandbox claim needs no machine, so the rung is world-neutral.
     it "offers the rung in a world with no machine to boot" $
-      flakeText (shippedWorld "kubenix") noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
+      flakeText (shippedWorld "kubenix") Ambient noRungs { hasArtifacts = False, hasClaims = True } `shouldSatisfy` T.isInfixOf "claims"
 
     it "prints the build command only when the program states claims" $ do
       runCommands (shippedWorld "nixos") [] noRungs { hasClaims = True } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#claims")
@@ -4510,8 +4523,8 @@ main = hspec $ do
     -- The site rung is the program's own behaviour, so it appears exactly when
     -- the program states some and never otherwise.
     it "offers the site rung, and its run command, only for a program with behaviour" $ do
-      flakeText (shippedWorld "nixos") noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
-      flakeText (shippedWorld "nixos") noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
+      flakeText (shippedWorld "nixos") Ambient noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldSatisfy` T.isInfixOf "./site/build.nix"
+      flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = False, hasClaims = False } `shouldNotSatisfy` T.isInfixOf "site"
       runCommands (shippedWorld "nixos") [] noRungs { siteRung = Just (SiteRung "\"tool\"" False) } "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site")
       runCommands (shippedWorld "nixos") [] noRungs { hasClaims = False } "/tmp/out" `shouldNotSatisfy` any (T.isInfixOf "#site")
 
@@ -4520,8 +4533,8 @@ main = hspec $ do
     -- never be printed as if it verified something.
     it "offers the judging rung only when the program states claims over its clauses" $ do
       let withClaims = noRungs { siteRung = Just (SiteRung "\"tool\"" True) }
-      flakeText (shippedWorld "nixos") withClaims `shouldSatisfy` T.isInfixOf "site-claims"
-      flakeText (shippedWorld "nixos") noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
+      flakeText (shippedWorld "nixos") Ambient withClaims `shouldSatisfy` T.isInfixOf "site-claims"
+      flakeText (shippedWorld "nixos") Ambient noRungs { siteRung = Just (SiteRung "\"tool\"" False) } `shouldNotSatisfy` T.isInfixOf "site-claims"
       runCommands (shippedWorld "nixos") [] withClaims "/tmp/out" `shouldSatisfy` any (T.isInfixOf "#site-claims")
 
   describe "claims.nix (the experiments, as nix)" $ do
@@ -6457,7 +6470,7 @@ main = hspec $ do
     -- config, carrying that unit's environment. Derived inside nix from the
     -- same evaluation, so lips knows no unit name.
     it "nixos exposes a shell per unit the program adds, holding its env" $ do
-      let t = flakeText (shippedWorld "nixos") noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "nixos") Ambient noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "baseServices", "systemd.services", "genAttrs", "subtractLists"
         , "// b.serviceShells", "service-${u}", "env = cfg.systemd.services" ]
@@ -6466,7 +6479,7 @@ main = hspec $ do
       mapM_ (\c -> ls `shouldSatisfy` T.isInfixOf c)
         [ "nix develop path:/tmp/out#service-<unit>", "nix flake show" ]
     it "kubenix exposes the module and kubenix's own rendered outputs" $ do
-      let t = flakeText (shippedWorld "kubenix") noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "kubenix") Ambient noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "kubenixModules.default", "kubenix.evalModules", "kubenix.modules.k8s"
         , "config.kubernetes", "cfg.resultYAML", "cfg.result", "kubectl" ]
@@ -6479,7 +6492,7 @@ main = hspec $ do
         , "nix build", "#manifest-json", "nix develop" ]
       ls `shouldNotSatisfy` T.isInfixOf "#vm"
     it "terranix exposes the module and terranix's own config.tf.json" $ do
-      let t = flakeText (shippedWorld "terranix") noRungs { hasArtifacts = False, hasClaims = False }
+      let t = flakeText (shippedWorld "terranix") Ambient noRungs { hasArtifacts = False, hasClaims = False }
       mapM_ (\c -> t `shouldSatisfy` T.isInfixOf c)
         [ "terranixModules.default", "terranix.lib.terranixConfiguration"
         , "config = ", "opentofu" ]
