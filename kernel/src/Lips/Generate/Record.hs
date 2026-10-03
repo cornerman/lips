@@ -26,6 +26,7 @@ module Lips.Generate.Record
   , recordedWorld
   , recordedWorldPin
   , recordedSchemaFor
+  , worldSchemaPin
   , StampFault (..)
   , stampFaults
   , renderStampFault
@@ -282,6 +283,19 @@ recordedSchemaFor src world = listToMaybe
   where
     ls = T.lines src
     tails' xs = case xs of { [] -> [[]]; (_ : t) -> xs : tails' t }
+
+-- | The schema pin that governs ONE world, in any record shape: the pin after
+-- that world's @world:@ line, or for a record naming no world at all (written
+-- before worlds were data, one world by @target:@ slug) its one @schema:@ line.
+-- A record naming other worlds but not this one names no pin for it.
+--
+-- Read from the HEADER only: the body embeds the mint prompt, the transcript
+-- and the reply, any of which may hold a line starting @schema:@.
+worldSchemaPin :: Text -> Text -> Maybe Text
+worldSchemaPin src w
+  | any (T.isPrefixOf "world:") hdr = recordedSchemaFor (T.unlines hdr) w
+  | otherwise                       = recordedSchema (T.unlines hdr)
+  where hdr = takeWhile (not . T.isPrefixOf "--- ") (T.lines src)
 
 recordedWorld :: Text -> Either Text (Text, Maybe Text)
 recordedWorld src

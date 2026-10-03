@@ -73,7 +73,8 @@ import qualified Lips.Cli.Output as Out
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
 import Lips.Generate.Record (StampFault (..), contentPin, corpusText, genId, record, recordedProgram,
-                             recordedPrograms, recordedSchema, recordedWorld, recordedWorldPin, renderStampFault, stampFaults)
+                             recordedPrograms, recordedSchema, recordedWorld, recordedWorldPin, renderStampFault, stampFaults,
+                             worldSchemaPin)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
 import Lips.Kernel.Lang.Diagnose
@@ -3458,6 +3459,24 @@ main = hspec $ do
         `shouldBe` Just "options-json:cafe0123"
       -- a record written before the pin existed simply has none
       recordedSchema "model: m\ntarget: nixos\n" `shouldBe` Nothing
+
+    -- compile reads the pin to decide which nixpkgs a compiled directory
+    -- evaluates against, so each world must get ITS pin, in every record shape.
+    it "reads the pin that governs one world, in every record shape" $ do
+      let joint = record "m" [("nixos", "h1", "s1"), ("kubenix", "h2", "s2")]
+                         "high" 0.7 "fresh" "sp" "prog" "tt" "reply"
+      worldSchemaPin joint "nixos"   `shouldBe` Just "s1"
+      worldSchemaPin joint "kubenix" `shouldBe` Just "s2"
+      -- a record from before worlds were data names one world by target: slug
+      worldSchemaPin "model: m\ntarget: nixos\nschema: s0\n--- system prompt ---\n" "nixos"
+        `shouldBe` Just "s0"
+      worldSchemaPin "model: m\nconfidence-threshold: 0.7\n" "nixos" `shouldBe` Nothing
+
+    -- The body embeds a prompt, a transcript and a reply, which must never
+    -- answer a header question.
+    it "never takes a pin out of the record's body" $
+      worldSchemaPin "model: m\n--- system prompt ---\nschema: github:o/r/x\n" "nixos"
+        `shouldBe` Nothing
 
     it "names the option schema the mint was grounded against" $
       -- A reader (and the re-mint that wants the same grounding) must be able to
