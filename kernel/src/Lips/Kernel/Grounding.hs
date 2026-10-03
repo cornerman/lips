@@ -5,11 +5,13 @@
 -- Every assertion lips emits is grounded by something outside lips, or by
 -- nothing. A target option is vouched by the world's schema, which defines its
 -- meaning and type. A clause is vouched by the contract set and the subset gate.
--- A claim is vouched by the author, who stated the observable. An ARTIFACT
--- ARGUMENT is vouched by nothing lips can check: no schema declares
--- @args.text@, so a shell script minted into one is foreign text that only the
--- builder's own conventions govern. A STAGED SOURCE TREE is the same defect at
--- file scale.
+-- A claim is vouched by the author, who stated the observable. GLUE -- an
+-- argument to somebody else's builder, marked kind 'Glue' when the rule emits
+-- it -- is foreign text only the builder's conventions govern, and comes in two
+-- grades. AUTHOR glue carries only the program's words, so the author vouches
+-- for it. MINT glue carries text the mint wrote (a shell line in @args.text@),
+-- vouched by nothing lips can read, so it must at least be RUN by a claim. A
+-- STAGED SOURCE TREE is the same defect at file scale, refused at generate.
 --
 -- A schema vouches for a NAME and a TYPE, never for the text inside a string. So
 -- there is a fifth number beside the four classes: how many words of literal text
@@ -18,8 +20,8 @@
 -- called it a vouched option assignment, which is true of the option and false of
 -- the pipeline.
 --
--- This module counts, names the members of the two unvouched classes, and
--- measures mint-written text. It judges nothing and classifies nothing by shape,
+-- This module counts, names the members of the unvouched classes and the mint
+-- glue no claim runs, and measures mint-written text. It judges nothing and classifies nothing by shape,
 -- because guessing which strings are "really programs" is exactly the invention
 -- lips refuses; it reports where the grounding runs out and lets a human read.
 --

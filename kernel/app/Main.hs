@@ -667,7 +667,7 @@ checkWorld contract claims dir w file program = do
         -- exactly as a local one is.
         rl <- expectGate contract claims dir w file eng program (composeWith imports rl0)
         -- What vouches for each assertion, always printed. An unvouched
-        -- assertion (foreign text in an artifact argument, a staged source tree)
+        -- assertion (mint glue in a builder argument, a staged source tree)
         -- is the one thing lips cannot check, so the count is stated on every
         -- run rather than discovered later by a reviewer reading generated code.
         let ground = groundingOf file eng rl
