@@ -79,7 +79,7 @@ strongest; inventing mechanism is not what it does.
 
 `generate` needs the `pi` binary on your PATH, authenticated against a provider.
 Mint quality varies by model, and lips records which model wrote what. Budget a
-strong model for any program that has source built for it.
+strong model for any artifact-bearing program.
 
 Composing two lips languages (one program using another's exports) is designed
 but not yet wired through the mint. `TODO.md` tracks it, and `DESIGN.md` §13
