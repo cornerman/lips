@@ -946,6 +946,26 @@ but the loop around it is incomplete; "missing" means specced, not built.
   with no pin and fails on a pin nix cannot fetch. `compile` still fetches nothing and stays bit-identical:
   the pin is text in the committed record.
 
+  Every other build a mint runs takes the same value (2026-10): the artifact
+  build, the command claims and the world's own gate, in `gateOneWorld` and in
+  the draft door, all build against `compiledNixpkgs world pin`, rendered by one
+  `Flake.nixpkgsRef` that also writes the flake's input. `Gate.artifactNixpkgs`,
+  which locked the baked `LIPS_NIXPKGS_FLAKE` for those three, is gone, so a
+  mint grounded with `--schema X` builds against X. A world whose pin is not the
+  substrate (home-manager, kubenix, terranix) or a content pin
+  (`LIPS_OPTIONS_JSON`) now builds ambient at mint time, as `check` and the
+  compiled flake already did: ambient worlds are ambient everywhere, and their
+  mint-time builds need the `flake:nixpkgs` registry rather than the baked rev.
+  A substrate mint with no `--schema` still needs `LIPS_NIXPKGS_FLAKE`, and
+  `ensureOptionSchema` refuses before any build when it is unset. `check` needed
+  no change: its claim gates already build the flake written from the record's
+  pin, and it runs no artifact or world gate. Proof scope, stated honestly:
+  `just test-draft` proves the door, where the nono world's gate holds on the
+  pin generate hands over and fails on `path:<tmp>/no-such-nixpkgs`, naming it.
+  generate's own artifact, command-claim and world gates are covered by
+  construction only (one `nixpkgs` binding shared with the clause claims); no
+  stub-`pi` mint exercises them.
+
   Prevention, not comparison: with the evaluator equal to the grounding there
   is nothing left to warn about. The trigger is domain-blind: a world whose
   `schema-pin:` header names the substrate var `LIPS_NIXPKGS_FLAKE` grounds on
@@ -965,9 +985,7 @@ but the loop around it is incomplete; "missing" means specced, not built.
   following unstable differs on almost every eval, so a warning there is noise;
   README now says an imported module evaluates under the importer's nixpkgs),
   and per-option fingerprints (they cannot work for nono, whose schema is
-  top-level only). Still open in TODO 2a: kubenix and terranix inputs float,
-  and a mint's artifact, command-claim and world-gate builds ignore
-  `--schema`.
+  top-level only). Still open in TODO 2a: kubenix and terranix inputs float.
 
 - **A world's own gate runs at mint time.** A world file may now carry an
   optional `--- gate ---` slot: one derivation, written in the scope of the
@@ -3696,11 +3714,11 @@ but the loop around it is incomplete; "missing" means specced, not built.
   not executable has never been observed, so the check waits for the first one
   rather than being written against a guess.
 
-  The nixpkgs it builds against is lips's own baked pin, one authority for every
-  world, because builders live in nixpkgs while a world's schema pin may name
-  home-manager, kubenix or terranix -- or no flake at all (`LIPS_OPTIONS_JSON`
-  pins by content). Resolved only when a mint declares an artifact, so a
-  configuration-only mint pays nothing and needs no pin.
+  The nixpkgs it builds against is the one the compiled flake names
+  (`compiledNixpkgs` over the pin the mint records; see "A compiled directory
+  runs the nixpkgs its rules were grounded against"): the grounding pin where the
+  world grounds on the substrate, else the ambient registry, exactly as `check`
+  and the compiled directory resolve it.
 
   Verified in both directions with a stub model gateway (a canned engine handed
   to `generate` through a `pi` on `PATH`, so the plumbing is exercised offline

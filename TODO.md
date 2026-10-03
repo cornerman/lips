@@ -55,12 +55,6 @@ tracks only what is still open.
         `<schema-pin>` hole in the world's `--- inputs ---` slot, filled by
         compile. World copies are hash-sealed in records, so a committed engine
         gains it only on its next re-mint.
-      - A MINT'S BUILDS IGNORE `--schema`. `Gate.artifactNixpkgs` builds
-        artifacts, command claims and the world gate against the baked
-        `LIPS_NIXPKGS_FLAKE`, so a mint grounded with `--schema X` observes
-        another nixpkgs than X. Only a mint's clause claims follow the pin it
-        records (`LIPS_MINT_PINS` in the draft door, the grounding in
-        generate); the other three should take the same pin.
       - AN IMPORTED MODULE EVALUATES UNDER THE IMPORTER'S NIXPKGS, deliberately
         unchecked: `lib.modulesFromDir` hands the module to the consumer's
         `pkgs`, as every third-party module is. A rev comparison there would
