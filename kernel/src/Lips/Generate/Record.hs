@@ -22,6 +22,7 @@ module Lips.Generate.Record
   , corpusText
   , recordedProgram
   , recordedPrograms
+  , recordedReply
   , recordedSchema
   , recordedWorld
   , recordedWorldPin
@@ -321,6 +322,16 @@ recordedWorld src
 -- which the caller treats as "nothing to compare" rather than as a failure.
 recordedProgram :: FilePath -> Text -> Maybe Text
 recordedProgram file rec = lookup (takeFileName file) (recordedPrograms rec)
+
+-- | The raw reply a record holds, verbatim: everything after its @raw reply@
+-- marker, the record's last block. Found after the transcript marker, since the
+-- record writes its blocks in a fixed order and an earlier block (the system
+-- prompt) may quote marker-shaped text. 'Nothing' for text that is no record.
+recordedReply :: Text -> Maybe Text
+recordedReply rec = case break (== "--- raw reply ---") afterTranscript of
+  (_, _ : reply) -> Just (T.unlines reply)
+  _              -> Nothing
+  where afterTranscript = dropWhile (/= "--- tool transcript ---") (T.lines rec)
 
 -- | EVERY program section a record holds: @(recorded file name, its text)@.
 -- The record stores the corpus verbatim, so this is a read, not a

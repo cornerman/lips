@@ -36,6 +36,11 @@ module Lips.Generate.Minting
   , unplaceableClaims
   , appendOnlyViolations
   , replyLinesOf
+  , Basis (..)
+  , basisReply
+  , reportUnitOf
+  , ReportFault (..)
+  , reportFault
   , mergeReply
   , touchedIds
   , mergeGrammar
@@ -336,6 +341,106 @@ replyLinesOf tag src = T.unlines
     -- crystallizing.
     keyword ("lang" : "pattern" : _) = ["pattern"]
     keyword _                        = []
+
+-- | What a patch is answered against: the language as committed. The grammar
+-- and each world's rules in their stored form, each world's committed @.expect@
+-- contract, and the report the governing record's reply carried. All of it,
+-- because the model can only leave unmentioned what it can see: shown the
+-- grammar and rules alone, a patch wrote its report blind and restated a
+-- contract it could not see as if it were new.
+data Basis = Basis
+  { bGrammar :: Maybe Text
+  , bWorlds  :: [(Text, Maybe Text, Maybe Text)]  -- ^ world, its rules, its contract
+  , bReport  :: Maybe Text                        -- ^ the committed report unit, verbatim
+  }
+
+-- | A basis in the line format a mint answers in, which is also what
+-- 'mergeReply' merges a patch into, so an id the patch leaves unmentioned (a
+-- rule, an expect, the report) is inherited exactly as committed. 'Nothing'
+-- where no grammar and no rules are committed: a contract or a report alone is
+-- no engine to grow from. Lines are tagged by world only when there are
+-- several worlds, as 'replyLinesOf' does.
+basisReply :: Basis -> Maybe Text
+basisReply b
+  | null engineParts = Nothing
+  | otherwise = Just (T.concat (engineParts ++ expectParts ++ maybe [] pure (bReport b)))
+  where
+    tagOf w = if length (bWorlds b) > 1 then Just w else Nothing
+    engineParts = maybe [] (\t -> [replyLinesOf Nothing t]) (bGrammar b)
+                    ++ [ replyLinesOf (tagOf w) t | (w, Just t, _) <- bWorlds b ]
+    expectParts = [ expectReplyLines (tagOf w) t | (w, _, Just t) <- bWorlds b ]
+
+-- | A committed @.expect@ in reply format. A contract line is already a reply
+-- line minus its confidence (@a1 expect \<path\> from \<subject\>@), so the id
+-- is split off and the rest kept byte for byte: a quoted template may hold runs
+-- of spaces a word split would collapse.
+expectReplyLines :: Maybe Text -> Text -> Text
+expectReplyLines tag src = T.unlines
+  [ T.unwords ([ "1.0", i ] ++ maybe [] (\w -> ["@" <> w]) tag) <> rest
+  | l <- T.lines src
+  , let s = T.strip l
+  , not (T.null s), not ("#" `T.isPrefixOf` s)
+  , let (i, rest) = T.breakOn " " s ]
+
+-- | The report unit of a reply, verbatim: its heredoc header, body and
+-- terminator. Read from a committed record's raw reply, which is the only place
+-- the report survives as written (the README renders it, and a rendering is not
+-- reversible).
+reportUnitOf :: Text -> Maybe Text
+reportUnitOf reply = case filter isReportUnit (replyUnits reply) of
+  (u : _) -> Just (T.unlines u)
+  []      -> Nothing
+
+-- | Is this unit a report block? A report is shared, so it carries no tag, and
+-- its header is @\<confidence\> \<id\> report \<\<\<lips@.
+isReportUnit :: [Text] -> Bool
+isReportUnit (l : _) = isJust (blockHeader l) && kindOf l == Just "report"
+isReportUnit []      = False
+
+-- | The kind word of a unit's first line: the token after the confidence, the
+-- id and an optional @\@world@ tag.
+kindOf :: Text -> Maybe Text
+kindOf l = case T.words l of
+  (c : _ : rest) | isConfidenceTok c -> case dropWhile ("@" `T.isPrefixOf`) rest of
+    (k : _) -> Just k
+    []      -> Nothing
+  _ -> Nothing
+
+-- | Why a patch's report cannot stand. A language has ONE account, and after a
+-- patch it must still describe the engine.
+data ReportFault
+  = TwoReports [Text]   -- ^ the merged engine carries several reports (their ids)
+  | StaleReport [Text]  -- ^ the patch changed these ids and left the report as it was
+  deriving (Eq, Show)
+
+-- | The structural guard on a patch's report, judged identically by generate
+-- and the draft door. Two reports would leave which one is the language's
+-- account to whichever is read first. A patch that changes what the engine
+-- MEANS (a pattern, rule, demand, merge, ignore or expect whose text differs
+-- from the basis, or is new) while the basis carries a report must restate it,
+-- or the account describes an engine that no longer exists; a prompt asking
+-- for that is a plea, this is a gate. A restatement that changes nothing, at
+-- whatever confidence and spacing, is no change.
+reportFault :: Maybe Text -> Text -> Maybe ReportFault
+reportFault mbasis patch
+  | length reports > 1 = Just (TwoReports reports)
+  | Just b <- mbasis, any isReportUnit (replyUnits b)
+  , not (any isReportUnit patchUnits)
+  , changed@(_ : _) <- changedIds b = Just (StaleReport changed)
+  | otherwise = Nothing
+  where
+    merged = maybe patch (`mergeReply` patch) mbasis
+    reports = [ i | u <- replyUnits merged, isReportUnit u, Just i <- [unitId u] ]
+    patchUnits = replyUnits patch
+    changedIds b =
+      [ i | u <- patchUnits, Just i <- [unitId u], carriesMeaning u
+          , lookup i [ (j, norm v) | v <- replyUnits b, Just j <- [unitId v] ] /= Just (norm u) ]
+    carriesMeaning (l : _) = kindOf l `elem` map Just ["pattern", "match", "merge", "demand", "ignore", "expect"]
+    carriesMeaning []      = False
+    -- The confidence is the model's, not the engine's, and spacing is layout.
+    norm = map (T.unwords . T.words) . zipWith dropConf [0 :: Int ..]
+    dropConf 0 l = T.unwords (drop 1 (T.words l))
+    dropConf _ l = l
 
 -- | The engine a PATCH means: every inherited line, with the ones the patch
 -- restates dropped, then the patch itself. An id the patch does not mention is

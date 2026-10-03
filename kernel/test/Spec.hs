@@ -33,7 +33,8 @@ import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
 import Lips.Report                 (committedSourceReport, emptySubmission, heldWorldReport, inferredWorldsLine, mintedSourceReport, noSubmission, severalWorldsReport, unansweredReport, unpinnedGlueReport, unportableReport)
-import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, mergeReply, replyLinesOf, touchedIds)
+import Lips.Generate.Minting       (Basis (..), ReportFault (..), appendOnlyViolations, basisReply, mergeGrammar, mergeReply,
+                                    replyLinesOf, reportFault, reportUnitOf, touchedIds)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
 import Lips.Kernel.Engine.Typing (wordTypes)
@@ -73,7 +74,7 @@ import qualified Lips.Cli.Output as Out
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
 import Lips.Generate.Record (StampFault (..), contentPin, corpusText, genId, record, recordedProgram,
-                             recordedPrograms, recordedSchema, recordedWorld, recordedWorldPin, renderStampFault, stampFaults,
+                             recordedPrograms, recordedReply, recordedSchema, recordedWorld, recordedWorldPin, renderStampFault, stampFaults,
                              worldSchemaPin)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
@@ -5892,6 +5893,61 @@ main = hspec $ do
       it "merging the same patch twice is merging it single" $ do
         let single = mergeReply (replyLinesOf Nothing committed) block
         mergeReply single block `shouldBe` single
+
+  -- A patch is answered against the engine as COMMITTED, so the model must see
+  -- all of it: a patch shown only the grammar and rules wrote its report blind
+  -- (sonnet-5 replaced the language account with "no changes were needed") and
+  -- restated a contract it could not see as if it were new (opus-5).
+  describe "the basis a patch is answered against (Lips.Generate.Minting)" $ do
+    let grammar = "p1 meta lang.pattern.p1 stated \"run <n> => fact job.n \\\"<n>\\\"\" @gen:aaa\n"
+        rules = "r1 meta engine.rule.r1 stated \"match fact job.n => services.job.n \\\"<value:int>\\\"\" @gen:aaa\n"
+        expect = "a1 expect services.job.n from job.n\na2 expect services.job.m from job.n is \"x  <value>\"\n"
+        reportU = "0.95 d1 report <<<lips\nThe job language.\nlips>>>\n"
+        rawReply = "0.95 p1 pattern run <n> => fact job.n \"<n>\"\n" <> reportU
+        one = Basis (Just grammar) [("nixos", Just rules, Just expect)] (Just reportU)
+        basis = maybe (error "no basis") id (basisReply one)
+    it "reads the report back out of a record's raw reply, verbatim" $ do
+      let r = record "m" [("nixos", "h", "s")] "high" 0.7 "fresh" "sp" "c" "tt" rawReply
+      (recordedReply r >>= reportUnitOf) `shouldBe` Just reportU
+      recordedReply "model: m\n" `shouldBe` Nothing
+      reportUnitOf "0.9 p1 pattern x => fact y \"z\"\n" `shouldBe` Nothing
+    it "carries the contract and the report beside the grammar and rules" $ do
+      let ls = T.lines basis
+      ls `shouldSatisfy` elem "1.0 a1 expect services.job.n from job.n"
+      -- The rest of an expect line is kept byte for byte: a quoted template may
+      -- hold runs of spaces a word split would collapse.
+      ls `shouldSatisfy` elem "1.0 a2 expect services.job.m from job.n is \"x  <value>\""
+      basis `shouldSatisfy` T.isSuffixOf reportU
+    it "tags the contract per world when the run writes for several" $ do
+      let two = Basis (Just grammar) [("nixos", Just rules, Just expect), ("kubenix", Just rules, Nothing)] Nothing
+      maybe "" id (basisReply two) `shouldSatisfy` T.isInfixOf "1.0 a1 @nixos expect services.job.n"
+    it "is no basis at all where nothing is committed" $
+      basisReply (Basis Nothing [("nixos", Nothing, Just expect)] (Just reportU)) `shouldBe` Nothing
+    it "a patch that leaves d1 and the contract unmentioned inherits both" $ do
+      let (errs, cands) = parseEngineCandidates ["nixos"] (mergeReply basis "0.9 q1 demand job.n \"how many?\"\n")
+          items = map icItem cands
+      errs `shouldBe` []
+      reportOf items `shouldBe` Just "The job language."
+      map exId (expectsOf items) `shouldBe` ["a1", "a2"]
+    it "refuses a second report beside the inherited one, naming both" $
+      reportFault (Just basis) "0.9 d2 report <<<lips\nAnother.\nlips>>>\n"
+        `shouldBe` Just (TwoReports ["d1", "d2"])
+    it "refuses a patch that changes the engine and leaves its account as it was" $ do
+      reportFault (Just basis) "0.9 r1 match fact job.n => services.job.k \"<value:int>\"\n"
+        `shouldBe` Just (StaleReport ["r1"])
+      reportFault (Just basis) "0.9 a3 expect services.job.n from job.n\n"
+        `shouldBe` Just (StaleReport ["a3"])
+    it "admits a changed engine whose patch restates the report" $
+      reportFault (Just basis) ("0.9 r1 match fact job.n => services.job.k \"<value:int>\"\n"
+                                  <> "0.9 d1 report <<<lips\nThe job language, now k.\nlips>>>\n")
+        `shouldBe` Nothing
+    -- Restating a line unchanged changes nothing the account describes, so it
+    -- needs no new report (opus-5 restated a1-a6 byte for byte).
+    it "admits a restatement that changes nothing, whatever its confidence" $
+      reportFault (Just basis) "0.8 a1 expect services.job.n   from job.n\n" `shouldBe` Nothing
+    it "asks nothing of a patch whose basis carries no report" $
+      reportFault (basisReply one { bReport = Nothing }) "0.9 r1 match fact job.n => x \"<value:int>\"\n"
+        `shouldBe` Nothing
 
   describe "mint stats (Lips.Generate.Stats)" $ do
     it "renders one key-per-line record a human and a grep can both read" $
