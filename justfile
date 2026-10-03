@@ -445,6 +445,18 @@ test-draft:
       || { echo "FAIL: the refusal did not name the joint command"; cat "$tmp/out30"; exit 1; }
     grep -q "lips generate -t kubenix $tmp/report.cron.lips" "$tmp/out30" \
       || { echo "FAIL: the refusal did not name the single-world command"; cat "$tmp/out30"; exit 1; }
+    # Programs of two languages are refused as such FIRST: no world question
+    # can be asked of a call that is not one language. cron holds several
+    # worlds, so a late language check would be hidden behind that refusal.
+    cp -r examples/policy examples/dev.policy.lips "$tmp/"
+    if env -i PATH=/nonexistent HOME="$tmp" "$lips" generate "$tmp/report.cron.lips" "$tmp/dev.policy.lips" > "$tmp/out31" 2>&1; then
+      echo "FAIL: generate accepted programs of two languages"; cat "$tmp/out31"; exit 1
+    fi
+    grep -q "ONE language at a time" "$tmp/out31" \
+      || { echo "FAIL: the language mix was not the refusal"; cat "$tmp/out31"; exit 1; }
+    if grep -q "which worlds" "$tmp/out31"; then
+      echo "FAIL: a world question came before the language mix"; cat "$tmp/out31"; exit 1
+    fi
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).

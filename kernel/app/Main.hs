@@ -148,6 +148,15 @@ main = do
                    []      -> "."
           base = takeDirectory rep
           lang = T.pack (languageName rep)
+      -- One language per invocation: the grammar is shared, so mixed extensions
+      -- would mean two languages. Refused first, since every later question
+      -- (which worlds, which grammar) is asked of ONE language folder.
+      case [ f | f <- goFiles go, languageName f /= languageName rep ] of
+        (_ : _) -> die (report
+          "lips generate mints ONE language at a time, but these programs are not all the same language."
+          [ T.pack f <> " is ." <> T.pack (languageName f) | f <- goFiles go ]
+          ("→ generate the ." <> lang <> " programs together, other languages separately."))
+        [] -> pure ()
       -- With no -t, the worlds come from the language folder, so a re-mint
       -- writes back what is committed and never grows a world nobody named.
       held <- mintedWorlds (langDir rep) rep
@@ -1052,14 +1061,6 @@ generate worlds inherited mschema confidence compat fresh verbose mmodel thinkin
     let lang   = languageName rep
         dir    = langDir rep
         wnames = map wName worlds
-    -- One language per invocation: the grammar is shared, so mixed extensions
-    -- would mean two languages. Fail loud.
-    case [ f | f <- files, languageName f /= lang ] of
-      (_ : _) -> die (report
-        "lips generate mints ONE language at a time, but these programs are not all the same language."
-        [ T.pack f <> " is ." <> T.pack (languageName f) | f <- files ]
-        ("→ generate the ." <> T.pack lang <> " programs together, other languages separately."))
-      [] -> pure ()
     -- What this mint grows from, named by the record the committed engine was
     -- stamped from: an inherited engine steers the reply as much as the prompt
     -- does, so it is pinned like every other input (invariant 6). Read from the
