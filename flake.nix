@@ -251,14 +251,12 @@
         lipsModules-eval =
           let
             mods  = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
-            # Both worlds, so EVERY committed example is compiled by this check.
-            # Forcing only nixosModules left the home-manager ones (all four
-            # singleton <language>.lips programs) unevaluated, which is how a
-            # broken filename rule survived here.
-            paths = builtins.attrValues mods.nixosModules
-                    ++ builtins.attrValues mods.homeManagerModules
-                    ++ builtins.attrValues mods.kubenixModules
-                    ++ builtins.attrValues mods.terranixModules;
+            # EVERY world attribute the helper produced, found by looking rather
+            # than by name, so every committed example is compiled by this check
+            # -- a house world (examples/nono.world's nonoModules) included.
+            # Naming the four shipped attributes left nonoModules unevaluated,
+            # as forcing only nixosModules once left the home-manager ones.
+            paths = builtins.concatMap builtins.attrValues (builtins.attrValues mods);
             # A real nixosSystem's system.build.toplevel forces the generic
             # "is this bootable" assertions (a root filesystem, a bootloader),
             # which no committed example states an opinion on -- so a minimal
@@ -321,6 +319,39 @@
             test -n "${toString (builtins.attrNames mods.terranixModules)}"
             ${pkgs.lib.concatMapStringsSep "\n" (p: "test -f ${p}/default.nix") paths}
             ${pkgs.lib.concatMapStringsSep "\n" (d: "test -n '${d}'") allDrvPaths}
+            touch "$out"
+          '';
+        # Every world's own GATE, BUILT for every committed example whose world
+        # declares one (packages.<system>.gate in its compiled flake). Generate
+        # builds the same attribute before it accepts an engine; this re-runs it
+        # against the corpus as it stands, so a lips change that alters a render
+        # after the mint is caught here, not by a user's build. Found by looking:
+        # every compiled directory of every world attribute, so no world is
+        # named. The compiled flake's outputs function is called with THIS
+        # flake's inputs (its pinned nixpkgs, the pin generate builds against),
+        # picked by the argument names it asks for; an input it asks for that
+        # lips does not have fails the evaluation loudly. Import-from-derivation,
+        # as lipsArtifacts-eval already is.
+        lipsWorld-gates =
+          let
+            mods = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
+            system = pkgs.stdenv.hostPlatform.system;
+            dirs = builtins.concatMap builtins.attrValues (builtins.attrValues mods);
+            outputsOf = dir:
+              let
+                flake = import "${dir}/flake.nix";
+                outs = flake.outputs (builtins.intersectAttrs
+                  (builtins.functionArgs flake.outputs)
+                  { self = outs; inherit nixpkgs home-manager kubenix terranix; });
+              in outs;
+            gateOf = dir:
+              let ps = (outputsOf dir).packages.${system} or { };
+              in if ps ? gate then [ ps.gate ] else [ ];
+            gates = builtins.concatMap gateOf dirs;
+          in pkgs.runCommand "lips-world-gates" { } ''
+            # At least one, or this check passes by judging nothing.
+            test ${toString (builtins.length gates)} -gt 0
+            ${pkgs.lib.concatMapStringsSep "\n" (g: "test -e ${g}") gates}
             touch "$out"
           '';
         # Every artifact a committed example declares must INSTANTIATE: a green
