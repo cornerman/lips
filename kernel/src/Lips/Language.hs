@@ -18,6 +18,7 @@
 module Lips.Language
   ( exportedClauses
   , soleWorld
+  , mintTargets
   , mintedWorlds
   , grammarIsFrozen
   , orphanIgnores
@@ -112,6 +113,21 @@ soleWorld (Just w) minted
 soleWorld Nothing [w]    = Right w
 soleWorld Nothing []     = Left "mint the language first: lips generate --target <world> <program>."
 soleWorld Nothing minted = Left ("name one of its worlds with --target: " <> list minted)
+
+-- | Which worlds a mint writes, given the fallback for a new language, the
+-- worlds named with @-t@ and the worlds the language folder already holds.
+--
+-- Named worlds win: adding a world is always an explicit @-t@. With none
+-- named, a re-mint writes back what is there, because a default that ignored
+-- the folder grew a nixos world beside a language committed only in another
+-- world. Several held worlds come back as a 'Left' carrying them: minting all
+-- of them is a full joint re-mint, the expensive case, so lips refuses to start
+-- it implicitly and the caller names the flags (deduce-or-fail).
+mintTargets :: Text -> [Text] -> [Text] -> Either [Text] [Text]
+mintTargets _        named@(_ : _) _    = Right named
+mintTargets fallback []            []   = Right [fallback]
+mintTargets _        []            [w]  = Right [w]
+mintTargets _        []            held = Left held
 
 -- | The worlds, in a sentence. Empty reads as none, which is the caller's own
 -- case above and never reached from here.

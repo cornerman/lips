@@ -32,7 +32,7 @@ import Lips.Kernel.Engine.Data
 import Lips.Kernel.Engine.Gate (engineViolations, unholdableExpects)
 import Lips.Generate.Draft (DraftTree (..), materializeDraft, splitEngine)
 import Lips.Kernel.Engine.Overlap
-import Lips.Report                 (committedSourceReport, emptySubmission, mintedSourceReport, noSubmission, unansweredReport, unpinnedGlueReport, unportableReport)
+import Lips.Report                 (committedSourceReport, emptySubmission, heldWorldReport, inferredWorldsLine, mintedSourceReport, noSubmission, severalWorldsReport, unansweredReport, unpinnedGlueReport, unportableReport)
 import Lips.Generate.Minting       (appendOnlyViolations, mergeGrammar, mergeReply, replyLinesOf, touchedIds)
 import Lips.Kernel.Engine.Parts
 import Lips.Kernel.Engine.Reach
@@ -83,7 +83,7 @@ import Lips.Kernel.Lang.Store
 import Lips.Lsp.Derive
 import Lips.Lsp.Server (uriToPath)
 import Lips.Identity
-import Lips.Language               (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
+import Lips.Language               (exportedClauses, grammarIsFrozen, mintTargets, mintedWorlds, orphanIgnores, soleWorld)
 
 -- | The scalar half of a template match: what every test that predates list
 -- holes asks about (one surface text per hole).
@@ -339,6 +339,36 @@ main = hspec $ do
   -- Deduce-or-fail for the world an exports listing is read from. A language
   -- minted into one world needs no --target; asked about several, lips refuses
   -- rather than picking, because either answer would be a different vocabulary.
+  -- generate with no -t mints what the language already holds: a re-mint must
+  -- not silently grow a world nobody asked for. Several held worlds is a joint
+  -- re-mint, the expensive case, so it is refused rather than started.
+  describe "which worlds generate mints without -t (Lips.Language.mintTargets)" $ do
+    it "takes the worlds named with -t, whatever the folder holds" $
+      mintTargets "nixos" ["kubenix"] ["kubenix", "nixos"] `shouldBe` Right ["kubenix"]
+    it "falls back for a language holding no world yet" $
+      mintTargets "nixos" [] [] `shouldBe` Right ["nixos"]
+    it "takes the one world a language holds" $
+      mintTargets "nixos" [] ["nono"] `shouldBe` Right ["nono"]
+    it "refuses a language holding several, returning them" $
+      mintTargets "nixos" [] ["kubenix", "nixos"] `shouldBe` Left ["kubenix", "nixos"]
+
+  describe "the words generate says about worlds it was not told (Lips.Report)" $ do
+    it "names the joint command first, then a single-world one" $ do
+      let r = severalWorldsReport ["a.web.lips", "b.web.lips"] "web" ["kubenix", "nixos"]
+          joint = "lips generate -t kubenix -t nixos a.web.lips b.web.lips"
+          single = "lips generate -t kubenix a.web.lips b.web.lips"
+      r `shouldSatisfy` T.isInfixOf joint
+      r `shouldSatisfy` T.isInfixOf single
+      fst (T.breakOn joint r) `shouldNotSatisfy` T.isInfixOf single
+    it "names where a held world's file is expected, and --worlds" $ do
+      let r = heldWorldReport "x/a.backup.lips" "nono" "x/nono.world" "lips doesn't know the world nono"
+      r `shouldSatisfy` T.isInfixOf "x/nono.world"
+      r `shouldSatisfy` T.isInfixOf "--worlds"
+      r `shouldSatisfy` T.isInfixOf "lips doesn't know the world nono"
+    it "says which world it inferred, and why" $ do
+      inferredWorldsLine "backup" [] "nixos" `shouldSatisfy` T.isInfixOf "holds no world yet"
+      inferredWorldsLine "backup" ["nono"] "nono" `shouldSatisfy` T.isInfixOf "nono"
+
   describe "which world an exports listing reads (Lips.Language.soleWorld)" $ do
     it "takes the only world a language was minted into" $
       soleWorld Nothing ["nixos"] `shouldBe` Right "nixos"

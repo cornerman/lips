@@ -33,6 +33,9 @@ module Lips.Report
   , renderParseError
   , unportableReport
   , unansweredReport
+  , severalWorldsReport
+  , heldWorldReport
+  , inferredWorldsLine
   , noSubmission
   , emptySubmission
   , niceSubject
@@ -262,6 +265,42 @@ unansweredReport file world qs =
              qs
     <> "\n\n\8594 state it in " <> T.pack file <> " to reach " <> world
     <> ", or compile the worlds that already hold."
+
+-- | generate got no @-t@ and the language holds several worlds. Both remedies
+-- are spelled out as commands: the joint re-mint first, since it is the one
+-- that may also change the shared grammar, then a single world, which patches
+-- against the grammar the others were built on and costs one world's mint.
+severalWorldsReport :: [FilePath] -> Text -> [Text] -> Text
+severalWorldsReport files lang held = report
+  ("lips can't tell which worlds to mint: ." <> lang <> " holds "
+    <> T.intercalate ", " held <> ".")
+  [ "Without -t, generate mints the worlds a language holds, and minting all of"
+  , "them is a joint re-mint, so lips will not start one you did not name." ]
+  ("\8594 re-mint them together: " <> command held
+    <> "\n  or one alone, against the grammar the others share: "
+    <> command (take 1 held))
+  where
+    command ws = "lips generate" <> T.concat [ " -t " <> w | w <- ws ]
+                   <> T.concat [ " " <> T.pack f | f <- files ]
+
+-- | A world the language holds, inferred because no @-t@ was given, does not
+-- resolve. The record names the world, but its file is the human's: lips
+-- names where it looked so the file can be put back or pointed at.
+heldWorldReport :: FilePath -> Text -> FilePath -> Text -> Text
+heldWorldReport file world expected why = report
+  ("lips can't use the world " <> world <> ", which " <> T.pack file
+    <> "'s language already holds:")
+  [why]
+  ("\8594 put the world file at " <> T.pack expected <> ", or pass --worlds DIR"
+    <> " naming the directory that holds " <> world <> ".world.")
+
+-- | One line saying which worlds a generate without @-t@ chose and why, so the
+-- inference is visible before the mint spends anything.
+inferredWorldsLine :: Text -> [Text] -> Text -> Text
+inferredWorldsLine lang [] chosen =
+  "no -t: ." <> lang <> " holds no world yet, minting into " <> chosen <> "."
+inferredWorldsLine lang _ chosen =
+  "no -t: minting into " <> chosen <> ", the world ." <> lang <> " already holds."
 
 -- | A mint that ran to completion without ever submitting a clean draft. The
 -- answer is the draft the mint staged through @submit_draft@, so there is no
