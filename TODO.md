@@ -143,9 +143,29 @@ tracks only what is still open.
 
    Deliberately deferred: the remedy is an author writing a richer program, an
    advisory report may be enough, and the claims falsify the same defect by
-   observation rather than by counting. One experiment is still untried and
-   would be evidence either way: cutting `function`'s three calls to one should
-   demote the call to a constant.
+   observation rather than by counting.
+   THE EXPERIMENT RAN 2026-10-02 (DESIGN §13, "A singleton call stays a hole";
+   `experiments/plurality-function/`) and argues AGAINST the counting
+   diagnostic. One call did not demote the call to a constant. The defect did
+   appear, on the control's never-contrasted type word (`x: Int` compiles and
+   prints), but it shares its syntactic position with three harmless singletons.
+   Across the corpus and both mints, counting flags 14 clause-landing holes to
+   find 1 defect, and no domain-blind exemption narrows that. Left open: (a)
+   whether a word whose only landing is a dead clause branch is worth a
+   reachability check (a direction, not a proposal); (b) the remedy plurality
+   points at (two declarations of different types) is not expressible until
+   7c's `identifier-from-program` closes.
+
+   **A ground expect over an Append slot checks only the first contributor**
+   (found by the same experiment, not yet pinned by a test). The one-call mint
+   wrote `expect claim.main.equals-lines from call.<n>`; with two or three
+   calls every expanded check compares against the FIRST call's element, so
+   the contract refuses a program the engine realizes correctly, naming re-mint
+   as the remedy. Likely site: `checkArtifactValues` in `Lips.Kernel.Expect`
+   takes `(a : _)`. Reproduce with `experiments/plurality-function/probe.sh`
+   (`S-two`, `S-three` in `probes.txt`). Kernel work: write the failing test
+   first, then decide whether an expanded check is judged against its OWN
+   line's contribution or by containment in the assembled slot.
 
 4. **The contract set reaches stdin-to-stdout text tools and nothing else**
    (measured 2026-08-04 by `experiments/validate/`, scenario `rotate`). Asked

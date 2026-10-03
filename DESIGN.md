@@ -4238,6 +4238,40 @@ but the loop around it is incomplete; "missing" means specced, not built.
   and a test checked only that it parsed. It is now refused by name, the way a
   fused `.words` hole is, and the example is unglued. `board`'s README still
   describes both gaps. It is minted output, so its next re-mint rewrites it.
+- **A singleton call stays a hole; what a singleton costs is elsewhere**
+  (2026-10-02, `experiments/plurality-function/`, the experiment TODO 3 left
+  untried). `examples/function.lips` was minted fresh twice from the 02f28f4
+  binary, both runs claude-opus-5, thinking medium, nixos, both accepted on the
+  first verdict. The control kept the program as is (3 calls; 229.8s, $0.81,
+  6 submissions). The variant cut it to ONE call (313.9s, $1.12, 11
+  submissions). The prediction was that one call demotes the call text to a
+  constant, and it DID NOT HOLD: the variant kept `<arg>` a hole, and an edit
+  to `bye` prints `bye`. The words that are singletons in BOTH programs
+  (function name, parameter name, type) flipped between hole and literal from
+  one mint to the next, with no direction. The control made the NAME a literal
+  and its type a hole; the variant did the reverse. Observed, n=1 per arm.
+  What the singleton cost instead, found by offline edit probes (no model):
+  (i) In the CONTROL, the uncontrasted type word `<ptype>` lands only in the
+  message of a `die` branch that no readable program reaches, so `x: Int`
+  compiles and prints `hallo`. That is the defect TODO 3 describes, on the
+  singleton declaration of a program whose calls ARE contrasted, and the reach
+  gate passes it, because the word does reach a clause. (ii) In the VARIANT,
+  the contract `expect claim.main.equals-lines from call.<n>` refuses a second
+  call (`should be [ "du" ], but is [ "hallo" ]`), although the built program
+  prints both lines. With three calls, both extra checks compare against
+  `hallo`. This fits `checkArtifactValues` judging a ground slot against the
+  FIRST decision with its subject (`(a : _)`), one contributor of an
+  Append-assembled slot. It is a likely kernel defect, inferred from probes,
+  not yet pinned by a test, and with one call the mint's own gate cannot see
+  it. Corpus scan (`scan/Scan.hs`, built from the kernel's own matcher and
+  `wordLandings`): 59 of 92 (pattern, hole) pairs are singletons, 9 land in
+  clauses, and all 9 are honest (board's markers, columns and separator,
+  habit's two marks, hello's two texts and its `<var>`). Across corpus and
+  arms, 14 clause-landing singletons hold 1 defect, and the defect sits in the
+  same syntactic position (a string in a `die` message) as three harmless
+  ones. Separating them needs to know that a type word should govern
+  behaviour, which is domain knowledge. So the counting diagnostic is NOT
+  built: its exemption list would be an open list the kernel enumerates.
 
 ### Partial
 - **Behavioral gate: remaining.** The gate (see Done) now runs at every
@@ -4735,6 +4769,12 @@ from small points and is recorded here as such.
   an engine -- direction is advisory taste and cannot make a sentence causal.
   Corollary already visible in the corpus: `logscan` demotes 4 of 5 lines to
   `Concept` and every one of them is a singleton behaviour sentence.
+  Qualified 2026-10-02 (Done, "A singleton call stays a hole"): "may fold" is
+  the accurate verb. opus-5, shown one call, did not fold it, and whether an
+  uncontrasted word becomes a hole or a literal varied between two mints. What
+  plurality reliably buys is a contrast that EXERCISES the hole. An
+  uncontrasted hole can be kept and still govern nothing (a type word landing
+  in dead code), which a count cannot tell from an honest one.
 - **Forking is safe by design.** lips is defined by the calculus + conformance
   suite, not the repo; the reference implementation is non-privileged. A fork
   that keeps the suite green IS lips (`inputs.lips.url = github:you/lips`);
