@@ -45,6 +45,9 @@ module Lips.Nix.Flake
   ( Rungs (..)
   , SiteRung (..)
   , noRungs
+  , Nixpkgs (..)
+  , compiledNixpkgs
+  , substrateNixpkgsVar
   , hasSite
   , hasSiteClaims
   , flakeText
@@ -54,7 +57,37 @@ module Lips.Nix.Flake
 import           Data.Text     (Text)
 import qualified Data.Text     as T
 
+import Lips.Generate.Record (isContentPin)
 import Lips.World (Rung (..), World (..))
+
+-- | Which nixpkgs a compiled directory evaluates against. A sum rather than a
+-- 'Maybe', so the call site says which one it chose.
+data Nixpkgs
+  = Ambient       -- ^ the @flake:nixpkgs@ registry, resolved by nix at run time
+  | Pinned Text   -- ^ a locked flakeref, exactly as the record names it
+  deriving (Eq, Show)
+
+-- | The environment variable lips's own package bakes its nixpkgs into. A world
+-- whose @schema-pin:@ names it grounds its rules on the SUBSTRATE nixpkgs, the
+-- same one this flake skeleton imports as @nixpkgs@ -- which is the only reason
+-- lips may relate the two. The kernel knows nixpkgs as the substrate it builds
+-- on, never which world uses it.
+substrateNixpkgsVar :: Text
+substrateNixpkgsVar = "LIPS_NIXPKGS_FLAKE"
+
+-- | The nixpkgs a compiled directory must evaluate against, given its world and
+-- the @schema:@ pin its record carries for that world.
+--
+-- Pinned to the grounding wherever the world grounds on the substrate nixpkgs:
+-- otherwise the schema that admitted the rules and the tool that runs the render
+-- are two versions of the same thing, and nothing relates them (nono 0.68.0
+-- admitted a profile that 0.74.0 judged). Ambient where no pin can say which
+-- nixpkgs that is: a record that predates the pin, a document pinned by content,
+-- or a world whose pin names another flake (home-manager's names home-manager).
+compiledNixpkgs :: World -> Maybe Text -> Nixpkgs
+compiledNixpkgs w (Just pin)
+  | wSchemaPin w == Just substrateNixpkgsVar && not (isContentPin pin) = Pinned pin
+compiledNixpkgs _ _ = Ambient
 
 -- | What the site axis offers, when it offers anything. A sum rather than two
 -- booleans, so "judge the clauses of a program that has none" cannot be written.

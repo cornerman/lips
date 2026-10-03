@@ -52,7 +52,7 @@ import           Lips.Kernel.Expect (Expect, checkArtifactValues, checkValues, e
                                      expandExpects, expectedValue, isGroundExpect)
 import           Lips.Kernel.Run
 import           Lips.Nix.Claims    (claimsFile)
-import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRungs)
+import           Lips.Nix.Flake     (Rungs (..), SiteRung (..), flakeText, noRungs, substrateNixpkgsVar)
 import           Lips.World         (World (..))
 import           Lips.Report        (niceSubject, nixMissing, plural)
 import           Lips.Schema        (lockFlakeRef)
@@ -435,13 +435,13 @@ buildArtifact nixpkgs file dir name = do
 -- actually declares an artifact, so a configuration-only mint needs none.
 artifactNixpkgs :: Text -> IO Text
 artifactNixpkgs remedy = do
-  mflake <- lookupEnv "LIPS_NIXPKGS_FLAKE"
+  mflake <- lookupEnv (T.unpack substrateNixpkgsVar)
   case mflake of
     Just ref -> lockFlakeRef ref remedy
     -- Deduce-or-fail: an artifact lips cannot build is an artifact lips cannot
     -- vouch for, and "not verified" must never ship as verified.
     Nothing  -> die (report
       "lips can't build the artifact it minted: no nixpkgs is pinned."
-      ["LIPS_NIXPKGS_FLAKE is unset, so there is no nixpkgs to build against."]
+      [substrateNixpkgsVar <> " is unset, so there is no nixpkgs to build against."]
       ("\8594 run the packaged lips: nix run . -- " <> remedy <> " (it bakes the pinned flakes)."))
 

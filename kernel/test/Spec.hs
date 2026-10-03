@@ -49,7 +49,8 @@ import Lips.Kernel.Engine.Aggregate (mergeModeOf, assembleSubject, assembleWith)
 import Lips.Kernel.OptionType
 import Lips.Nix.Options
 import Lips.Nix.Claims (claimsFile)
-import Lips.Nix.Flake (Rungs (..), SiteRung (..), flakeText, noRungs, runCommands)
+import Lips.Nix.Flake (Nixpkgs (..), Rungs (..), SiteRung (..), compiledNixpkgs, flakeText,
+                       noRungs, runCommands)
 import Lips.World
 import Lips.World.Builtin (builtinWorld, builtinWorlds)
 import Lips.World.Check (NixSlice (..), nixSlices)
@@ -71,7 +72,7 @@ import Lips.Cli.Output (Style (..), Verdict (..), Phase (..), phaseLog, runningT
 import qualified Lips.Cli.Output as Out
 import Lips.Kernel.Claim
 import Lips.Kernel.Expect
-import Lips.Generate.Record (StampFault (..), corpusText, genId, record, recordedProgram,
+import Lips.Generate.Record (StampFault (..), contentPin, corpusText, genId, record, recordedProgram,
                              recordedPrograms, recordedSchema, recordedWorld, recordedWorldPin, renderStampFault, stampFaults)
 import Lips.Kernel.Lang.Pattern
 import Lips.Kernel.Lang.Crystallize
@@ -4400,6 +4401,35 @@ main = hspec $ do
 
     it "admits a machine claim where there IS a machine" $
       unplaceableClaims (wClaims (shippedWorld "nixos")) [machC] `shouldBe` []
+
+  -- The schema that admitted the rules and the nixpkgs a compiled directory
+  -- evaluates against are the same pin wherever the world grounds on the
+  -- substrate nixpkgs: otherwise a rule is judged by one version of a tool and
+  -- run by another (nono 0.68.0 against 0.74.0).
+  describe "the compiled flake's nixpkgs" $ do
+    let pin = "github:NixOS/nixpkgs/61b7c44c4073f0b827768aff0049561b5110ea5a?narHash=sha256-12Kr%3D"
+    it "pins the recorded schema where the world grounds on the substrate nixpkgs" $
+      compiledNixpkgs (shippedWorld "nixos") (Just pin) `shouldBe` Pinned pin
+
+    -- Keyed on the substrate's pin, never on a world name: a house world that
+    -- grounds the same way is pinned with no lips change.
+    it "pins a world nobody foresaw by the same header" $ do
+      let w = either (error . T.unpack) id (parseWorld
+            ("format: 1\nworld: house\nmodule-attr: houseModules\nschema-pin: LIPS_NIXPKGS_FLAKE\n"
+              <> "--- preamble ---\nP\n--- schema ---\nE\n"))
+      compiledNixpkgs w (Just pin) `shouldBe` Pinned pin
+
+    -- home-manager's pin names home-manager, not the nixpkgs the flake imports.
+    it "stays ambient where the schema pin names another flake" $
+      compiledNixpkgs (shippedWorld "home-manager")
+        (Just "github:nix-community/home-manager/041a999e8c1c5b731913855909e68d30ca69b8e0")
+        `shouldBe` Ambient
+
+    it "stays ambient for a schema pinned by content, which names no flake" $
+      compiledNixpkgs (shippedWorld "nixos") (Just (contentPin "{}")) `shouldBe` Ambient
+
+    it "stays ambient for a record that predates the pin" $
+      compiledNixpkgs (shippedWorld "nixos") Nothing `shouldBe` Ambient
 
   describe "the claims rung" $ do
     it "exposes one aggregate that runs every experiment" $ do
