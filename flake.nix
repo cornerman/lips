@@ -350,6 +350,12 @@
         # picked by the argument names it asks for; an input it asks for that
         # lips does not have fails the evaluation loudly. Import-from-derivation,
         # as lipsArtifacts-eval already is.
+        #
+        # So CI builds every gate against LIPS'S OWN inputs (its locked nixpkgs,
+        # and kubenix/terranix following it), not against the record's pin, and
+        # not through a compiled flake's `inputs.nixpkgs.follows`: the outputs
+        # function is called directly and never sees the flake's inputs. The
+        # pinned build is the mint's (`gateOneWorld`) and the door's.
         lipsWorld-gates =
           let
             mods = self.lib.modulesFromDir { inherit pkgs; dir = ./examples; };
