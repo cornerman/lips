@@ -441,6 +441,28 @@ test-draft:
     if grep -q "disagree" "$tmp/out28"; then
       echo "FAIL: an unreachable pin was blamed on the claims"; cat "$tmp/out28"; exit 1
     fi
+    # A world whose schema lives in another flake pins THAT flake: the kubenix
+    # world's gate (its render) builds with kubenix at the pin generate hands
+    # the door and nixpkgs following it, and a pin nix cannot fetch is refused
+    # as an unreachable kubenix, never blamed on the rules.
+    export LIPS_MINT_WORLDS=kubenix
+    export LIPS_MINT_PROGRAMS="$PWD/examples/web.deploy.lips"
+    export LIPS_MINT_BASIS="$PWD/examples/deploy"
+    kpin="github:hall/kubenix/$(nix eval --raw --impure --expr \
+      '(builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.kubenix.locked.rev')"
+    LIPS_MINT_PINS="kubenix=$kpin" "$lips" check --draft examples/web.deploy.lips < /dev/null > "$tmp/out31" 2>&1 \
+      || { echo "FAIL: the kubenix world's gate refused the committed deploy engine"; cat "$tmp/out31"; exit 1; }
+    grep -q "the kubenix world's own gate" "$tmp/out31" \
+      || { echo "FAIL: the kubenix world's gate did not run"; cat "$tmp/out31"; exit 1; }
+    if LIPS_MINT_PINS="kubenix=path:$tmp/no-such-kubenix" \
+         "$lips" check --draft examples/web.deploy.lips < /dev/null > "$tmp/out32" 2>&1; then
+      echo "FAIL: the kubenix world's gate ignored the pin it was handed"; cat "$tmp/out32"; exit 1
+    fi
+    grep -q "can't reach the kubenix.*no-such-kubenix" "$tmp/out32" \
+      || { echo "FAIL: the unreachable kubenix pin was not named"; cat "$tmp/out32"; exit 1; }
+    if grep -q "the rules are minted" "$tmp/out32"; then
+      echo "FAIL: an unreachable kubenix pin was blamed on the rules"; cat "$tmp/out32"; exit 1
+    fi
     unset LIPS_MINT_BASIS
     # generate with no -t over a language holding several worlds refuses before
     # any model call, naming both remedies. Run on a copy with nothing on PATH,
