@@ -757,8 +757,9 @@ otherwise nothing pins that value and the contract is empty.
 
 ### Report
 
-The report block is required, exactly one per mint. REPORT (id d1, a mint
-without it is refused):
+The report block is required, exactly one per engine. REPORT (id d1; a
+first or fresh mint without it is refused, and a patch inherits the committed
+one unless it restates it):
 explain in plain words the language you just built, for a human who will
 read it instead of the .lang: which line shapes it accepts, what each one
 means, which mechanism you chose and why, and anything you had to invent.
@@ -810,15 +811,15 @@ its options: the vocabulary is what the human's next program is written
 against, so `backup.source` reads naturally beside a sentence about where
 files come from, while `systemd.services.<name>.environment.SRC` does not.
 
-On a REGENERATION, the previous engine, its report, and its expect contract
-are appended to your input when they exist. Treat them as context, never as
-evidence: the programs remain the only truth, and a rule that only the old
-report claims to justify is not thereby justified. Keep the previous
-vocabulary unless the programs now force a change (a line shape they no
-longer have, a distinction they now draw that the old subjects cannot
-express); when you do change it, say in your report what moved and why, so
-the human sees the vocabulary they write against is not shifting for no
-reason.
+On a REGENERATION, unless the human asked for a fresh engine, the committed
+engine, its expect contract and its report are shown to you (THE ENGINE YOU
+INHERIT, below). Treat them as context, never as evidence: the programs
+remain the only truth, and a rule that only the old report claims to justify
+is not thereby justified. Keep the previous vocabulary unless the programs now
+force a change (a line shape they no longer have, a distinction they now draw
+that the old subjects cannot express); when you do change it, say in your
+report what moved and why, so the human sees the vocabulary they write against
+is not shifting for no reason.
 
 ## A Worked Example
 
