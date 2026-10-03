@@ -954,6 +954,15 @@ but the loop around it is incomplete; "missing" means specced, not built.
   `sandbox.fs_read "[ ]"` passes in 1.8s. `just test-draft` now pins both
   directions.
 
+  MEASURED, one opus-5 patch re-mint of `examples/dev.policy.lips` into the
+  gated `nono` world, 2026-10-03: 33s, 1 submission, $0.19. The reply patched
+  only the report (`d1`), the rules came back identical apart from their stamps,
+  and the mint printed the gate as a step of its own ("the nono world's own
+  gate", 0.6s), the first live run of the mint-side path. A misfired first
+  attempt without `-t nono` minted a nixos lowering instead ($0.29, deleted
+  before commit); `-t` defaults to nixos even for a language committed
+  only in nono, which surprised its operator once.
+
   CI half: `lipsModules-eval` compiles every attribute `modulesFromDir` produces,
   found by looking, so `nonoModules` is no longer outside the net. The new check
   `lipsWorld-gates` imports each compiled directory's `flake.nix`, calls its
