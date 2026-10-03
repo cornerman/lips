@@ -1,0 +1,16 @@
+== experiments/plurality-function/control/function  (1 program(s))
+  SINGLETON  p1 <param>  1 binding(s), 1 distinct: x
+      nixos -> clause.function-println_to_stdout
+  SINGLETON  p1 <ptype>  1 binding(s), 1 distinct: String
+      nixos -> clause.function-println_to_stdout
+  contrasted  p2 <text>  3 binding(s), 3 distinct: hallo | du | !
+      nixos -> clause.function-main, claim.main.equals-lines
+== experiments/plurality-function/single/function  (1 program(s))
+  SINGLETON  p1 <fname>  1 binding(s), 1 distinct: println_to_stdout
+      nixos -> clause.function-print
+  SINGLETON  p1 <param>  1 binding(s), 1 distinct: x
+      nixos -> clause.function-print
+  SINGLETON  p2 <arg>  1 binding(s), 1 distinct: hallo
+      nixos -> clause.function-main, claim.main.equals-lines
+  SINGLETON  p2 <fname>  1 binding(s), 1 distinct: println_to_stdout
+      nixos -> clause.function-main

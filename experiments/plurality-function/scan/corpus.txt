@@ -1,0 +1,217 @@
+== examples/backup  (2 program(s))
+  contrasted  p1 <dest>  2 binding(s), 2 distinct: /backup/ledger | /backup/photos
+      nixos -> services.restic.backups.<self>.repository
+  contrasted  p1 <schedule>  2 binding(s), 2 distinct: daily | weekly
+      nixos -> services.restic.backups.<self>.timerConfig.OnCalendar
+  contrasted  p1 <source>  2 binding(s), 2 distinct: /var/lib/ledger | /var/lib/photos
+      nixos -> services.restic.backups.<self>.paths
+  contrasted  p2 <count>  2 binding(s), 2 distinct: 14 | 8
+      nixos -> services.restic.backups.<self>.pruneOpts
+  contrasted  p2 <period>  2 binding(s), 2 distinct: daily | weekly
+      nixos -> services.restic.backups.<self>.pruneOpts
+  contrasted  p3 <path>  2 binding(s), 2 distinct: /etc/ledger-backup.env | /etc/photos-backup.env
+      nixos -> services.restic.backups.<self>.environmentFile
+== examples/board  (1 program(s))
+  SINGLETON  p3 <card>  1 binding(s), 1 distinct: - text
+      home-manager -> clause.board-card-marker
+  SINGLETON  p3 <col>  1 binding(s), 1 distinct: ## name
+      home-manager -> clause.board-column-marker
+  SINGLETON  p4 <names>  1 binding(s), 1 distinct: todo, doing, done
+      home-manager -> clause.board-columns
+  SINGLETON  p5 <sep>  1 binding(s), 1 distinct: , 
+      home-manager -> clause.board-render-column
+  SINGLETON  p7 <name>  1 binding(s), 1 distinct: board
+      home-manager -> site.<self>.command
+  contrasted  p8 <l>  5 binding(s), 5 distinct: ## todo | - milk | - eggs
+      home-manager -> claim.board.feed
+  contrasted  p8 <o>  3 binding(s), 3 distinct: todo: milk, eggs | doing: taxes | done:
+      home-manager -> claim.board.equals-lines
+== examples/bucket  (1 program(s))
+  SINGLETON  p1 <region>  1 binding(s), 1 distinct: eu-central-2
+      terranix -> provider.aws.region
+== examples/cron  (1 program(s))
+  SINGLETON  p1 <hh>  1 binding(s), 1 distinct: 02
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.schedule
+      nixos -> systemd.timers.podman-<self>.timerConfig.OnCalendar
+  SINGLETON  p1 <image>  1 binding(s), 1 distinct: ghcr.io/acme/report:2.3
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.image
+      nixos -> virtualisation.oci-containers.containers.<self>.image
+  SINGLETON  p1 <mm>  1 binding(s), 1 distinct: 30
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.schedule
+      nixos -> systemd.timers.podman-<self>.timerConfig.OnCalendar
+  SINGLETON  p2 <cmd>  1 binding(s), 1 distinct: /bin/report --daily
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.command
+      nixos -> virtualisation.oci-containers.containers.<self>.cmd
+  SINGLETON  p3 <count>  1 binding(s), 1 distinct: 3
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.successfulJobsHistoryLimit, kubernetes.resources.cronJobs.<self>.spec.failedJobsHistoryLimit
+      nixos -> virtualisation.oci-containers.containers.<self>.labels.history
+  SINGLETON  p4 <secs>  1 binding(s), 1 distinct: 900
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.activeDeadlineSeconds
+      nixos -> systemd.services.podman-<self>.serviceConfig.RuntimeMaxSec
+== examples/deploy  (1 program(s))
+  SINGLETON  p1 <count>  1 binding(s), 1 distinct: 3
+      kubenix -> kubernetes.resources.deployments.<self>.spec.replicas
+  SINGLETON  p1 <image>  1 binding(s), 1 distinct: nginx:1.27
+      kubenix -> kubernetes.resources.deployments.<self>.spec.template.spec.containers.app.image
+  SINGLETON  p2 <port>  1 binding(s), 1 distinct: 80
+      kubenix -> kubernetes.resources.deployments.<self>.spec.template.spec.containers.app.ports.http.containerPort, kubernetes.resources.services.<self>.spec.ports.http.targetPort
+  SINGLETON  p3 <port>  1 binding(s), 1 distinct: 8080
+      kubenix -> kubernetes.resources.services.<self>.spec.ports.http.port
+  SINGLETON  p4 <ns>  1 binding(s), 1 distinct: storefront
+      kubenix -> kubernetes.namespace
+== examples/feed  (1 program(s))
+  SINGLETON  p1 <loc>  1 binding(s), 1 distinct: inbox/
+      nixos -> systemd.services.<self>.environment.INBOX
+  SINGLETON  p2 <cadence>  1 binding(s), 1 distinct: hourly
+      nixos -> systemd.timers.<self>.timerConfig.OnCalendar
+  SINGLETON  p3 <target>  1 binding(s), 1 distinct: transaction
+      nixos -> systemd.services.<self>.environment.ROW_TARGET
+== examples/function  (1 program(s))
+  SINGLETON  p1 <fname>  1 binding(s), 1 distinct: println_to_stdout
+      nixos -> site.<self>.command, claim.<fname>.call, claim.<fname>.equals
+  SINGLETON  p2 <fname>  3 binding(s), 1 distinct: println_to_stdout
+      nixos -> claim.<fname>.args
+  contrasted  p2 <text>  3 binding(s), 3 distinct: hallo | du | !
+      nixos -> clause.function-main, claim.<fname>.args
+== examples/greet  (1 program(s))
+  contrasted  p1 <msg>  2 binding(s), 2 distinct: hello from lips | see you
+      home-manager -> artifact.<name>.args.text
+  contrasted  p1 <name>  2 binding(s), 2 distinct: greet | bye
+      home-manager -> artifact.<name>.builder, artifact.<name>.args.name, artifact.<name>.args.text, home.packages
+  SINGLETON  p2 <name>  1 binding(s), 1 distinct: greet
+      home-manager -> systemd.user.services.<name>.Service.ExecStart, systemd.user.timers.<name>.Timer.OnCalendar, systemd.user.timers.<name>.Install.WantedBy
+  SINGLETON  p2 <time>  1 binding(s), 1 distinct: 09:00
+      home-manager -> systemd.user.timers.<name>.Timer.OnCalendar
+== examples/habit  (1 program(s))
+  contrasted  p10 <d>  3 binding(s), 3 distinct: 2026-01-01 | 2026-01-02 | 2026-01-04
+      home-manager -> claim.<q>.feed
+  contrasted  p10 <h>  3 binding(s), 2 distinct: run | read
+      home-manager -> claim.<q>.feed
+  SINGLETON  p6 <mark>  1 binding(s), 1 distinct: #
+      home-manager -> clause.habit-mark-logged
+  SINGLETON  p7 <mark>  1 binding(s), 1 distinct: .
+      home-manager -> clause.habit-mark-missing
+  SINGLETON  p8 <cmd>  1 binding(s), 1 distinct: habit
+      home-manager -> site.<self>.command
+  contrasted  p9 <e>  3 binding(s), 3 distinct: 2026-01-01 for run | 2026-01-02 for read | 2026-01-04 for run
+      home-manager -> 
+  SINGLETON  p9 <out>  1 binding(s), 1 distinct: #..#
+      home-manager -> claim.<q>.equals
+  SINGLETON  p9 <q>  1 binding(s), 1 distinct: run
+      home-manager -> claim.<q>.args, claim.<q>.call, claim.<q>.equals
+== examples/hello  (1 program(s))
+  SINGLETON  p1 <text>  1 binding(s), 1 distinct: hallo
+      nixos -> clause.hello-gruss, claim.gruss.equals
+  SINGLETON  p2 <var>  1 binding(s), 1 distinct: namen
+      nixos -> clause.hello-frage
+  SINGLETON  p3 <text>  1 binding(s), 1 distinct: goodbye
+      nixos -> clause.hello-abschied, claim.abschied-<var>.equals
+  SINGLETON  p3 <var>  1 binding(s), 1 distinct: namen
+      nixos -> claim.abschied-<var>.feed, claim.abschied-<var>.call, claim.abschied-<var>.equals
+== examples/http  (1 program(s))
+  SINGLETON  p1 <port>  1 binding(s), 1 distinct: 8080
+      nixos -> services.nginx.defaultHTTPListenPort, networking.firewall.allowedTCPPorts
+  SINGLETON  p2 <name>  1 binding(s), 1 distinct: hello
+      nixos -> systemd.services.nginx.aliases
+  contrasted  p4 <body>  3 binding(s), 3 distinct: hello from lips | ok | lips 0.1
+      nixos -> services.nginx.virtualHosts.<name>.locations.<path>.extraConfig
+  contrasted  p4 <path>  3 binding(s), 3 distinct: / | /health | /version
+      nixos -> services.nginx.virtualHosts.<name>.locations.<path>.extraConfig
+== examples/logscan  (1 program(s))
+  SINGLETON  p4 <name>  1 binding(s), 1 distinct: logscan
+      nixos -> site.<self>.command
+  SINGLETON  p5 <args>  1 binding(s), 1 distinct: a=1
+      nixos -> claim.filter.args
+  SINGLETON  p5 <in1>  1 binding(s), 1 distinct: {"a":"1"}
+      nixos -> claim.filter.feed
+  SINGLETON  p5 <in2>  1 binding(s), 1 distinct: {"a":"2"}
+      nixos -> claim.filter.feed
+  SINGLETON  p5 <out>  1 binding(s), 1 distinct: {"a":"1"}
+      nixos -> claim.filter.equals
+== examples/packages  (1 program(s))
+  contrasted  p2 <name>  3 binding(s), 3 distinct: wget | curl | neovim
+      home-manager -> home.packages
+      nixos -> environment.systemPackages
+== examples/policy  (1 program(s))
+  SINGLETON  p3 <p>  1 binding(s), 1 distinct: $HOME/.config/git
+      nono -> filesystem.read
+  contrasted  p4 <p>  3 binding(s), 3 distinct: $HOME/.ssh | $HOME/.aws | $HOME/.config/gh
+      nono -> filesystem.deny
+  contrasted  p5 <c>  4 binding(s), 4 distinct: git | rg | ls
+      nono -> command_policies.commands.<c>.from.session.invocation_policy.default, command_policies.commands.<c>.from.session.sandbox.fs_read
+  contrasted  p6 <c>  3 binding(s), 3 distinct: curl | wget | ssh
+      nono -> command_policies.commands.<c>.from.session.invocation_policy.default, command_policies.commands.<c>.from.session.sandbox.fs_read
+  SINGLETON  p7 <cmd>  1 binding(s), 1 distinct: git
+      nono -> command_policies.commands.<cmd>.from.session.invocation_policy.approve
+  SINGLETON  p7 <sub>  1 binding(s), 1 distinct: push
+      nono -> command_policies.commands.<cmd>.from.session.invocation_policy.approve
+  contrasted  p8 <d>  2 binding(s), 2 distinct: github.com | crates.io
+      nono -> network.allow_domain
+== examples/postgres  (1 program(s))
+  SINGLETON  p2 <name>  1 binding(s), 1 distinct: app
+      nixos -> services.postgresql.ensureDatabases
+  SINGLETON  p3 <db>  1 binding(s), 1 distinct: app
+      nixos -> services.postgresql.ensureDatabases
+  SINGLETON  p3 <user>  1 binding(s), 1 distinct: app
+      nixos -> services.postgresql.ensureUsers
+== examples/proxy  (1 program(s))
+  SINGLETON  p1 <host>  1 binding(s), 1 distinct: app.example.com
+      nixos -> services.nginx.virtualHosts.<self>.serverName
+  SINGLETON  p1 <upstream>  1 binding(s), 1 distinct: http://127.0.0.1:8080
+      nixos -> services.nginx.virtualHosts.<self>.locations./.proxyPass
+== examples/site  (2 program(s))
+  contrasted  p1 <host>  2 binding(s), 2 distinct: blog.example.com | docs.example.com
+      nixos -> services.nginx.virtualHosts.<self>.serverName
+  contrasted  p1 <root>  2 binding(s), 2 distinct: /var/www/blog | /var/www/docs
+      nixos -> services.nginx.virtualHosts.<self>.root
+  SINGLETON  p3 <email>  2 binding(s), 1 distinct: admin@example.com
+      nixos -> security.acme.defaults.email
+== examples/timer  (1 program(s))
+  SINGLETON  p1 <cmd>  1 binding(s), 1 distinct: /var/lib/scripts/cleanup.sh
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.command
+      nixos -> systemd.services.<self>.serviceConfig.ExecStart
+  SINGLETON  p1 <hh>  1 binding(s), 1 distinct: 03
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.schedule
+      nixos -> systemd.timers.<self>.timerConfig.OnCalendar
+  SINGLETON  p1 <mm>  1 binding(s), 1 distinct: 00
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.schedule
+      nixos -> systemd.timers.<self>.timerConfig.OnCalendar
+  SINGLETON  p2 <image>  1 binding(s), 1 distinct: busybox:1.36
+      kubenix -> kubernetes.resources.cronJobs.<self>.spec.jobTemplate.spec.template.spec.containers.<self>.image
+      nixos -> 
+  SINGLETON  p3 <name>  1 binding(s), 1 distinct: cleanup
+      kubenix -> kubernetes.resources.cronJobs.<self>.metadata.name
+      nixos -> systemd.services.<self>.description
+== examples/vhost  (1 program(s))
+  contrasted  p2 <domain>  3 binding(s), 3 distinct: shop.example.com | blog.example.com | api.example.com
+      nixos -> 
+  contrasted  p3 <path>  2 binding(s), 2 distinct: / | /v1
+      nixos -> services.nginx.virtualHosts.<domain>.locations.<path>.proxyPass
+  contrasted  p3 <url>  2 binding(s), 2 distinct: http://localhost:3000 | http://localhost:5000
+      nixos -> services.nginx.virtualHosts.<domain>.locations.<path>.proxyPass
+  contrasted  p4 <dir>  3 binding(s), 3 distinct: /var/www/shop | /var/xxx/shop | /var/y/shop
+      nixos -> services.nginx.virtualHosts.<domain>.locations.<path>.root
+  contrasted  p4 <path>  3 binding(s), 2 distinct: /static | /bla
+      nixos -> services.nginx.virtualHosts.<domain>.locations.<path>.root
+== examples/web  (1 program(s))
+  SINGLETON  p1 <port>  1 binding(s), 1 distinct: 8081
+      nixos -> services.nginx.virtualHosts.<self>.listen, networking.firewall.allowedTCPPorts
+  SINGLETON  p2 <name>  1 binding(s), 1 distinct: api
+      nixos -> services.nginx.virtualHosts.<self>.serverName
+  contrasted  p4 <body>  3 binding(s), 3 distinct: hello | gone | ok
+      nixos -> services.nginx.virtualHosts.<self>.locations.<path>.extraConfig
+  contrasted  p4 <path>  3 binding(s), 3 distinct: /hello | /bye | /health
+      nixos -> services.nginx.virtualHosts.<self>.locations.<path>.extraConfig
+  contrasted  p4 <status>  3 binding(s), 2 distinct: 200 | 404
+      nixos -> services.nginx.virtualHosts.<self>.locations.<path>.extraConfig
+== examples/website  (1 program(s))
+  SINGLETON  p1 <port>  1 binding(s), 1 distinct: 8081
+      nixos -> services.nginx.defaultHTTPListenPort, networking.firewall.allowedTCPPorts, claim.serve.run
+  SINGLETON  p2 <cname>  1 binding(s), 1 distinct: main
+      nixos -> environment.etc.website-canvas-<i>-name.text
+  SINGLETON  p3 <desc>  1 binding(s), 1 distinct: shows a nice random svg painting
+      nixos -> environment.etc.website-canvas-<i>-content.text
+  contrasted  p4 <label>  3 binding(s), 3 distinct: drück mich | leeren | abspeichern
+      nixos -> environment.etc.website-button-<i>-label.text
+  contrasted  p5 <act>  3 binding(s), 3 distinct: new random painting in canvas main | erase everything in canvas main | download the picture from canvas main
+      nixos -> environment.etc.website-button-<i>-action.text

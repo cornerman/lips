@@ -1,0 +1,26 @@
+# probe.sh output, 2026-10-02. B = examples/function (committed, 2026-08-09),
+# C = control/function (three calls), S = single/function (one call).
+# Each probe compiles an edited program against the engine (contract + claims
+# included), then runs the built executable. No model anywhere.
+B-orig: compiled; runs -> [hallo|]
+B-bye: compiled; runs -> [bye|]
+B-two: compiled; runs -> [hallo|du|]
+B-rename: compiled; runs -> [hallo|]
+B-param: REFUSED:   line 1  no match  "function println_to_stdout(y: String)"
+B-int: REFUSED:   line 1  no match  "function println_to_stdout(x: Int)"
+B-mismatch: REFUSED: claim shout: no call, so there is nothing to judge
+C-orig: compiled; runs -> [hallo|]
+C-bye: compiled; runs -> [bye|]
+C-two: compiled; runs -> [hallo|du|]
+C-rename: REFUSED:   line 1  no match  "function shout(x: String)"   line 3  no match  "shout("hallo")"
+C-param: compiled; runs -> [hallo|]
+C-int: compiled; runs -> [hallo|]
+C-mismatch: REFUSED:   line 3  no match  "shout("hallo")"
+S-orig: compiled; runs -> [hallo|]
+S-bye: compiled; runs -> [bye|]
+S-two: REFUSED: contract: claim.main.equals-lines: should be [ "du" ], but is [ "hallo" ]; clause.function-main: should be [ ... "du")) ], but is [ ... "hallo")) ]
+S-two --no-contract: runs -> [hallo|du|]
+S-rename: compiled; runs -> [hallo|]
+S-param: compiled; runs -> [hallo|]
+S-int: REFUSED:   line 1  no match  "function println_to_stdout(x: Int)"
+S-mismatch: REFUSED: clause claims: FAIL main got=(died "undeclared function:" "shout") want=("hallo")
