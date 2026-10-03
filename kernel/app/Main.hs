@@ -63,7 +63,7 @@ import           Lips.Gate              (ExpectFail (..), artifactGate, artifact
                                         groundExpectFaults,
                                         clauseClaimGate, mintClaimGate, runExpects,
                                         stagedGate, worldGate)
-import           Lips.Stage             (stageBeside, stageFromDisk,
+import           Lips.Stage             (stageBeside,
                                          withTempDir, writeCompiled, writeSite)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
@@ -433,7 +433,7 @@ compileWorld mout dir file (w, rl) = do
   let outDirPath = maybe (compiledPath file w) (</> T.unpack w) mout
   (artNames, rungs) <- step ("write " <> T.pack outDirPath) $ do
     ensureDerived file
-    writeCompiled (\o -> stageFromDisk dir file (o </> "artifacts")) world file outDirPath rl
+    writeCompiled world file outDirPath rl
   say ("→ run it with nix over " <> T.pack outDirPath <> ":")
   mapM_ note (runCommands world artNames rungs outDirPath)
 
@@ -795,7 +795,7 @@ checkDraft running restart file = do
         -- refusal inside its own call instead of paying a whole mint for it.
         when (isJust (wGate w)) $ do
           nixpkgs <- artifactNixpkgs ("generate " <> T.pack file)
-          worldGate nixpkgs w (stageBeside (dtLangDir t) file rl) file rl
+          worldGate nixpkgs w file rl
         -- The contract above is the GOVERNING one (the committed .expect on a
         -- regeneration), which cannot say whether the draft's NEW promises are
         -- evaluable at all. The ground half of those costs no nix, so the door
@@ -847,7 +847,7 @@ draftWorlds = do
 -- judge the same realization.
 expectGate :: Bool -> Bool -> FilePath -> Text -> FilePath -> EngineData -> Realization -> IO Realization
 expectGate contract claims dir w file eng rl = do
-  stagedGate (stageBeside dir file rl) file rl
+  stagedGate (stageBeside file rl) file rl
   expSrc <- if contract then tryRead (expectPathIn dir w file) else pure Nothing
   case expSrc of
     -- A skipped or absent contract is stated, never rendered as a pass: the
@@ -869,7 +869,7 @@ expectGate contract claims dir w file eng rl = do
         | otherwise -> step ("contract: " <> plural (length expects) "check") $ do
           -- Bind <self> in the contract's option paths to this instance, so it
           -- checks against the realized (already-bound) module.
-          res <- runExpects (stageBeside dir file rl) (instanceName file) expects rl
+          res <- runExpects (stageBeside file rl) (instanceName file) expects rl
           case res of
             Right () -> pure ()
             Left (ToolMissing e) -> die (nixMissing file "check the program" "check" e)
@@ -880,7 +880,7 @@ expectGate contract claims dir w file eng rl = do
               ("→ if you changed the program on purpose, rebuild: lips generate " <> T.pack file))
   when claims $ do
     world <- readRecordedWorld dir w file
-    claimGate world dir file rl
+    claimGate world file rl
   pure rl
 
 -- | The facts a world declares it cannot place, in the words of its own
@@ -1427,7 +1427,7 @@ gateOneWorld compat rep progs candidates stage world schemaPath = runExceptT $ d
   -- The world's own verdict over its render, where the world declares one.
   when (isJust (wGate world)) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)
-    forM_ validated $ \(f, rl) -> worldGate nixpkgs world (stage rl) f rl
+    forM_ validated $ \(f, rl) -> worldGate nixpkgs world f rl
   forM_ validated $ \(f, rl) -> lift (clauseClaimGate world f rl)
   unless (null claims) $ lift $ do
     nixpkgs <- artifactNixpkgs ("generate " <> T.pack rep)

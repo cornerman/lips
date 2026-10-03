@@ -3,18 +3,16 @@
 -- | The disk side of a realization: what lips writes beside a module so that
 -- what nix evaluates is what a compiled directory holds.
 --
--- Three jobs, all of them file moves rather than judgments: stage a language's
--- committed trees into a temp directory (so a gate evaluates the real
--- neighbourhood instead of a module floating alone), fill a staged tree's
--- markers with the words the program stated, and write the site a plan
--- describes. Nothing here decides whether anything is CORRECT; the gates in
+-- Two jobs, both file moves rather than judgments: write the site a plan
+-- describes beside a module in a temp directory (so a gate evaluates the real
+-- neighbourhood instead of a module floating alone), and write a whole compiled
+-- directory. Nothing here decides whether anything is CORRECT; the gates in
 -- @app\/Main.hs@ call in here to set the stage, then judge.
 --
--- The decisions stay pure and outside: 'Lips.Site' plans a site and
--- 'Lips.Kernel.Source' fills a tree, while this module owns only the IO.
+-- The decisions stay pure and outside: 'Lips.Site' plans a site, while this
+-- module owns only the IO.
 module Lips.Stage
   ( withTempDir
-  , stageFromDisk
   , stageBeside
   , siteNameOf
   , writeSite
@@ -27,15 +25,14 @@ import           Data.Maybe         (fromMaybe)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.IO       as TIO
-import           System.Directory   (copyFile, createDirectoryIfMissing, doesDirectoryExist,
-                                     doesFileExist, getPermissions, getTemporaryDirectory,
-                                     listDirectory, removeDirectoryRecursive, removeFile,
-                                     setOwnerWritable, setPermissions)
+import           System.Directory   (createDirectoryIfMissing, doesFileExist,
+                                     getTemporaryDirectory, listDirectory,
+                                     removeDirectoryRecursive, removeFile)
 import           System.FilePath    ((</>))
 import           System.Posix.Temp  (mkdtemp)
 
 import           Lips.Cli.Output       (die, report)
-import           Lips.Identity         (artifactsPathIn, languageName)
+import           Lips.Identity         (languageName)
 import           Lips.Kernel.Realize   (defaultSiteName)
 import           Lips.Kernel.Run       (Realization (..))
 import           Lips.Nix.Claims       (claimsFile)
@@ -44,9 +41,8 @@ import           Lips.Runtime          (runtimeAsset, runtimes)
 import           Lips.Site             (SitePlan (..), planSite)
 import           Lips.World            (World)
 
--- | A fresh temporary directory. lips writes a module and its staged
--- @artifacts/@ tree here so a relative @src = ./artifacts/<name>@ resolves at
--- evaluation. (Left in place, matching the module temp files elsewhere.)
+-- | A fresh temporary directory, where lips writes a module and the site beside
+-- it so a relative path the module names resolves at evaluation.
 withTempDir :: (FilePath -> IO a) -> IO a
 withTempDir act = do
   tmp <- getTemporaryDirectory
@@ -55,46 +51,23 @@ withTempDir act = do
   -- does not leave a scratch tree behind on every run.
   act dir `finally` removeDirectoryRecursive dir
 
--- | Stage a language's committed @artifacts@ tree (found under @dir@) into
--- @dst@ (the temp module's @artifacts\/@). A no-op when the language has no
--- artifacts tree, since a program without artifacts stages nothing.
---
--- A copy failure is NOT swallowed: it used to shell out to @cp -rT@ and discard
--- every error, so an unreadable source tree surfaced later as a missing path or
--- a confusing nix eval. Any IO error now propagates, naming the file.
-stageFromDisk :: FilePath -> FilePath -> FilePath -> IO ()
-stageFromDisk dir file dst = do
-  let src = artifactsPathIn dir file
-  there <- doesDirectoryExist src
-  when there (copyTree src dst)
+-- | Everything a realized module names beside itself: the site its clauses
+-- build. Handed to a gate that materializes the module into a temp directory,
+-- so what nix evaluates there is what a compiled directory holds.
+stageBeside :: FilePath -> Realization -> FilePath -> IO ()
+stageBeside file rl root = void (writeSite (T.pack (languageName file)) root rl)
 
--- | Everything a realized module names beside itself: the staged source tree and
--- the site its clauses build. Handed to a gate that materializes the module into
--- a temp directory, so what nix evaluates there is what a compiled directory
--- holds.
-stageBeside :: FilePath -> FilePath -> Realization -> FilePath -> IO ()
-stageBeside dir file rl root = do
-  stageFromDisk dir file (root </> "artifacts")
-  void (writeSite (T.pack (languageName file)) root rl)
-
--- | Write one world's compiled directory for a realization: the module, its
--- staged and FILLED source tree, the site, @artifact.nix@, @claims.nix@ and the
--- @flake.nix@ assembled from the world. The ONE writer, shared by @compile@ and
--- by the gate that builds a world's own verdict over the render, so the
--- directory a mint judges is the directory a compile writes.
---
--- @stage@ puts the source tree under @\<out\>/artifacts@: from disk for a
--- compile, from memory for a mint whose sources are not written yet. It may
--- write the site as well (the gates' stage does); 'writeSite' rewrites the same
--- plan here regardless, because its answer is what decides the flake's rungs.
+-- | Write one world's compiled directory for a realization: the module, the
+-- site, @artifact.nix@, @claims.nix@ and the @flake.nix@ assembled from the
+-- world. The ONE writer, shared by @compile@ and by the gate that builds a
+-- world's own verdict over the render, so the directory a mint judges is the
+-- directory a compile writes.
 --
 -- Returns the artifact names and the rungs, which is what @compile@ prints.
-writeCompiled :: (FilePath -> IO ()) -> World -> FilePath -> FilePath -> Realization
-              -> IO ([Text], Rungs)
-writeCompiled stage world file out rl = do
+writeCompiled :: World -> FilePath -> FilePath -> Realization -> IO ([Text], Rungs)
+writeCompiled world file out rl = do
   createDirectoryIfMissing True out
   TIO.writeFile (out </> "default.nix") (rlModule rl)
-  stage out
   -- The clause core, when the program states behaviour: one site directory
   -- holding the runtime's adapters, the minted core, the assembled entry and
   -- the runtime's own builder. A configuration-only program writes none, so
@@ -157,22 +130,3 @@ removeIfPresent dir name = do
   let path = dir </> name
   there <- doesFileExist path
   when there (removeFile path)
-
--- | Copy a directory tree, creating @dst@ and mirroring files and subdirectories
--- (the @cp -rT@ shape: contents of @src@ land directly in @dst@). Loud on any
--- IO error, by not catching it.
-copyTree :: FilePath -> FilePath -> IO ()
-copyTree src dst = do
-  createDirectoryIfMissing True dst
-  entries <- listDirectory src
-  forM_ entries $ \e -> do
-    isDir <- doesDirectoryExist (src </> e)
-    if isDir then copyTree (src </> e) (dst </> e)
-             else do
-               copyFile (src </> e) (dst </> e)
-               -- A staged tree is lips's own working copy: source fills WRITE into
-               -- it. Copying preserves the mode, and a language folder read from
-               -- the nix store is read-only (a compile inside a derivation), so
-               -- the copy is made writable or the fill dies with EACCES.
-               perms <- getPermissions (dst </> e)
-               setPermissions (dst </> e) (setOwnerWritable True perms)

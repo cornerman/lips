@@ -75,9 +75,9 @@ import           Lips.Stage         (siteNameOf, stageBeside, withTempDir, write
 -- needs an ambient nixpkgs (the compiled flake resolves @flake:nixpkgs@, as it
 -- does for every other rung). A claim-free program is untouched and @check@
 -- stays nixpkgs-free for it.
-claimGate :: World -> FilePath -> FilePath -> Realization -> IO ()
-claimGate world dir file rl =
-  clauseClaimGate world file rl >> commandClaimGate world dir file rl
+claimGate :: World -> FilePath -> Realization -> IO ()
+claimGate world file rl =
+  clauseClaimGate world file rl >> commandClaimGate world file rl
 
 -- | The clause claims, judged: one small derivation that evaluates the program's
 -- own definitions with the runtime's list-backed adapters. No machine boots and
@@ -108,8 +108,8 @@ clauseClaimGate world file rl
                 <> " fix the sentence, or the claim that pins it."))
             Right (ExitSuccess, _, _) -> pure ()
 
-commandClaimGate :: World -> FilePath -> FilePath -> Realization -> IO ()
-commandClaimGate world dir file rl
+commandClaimGate :: World -> FilePath -> Realization -> IO ()
+commandClaimGate world file rl
   | null (rlClaims rl) = pure ()
   | otherwise = do
       let machine = [ clId c | c <- rlClaims rl, clPlace c == PlaceMachine ]
@@ -122,7 +122,7 @@ commandClaimGate world dir file rl
           <> " own binary, which needs no machine."))
       step ("claims: " <> plural (length (rlClaims rl)) "claim") $ withTempDir $ \tmp -> do
         TIO.writeFile (tmp </> "default.nix") (rlModule rl)
-        stageBeside dir file rl tmp
+        stageBeside file rl tmp
         let (artBody, artNames) = rlArtifact rl
         TIO.writeFile (tmp </> "artifact.nix") artBody
         case claimsFile (not (null artNames)) (rlSiteName rl) (rlClaims rl) of
@@ -358,11 +358,11 @@ mintClaimGate nixpkgs stage file rl
 -- A world with no @gate@ slot is untouched, and @check@ never runs this: it
 -- stays nixpkgs-free, while the world's own package build still refuses an
 -- invalid render where it is used.
-worldGate :: Text -> World -> (FilePath -> IO ()) -> FilePath -> Realization -> IO ()
-worldGate nixpkgs world stage file rl = case wGate world of
+worldGate :: Text -> World -> FilePath -> Realization -> IO ()
+worldGate nixpkgs world file rl = case wGate world of
   Nothing -> pure ()
   Just _  -> step ("the " <> wName world <> " world's own gate") $ withTempDir $ \tmp -> do
-    _ <- writeCompiled stage world file tmp rl
+    _ <- writeCompiled world file tmp rl
     res <- try (readProcessWithExitCode "nix"
       [ "build", "--no-link", "path:" <> tmp <> "#gate"
       , "--override-input", "nixpkgs", T.unpack nixpkgs ] "")
