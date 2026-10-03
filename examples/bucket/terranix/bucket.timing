@@ -1,0 +1,16 @@
+format: 1
+verdict: accepted
+model: claude-sonnet-5
+thinking: medium
+wall: 38.4
+phase 0.3 terranix option schema
+phase 37.6 mint .bucket from 1 program for terranix
+phase 0.3 the terranix world's own gate
+phase 0.0 write ./bucket
+turns: 4
+tool submit_draft: 3
+tokens input: 8
+tokens output: 4123
+tokens cache-read: 82829
+tokens cache-write: 30662
+cost-usd: 0.1344668

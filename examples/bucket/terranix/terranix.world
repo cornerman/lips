@@ -1,7 +1,8 @@
-format: 1
+format: 3
 world: terranix
 module-attr: terranixModules
 schema-pin: LIPS_TERRANIX_FLAKE
+schema-input: terranix github:terranix/terranix
 input-args: , terranix
 claims: sandbox
 
@@ -64,14 +65,11 @@ let t = builtins.getFlake "<flakeref>";
 in pkgs.runCommand "options.json" { }
      "cp ${doc}/share/doc/nixos/options.json $out"
 
---- inputs ---
-  inputs.terranix.url = "github:terranix/terranix";
-
 --- builds ---
       # The per-system terranix render, defined once so the buildable
       # configuration (packages) and the printing rung (apps) are the SAME file.
-      # pkgs is passed explicitly, so the render uses this flake's nixpkgs rather
-      # than terranix's own input, and terranix owns the JSON format
+      # pkgs is this flake's nixpkgs, which follows terranix's own (the one the
+      # schema slot evaluated with), and terranix owns the JSON format
       # (lib.terranixConfiguration produces config.tf.json); lips converts nothing.
       builds = system: {
         config = terranix.lib.terranixConfiguration {
@@ -82,6 +80,13 @@ in pkgs.runCommand "options.json" { }
 
 --- packages ---
         config = (builds system).config;
+
+--- gate ---
+        # The render itself. terranix's namespaces are free-form, so this proves only
+        # that the module evaluates to a config.tf.json; a misspelled resource field
+        # still reaches `tofu plan`. Its inputs are pinned (terranix by schema-input,
+        # nixpkgs following terranix), so the verdict cannot drift.
+        (builds system).config
 
 --- apps ---
         let b = builds system; p = pkgsFor system; in {
