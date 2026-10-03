@@ -25,6 +25,7 @@ module Lips.Cli
   , exportsOpts
   , programCompleter
   , defaultThinking
+  , defaultTargetName
   ) where
 
 import Control.Monad      (filterM)
@@ -263,6 +264,9 @@ worldsDirOpt = optional (strOption
   (long "worlds" <> metavar "DIR"
     <> help "Look for <name>.world in DIR instead of beside the program."))
 
+-- | The world a language is born into when no @-t@ names one, and the world
+-- @options@ searches. Only the FIRST mint uses it for generate: a re-mint takes
+-- the worlds the language folder holds ('Lips.Language.mintTargets').
 defaultTargetName :: Text
 defaultTargetName = "nixos"
 
@@ -270,15 +274,14 @@ defaultTargetName = "nixos"
 -- kept, because it is the order the worlds are minted in and every world after
 -- the first may only APPEND to the grammar the ones before it wrote. A name
 -- given twice names the same world, so it carries no second position a caller
--- could have meant and the first occurrence stands. No flag at all means the
--- default world.
+-- could have meant and the first occurrence stands. No flag at all parses to
+-- no world: which worlds that means depends on the language folder, so
+-- 'Lips.Language.mintTargets' decides it where the folder is read.
 targetsOpt :: Parser [Text]
-targetsOpt = orDefault <$> many (option (T.pack <$> str)
+targetsOpt = nub <$> many (option (T.pack <$> str)
   (long "target" <> short 't' <> metavar targetMetavar
-    <> help "Which Nix world the configuration is for. Repeat to mint several in one call, left to right (default: nixos)."))
-  where
-    orDefault [] = [defaultTargetName]
-    orDefault ws = nub ws
+    <> help ("Which Nix world the configuration is for. Repeat to mint several in one call, left to right"
+              <> " (default: the world the language already holds; " <> T.unpack defaultTargetName <> " for a new one).")))
 
 -- | Every re-bless mode, listed from the type, so a mode added later cannot
 -- leave the help text naming less than the whole set.

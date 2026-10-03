@@ -56,8 +56,8 @@ import           Lips.Kernel.Engine.Aggregate   (assembleWith, mergeModeOf)
 import           Lips.Kernel.Engine.Data       (Engine (..), IgnoreSpec (..), bindSelf, emitTemplate, keepsRepeats, renderAttrPath, toDemand, toRule)
 import           Lips.Generate.Readme   (renderReadme)
 import           Lips.Identity                 (watchedFiles, timingPathIn, languageTimingPathIn, requireProgram, readmePathIn, languageRecordPathIn, languageReadmePathIn, languageGapPathIn, gapPathIn, artifactsPathIn, compiledPath, decisionsPath, directionPath, expectPathIn, generationPathIn, grammarPathIn, instanceName, langDir, languageName, outDir, resolveLangDir, rulesPathIn, worldDirIn, worldPathIn)
-import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintedWorlds, orphanIgnores, soleWorld)
-import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs)
+import           Lips.Language                 (exportedClauses, grammarIsFrozen, mintTargets, mintedWorlds, orphanIgnores, soleWorld)
+import           Lips.Cli               (Command (..), GenerateOpts (..), CompileOpts (..), CheckOpts (..), OptionsOpts (..), ExportsOpts (..), WorldWhat (..), cliParserInfo, cliPrefs, defaultTargetName)
 import           Lips.Cli.Output        (die, note, phaseLog, report, say, sayAnswer, setState, step, tshow)
 import           Lips.Gate              (ExpectFail (..), artifactGate, claimGate,
                                         groundExpectFaults,
@@ -67,7 +67,7 @@ import           Lips.Stage             (stageBeside,
                                          withTempDir, writeCompiled, writeSite)
 import           Lips.Schema            (assertOptionsAdmissible, ensureOptionSchema,
                                          optionsQuery)
-import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission,
+import           Lips.Report            (Failure (..), demandGenerateFail, emptySubmission, heldWorldReport, inferredWorldsLine, severalWorldsReport,
                                          committedSourceReport, failureReport, mintedSourceReport, noSubmission, unpinnedGlueReport,
                                          gapArtifact, nixEvalFailed, nixMissing, plural,
                                          printFail, refusalReport, renderDiagnosis,
@@ -143,16 +143,30 @@ main = do
       -- for the LAST name in the list as much as the first. Beside the FIRST
       -- program, which is the one whose language folder the mint writes; the
       -- CLI parser guarantees there is one.
-      let base = case goFiles go of
-                   (f : _) -> takeDirectory f
+      let rep  = case goFiles go of
+                   (f : _) -> f
                    []      -> "."
-      worlds <- mapM (resolveWorldOrDie base (goWorlds go)) (goTarget go)
+          base = takeDirectory rep
+          lang = T.pack (languageName rep)
+      -- With no -t, the worlds come from the language folder, so a re-mint
+      -- writes back what is committed and never grows a world nobody named.
+      held <- mintedWorlds (langDir rep) rep
+      names <- case mintTargets defaultTargetName (goTarget go) held of
+        Right ws -> pure ws
+        Left several -> die (severalWorldsReport (goFiles go) lang several)
+      -- An inferred world is said aloud, and its refusal names where its file
+      -- was looked for, since the human never typed this name.
+      worlds <- if null (goTarget go)
+        then do
+          say (inferredWorldsLine lang held (T.intercalate ", " names))
+          mapM (resolveHeldOrDie base (goWorlds go) rep) names
+        else mapM (resolveWorldOrDie base (goWorlds go)) names
       -- ONE model call for the whole language. The patterns are shared by every
       -- world, so the call that writes them must see every world: a call that
       -- sees one bakes that world's spelling into the shared half, and the next
       -- world -- which cannot convert a value, the grammar having no
       -- computation -- can only refuse. Measured 2026-08-09.
-      inherited <- inheritedGrammar (goTarget go) (goFiles go)
+      inherited <- inheritedGrammar names (goFiles go)
       generate worlds inherited (goSchema go) (goConfidence go) (goCompat go) (goFresh go) (goVerbose go) (goModel go) (goThinking go) (goFiles go)
     Compile co
       | coWatch co -> watchCompile (coOut co) (coLangDir co) (coNoContract co) (coFile co)
@@ -217,6 +231,16 @@ resolveWorldOrDie base override name = do
     Right w  -> pure w
     Left why -> die (report ("lips can't use the world " <> name <> ":") [why]
                        "\8594 name a world lips ships (lips world), or write one beside the program.")
+
+-- | Resolve a world the language holds, inferred because no @-t@ named it. Its
+-- own door because the remedy differs: the human did not type this name, so
+-- the refusal says where its file was looked for rather than "name a world".
+resolveHeldOrDie :: FilePath -> Maybe FilePath -> FilePath -> Text -> IO World
+resolveHeldOrDie base override file name = do
+  r <- resolveWorld base override name
+  case r of
+    Right w  -> pure w
+    Left why -> die (heldWorldReport file name (worldPathIn (maybe base id override) name) why)
 
 -- | @world@: print the world a name resolves to, list every world reachable
 -- from here, or check that a world file's Nix parses. The listing marks which

@@ -180,9 +180,11 @@ main :: IO ()
 main = hspec $ do
   describe "generate argument parsing (Lips.Cli)" $ do
     let parseArgs = getParseResult . execParserPure defaultPrefs (info (generateOpts 0.7) idm)
-    it "defaults target to nixos, confidence to the default, compat full, verbose off" $
+    -- No -t parses to no world at all: which world that means depends on the
+    -- language folder, which only Lips.Language.mintTargets reads.
+    it "leaves target unset, confidence to the default, compat full, verbose off" $
       parseArgs ["ledger.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False False Nothing defaultThinking ["ledger.backup.lips"])
+        `shouldBe` Just (GenerateOpts [] Nothing Nothing 0.7 Full False False Nothing defaultThinking ["ledger.backup.lips"])
     it "reads --target home-manager in any position" $
       parseArgs ["--target", "home-manager", "a.backup.lips"]
         `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.7 Full False False Nothing defaultThinking ["a.backup.lips"])
@@ -197,7 +199,7 @@ main = hspec $ do
         `shouldBe` Just (GenerateOpts ["house-k3s"] (Just "worlds") Nothing 0.7 Full False False Nothing defaultThinking ["a.backup.lips"])
     it "reads an explicit --model alongside multiple programs" $
       parseArgs ["--model", "anthropic/claude", "a.backup.lips", "b.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
+        `shouldBe` Just (GenerateOpts [] Nothing Nothing 0.7 Full False False (Just "anthropic/claude") defaultThinking ["a.backup.lips", "b.backup.lips"])
     it "combines --target and --confidence" $
       parseArgs ["--confidence", "0.9", "--target", "home-manager", "a.backup.lips"]
         `shouldBe` Just (GenerateOpts ["home-manager"] Nothing Nothing 0.9 Full False False Nothing defaultThinking ["a.backup.lips"])
@@ -205,21 +207,21 @@ main = hspec $ do
       parseArgs ["--confidence", "1.5", "a.backup.lips"] `shouldBe` Nothing
     it "reads --compat in any position, and refuses a word that is not a mode" $ do
       parseArgs ["--compat", "none", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 None False False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts [] Nothing Nothing 0.7 None False False Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "--compat", "forwards"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Forwards False False Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts [] Nothing Nothing 0.7 Forwards False False Nothing defaultThinking ["a.backup.lips"])
       -- the flag it replaces is gone, so an old invocation fails loud rather
       -- than silently keeping the committed contract
       parseArgs ["--renew", "a.backup.lips"] `shouldBe` Nothing
       parseArgs ["--compat", "renew", "a.backup.lips"] `shouldBe` Nothing
     it "reads -v/--verbose in any position" $ do
       parseArgs ["--verbose", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts [] Nothing Nothing 0.7 Full False True Nothing defaultThinking ["a.backup.lips"])
       parseArgs ["a.backup.lips", "-v"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False True Nothing defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts [] Nothing Nothing 0.7 Full False True Nothing defaultThinking ["a.backup.lips"])
     it "reads -m as the short alias for --model" $
       parseArgs ["-m", "anthropic/claude", "a.backup.lips"]
-        `shouldBe` Just (GenerateOpts ["nixos"] Nothing Nothing 0.7 Full False False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
+        `shouldBe` Just (GenerateOpts [] Nothing Nothing 0.7 Full False False (Just "anthropic/claude") defaultThinking ["a.backup.lips"])
     it "rejects a duplicate --model (fail loud, not last-wins)" $
       parseArgs ["--model", "a", "--model", "b", "a.backup.lips"] `shouldBe` Nothing
     -- The thinking level is always passed to pi and always recorded, so an
