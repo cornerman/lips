@@ -434,6 +434,17 @@ test-draft:
     grep -q "no-such-nixpkgs" "$tmp/out28" \
       || { echo "FAIL: the clause claims did not fail on the pin"; cat "$tmp/out28"; exit 1; }
     unset LIPS_MINT_BASIS
+    # generate with no -t over a language holding several worlds refuses before
+    # any model call, naming both remedies. Run on a copy with nothing on PATH,
+    # so a regression fails at the missing pi instead of starting a paid mint.
+    cp -r examples/cron examples/report.cron.lips "$tmp/"
+    if env -i PATH=/nonexistent HOME="$tmp" "$lips" generate "$tmp/report.cron.lips" > "$tmp/out30" 2>&1; then
+      echo "FAIL: generate without -t minted a language holding several worlds"; cat "$tmp/out30"; exit 1
+    fi
+    grep -q "lips generate -t kubenix -t nixos $tmp/report.cron.lips" "$tmp/out30" \
+      || { echo "FAIL: the refusal did not name the joint command"; cat "$tmp/out30"; exit 1; }
+    grep -q "lips generate -t kubenix $tmp/report.cron.lips" "$tmp/out30" \
+      || { echo "FAIL: the refusal did not name the single-world command"; cat "$tmp/out30"; exit 1; }
     echo OK
 
 # Rebuild only the VM smoke check with streamed logs (needs KVM).
