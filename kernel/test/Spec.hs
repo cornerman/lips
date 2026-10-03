@@ -107,6 +107,21 @@ mk i s a str =
     , dRationale = Nothing
     }
 
+-- | Judge ground checks the way 'Lips.Gate' does, with the program side built
+-- for the test: one source decision per check, and every slot decision that
+-- check names renamed into that source's descendant, as refinement names it
+-- (@\<parent\>/\<rule\>#\<i\>@). A test about how a slot's VALUE is compared
+-- then need not spell the provenance that 'checkArtifactValues' follows to find
+-- the slot decision a check is judged against.
+judgeFed :: Base -> [(Expect, Text)] -> [(Expect, Text)]
+judgeFed ground pairs = checkArtifactValues prog (fromList (map reroot (toList ground))) pairs
+  where
+    roots = [ (exPath e, exFrom e, "s" <> T.pack (show k)) | (k, (e, _)) <- zip [1 :: Int ..] pairs ]
+    prog  = fromList [ (mk r "x" "v" Stated) { dSubject = from } | (_, from, r) <- roots ]
+    reroot d = case [ r | (p, _, r) <- roots, dSubject d == Subject p ] of
+      (r : _) -> let DecisionId i = dId d in d { dId = DecisionId (r <> "/" <> i) }
+      []      -> d
+
 winnerAssertion :: Subject -> Map.Map Subject Decision -> Maybe Assertion
 winnerAssertion s = fmap dAssertion . Map.lookup s
 
@@ -1769,8 +1784,8 @@ main = hspec $ do
       it "holds a ground slot to the whole assembled text" $ do
         let ground = fromList [ (dec "artifact.greet.args.text" "\"x-1-y\"") ]
             gtpl   = Expect "a1" ["artifact","greet","args","text"] (Subject ["c","d"]) Nothing (Just "x-<value>-y")
-        checkArtifactValues ground [(gtpl, "x-1-y")] `shouldBe` []
-        length (checkArtifactValues ground [(gtpl, "x-1")]) `shouldBe` 1
+        judgeFed ground [(gtpl, "x-1-y")] `shouldBe` []
+        length (judgeFed ground [(gtpl, "x-1")]) `shouldBe` 1
 
       -- A claim or clause slot holds Scheme, and a rule fills its #<value.N>
       -- holes with fillSexp, which escapes a quote for the Scheme string. A
@@ -1785,7 +1800,7 @@ main = hspec $ do
             ground = fromList [ (dec "claim.filter.equals" "(list \"{\\\"a\\\":\\\"1\\\"}\")") ]
         pv <- either (fail . T.unpack) pure (expectedValue wbase onEq)
         pv `shouldBe` "(list \"{\\\"a\\\":\\\"1\\\"}\")"
-        checkArtifactValues ground [(onEq, pv)] `shouldBe` []
+        judgeFed ground [(onEq, pv)] `shouldBe` []
 
       -- The text spelling <value.N> inside a Scheme string is literal text to
       -- the clause parser, so such a template can never hold against a clause
@@ -1794,7 +1809,7 @@ main = hspec $ do
         let onEq   = Expect "a3" ["claim","filter","equals"] (Subject ["witness","filter"]) Nothing
                        (Just "(list \"<value.1>\")")
             ground = fromList [ (dec "claim.filter.equals" "(list \"x\")") ]
-        map snd (checkArtifactValues ground [(onEq, "(list \"y\")")])
+        map snd (judgeFed ground [(onEq, "(list \"y\")")])
           `shouldSatisfy` any (T.isInfixOf "#<value.1>")
 
     it "rejects a check on a package/artifact-referencing option (would crash eval)" $ do
@@ -1824,12 +1839,12 @@ main = hspec $ do
       isGroundExpect onArg `shouldBe` True
       isGroundExpect (Expect "a2" ["home","packages"] (Subject ["x"]) Nothing Nothing) `shouldBe` False
       -- the program's value reached the arg
-      checkArtifactValues ground [(onArg, "hello from lips")] `shouldBe` []
+      judgeFed ground [(onArg, "hello from lips")] `shouldBe` []
       -- a value that did NOT reach it fails, naming the slot
-      length (checkArtifactValues ground [(onArg, "goodbye")]) `shouldBe` 1
+      length (judgeFed ground [(onArg, "goodbye")]) `shouldBe` 1
       -- an assertion on a slot no rule fills fails loud instead of reading null
       let onNothing = Expect "a3" ["artifact","greet","args","name"] (Subject ["cmd","greet","msg"]) Nothing Nothing
-      length (checkArtifactValues ground [(onNothing, "greet")]) `shouldBe` 1
+      length (judgeFed ground [(onNothing, "greet")]) `shouldBe` 1
 
     -- A claim slot is pinned by the SAME mechanism, which is what makes a
     -- re-mint that drops an author's example trip the existing gate rather than
@@ -1843,11 +1858,11 @@ main = hspec $ do
             ]
           onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing Nothing
       isGroundExpect onOut `shouldBe` True
-      checkArtifactValues ground [(onOut, "hi")] `shouldBe` []
-      length (checkArtifactValues ground [(onOut, "bye")]) `shouldBe` 1
+      judgeFed ground [(onOut, "hi")] `shouldBe` []
+      length (judgeFed ground [(onOut, "bye")]) `shouldBe` 1
       -- a claim the engine stopped emitting fails loud, which is the drop gate
       let dropped = Expect "e2" ["claim","gone","stdout"] (Subject ["witness","out"]) Nothing Nothing
-      map snd (checkArtifactValues ground [(dropped, "hi")])
+      map snd (judgeFed ground [(dropped, "hi")])
         `shouldSatisfy` any (T.isInfixOf "nothing realizes this slot")
 
     -- A CLAUSE body and a SITE name are literals in the ground base too, and no
@@ -1867,8 +1882,8 @@ main = hspec $ do
           onSite   = Expect "e2" ["site","training","command"] (Subject ["install"]) Nothing Nothing
       isGroundExpect onClause `shouldBe` True
       isGroundExpect onSite `shouldBe` True
-      checkArtifactValues ground [(onClause, "60"), (onSite, "training")] `shouldBe` []
-      length (checkArtifactValues ground [(onClause, "70")]) `shouldBe` 1
+      judgeFed ground [(onClause, "60"), (onSite, "training")] `shouldBe` []
+      length (judgeFed ground [(onClause, "70")]) `shouldBe` 1
 
     -- A slot holds a VALUE; the program states a value. They must be compared as
     -- values, never as transport encodings: the canonical form escapes a quote,
@@ -1880,9 +1895,57 @@ main = hspec $ do
                 { dSubject = Subject ["claim","echo","stdout"] }
             ]
           onOut = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing Nothing
-      checkArtifactValues ground [(onOut, "{\"a\":\"1\"}")] `shouldBe` []
+      judgeFed ground [(onOut, "{\"a\":\"1\"}")] `shouldBe` []
       -- and a value that genuinely is not there still fails
-      length (checkArtifactValues ground [(onOut, "{\"a\":\"2\"}")]) `shouldBe` 1
+      length (judgeFed ground [(onOut, "{\"a\":\"2\"}")]) `shouldBe` 1
+
+    -- A slot fed by several program lines (an Append-assembled claim section or
+    -- clause) holds one ground decision PER LINE. A check expanded from a family
+    -- (`from call.<n>`) states what ITS line contributed, so it is judged against
+    -- that line's own contribution. Judged against the first contributor, a
+    -- one-call program passed and a two-call program the engine realized
+    -- correctly was refused (experiments/plurality-function, probe S-two).
+    it "judges each line's check against that line's own contribution to a shared slot" $ do
+      let call i n v = (mk i "x" v Stated) { dSubject = Subject ["call", n] }
+          calls = fromList [ call "d3" "1" "hallo", call "d4" "2" "du" ]
+          part p v = (mk p "x" v Stated)
+                       { dSubject = Subject ["claim","main","equals-lines"]
+                       , dProv = Derived [DecisionId (T.takeWhile (/= '/') p)] (RuleId "r2") }
+          ground = fromList [ part "d3/r2#1" "[ \"hallo\" ]", part "d4/r2#1" "[ \"du\" ]" ]
+          tpl = Just "[ \"<value>\" ]"
+          family = Expect "a1" ["claim","main","equals-lines"] (Subject ["call","<n>"]) Nothing tpl
+      es  <- either (fail . T.unpack) pure (expandExpects "function" calls [family])
+      pvs <- either (fail . T.unpack) pure (traverse (expectedValue calls) es)
+      pvs `shouldBe` ["[ \"hallo\" ]", "[ \"du\" ]"]
+      checkArtifactValues calls ground (zip es pvs) `shouldBe` []
+
+    -- The case judging against ANY contributor would miss: two calls print the
+    -- same word, and the engine dropped the second one's contribution. The
+    -- first call's element still reads "hallo", so only following the second
+    -- call's own provenance sees that nothing of it reached the slot. A clause
+    -- keeps its repeats on purpose (printing twice is not printing once), so
+    -- this is the drop that matters.
+    it "refuses a check whose own line contributed nothing, even when another line's value matches" $ do
+      let call i n v = (mk i "x" v Stated) { dSubject = Subject ["call", n] }
+          calls = fromList [ call "d3" "1" "hallo", call "d4" "2" "hallo" ]
+          ground = fromList [ (mk "d3/r2#1" "x" "[ \"hallo\" ]" Stated)
+                                { dSubject = Subject ["claim","main","equals-lines"] } ]
+          onTwo = Expect "a1" ["claim","main","equals-lines"] (Subject ["call","2"]) Nothing (Just "[ \"<value>\" ]")
+          fails = map snd (checkArtifactValues calls ground [(onTwo, "[ \"hallo\" ]")])
+      length fails `shouldBe` 1
+      fails `shouldSatisfy` all (\f -> all (`T.isInfixOf` f) ["a1", "claim.main.equals-lines", "call.2"])
+
+    -- A check reads ONE decision of the program and names the slot that
+    -- decision's rule fills. A slot its `from` never fed is judged against
+    -- nothing that check can speak for, so it is refused by name rather than
+    -- quietly compared with whichever decision happens to fill the slot.
+    it "refuses a check whose from decision feeds no decision of its slot" $ do
+      let prog   = fromList [ (mk "w1" "x" "hi" Stated) { dSubject = Subject ["witness","out"] } ]
+          ground = fromList [ (mk "z9/r1#0" "x" "\"hi\"" Stated) { dSubject = Subject ["claim","echo","stdout"] } ]
+          onOut  = Expect "e1" ["claim","echo","stdout"] (Subject ["witness","out"]) Nothing Nothing
+          fails  = map snd (checkArtifactValues prog ground [(onOut, "hi")])
+      length fails `shouldBe` 1
+      fails `shouldSatisfy` all (\f -> all (`T.isInfixOf` f) ["e1", "claim.echo.stdout", "witness.out"])
 
     -- A whole-value assertion on a SEVERAL-PART value can be unsatisfiable by
     -- construction (the rule joins the parts its own way), which reads exactly
@@ -1894,10 +1957,10 @@ main = hspec $ do
             ]
           onIn = Expect "e3" ["claim","echo","stdin"] (Subject ["witness","in"]) Nothing Nothing
           -- the program side renders a two-part value space-joined
-          fails = map snd (checkArtifactValues ground [(onIn, "{\"a\":\"1\"} {\"a\":\"2\"}")])
+          fails = map snd (judgeFed ground [(onIn, "{\"a\":\"1\"} {\"a\":\"2\"}")])
       fails `shouldSatisfy` any (T.isInfixOf "pin one part per assertion")
       -- a genuinely absent value gets no such hint, since it is a different fault
-      map snd (checkArtifactValues ground [(onIn, "nowhere")])
+      map snd (judgeFed ground [(onIn, "nowhere")])
         `shouldSatisfy` all (not . T.isInfixOf "pin one part per assertion")
 
     it "still judges a slot whose value has no text form" $ do
@@ -1906,7 +1969,7 @@ main = hspec $ do
                 { dSubject = Subject ["artifact","w","args","runtimeInputs"] }
             ]
           onArg = Expect "e2" ["artifact","w","args","runtimeInputs"] (Subject ["x"]) Nothing Nothing
-      checkArtifactValues ground [(onArg, "artifact.tool")] `shouldBe` []
+      judgeFed ground [(onArg, "artifact.tool")] `shouldBe` []
 
     it "keeps a claim expect out of the nix eval set" $ do
       -- A claim command references an artifact, so without the exemption the

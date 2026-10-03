@@ -188,7 +188,7 @@ runExpects stage inst expects0 rl =
       -- literal in the ground base (a builder consumes it, so it is no attribute
       -- of the derivation and no eval could reach it).
       let (artExpects, optExpects) = partition (isGroundExpect . fst) (zip expects pvs)
-          artFails = checkArtifactValues (rlGround rl) artExpects
+          artFails = checkArtifactValues base (rlGround rl) artExpects
       optRes <- evalOptionExpects stage (rlModule rl) optExpects
       pure $ case (artFails, optRes) of
         ([], r)      -> r
@@ -215,7 +215,7 @@ groundExpectFaults inst expects0 rl =
   case expandExpects inst base expects0 >>= \es -> (,) es <$> traverse (expectedValue base) es of
     Left e  -> ["lips can't match a check to the program: " <> e]
     Right (es, pvs) ->
-      map snd (checkArtifactValues (rlGround rl)
+      map snd (checkArtifactValues base (rlGround rl)
                  (filter (isGroundExpect . fst) (zip es pvs)))
   where base = rlBase rl
 

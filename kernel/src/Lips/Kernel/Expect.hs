@@ -395,19 +395,30 @@ isGroundExpect e = case exPath e of
 -- uses on evaluated options. The assertion's option path IS the ground
 -- subject, so an assertion whose slot no rule fills fails loud instead of
 -- reading a silent @null@.
-checkArtifactValues :: Base -> [(Expect, Text)] -> [(Expect, Text)]
-checkArtifactValues ground pairs = concatMap judge pairs
+--
+-- A slot several program lines feed (an Append-assembled claim section or
+-- clause) holds one ground decision PER LINE, so "the slot" is ambiguous. The
+-- check states what its @from@ decision contributed, so it is judged against
+-- the slot decisions DESCENDING from that decision: refinement names every
+-- product @\<parent id\>/\<rule\>#\<i\>@ ('Lips.Kernel.Refine'), so a
+-- descendant's id extends its ancestor's id by a slash, at any depth. That is
+-- why the program base is needed beside the ground one: the @from@ decision is
+-- consumed by refinement and survives only there.
+checkArtifactValues :: Base -> Base -> [(Expect, Text)] -> [(Expect, Text)]
+checkArtifactValues base ground pairs = concatMap judge pairs
   where
-    judge (e, pv) = map ((,) e) $ case [ a | d <- toList ground, dSubject d == Subject (exPath e)
-                             , let Assertion a = dAssertion d ] of
-      []      -> [ dotted (exPath e) <> ": nothing realizes this slot, so the "
-                    <> "program value " <> pv <> " lands nowhere" ]
-      (a : _) | holds e pv (slotText a) -> []
-              | isJust (exTemplate e) ->
-                  [ dotted (exPath e) <> ": should be " <> pv <> ", but is " <> slotText a
-                      <> clauseHint (exTemplate e) a ]
-              | otherwise -> [ dotted (exPath e) <> ": should contain " <> pv
-                                <> ", but is " <> slotText a <> jointHint pv (slotText a) ]
+    judge (e, pv) = map ((,) e) $ case contributions e pv of
+      Left why -> [ why ]
+      -- A line contributes one decision to a slot; should a rule ever emit the
+      -- same slot twice from one line, every one of them must hold.
+      Right as -> concatMap (verdict e pv) as
+    verdict e pv a
+      | holds e pv (slotText a) = []
+      | isJust (exTemplate e) =
+          [ dotted (exPath e) <> ": should be " <> pv <> ", but is " <> slotText a
+              <> clauseHint (exTemplate e) a ]
+      | otherwise = [ dotted (exPath e) <> ": should contain " <> pv
+                        <> ", but is " <> slotText a <> jointHint pv (slotText a) ]
     -- A slot holds a VALUE and the program states a value, so they are compared
     -- as VALUES, never as transport encodings. The canonical form escapes a
     -- quote (and a newline), while the program side is already decoded by
@@ -434,6 +445,23 @@ checkArtifactValues ground pairs = concatMap judge pairs
           \ rule does, #<value.N> rather than <value.N>: "
             <> T.replace "<value" (clauseMarker <> "value") tpl <> ")"
     clauseHint _ _ = ""
+    -- The slot decisions this check's own @from@ decision fed. A slot it never
+    -- fed is refused by name rather than compared with whichever decision does
+    -- fill it: that comparison speaks for a line the check does not read.
+    contributions e pv =
+      let slot  = [ d | d <- toList ground, dSubject d == Subject (exPath e) ]
+          roots = [ i | d <- toList base, dSubject d == exFrom e, let DecisionId i = dId d ]
+          own   = [ d | d <- slot, let DecisionId i = dId d
+                      , any (\r -> (r <> "/") `T.isPrefixOf` i) roots ]
+       in case (slot, own) of
+            ([], _) -> Left (dotted (exPath e) <> ": nothing realizes this slot, so the "
+                               <> "program value " <> pv <> " lands nowhere")
+            (_, []) -> Left (dotted (exPath e) <> ": check " <> exId e <> " reads "
+                               <> renderFrom e <> ", but nothing " <> renderFrom e
+                               <> " produced reaches this slot (" <> tshow (length slot)
+                               <> " other decision(s) fill it); a check names the "
+                               <> "decision whose rule fills the slot it pins")
+            _       -> Right [ a | d <- own, let Assertion a = dAssertion d ]
     -- A SEVERAL-PART value pinned as a whole can be unsatisfiable by
     -- construction: the parts reach the slot, but the rule joins them its own way
     -- (a newline between two stdin lines), while the program side renders them
