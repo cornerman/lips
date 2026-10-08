@@ -643,16 +643,21 @@ behavior the program never mentions", §13). This section records the direction
 chosen for that axis, why it was forced rather than preferred, and what stays
 open.
 
-The physics is now partly built. The falsifier ran and passed
-(`docs/superpowers/learnings/2026-08-04-logscan-clause-falsifier.md`: 24 lines of
-clauses for 70 of Go, every clause traceable, claims in 121 ms with no build),
+The physics is built, except for several sites per program. The falsifier ran
+and passed (`docs/superpowers/learnings/2026-08-04-logscan-clause-falsifier.md`:
+24 lines of clauses for 70 of Go, every clause traceable, claims in 121 ms with no build),
 and the plan it earned is `docs/superpowers/plans/2026-08-04-logic-axis-plan.md`.
 Landed: the closed clause grammar (`Kernel/Sexp.hs`), a clause as a rule's rhs
 (`VSexp`), the vocabulary and contracts as data (`assets/runtime/scheme/`), the
 subset gate (`Kernel/Clause/Gate.hs`), clause assembly with provenance walked
 back to program lines (`Realize.realizeClauses`), and runtime covering
-(`Kernel/Clause/Catalogue.hs`). Not yet built: the compiled site, offline clause
-claims, the mint, and several sites per program.
+(`Kernel/Clause/Catalogue.hs`), the compiled site (`Lips.Site.planSite`;
+`compile` offers `#site` to run it), offline clause claims (`compile` judges
+them in its "clause claims" step; `#site-claims` re-runs them), and the mint
+(`logscan`, `board` and `libero/` are minted as clauses). Several sites per
+program is shape only: a site is named (`site.<name>.command`), but a second
+one is a loud refusal (`Realize.siteNameIn`), and no committed example needs
+one (TODO, "Several sites at once is refused, not built").
 
 **What was rejected first, because the reason generalizes.** The tempting move
 is to let the kernel own a grammar for computation, a small lambda or term
