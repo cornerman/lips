@@ -18,16 +18,33 @@ This file, `ledger.backup.lips`, is a complete lips program:
     keep 14 daily snapshots.
     credentials come from /etc/ledger-backup.env.
 
-`lips compile ledger.backup.lips` first shows how it read each line:
+Before this file compiles, its language must exist. One model call
+(`lips generate ledger.backup.lips`) *mints* the language `backup` from it:
+the model writes a grammar and a set of rules, and lips verifies them. The
+repo ships the result in `examples/backup/`. A grammar pattern reads a line
+and names the facts in it:
+
+    back up <source> to <dest> <schedule>
+      => fact backup.source "<source>" ; fact backup.dest "<dest>" ; fact backup.schedule "<schedule>"
+
+A rule maps one fact onto an option the target system already defines:
+
+    match fact backup.dest => services.restic.backups.<self>.repository "<value>"
+
+Three patterns and five rules make up the whole language. (The lines above are
+simplified: each real line also carries an id, a provenance stamp and Nix
+quoting.) From now on, `lips compile ledger.backup.lips` runs with no model.
+It first shows how it read each line. A line *crystallizes* when it matches a
+pattern (`p1` to `p3`) and yields named facts:
 
     ledger.backup.lips: 3 of 3 lines crystallize.
       line 1  ok        p1  backup.source, backup.dest, backup.schedule
       line 2  ok        p2  backup.retention
       line 3  ok        p3  backup.credentials
 
-Then it writes a NixOS module. Each option carries a comment naming the
-statement it came from (`d1.2` is the second part of line 1) and the rule that
-placed it (`r2`):
+lips calls each fact read from a program a *decision*. Then compile writes a
+NixOS module. Each option carries a comment naming the decision it came from
+(`d1.2` is the second fact of line 1) and the rule that placed it (`r2`):
 
     # <-d3 via r5
     services.restic.backups.ledger.environmentFile = "/etc/ledger-backup.env";
@@ -68,8 +85,8 @@ plain-language `README.md` describing it. After that, a new program in the
 language needs no review of mechanism. You read its own few lines of meaning,
 and `compile` shows you how the machine read them. Review work grows with the
 number of languages you keep, while the number of programs can grow freely.
-Re-minting a language is the one event that asks for review again, and the
-committed tests gate it.
+Minting a language a second time is the one event that reopens review, and
+the committed tests gate it.
 
 ## How It Works
 
@@ -79,7 +96,7 @@ Three words carry the design:
   lips cannot regenerate.
 - An **engine** is the compiler for one language: a grammar that reads the
   sentences, rules that map them onto a target, and tests that pin the result.
-  An engine is plain data. A model writes it ("mints" it), lips runs it.
+  An engine is plain data. A model writes it (mints it), lips runs it.
 - A **world** is what the output targets: `nixos`, `home-manager`, `kubenix`,
   `terranix`, or a world file of your own. `lips world` lists them.
 
@@ -89,7 +106,7 @@ Work then moves in three steps, and only the middle one touches a model.
 (`examples/hello.lips` is German). A file named `<instance>.<language>.lips`
 names both: `ledger.backup.lips` is the instance `ledger` in the language
 `backup`. A sibling `photos.backup.lips` reuses the same engine with no new AI
-call and nothing new to review, and the two instances compose in one
+call and no new mechanism to review, and the two instances compose in one
 configuration without collision. `backup.lips` alone is shorthand for a
 language with a single instance.
 
@@ -97,14 +114,9 @@ language with a single instance.
 the grammar, the rules, the tests and a `README.md` for the language. Pass
 several programs and it generalizes one grammar across all of them. lips writes
 nothing unless the new engine reads every program and its tests hold, so a bad
-mint costs you nothing. When a language already exists, `generate` patches its
-committed engine; `--fresh` starts over.
-
-`-t <world>` picks the target world. A new language defaults to `nixos`; a
-re-mint keeps the world the language already has. Repeat `-t` to mint several
-worlds in one call. Every option path a rule names is checked against that
-world's pinned option schema (the one `lips options <query>` searches), so a
-path that does not exist there is refused before anything is written.
+mint costs you nothing. Every option a rule names is checked against the
+target world's pinned option schema, so a rule naming an option that does not
+exist there is refused before anything is written.
 
 To steer *how* the engine gets built, put a plain-text `<language>.direction`
 file beside your programs ("prefer restic over rsync", "no docker"). It guides
@@ -118,9 +130,8 @@ the stock `nix` commands for what it just built, and you pick one. A NixOS
 module offers a throwaway QEMU boot, a build without booting, and a dev shell
 with exactly the tools your program adds. A kubenix module renders YAML for
 `kubectl`; a terranix module renders `config.tf.json` for `tofu plan`. Nothing
-applies anything to your host. `lips compile --watch` recompiles on every save,
-and `lips check <program>` re-verifies the committed tests, in CI or before a
-merge.
+applies anything to your host. `lips check <program>` re-verifies the committed
+tests, in CI or before a merge.
 
 ```mermaid
 flowchart LR
@@ -144,10 +155,6 @@ flowchart LR
     linkStyle 2,3,4 stroke:#94a3b8,stroke-width:1.5px
 ```
 
-`lips lsp` gives any editor completion and live diagnostics for every lips
-language, with no per-language setup. Glue for Neovim, Vim, VS Code and Helix
-lives in `editors/`.
-
 ## Configuration and Behaviour
 
 An engine produces two kinds of output.
@@ -155,12 +162,12 @@ An engine produces two kinds of output.
 **Configuration** maps a sentence onto options that already exist. nixpkgs
 defines what `services.restic.backups.<name>.paths` means; the engine only
 names it, and the schema check at generate time proves the name is real. The
-tests in `.expect` pin which option each statement lands in.
+tests in `.expect` pin which option each decision lands in.
 
 **Behaviour** covers what no option can express: a program that filters,
 computes or decides. Here the engine emits *clauses*, small pure functions in a
-safe subset of Scheme, each traced back to the program line it came from. Guile
-runs them. A program can also state a *claim*, an example of what it must do,
+safe subset of Scheme, each traced back to the program line it came from.
+Guile, a Scheme implementation, runs them. A program can also state a *claim*, an example of what it must do,
 and `compile` runs every claim against the clauses and fails if one does not
 hold. `examples/logscan.lips` is a complete command-line tool:
 
@@ -170,8 +177,9 @@ hold. `examples/logscan.lips` is a complete command-line tool:
     install the tool as the command logscan.
     given the lines {"a":"1"} and {"a":"2"} with a=1, print only {"a":"1"}.
 
-Its last line is the claim. After `compile`, `nix run <dir>#site` runs the tool
-and `nix build <dir>#site-claims` re-runs the claims.
+Its last line is the claim. `compile` writes the tool into the output
+directory as its *site*: `nix run <dir>#site` runs it, and
+`nix build <dir>#site-claims` re-runs the claims.
 
 lips never accepts source code written by the model. Logic arrives as clauses
 that lips checks line by line. Anything built arrives as an existing nixpkgs
@@ -204,9 +212,10 @@ Each of these properties is something you can check yourself.
 - **Deduce or fail.** An unreadable line is an error that names its remedy.
   lips never guesses, and invents nothing your program does not state.
 - **Gated change.** A re-minted engine is accepted only if the committed tests
-  still hold. To change behaviour on purpose, you say how far the contract may
-  move (`generate --compat backwards|forwards|none`), and that diff becomes
-  your semantic changelog.
+  in `.expect` still hold. To change behaviour on purpose, you say how far
+  those tests may move: `--compat backwards` lets new assertions join,
+  `forwards` lets assertions the engine no longer fills leave, `none` rewrites
+  them. The resulting diff of `.expect` is your semantic changelog.
 - **A full audit trail.** Every line a model wrote ends in `@gen:<id>`, the
   hash of the one AI call that produced it. The language's `.generation` file
   records that call: the model, the pinned nixpkgs, and the full prompt. The
@@ -262,6 +271,32 @@ Then pick an example by what you want to see:
 | `examples/dev.policy.lips` | seven sentences become a [nono](https://nono.sh) agent-sandbox profile through `examples/nono.world`, a world lips does not ship |
 | `libero/` | several languages composed into a football manager |
 
+## Commands
+
+Three commands do the work, and only `generate` calls a model:
+
+| Command | What it does |
+|---|---|
+| `lips generate <program>...` | Mint the language, or grow it to read new lines. Patches the committed engine; `--fresh` rewrites it. |
+| `lips compile <program>` | Write the output directory and print the `nix` commands that run it. `--watch` recompiles on every save. |
+| `lips check <program>` | Re-verify the committed tests, offline. |
+
+`generate -t <world>` picks the target world. A new language defaults to
+`nixos`, and a re-mint keeps the worlds the language already has. Repeat `-t`
+to target several worlds in one call. `-m <model>` picks the model,
+`--compat` is explained under "Gated change" above, and `--help` lists the
+rest.
+
+Four more commands support editing and inspection, and none of them changes
+anything:
+
+| Command | What it does |
+|---|---|
+| `lips options <query>` | Search a world's pinned option schema. |
+| `lips exports <language>` | List the clauses a language offers to other programs. |
+| `lips world` | List the available worlds, or print one. |
+| `lips lsp` | Serve completion and live diagnostics to any editor, for every lips language. Glue for Neovim, Vim, VS Code and Helix lives in `editors/`. |
+
 ## Install
 
 Add the flake as an input and put the package in `environment.systemPackages`
@@ -312,7 +347,7 @@ what you own and nothing else:
     backup/                     <- the machine's, all of it
       backup.grammar            <- how every program is read, shared by all worlds
       nixos/                    <- one folder per world the language targets
-        backup.rules            <- how this world receives each statement
+        backup.rules            <- where each decision lands in this world
         backup.expect           <- the tests for this world
         backup.generation       <- receipt of the exact AI call, and what it pinned
         backup.timing           <- what the mint cost: model, seconds, turns
@@ -323,7 +358,7 @@ what you own and nothing else:
 The grammar decides how a program is *read*; a world folder decides where it
 *lands*. `out/` holds one compiled directory per instance and world, plus the
 `<instance>.decisions` file `generate` writes: the reading of your program as a
-list of statements. Everything outside `out/` belongs in git.
+list of decisions. Everything outside `out/` belongs in git.
 
 ## Where This Sits
 
